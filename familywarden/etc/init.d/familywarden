@@ -1,21 +1,47 @@
 #!/bin/sh /etc/rc.common
 
 START=60
-USE_PROCD=1
 
 BIN="/usr/bin/familywarden"
+CRON_FILE="/etc/crontabs/root"
+CRON_MARKER="familywarden"
 
-start_service() {
-    procd_open_instance
-    procd_set_param command "$BIN" eval
-    procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-5}
-    procd_close_instance
+boot() {
+    fw_start
 }
 
-stop_service() {
-    true
+start() {
+    fw_start
 }
 
-reload_service() {
+stop() {
+    fw_stop
+}
+
+reload() {
     $BIN reload
+}
+
+fw_start() {
+    # Initialize nft chain and evaluate once
+    $BIN init
+
+    # Install cron job for periodic evaluation (every minute)
+    mkdir -p $(dirname "$CRON_FILE")
+    grep -q "$CRON_MARKER" "$CRON_FILE" 2>/dev/null || \
+        echo "* * * * * $BIN eval # $CRON_MARKER" >> "$CRON_FILE"
+
+    # Ensure cron is running
+    /etc/init.d/cron start
+}
+
+fw_stop() {
+    # Remove cron job
+    if [ -f "$CRON_FILE" ]; then
+        grep -v "$CRON_MARKER" "$CRON_FILE" > "${CRON_FILE}.tmp" 2>/dev/null || true
+        mv "${CRON_FILE}.tmp" "$CRON_FILE" 2>/dev/null || true
+    fi
+
+    # Clear nft chain
+    nft delete chain inet fw4 familywarden_forward 2>/dev/null || true
 }
