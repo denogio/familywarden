@@ -18,7 +18,7 @@ define Package/familywarden
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=OpenWrt Parental Control Daemon
-  DEPENDS:=+kmod-nftables +nftables +libubox +libubus +libuci +libblobmsg-json +rpcd
+  DEPENDS:=+kmod-nftables +nftables +libubox +libubus +libuci +rpcd
   URL:=https://github.com/dehoej/familywarden
 endef
 
@@ -40,8 +40,8 @@ define Package/familywarden/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) ./usr/bin/familywarden.sh $(1)/usr/bin/familywarden
 
-	$(INSTALL_DIR) $(1)/usr/lib/rpcd
-	$(INSTALL_BIN) ./usr/lib/rpcd/familywarden $(1)/usr/lib/rpcd/familywarden
+	$(INSTALL_DIR) $(1)/usr/share/rpcd/ucode
+	$(INSTALL_DATA) ./usr/share/rpcd/ucode/familywarden $(1)/usr/share/rpcd/ucode/familywarden
 
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DATA) ./usr/share/rpcd/acl.d/familywarden.json $(1)/usr/share/rpcd/acl.d/familywarden.json

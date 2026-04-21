@@ -1,0 +1,4 @@
+/openwrt-*.img
+/openwrt-*-initramfs
+/*.qcow2
+/qemu.sh
