@@ -1,0 +1,15 @@
+{
+  "familywarden": {
+    "description": "Parental control access for Home Assistant",
+    "read": {
+      "ubus": {
+        "familywarden": ["list", "status"]
+      }
+    },
+    "write": {
+      "ubus": {
+        "familywarden": ["block", "allow", "reset", "ticket", "reload"]
+      }
+    }
+  }
+}

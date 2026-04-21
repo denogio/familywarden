@@ -1,0 +1,21 @@
+# familywarden UCI configuration
+# Remove this file before package install - it's a template only
+
+config global 'settings'
+    option enabled '1'
+    option default_policy 'allow'
+
+# Example profile for a child
+# config profile 'josva'
+#     option name 'Josva'
+#     option enabled '1'
+#     option policy 'scheduled'
+#     list device '00:11:22:33:44:55'
+#     option dns_profile 'child'
+#
+# config schedule 'josva_weekday'
+#     option profile 'josva'
+#     option days 'mon tue wed thu fri'
+#     option start '07:00'
+#     option stop '20:00'
+#     option action 'allow'

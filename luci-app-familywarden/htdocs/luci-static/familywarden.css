@@ -1,0 +1,39 @@
+/**
+ * FamilyWarden LuCI Styles
+ * Copyright 2026 Dennis Højgaard
+ * Licensed under Apache 2.0
+ */
+
+/* Status indicators */
+.fw-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+
+.fw-status-dot.online { background: #28a745; }
+.fw-status-dot.offline { background: #dc3545; }
+.fw-status-dot.pending { background: #ffc107; }
+
+/* Profile cards for mobile */
+@media (max-width: 768px) {
+  .fw-profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fw-summary {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Utility classes */
+.fw-text-muted { color: #6c757d; }
+.fw-text-success { color: #28a745; }
+.fw-text-danger { color: #dc3545; }
+.fw-text-warning { color: #ffc107; }
+
+.fw-bg-success { background: #d4edda; }
+.fw-bg-danger { background: #f8d7da; }
+.fw-bg-warning { background: #fff3cd; }

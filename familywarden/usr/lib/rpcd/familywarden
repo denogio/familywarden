@@ -1,0 +1,60 @@
+#!/bin/sh
+# rpcd plugin for familywarden ubus API
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+
+case "$1" in
+    list)
+        echo '{'
+        echo '  "list": {},'
+        echo '  "status": { "profile": "string" },'
+        echo '  "block": { "profile": "string" },'
+        echo '  "allow": { "profile": "string" },'
+        echo '  "reset": { "profile": "string" },'
+        echo '  "ticket": { "profile": "string", "minutes": 0 },'
+        echo '  "reload": {}'
+        echo '}'
+        ;;
+    call)
+        case "$2" in
+            list)
+                /usr/bin/familywarden list
+                ;;
+            status)
+                read -r input
+                json_load "$input"
+                json_get_var profile profile
+                /usr/bin/familywarden status "$profile"
+                ;;
+            block)
+                read -r input
+                json_load "$input"
+                json_get_var profile profile
+                /usr/bin/familywarden block "$profile"
+                ;;
+            allow)
+                read -r input
+                json_load "$input"
+                json_get_var profile profile
+                /usr/bin/familywarden allow "$profile"
+                ;;
+            reset)
+                read -r input
+                json_load "$input"
+                json_get_var profile profile
+                /usr/bin/familywarden reset "$profile"
+                ;;
+            ticket)
+                read -r input
+                json_load "$input"
+                json_get_var profile profile
+                json_get_var minutes minutes 30
+                /usr/bin/familywarden ticket "$profile" "$minutes"
+                ;;
+            reload)
+                /usr/bin/familywarden reload
+                ;;
+        esac
+        ;;
+esac

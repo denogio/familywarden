@@ -1,0 +1,17 @@
+{
+	"luci-app-familywarden": {
+		"description": "Grant access to FamilyWarden parental control",
+		"read": {
+			"ubus": {
+				"familywarden": [ "list", "status" ]
+			},
+			"uci": [ "familywarden" ]
+		},
+		"write": {
+			"ubus": {
+				"familywarden": [ "block", "allow", "reset", "ticket", "reload" ]
+			},
+			"uci": [ "familywarden" ]
+		}
+	}
+}
