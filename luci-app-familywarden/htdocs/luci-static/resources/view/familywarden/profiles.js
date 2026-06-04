@@ -186,12 +186,21 @@ function showAddProfileModal() {
 					uci.set('familywarden', id, 'enabled', '1');
 					uci.set('familywarden', id, 'name', name);
 					uci.set('familywarden', id, 'policy', 'allow');
-					L.ui.hideModal();
+					// Keep the modal open (Create button stays disabled/spinning
+					// via createHandlerFn) until the whole save/apply/reload chain
+					// finishes, so the user can't double-submit during the round-trip.
 					return uci.save().then(function() {
 						return uci.apply();
+					}).catch(function(e) {
+						// uci.apply() returns ubus code 5 (ENODATA) when there are
+						// no pending changes left to apply — harmless here since the
+						// profile was already saved. Swallow it and continue.
+						if (!/code 5|No data received/i.test(String(e && e.message || e)))
+							throw e;
 					}).then(function() {
 						return callReload();
 					}).then(function() {
+						L.ui.hideModal();
 						window.location = profileUrl(id);
 					});
 				})
