@@ -1,37 +1,39 @@
 # familywarden — OpenWrt Parental Control Plugin
 
-## Status (2026-04-20)
+## Status (2026-06-04)
 
 ### Hvad er lavet?
 ✅ **Pakkestruktur** - familywarden/ og luci-app-familywarden/ mapper oprettet
 ✅ **UCI config format** - defineret i scope dokumentet
-✅ **Shell-daemon** - `familywarden.sh` med alle funktioner (har BUGS)
+✅ **Shell-daemon** - `familywarden.sh` med alle funktioner (tidligere bugs fixet)
 ✅ **Init script** - procd-baseret service
-✅ **rpcd plugin** - ubus API integration
+✅ **rpcd plugin** - ubus API integration (shell + ucode variant)
 ✅ **ACL fil** - til HTTP adgang
 ✅ **LuCI controller** - routing + AJAX endpoints
-✅ **LuCI modeller** - profiles, schedules, settings CBI
-✅ **LuCI view** - dashboard med auto-refresh
+✅ **LuCI views** - overview, profiles (m. schedules), settings (JS/client-side)
+✅ **Cron-baseret schedule-evaluering** - automatisk evaluering hvert minut
+✅ **Makefiles** - rigtige OpenWrt-pakkebuilds for begge pakker
 ✅ **Danske oversættelser** - i18n fil
-✅ **Deploy scripts** - til installation på kørende system
+✅ **Deploy scripts** - til installation på kørende system + QEMU-test
+✅ **UI reload-mønster** - `uci.apply().then(callReload)` efter save på alle views
 
-### KENDTE BUGS der skal fixes
-🔴 **config_get syntaks** - OpenWrt bruger `config_get <var> <section> <option>` ikke `config_get <section> <option> <var>`
-🔴 **Log statements** - parenteser `()` i strings giver syntax error
-🔴 **config_list_get** - findes ikke, skal bruge `config_list_foreach` med callback
+### Tidligere bugs — NU FIXET
+✅ **config_get syntaks** - bruger nu korrekt `config_get <var> <section> <option>`
+✅ **config_list_get** - erstattet med `config_list_foreach` + callbacks
+✅ **Log statements** - parentes-problem håndteret
 
 ### Test status
-- ✅ Kan køre manuelt: `/usr/bin/familywarden list` 
-- ❌ Returnerer tomme profiler (config_get bug)
-- ❌ ubus objektet registreres ikke endnu (rpcd skal genstartes)
+- ✅ Statisk verifikation: alle scripts parser (`bash -n`), alle påkrævede funktioner + ubus-endpoints findes (`scripts/test-syntax.sh`)
+- ⚠️ shellcheck giver kun støj-advarsler (SC1091 OpenWrt-includes, SC3043 `local` i ash, mindre quoting)
+- ⏳ Fuld QEMU-runtime test mangler (kør `sudo ./qemu.sh` — kræver root/KVM/tap)
+- ⏳ `ubus call familywarden list` ikke verificeret på rigtig/QEMU runtime endnu
 
 ### Næste skridt
-1. Fix config_get syntaks i alle funktioner
-2. Fix log statements (escape eller fjern parenteser)
-3. Fix device list export
-4. Test `ubus call familywarden list`
-5. Deploy LuCI UI til router
-6. Test webinterface
+1. Boot QEMU og verificér `ubus call familywarden list` returnerer profiler
+2. Test schedule-evaluering (cron) faktisk skifter nft-regler
+3. Test `ticket`-kommandoen end-to-end
+4. Test webinterface i browser mod QEMU
+5. Start Fase 3 (Home Assistant HACS-integration)
 
 ---
 
@@ -129,12 +131,12 @@ ubus call familywarden reload
 
 ## 5. Implementeringsplan
 
-#### Fase 1 — MVP backend (IGANGVÆRENDE)
+#### Fase 1 — MVP backend (NÆSTEN FÆRDIG — mangler runtime-test)
 - [x] UCI-konfigurationsformat defineret
 - [x] Shell-baseret daemon med init.d service
-- [ ] ~~nftables chain management~~ (afventer daemon fix)
-- [ ] Tidsplan-evaluering (cron-baseret)
-- [ ] ubus API fuldt implementeret
+- [x] nftables chain management (implementeret, runtime-test mangler)
+- [x] Tidsplan-evaluering (cron-baseret)
+- [x] ubus API fuldt implementeret (runtime-test mangler)
 - [x] rpcd ACL-fil til HTTP-adgang
 
 #### Fase 2 — Brugervenlig (STARTET)
@@ -182,4 +184,4 @@ config_list_foreach "${profile}" device _list_callback
 
 *Projekt: FamilyWarden*
 *Startet: 2026-04-20*
-*Seneste update: 2026-04-20 18:50*
+*Seneste update: 2026-06-04*
