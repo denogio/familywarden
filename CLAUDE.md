@@ -25,15 +25,16 @@
 ### Test status
 - ✅ Statisk verifikation: alle scripts parser (`bash -n`), alle påkrævede funktioner + ubus-endpoints findes (`scripts/test-syntax.sh`)
 - ⚠️ shellcheck giver kun støj-advarsler (SC1091 OpenWrt-includes, SC3043 `local` i ash, mindre quoting)
-- ⏳ Fuld QEMU-runtime test mangler (kør `sudo ./qemu.sh` — kræver root/KVM/tap)
-- ⏳ `ubus call familywarden list` ikke verificeret på rigtig/QEMU runtime endnu
+- ✅ **QEMU runtime-test bestået** (2026-06-04): `list` + `status` returnerer korrekt JSON
+- ✅ **Firewall verificeret**: nft-chain `familywarden_forward` matcher status; scheduled-blokering dropper Josvas MAC med `familywarden:josva` comment
+- ✅ **Override verificeret**: `block`/`allow` tilføjer/fjerner nft-regler korrekt på runtime
+- ⏳ Mangler: `ticket` end-to-end, cron schedule-skift over tid, webinterface i browser
 
 ### Næste skridt
-1. Boot QEMU og verificér `ubus call familywarden list` returnerer profiler
-2. Test schedule-evaluering (cron) faktisk skifter nft-regler
-3. Test `ticket`-kommandoen end-to-end
-4. Test webinterface i browser mod QEMU
-5. Start Fase 3 (Home Assistant HACS-integration)
+1. Test `ticket`-kommandoen end-to-end (midlertidig adgang udløber)
+2. Verificér cron-schedule faktisk skifter nft-regler ved tidsgrænse
+3. Test webinterface i browser mod QEMU (http://192.168.1.1/)
+4. Start Fase 3 (Home Assistant HACS-integration)
 
 ---
 
@@ -131,12 +132,12 @@ ubus call familywarden reload
 
 ## 5. Implementeringsplan
 
-#### Fase 1 — MVP backend (NÆSTEN FÆRDIG — mangler runtime-test)
+#### Fase 1 — MVP backend (FÆRDIG — runtime-verificeret 2026-06-04)
 - [x] UCI-konfigurationsformat defineret
 - [x] Shell-baseret daemon med init.d service
-- [x] nftables chain management (implementeret, runtime-test mangler)
+- [x] nftables chain management (verificeret på QEMU)
 - [x] Tidsplan-evaluering (cron-baseret)
-- [x] ubus API fuldt implementeret (runtime-test mangler)
+- [x] ubus API fuldt implementeret (verificeret på QEMU)
 - [x] rpcd ACL-fil til HTTP-adgang
 
 #### Fase 2 — Brugervenlig (STARTET)
