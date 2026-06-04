@@ -325,7 +325,7 @@ return view.extend({
 		var origSaveApply = m.handleSaveApply;
 		m.handleSaveApply = function(ev, mode) {
 			return origSaveApply.apply(this, [ev, mode]).then(function() {
-				return callReload();
+				return uci.apply().then(callReload);
 			});
 		};
 

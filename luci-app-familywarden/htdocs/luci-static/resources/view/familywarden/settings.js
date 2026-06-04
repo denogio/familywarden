@@ -1,6 +1,13 @@
 'use strict';
 'require view';
 'require form';
+'require uci';
+'require rpc';
+
+var callReload = rpc.declare({
+	object: 'familywarden',
+	method: 'reload'
+});
 
 return view.extend({
 	render: function() {
@@ -8,6 +15,13 @@ return view.extend({
 
 		m = new form.Map('familywarden', _('FamilyWarden Settings'),
 			_('Configure global FamilyWarden options.'));
+
+		var origSaveApply = m.handleSaveApply;
+		m.handleSaveApply = function(ev, mode) {
+			return origSaveApply.apply(this, [ev, mode]).then(function() {
+				return uci.apply().then(callReload);
+			});
+		};
 
 		s = m.section(form.TypedSection, 'global', _('Global Settings'));
 		s.anonymous = true;
@@ -23,6 +37,11 @@ return view.extend({
 		o.value('block', _('Block Internet'));
 		o.default = 'allow';
 
-		return m.render();
+		return m.render().then(function(formEl) {
+			return E('div', {}, [
+				E('h2', {}, _('Settings')),
+				formEl
+			]);
+		});
 	}
 });
