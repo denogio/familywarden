@@ -1,7 +1,6 @@
 'use strict';
 'require view';
 'require form';
-'require uci';
 'require rpc';
 
 var callReload = rpc.declare({
@@ -18,8 +17,11 @@ return view.extend({
 
 		var origSaveApply = m.handleSaveApply;
 		m.handleSaveApply = function(ev, mode) {
+			// origSaveApply already saves AND applies the UCI changes; just
+			// reload the daemon afterwards. Calling uci.apply() again here would
+			// hit ubus code 5 (ENODATA) since no changes remain pending.
 			return origSaveApply.apply(this, [ev, mode]).then(function() {
-				return uci.apply().then(callReload);
+				return callReload();
 			});
 		};
 

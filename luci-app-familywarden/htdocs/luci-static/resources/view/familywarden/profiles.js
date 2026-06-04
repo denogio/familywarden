@@ -333,8 +333,11 @@ return view.extend({
 		var m = new form.Map('familywarden');
 		var origSaveApply = m.handleSaveApply;
 		m.handleSaveApply = function(ev, mode) {
+			// origSaveApply already saves AND applies the UCI changes; just
+			// reload the daemon afterwards. Calling uci.apply() again here would
+			// hit ubus code 5 (ENODATA) since no changes remain pending.
 			return origSaveApply.apply(this, [ev, mode]).then(function() {
-				return uci.apply().then(callReload);
+				return callReload();
 			});
 		};
 
@@ -461,7 +464,9 @@ return view.extend({
 		var deleteSection = E('div', { 'class': 'fw-delete-section' }, [
 			E('button', {
 				'class': 'fw-delete-btn',
-				'click': function() {
+				// createHandlerFn keeps the button disabled/spinning while the
+				// save/apply/reload/redirect chain runs, preventing double-submit.
+				'click': L.ui.createHandlerFn(self, function() {
 					if (!confirm(_('Delete this profile and all its schedules?')))
 						return;
 
@@ -473,12 +478,18 @@ return view.extend({
 					uci.remove('familywarden', pid);
 					return uci.save().then(function() {
 						return uci.apply();
+					}).catch(function(e) {
+						// uci.apply() returns ubus code 5 (ENODATA) when there are
+						// no pending changes left to apply — harmless here since the
+						// profile was already removed. Swallow it and continue.
+						if (!/code 5|No data received/i.test(String(e && e.message || e)))
+							throw e;
 					}).then(function() {
 						return callReload();
 					}).then(function() {
 						window.location = L.url('admin/services/familywarden/profiles');
 					});
-				}
+				})
 			}, _('Delete Profile'))
 		]);
 
