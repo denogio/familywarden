@@ -356,6 +356,7 @@ return view.extend({
 		o.value('allow', _('Always allow'));
 		o.value('block', _('Always block'));
 		o.value('scheduled', _('By schedule'));
+		var policyOption = o;
 
 		o = s.option(form.DynamicList, 'device', _('Devices'),
 			_('Select known devices or enter MAC addresses manually.'));
@@ -376,7 +377,7 @@ return view.extend({
 		// --- Schedules for this profile ---
 		var pid = selectedProfile;
 		var ss = m.section(form.GridSection, 'schedule', _('Schedules'),
-			_('Time windows for this profile. Block always wins over Allow when overlapping. Outside all schedules, access is blocked.'));
+			_('Internet is off by default in this mode. Add the time windows when access is allowed; any time outside every window is blocked.'));
 		ss.addremove = true;
 		ss.anonymous = true;
 		ss.addbtntitle = _('Add schedule');
@@ -407,21 +408,12 @@ return view.extend({
 			var days = uci.get('familywarden', section_id, 'days') || '';
 			var start = uci.get('familywarden', section_id, 'start') || '';
 			var stop = uci.get('familywarden', section_id, 'stop') || '';
-			var action = uci.get('familywarden', section_id, 'action') || 'allow';
 			if (!days || !start || !stop) return _('(incomplete)');
 			var dayMap = { mon:'Mon', tue:'Tue', wed:'Wed', thu:'Thu', fri:'Fri', sat:'Sat', sun:'Sun' };
 			var dayArr = (typeof days === 'string') ? days.split(/\s+/) : days;
 			var dayStr = dayArr.map(function(d) { return dayMap[d] || d; }).join(', ');
-			var icon = (action === 'allow') ? '\u2714' : '\u2718';
-			return dayStr + '  ' + start + ' \u2013 ' + stop + '  [' + icon + ' ' + action + ']';
+			return '\u2714 ' + dayStr + '  ' + start + ' \u2013 ' + stop;
 		};
-
-		o = ss.option(form.ListValue, 'action', _('Action'));
-		o.value('allow', _('Allow'));
-		o.value('block', _('Block'));
-		o.rmempty = false;
-		o.default = 'allow';
-		o.editable = true;
 
 		o = ss.option(form.Value, 'profile', _('Profile'));
 		o.modalonly = true;
@@ -496,6 +488,25 @@ return view.extend({
 		// --- Render ---
 		return m.render().then(function(formEl) {
 			poll.add(refreshStatus, 10);
+
+			// Schedules only have an effect when policy is "By schedule"
+			// (the daemon ignores them otherwise), so only show that section
+			// when the policy is set accordingly. Toggle live as the user
+			// changes the Access Policy dropdown, without needing to save.
+			var scheduleNode = formEl.querySelector('#cbi-familywarden-schedule');
+			if (!scheduleNode) {
+				var secs = formEl.querySelectorAll('.cbi-section');
+				scheduleNode = secs.length ? secs[secs.length - 1] : null;
+			}
+			var policyUI = policyOption.getUIElement(selectedProfile);
+			function syncScheduleVisibility() {
+				if (!scheduleNode) return;
+				var show = policyUI && policyUI.getValue() === 'scheduled';
+				scheduleNode.style.display = show ? '' : 'none';
+			}
+			if (policyUI && policyUI.node)
+				policyUI.node.addEventListener('widget-change', syncScheduleVisibility);
+			syncScheduleVisibility();
 
 			return E('div', {}, [
 				E('h2', {}, _('Profiles')),

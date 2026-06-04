@@ -50,7 +50,6 @@ config schedule 'josva_weekday'
     option days 'mon tue wed thu fri'
     option start '07:00'
     option stop '20:00'
-    option action 'allow'
 EOF
     fi
 "

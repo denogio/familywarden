@@ -53,13 +53,12 @@ _nft_block_device_cb() {
 # Check if a schedule is currently active
 is_schedule_active() {
     local schedule="$1"
-    local now_day now_time start stop action days
+    local now_day now_time start stop days
 
     config_load familywarden
     config_get days "$schedule" days ""
     config_get start "$schedule" start ""
     config_get stop "$schedule" stop ""
-    config_get action "$schedule" action "allow"
 
     [ -z "$days" ] || [ -z "$start" ] || [ -z "$stop" ] && return 1
 
@@ -86,36 +85,28 @@ is_schedule_active() {
     fi
 }
 
-# Find effective action from all active schedules for a profile.
-# Returns: "block", "allow", or "" (no active schedule).
-# Rule: block wins over allow when schedules overlap.
-get_schedule_action() {
+# Returns success (0) if any schedule window is active right now for the
+# profile. Schedules are allow-windows only: inside a window access is
+# allowed, outside every window access is blocked (block by default).
+has_active_schedule() {
     local profile="$1"
-    _sched_result=""
+    _sched_active=0
     _sched_profile="$profile"
 
     config_load familywarden
     config_foreach _collect_schedule schedule
 
-    echo "$_sched_result"
+    [ "$_sched_active" = "1" ]
 }
 
 _collect_schedule() {
     local schedule="$1"
-    local profile action
+    local profile
 
     config_get profile "$schedule" profile ""
     [ "$profile" = "$_sched_profile" ] || return 0
 
-    if is_schedule_active "${schedule}"; then
-        config_get action "$schedule" action "allow"
-        if [ "$action" = "block" ]; then
-            # Block always wins
-            _sched_result="block"
-        elif [ "$_sched_result" != "block" ]; then
-            _sched_result="allow"
-        fi
-    fi
+    is_schedule_active "${schedule}" && _sched_active=1
     return 0
 }
 
@@ -123,7 +114,7 @@ _collect_schedule() {
 evaluate_profile() {
     local profile="$1"
     local name policy enabled status override override_expires next_change
-    local devices mac schedule_info schedule_action
+    local devices mac
 
     config_load familywarden
     config_get name "$profile" name "$profile"
@@ -165,12 +156,13 @@ evaluate_profile() {
                     desired_state="allowed"
                     ;;
                 scheduled)
-                    schedule_action=$(get_schedule_action "${profile}")
-                    case "$schedule_action" in
-                        block)  desired_state="blocked" ;;
-                        allow)  desired_state="allowed" ;;
-                        *)      desired_state="blocked" ;;  # No active schedule = blocked
-                    esac
+                    # Schedules are allow-windows only; inside a window =
+                    # allowed, outside every window = blocked (block by default).
+                    if has_active_schedule "${profile}"; then
+                        desired_state="allowed"
+                    else
+                        desired_state="blocked"
+                    fi
                     ;;
             esac
             ;;

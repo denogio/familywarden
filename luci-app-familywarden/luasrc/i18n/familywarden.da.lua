@@ -49,6 +49,7 @@ return {
     ["Days"] = "Dage",
     ["Start Time"] = "Start tid",
     ["Stop Time"] = "Slut tid",
+    ["Internet is off by default in this mode. Add the time windows when access is allowed; any time outside every window is blocked."] = "Internet er slukket som standard i denne tilstand. Tilføj de tidsvinduer hvor adgang er tilladt; al tid uden for hvert vindue er blokeret.",
     ["Action"] = "Handling",
     ["Allow Internet"] = "Tillad internet",
     ["Block Internet"] = "Bloker internet",

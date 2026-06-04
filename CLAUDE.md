@@ -90,8 +90,12 @@ config schedule 'test_weekday'
     option days 'mon tue wed thu fri'
     option start '07:00'
     option stop '20:00'
-    option action 'allow'
 ```
+
+**Schedule-model:** Schedules er rene *allow-vinduer*. I `policy 'scheduled'` er internet
+slukket som standard ("block by default"); en profil er kun tilladt når nuværende
+tid+dag falder inden for et af dens schedules. Der er ingen `action`-option længere
+(droppet 2026-06-04 — block-action gav forvirrende semantik sammen med default-deny).
 
 ---
 

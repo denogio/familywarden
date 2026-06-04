@@ -66,7 +66,6 @@ config schedule 'test_schedule'
     option days 'mon tue wed thu fri'
     option start '09:00'
     option stop '21:00'
-    option action 'allow'
 EOFCONFIG
     fi
 "
