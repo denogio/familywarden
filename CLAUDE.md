@@ -28,13 +28,21 @@
 - ✅ **QEMU runtime-test bestået** (2026-06-04): `list` + `status` returnerer korrekt JSON
 - ✅ **Firewall verificeret**: nft-chain `familywarden_forward` matcher status; scheduled-blokering dropper Josvas MAC med `familywarden:josva` comment
 - ✅ **Override verificeret**: `block`/`allow` tilføjer/fjerner nft-regler korrekt på runtime
-- ⏳ Mangler: `ticket` end-to-end, cron schedule-skift over tid, webinterface i browser
+- ✅ **Ticket + cron verificeret** (2026-06-04): 1-min ticket fjernede drop-reglen, og cron-`eval` ryddede override + genblokerede automatisk ved udløb
+- ⏳ Mangler: webinterface i browser (Save & Apply → reload)
+
+### DNS-filtrering — IKKE IMPLEMENTERET (kun UI-stub)
+⚠️ Visionen nævner DNS-filtrering, men det er **ikke bygget**:
+- Daemonen (`familywarden.sh`) læser aldrig `dns_profile` og gør intet med DNS
+- LuCI har et `dns_profile`-felt der gemmer værdien i UCI — men den bruges ingen steder
+- i18n-strenge + udkommenteret UCI-eksempel findes, men ingen backend-logik
+- Nuværende blokering er ren MAC-baseret nft drop (internet on/off), ikke DNS
+- Mulige modeller (ikke valgt endnu): AdGuard Home API, dnsmasq nftset, eller per-klient DNS-redirect i nft
 
 ### Næste skridt
-1. Test `ticket`-kommandoen end-to-end (midlertidig adgang udløber)
-2. Verificér cron-schedule faktisk skifter nft-regler ved tidsgrænse
-3. Test webinterface i browser mod QEMU (http://192.168.1.1/)
-4. Start Fase 3 (Home Assistant HACS-integration)
+1. Test webinterface i browser mod QEMU (http://192.168.1.1/) — Save & Apply → reload
+2. Fase 3: Home Assistant HACS-integration
+3. Fase 4 (sidst): DNS-filtrering — beslut model og byg backend
 
 ---
 
@@ -140,16 +148,23 @@ ubus call familywarden reload
 - [x] ubus API fuldt implementeret (verificeret på QEMU)
 - [x] rpcd ACL-fil til HTTP-adgang
 
-#### Fase 2 — Brugervenlig (STARTET)
+#### Fase 2 — Brugervenlig (NÆSTEN FÆRDIG)
 - [x] LuCI oversigtsside (profilstatus, toggle)
 - [x] LuCI profil-editor (enheder, policy)
 - [x] LuCI tidsplan-editor
-- [ ] `ticket` kommando fuldt testet
+- [x] `ticket` kommando fuldt testet (runtime-verificeret 2026-06-04)
+- [ ] Webinterface verificeret i browser (Save & Apply → reload)
 
 #### Fase 3 — Home Assistant (IKKE STARTET)
 - [ ] HACS custom integration
 - [ ] Switch + sensor entiteter per profil
 - [ ] Lovelace dashboard-kort
+
+#### Fase 4 — DNS-filtrering (IKKE STARTET, sidste fase)
+- [ ] Vælg model: AdGuard Home API / dnsmasq nftset / per-klient nft DNS-redirect
+- [ ] Daemon læser `dns_profile` og anvender filtrering per profil/MAC
+- [ ] Kobl eksisterende LuCI `dns_profile`-felt til reel backend-logik
+- [ ] Test DNS-filtrering på runtime
 
 ---
 
