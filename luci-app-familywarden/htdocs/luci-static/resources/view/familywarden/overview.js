@@ -128,7 +128,7 @@ function injectStyles() {
 		.fw-summary-label{color:var(--text-color-medium,#6c757d);font-size:13px;text-transform:uppercase;letter-spacing:.5px}\
 		.fw-summary-value{font-size:28px;font-weight:bold;margin-top:4px}\
 		.fw-summary-value.online{color:#28a745}.fw-summary-value.offline{color:#dc3545}\
-		.fw-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px}\
+		.fw-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px;align-items:start}\
 		.fw-card{border-radius:8px;overflow:hidden;\
 			background:var(--background-color-high,white);border:1px solid var(--border-color-medium,#dee2e6);\
 			transition:box-shadow .2s}\
@@ -146,7 +146,7 @@ function injectStyles() {
 		.fw-row-label{color:var(--text-color-medium,#6c757d)}\
 		.fw-row-value{font-weight:500}\
 		.fw-card-foot{padding:10px 16px;border-top:1px solid var(--border-color-medium,#dee2e6);\
-			background:var(--background-color-medium,#f8f9fa);display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}\
+			background:rgba(128,128,128,.08);display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}\
 		.fw-btn{padding:7px 14px;border:none;border-radius:4px;cursor:pointer;\
 			font-size:13px;font-weight:500;color:white;max-width:115px;transition:opacity .15s}\
 		.fw-btn:hover{opacity:.85}.fw-btn:disabled{opacity:.5;cursor:wait}\
