@@ -156,12 +156,15 @@ function injectStyles() {
 			font-size:11px;font-weight:600;color:white}\
 		.fw-badge-green{background:#28a745}.fw-badge-red{background:#dc3545}\
 		.fw-badge-yellow{background:#ffc107;color:#333}\
-		.fw-sched-section{margin-top:10px;padding-top:8px;border-top:1px dashed var(--border-color-medium,#dee2e6)}\
+		.fw-sched-section{margin-top:8px;background:rgba(0,0,0,.03);border-radius:6px;padding:8px 10px}\
 		.fw-sched-row{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px}\
 		.fw-sched-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}\
 		.fw-sched-dot.active{background:#28a745;box-shadow:0 0 4px #28a745}\
 		.fw-sched-dot.inactive{background:var(--text-color-medium,#adb5bd)}\
 		.fw-sched-text{color:var(--text-color-medium,#6c757d)}\
+		.fw-day-badge{display:inline-block;padding:1px 5px;border-radius:3px;font-size:11px;\
+			font-weight:500;background:rgba(0,0,0,.08);color:var(--text-color-medium,#6c757d)}\
+		.fw-day-badge.active{background:rgba(40,167,69,.15);color:#28a745}\
 		.fw-sched-text.active{color:var(--text-color-high,#333);font-weight:500}\
 		.fw-next-change{font-size:13px;color:var(--text-color-medium,#6c757d);padding:6px 0;font-style:italic}\
 		.fw-empty{text-align:center;padding:60px 20px;color:var(--text-color-medium,#6c757d)}\
@@ -229,12 +232,22 @@ function buildScheduleRows(profileId, schedules) {
 		var active = isScheduleActiveNow(s);
 		var days = s.days || '';
 		if (typeof days === 'string') days = days.split(/\s+/);
-		var dayStr = days.map(function(d) { return dayLabels[d] || d; }).join(', ');
-		var label = '\u2714 ' + dayStr + ' ' + (s.start || '?') + '-' + (s.stop || '?');
+		var dayBadges = days.map(function(d) {
+			var label = dayLabels[d] || d;
+			return E('span', {
+				'class': 'fw-day-badge' + (active ? ' active' : '')
+			}, label.substring(0, 3));
+		});
+		var timeStr = (s.start || '?') + ' \u2013 ' + (s.stop || '?');
+		var dot = E('span', { 'class': 'fw-sched-dot ' + (active ? 'active' : 'inactive') });
 
 		return E('div', { 'class': 'fw-sched-row' }, [
-			E('span', { 'class': 'fw-sched-dot ' + (active ? 'active' : 'inactive') }),
-			E('span', { 'class': 'fw-sched-text' + (active ? ' active' : '') }, label)
+			dot,
+			E('div', { 'style': 'display:flex;align-items:center;gap:4px;flex-wrap:wrap' },
+				[].concat(dayBadges).concat([
+					E('span', { 'class': 'fw-sched-time', 'style': 'font-size:12px;color:#6c757d;margin-left:2px' }, timeStr)
+				])
+			)
 		]);
 	});
 
