@@ -92,13 +92,13 @@ function getNextChange(schedules, currentlyBlocked) {
 		// Minutes until this schedule starts or stops
 		var boundary, label;
 		if (active) {
-			// It will stop
+			// Inside an allow-window; access ends when it closes.
 			boundary = stopMin > nowMin ? (stopMin - nowMin) : (1440 - nowMin + stopMin);
-			label = s.action === 'allow' ? _('Allow ends') : _('Block ends');
+			label = _('Access ends');
 		} else {
-			// It will start
+			// Outside all windows; access resumes when the next one opens.
 			boundary = startMin > nowMin ? (startMin - nowMin) : (1440 - nowMin + startMin);
-			label = s.action === 'allow' ? _('Allow starts') : _('Block starts');
+			label = _('Access starts');
 		}
 
 		if (boundary < nearest) {
@@ -209,8 +209,7 @@ function refreshDashboard() {
 			scheduleData[prof].push({
 				days: s.days,
 				start: s.start,
-				stop: s.stop,
-				action: s.action || 'allow'
+				stop: s.stop
 			});
 		});
 
@@ -231,12 +230,11 @@ function buildScheduleRows(profileId, schedules) {
 		var days = s.days || '';
 		if (typeof days === 'string') days = days.split(/\s+/);
 		var dayStr = days.map(function(d) { return dayLabels[d] || d; }).join(', ');
-		var actionIcon = s.action === 'allow' ? '\u2714' : '\u2718';
-		var label = dayStr + ' ' + (s.start || '?') + '-' + (s.stop || '?') + ' ' + actionIcon + ' ' + s.action;
+		var label = '\u2714 ' + dayStr + ' ' + (s.start || '?') + '-' + (s.stop || '?');
 
 		return E('div', { 'class': 'fw-sched-row' }, [
 			E('span', { 'class': 'fw-sched-dot ' + (active ? 'active' : 'inactive') }),
-			E('span', { 'class': 'fw-sched-text ' + (active ? 'active' : '') }, label)
+			E('span', { 'class': 'fw-sched-text' + (active ? ' active' : '') }, label)
 		]);
 	});
 
@@ -393,8 +391,7 @@ return view.extend({
 			scheduleData[prof].push({
 				days: s.days,
 				start: s.start,
-				stop: s.stop,
-				action: s.action || 'allow'
+				stop: s.stop
 			});
 		});
 
