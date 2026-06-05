@@ -352,10 +352,10 @@ return view.extend({
 		o.default = '1';
 
 		o = s.option(form.ListValue, 'policy', _('Access Policy'),
-			_('"Always allow/block" ignores schedules. "By schedule" blocks by default and uses schedules below to control access.'));
-		o.value('allow', _('Always allow'));
-		o.value('block', _('Always block'));
-		o.value('scheduled', _('By schedule'));
+			_('"Unrestricted" allows all traffic. "Blocked" turns the internet off. "Scheduled" blocks by default and only allows access during the time windows below.'));
+		o.value('allow', _('Unrestricted'));
+		o.value('block', _('Blocked'));
+		o.value('scheduled', _('Scheduled'));
 		var policyOption = o;
 
 		o = s.option(form.DynamicList, 'device', _('Devices'),
