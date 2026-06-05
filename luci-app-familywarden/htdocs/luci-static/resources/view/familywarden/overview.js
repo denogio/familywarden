@@ -131,9 +131,10 @@ function injectStyles() {
 		.fw-stat-value.online{color:var(--success-color-high,#5e9eff)}\
 		.fw-stat-value.offline{color:var(--error-color-high,#ff6b6b)}\
 		.fw-stat-value.time{font-size:18px;font-variant-numeric:tabular-nums}\
-		.fw-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:14px;align-items:start}\
+		.fw-grid{columns:440px;column-gap:14px}\
 		.fw-card{background:rgb(255 255 247 / 3%);border:1px solid var(--border-color-medium,#ddd);border-radius:10px;\
-			overflow:hidden;transition:box-shadow .2s,transform .2s}\
+			overflow:hidden;transition:box-shadow .2s,transform .2s;\
+			break-inside:avoid;-webkit-column-break-inside:avoid;margin-bottom:14px;width:100%}\
 		.fw-card:hover{box-shadow:0 4px 14px rgba(0,0,0,.10);transform:translateY(-1px)}\
 		.fw-card-head{padding:15px 18px 12px;border-bottom:1px solid var(--border-color-low,#eee);\
 			display:flex;justify-content:space-between;align-items:flex-start;gap:10px}\
@@ -155,9 +156,7 @@ function injectStyles() {
 		.fw-badge .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}\
 		.fw-card-body{padding:12px 18px}\
 		.fw-devlist{margin-top:5px}\
-		.fw-dev-row{display:flex;align-items:center;justify-content:space-between;gap:10px;\
-			padding:4px 0;border-bottom:1px solid var(--border-color-low,#f0f0f0)}\
-		.fw-dev-row:last-child{border-bottom:none}\
+		.fw-dev-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:3px 0}\
 		.fw-dev-name{font-size:13px;color:var(--text-color-high,#222);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\
 		.fw-dev-mac{font-size:11px;font-family:monospace;color:var(--text-color-medium,#888);flex-shrink:0;\
 			padding:1px 7px;border-radius:3px;border:1px solid var(--border-color-low,#e0e0e0)}\
@@ -166,21 +165,21 @@ function injectStyles() {
 		.fw-ovr.blk{background:rgba(198,40,40,.10);color:var(--error-color-high,#ff6b6b)}\
 		.fw-ovr.allw{background:rgba(46,125,50,.10);color:var(--success-color-high,#5e9eff)}\
 		.fw-sched{margin-top:11px}\
-		.fw-sched-hdr{font-size:10px;text-transform:uppercase;letter-spacing:.6px;font-weight:600;\
-			color:var(--text-color-medium,#999);margin-bottom:7px}\
-		.fw-sched-row{display:flex;align-items:center;gap:7px;padding:4px 0;\
-			border-bottom:1px solid var(--border-color-low,#f0f0f0)}\
-		.fw-sched-row:last-child{border-bottom:none}\
+		.fw-sched-hdr,.fw-dev-hdr{font-size:10px;text-transform:uppercase;letter-spacing:.8px;font-weight:600;\
+			color:var(--text-color-medium,#999);opacity:.8;margin-bottom:8px;padding-bottom:5px;\
+			border-bottom:1px solid var(--border-color-medium,#ccc)}\
+		.fw-sched-row{display:flex;align-items:center;gap:7px;padding:3px 0}\
 		.fw-sched-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}\
 		.fw-sched-dot.on{background:var(--success-color-high,#5e9eff)}\
 		.fw-sched-dot.off{background:var(--border-color-medium,#ccc)}\
 		.fw-sched-days{display:flex;gap:3px;flex-wrap:wrap;flex:1}\
 		.fw-day{font-size:11px;font-weight:600;padding:1px 5px;border-radius:3px;\
 			color:var(--text-color-medium,#777);min-width:26px;text-align:center;\
-			border:1px solid var(--border-color-low,#ddd)}\
+			background:rgba(128,128,128,.12);border:1px solid var(--border-color-low,#ddd)}\
 		.fw-day.on{background:rgba(46,125,50,.12);color:var(--success-color-high,#5e9eff);border-color:rgba(46,125,50,.25)}\
 		.fw-sched-time{font-size:12px;color:var(--text-color-high,#333);min-width:96px;\
 			text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0;font-weight:500}\
+		.fw-sched-time.on{color:var(--success-color-high,#5e9eff);font-weight:600}\
 		.fw-sched-next{font-size:11px;color:var(--text-color-medium,#aaa);margin-top:7px;font-style:italic;padding-left:15px}\
 		.fw-no-sched{font-size:12px;color:var(--text-color-medium,#bbb);font-style:italic}\
 		.fw-card-foot{padding:9px 18px 11px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;\
@@ -353,6 +352,7 @@ function refreshDashboard() {
 				body.innerHTML = '';
 				var devices = Array.isArray(p.devices) ? p.devices : [];
 				if (devices.length > 0) {
+					body.appendChild(E('div', { 'class': 'fw-dev-hdr' }, _('Devices')));
 					var devWrap = E('div', { 'class': 'fw-devlist' });
 					devices.forEach(function(d) { devWrap.appendChild(deviceRow(d)); });
 					body.appendChild(devWrap);
@@ -403,18 +403,22 @@ function makeBtn(cls, label, fn) {
 function buildScheduleSection(schedules) {
 	if (!schedules || schedules.length === 0)
 		return E('div', { 'class': 'fw-no-sched' }, _('No schedules configured'));
+	var todayName = dayNames[new Date().getDay()];
 	var rows = schedules.map(function(s) {
 		var active = isScheduleActiveNow(s);
 		var days = s.days || '';
 		if (typeof days === 'string') days = days.split(/\s+/);
 		var dayBadges = days.map(function(d) {
-			return E('span', { 'class': 'fw-day' + (active ? ' on' : '') }, (dayLabels[d] || d).substring(0, 3));
+			// Only highlight the day that is actually live right now (today,
+			// while the window is active) — not every day the window covers.
+			var on = active && d === todayName;
+			return E('span', { 'class': 'fw-day' + (on ? ' on' : '') }, (dayLabels[d] || d).substring(0, 3));
 		});
 		var timeStr = (s.start || '?') + ' – ' + (s.stop || '?');
 		return E('div', { 'class': 'fw-sched-row' }, [
 			E('span', { 'class': 'fw-sched-dot ' + (active ? 'on' : 'off') }),
 			E('div', { 'class': 'fw-sched-days' }, dayBadges),
-			E('span', { 'class': 'fw-sched-time' }, timeStr)
+			E('span', { 'class': 'fw-sched-time' + (active ? ' on' : '') }, timeStr)
 		]);
 	});
 	var nextChange = getNextChange(schedules);
@@ -518,6 +522,7 @@ function buildContent(profiles, schedsByProfile) {
 		// Build card body content
 		var bodyContent = [];
 		if (deviceChips) {
+			bodyContent.push(E('div', { 'class': 'fw-dev-hdr' }, _('Devices')));
 			bodyContent.push(E('div', { 'class': 'fw-devlist' }, deviceChips));
 		} else {
 			bodyContent.push(E('div', { 'class': 'fw-no-devs' }, _('No devices')));
