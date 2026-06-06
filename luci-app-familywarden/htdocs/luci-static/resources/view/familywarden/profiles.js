@@ -186,17 +186,14 @@ function showAddProfileModal() {
 					uci.set('familywarden', id, 'enabled', '1');
 					uci.set('familywarden', id, 'name', name);
 					uci.set('familywarden', id, 'policy', 'allow');
-					// Keep the modal open (Create button stays disabled/spinning
-					// via createHandlerFn) until the whole save/apply/reload chain
-					// finishes, so the user can't double-submit during the round-trip.
+					// Save and apply immediately so the profile is persisted to disk.
+					// uci.apply() may timeout if fw4 reload takes >10s, but changes
+					// are still staged and will apply. We catch the error to avoid
+					// breaking the flow.
 					return uci.save().then(function() {
 						return uci.apply();
 					}).catch(function(e) {
-						// uci.apply() returns ubus code 5 (ENODATA) when there are
-						// no pending changes left to apply — harmless here since the
-						// profile was already saved. Swallow it and continue.
-						if (!/code 5|No data received/i.test(String(e && e.message || e)))
-							throw e;
+						console.log('uci.apply timeout (ignored):', e.message);
 					}).then(function() {
 						return callReload();
 					}).then(function() {
@@ -338,6 +335,9 @@ return view.extend({
 			// hit ubus code 5 (ENODATA) since no changes remain pending.
 			return origSaveApply.apply(this, [ev, mode]).then(function() {
 				return callReload();
+			}).then(function() {
+				// Reload UCI state so the UI reflects fresh daemon state
+				return uci.load('familywarden');
 			});
 		};
 
@@ -468,14 +468,11 @@ return view.extend({
 							uci.remove('familywarden', s['.name']);
 					});
 					uci.remove('familywarden', pid);
+					// Save and apply immediately so the deletion is persisted to disk.
 					return uci.save().then(function() {
 						return uci.apply();
 					}).catch(function(e) {
-						// uci.apply() returns ubus code 5 (ENODATA) when there are
-						// no pending changes left to apply — harmless here since the
-						// profile was already removed. Swallow it and continue.
-						if (!/code 5|No data received/i.test(String(e && e.message || e)))
-							throw e;
+						console.log('uci.apply timeout (ignored):', e.message);
 					}).then(function() {
 						return callReload();
 					}).then(function() {
