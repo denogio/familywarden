@@ -120,11 +120,6 @@ gen_scheduled_rules() {
     day_nums="${day_nums#, }"
     [ -z "$day_nums" ] && return
 
-    # Extract hours
-    local sh="${start%:*}" eh="${stop%:*}"
-    sh="${sh#0}"; [ -z "$sh" ] && sh=0
-    eh="${eh#0}"; [ -z "$eh" ] && eh=0
-
     # Compute shifted day set for overnight ranges
     local shifted_day_nums=""
     for d in $days; do
@@ -143,11 +138,11 @@ gen_scheduled_rules() {
 
     if [ "$start_min" -lt "$stop_min" ]; then
         # Daytime: 07:00-20:00
-        echo "        ether saddr ${mac} meta hour >= ${sh} meta hour < ${eh} meta day { ${day_nums} } counter drop comment \"familywarden:${profile}:scheduled\""
+        echo "        ether saddr ${mac} meta hour >= ${start} meta hour < ${stop} meta day { ${day_nums} } counter drop comment \"familywarden:${profile}:scheduled\""
     else
         # Overnight: 20:00-06:00 — split into two rules with shifted day set
-        echo "        ether saddr ${mac} meta hour >= ${sh} meta day { ${day_nums} } counter drop comment \"familywarden:${profile}:scheduled\""
-        echo "        ether saddr ${mac} meta hour < ${eh} meta day { ${shifted_day_nums} } counter drop comment \"familywarden:${profile}:scheduled\""
+        echo "        ether saddr ${mac} meta hour >= ${start} meta day { ${day_nums} } counter drop comment \"familywarden:${profile}:scheduled\""
+        echo "        ether saddr ${mac} meta hour < ${stop} meta day { ${shifted_day_nums} } counter drop comment \"familywarden:${profile}:scheduled\""
     fi
 }
 
