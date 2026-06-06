@@ -3,7 +3,7 @@
 		"description": "Grant access to FamilyWarden parental control",
 		"read": {
 			"ubus": {
-				"familywarden": [ "list", "status" ],
+				"familywarden": [ "list", "status", "traffic" ],
 				"luci-rpc": [ "getDHCPLeases", "getHostHints" ]
 			},
 			"uci": [ "familywarden" ]

@@ -1,47 +1,30 @@
 #!/bin/sh /etc/rc.common
 
-START=60
+# familywarden procd init script
+# Triggers nftables include regeneration and fw4 reload on UCI changes
 
-BIN="/usr/bin/familywarden"
-CRON_FILE="/etc/crontabs/root"
-CRON_MARKER="familywarden"
+USE_PROCD=1
+START=95
+STOP=01
 
-boot() {
-    fw_start
-}
+BIN="/usr/libexec/rpcd/familywarden"
+FW_INCLUDE="/var/etc/familywarden.include"
 
-start() {
-    fw_start
-}
-
-stop() {
-    fw_stop
-}
-
-reload() {
+start_service() {
+    # Generate initial nftables include and apply via fw4
     $BIN reload
 }
 
-fw_start() {
-    # Initialize nft chain and evaluate once
-    $BIN init
-
-    # Install cron job for periodic evaluation (every minute)
-    mkdir -p $(dirname "$CRON_FILE")
-    grep -q "$CRON_MARKER" "$CRON_FILE" 2>/dev/null || \
-        echo "* * * * * $BIN eval # $CRON_MARKER" >> "$CRON_FILE"
-
-    # Ensure cron is running
-    /etc/init.d/cron start
+stop_service() {
+    # Remove our include file and reload fw4 to clean up
+    rm -f "$FW_INCLUDE"
+    fw4 reload 2>/dev/null
 }
 
-fw_stop() {
-    # Remove cron job
-    if [ -f "$CRON_FILE" ]; then
-        grep -v "$CRON_MARKER" "$CRON_FILE" > "${CRON_FILE}.tmp" 2>/dev/null || true
-        mv "${CRON_FILE}.tmp" "$CRON_FILE" 2>/dev/null || true
-    fi
+reload_service() {
+    $BIN reload
+}
 
-    # Clear nft chain
-    nft delete chain inet fw4 familywarden_forward 2>/dev/null || true
+service_triggers() {
+    procd_add_reload_trigger "familywarden"
 }

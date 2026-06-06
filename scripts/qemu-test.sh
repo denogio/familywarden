@@ -7,8 +7,8 @@ IMG_DIR="images"
 mkdir -p "$IMG_DIR"
 
 # Image URLs
-X86_IMG_URL="https://downloads.openwrt.org/releases/24.10.6/targets/x86/64/openwrt-24.10.6-x86-64-generic-ext4-combined.img.gz"
-X86_IMG="$IMG_DIR/openwrt-x86.img"
+X86_IMG_URL="https://downloads.openwrt.org/releases/25.12.4/targets/x86/64/openwrt-25.12.4-x86-64-generic-ext4-combined.img.gz"
+X86_IMG="$IMG_DIR/openwrt-x86-25.12.4.img"
 ARM_KERNEL_URL="https://downloads.openwrt.org/snapshots/targets/armsr/armv8/openwrt-armsr-armv8-generic-initramfs-kernel.bin"
 ARM_KERNEL="$IMG_DIR/openwrt-arm-initramfs"
 

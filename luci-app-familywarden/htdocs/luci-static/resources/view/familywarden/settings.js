@@ -22,6 +22,9 @@ return view.extend({
 			// hit ubus code 5 (ENODATA) since no changes remain pending.
 			return origSaveApply.apply(this, [ev, mode]).then(function() {
 				return callReload();
+			}).then(function() {
+				// Reload UCI state so the UI reflects fresh daemon state
+				return uci.load('familywarden');
 			});
 		};
 

@@ -37,6 +37,15 @@ const methods = {
 		}
 	},
 
+	traffic: {
+		args: { profile: 'profile' },
+		call: function(request) {
+			if (!request.args.profile)
+				return { error: 'Missing profile argument' };
+			return fw_call('traffic', request.args.profile);
+		}
+	},
+
 	block: {
 		args: { profile: 'profile' },
 		call: function(request) {

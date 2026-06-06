@@ -40,6 +40,13 @@ var callReload = rpc.declare({
 	method: 'reload'
 });
 
+var callTraffic = rpc.declare({
+	object: 'familywarden',
+	method: 'traffic',
+	params: [ 'profile' ],
+	expect: { '': {} }
+});
+
 var callDHCPLeases = rpc.declare({
 	object: 'luci-rpc',
 	method: 'getDHCPLeases',
@@ -148,6 +155,16 @@ function injectStyles() {
 			border:1px solid color-mix(in srgb,var(--primary-color-medium,#5e9eff) 30%,transparent);\
 			color:color-mix(in srgb,var(--primary-color-medium,#5e9eff) 78%,transparent)}\
 		.fw-card-meta{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0}\
+		.fw-traffic{font-size:13px;font-weight:600;color:var(--primary-color-medium,#5e9eff);\
+			font-variant-numeric:tabular-nums;white-space:nowrap;cursor:pointer;\
+			padding:2px 9px;border-radius:12px;\
+			background:color-mix(in srgb,var(--primary-color-medium,#5e9eff) 12%,transparent)}\
+		.fw-traffic:hover{background:color-mix(in srgb,var(--primary-color-medium,#5e9eff) 22%,transparent)}\
+		.fw-tr-table{display:flex;flex-direction:column;gap:2px}\
+		.fw-tr-row{display:flex;justify-content:space-between;gap:24px;padding:8px 0;border-bottom:1px solid var(--border-color-low,#f0f0f0)}\
+		.fw-tr-row:last-child{border-bottom:none}\
+		.fw-tr-label{color:var(--text-color-medium,#888)}\
+		.fw-tr-val{font-weight:600;font-variant-numeric:tabular-nums}\
 		.fw-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:12px;\
 			font-size:11px;font-weight:600;white-space:nowrap}\
 		.fw-badge-green{background:rgba(46,125,50,.12);color:var(--success-color-high,#5e9eff)}\
@@ -211,6 +228,66 @@ function statusBadge(status, override) {
 		label = _('Allowed');
 	}
 	return E('span', { 'class': cls }, [E('span', { 'class': 'dot' }), ' ' + label]);
+}
+
+// Human-readable byte count (1.2 GB, 340 MB, ...).
+function formatBytes(n) {
+	if (n < 1024) return n + ' B';
+	var units = ['KB', 'MB', 'GB', 'TB'];
+	var v = n, i = -1;
+	do { v /= 1024; i++; } while (v >= 1024 && i < units.length - 1);
+	return (v < 10 ? v.toFixed(1) : Math.round(v)) + ' ' + units[i];
+}
+
+// Traffic element for a profile; null when nlbwmon is unavailable (-1).
+// Clicking opens a day/week/month breakdown fetched on demand.
+function trafficEl(bytes, id, name) {
+	if (bytes == null || bytes < 0) return null;
+	return E('span', {
+		'class': 'fw-traffic',
+		'title': _('Click for traffic breakdown'),
+		'click': function() { showTrafficModal(id, name); }
+	}, '⇅ ' + formatBytes(bytes));
+}
+
+function trafficRow(label, bytes) {
+	return E('div', { 'class': 'fw-tr-row' }, [
+		E('span', { 'class': 'fw-tr-label' }, label),
+		E('span', { 'class': 'fw-tr-val' }, formatBytes(bytes))
+	]);
+}
+
+function showTrafficModal(id, name) {
+	L.ui.showModal(_('Traffic') + ' · ' + (name || id), [
+		E('p', { 'class': 'spinning' }, _('Loading…'))
+	]);
+	callTraffic(id).then(function(t) {
+		var body;
+		if (!t || !t.available) {
+			body = [ E('p', {}, _('Traffic accounting is unavailable. Install nlbwmon to enable per-profile traffic.')) ];
+		} else if (t.daily) {
+			body = [ E('div', { 'class': 'fw-tr-table' }, [
+				trafficRow(_('Today'), t.day),
+				trafficRow(_('This week'), t.week),
+				trafficRow(_('This month'), t.month)
+			]) ];
+		} else {
+			body = [
+				E('div', { 'class': 'fw-tr-table' }, [
+					trafficRow(_('This period'), t.period)
+				]),
+				E('p', { 'style': 'font-size:12px;color:var(--text-color-medium,#999);margin-top:10px' },
+					(t.period_start ? (_('Since') + ' ' + t.period_start + '. ') : '') +
+					_('Set nlbwmon to daily accounting periods to see day/week/month breakdowns.'))
+			];
+		}
+		L.ui.showModal(_('Traffic') + ' · ' + (name || id), body.concat([
+			E('div', { 'class': 'right', 'style': 'margin-top:16px' },
+				E('button', { 'class': 'cbi-button', 'click': L.ui.hideModal }, _('Close')))
+		]));
+	}).catch(function() {
+		L.ui.hideModal();
+	});
 }
 
 function policyLabel(policy) {
@@ -335,11 +412,13 @@ function refreshDashboard() {
 			var isBlocked = p.status && p.status.indexOf('blocked') >= 0;
 			var hasOverride = p.override && p.override !== 'none';
 
-			// Update badge
+			// Update badge + traffic
 			var meta = card.querySelector('.fw-card-meta');
 			if (meta) {
 				meta.innerHTML = '';
 				meta.appendChild(statusBadge(p.status, p.override));
+				var tEl = trafficEl(p.traffic_bytes, id, p.name || id);
+				if (tEl) meta.appendChild(tEl);
 			}
 
 			// Update policy label
@@ -537,9 +616,8 @@ function buildContent(profiles, schedsByProfile) {
 						E('a', { 'href': profileUrl }, p.name || id)),
 					E('div', { 'class': 'fw-card-policy' }, policyLabel(p.policy))
 				]),
-				E('div', { 'class': 'fw-card-meta' }, [
-					statusBadge(p.status, p.override)
-				])
+				E('div', { 'class': 'fw-card-meta' },
+					[statusBadge(p.status, p.override)].concat(trafficEl(p.traffic_bytes, id, p.name || id) ? [trafficEl(p.traffic_bytes, id, p.name || id)] : []))
 			]),
 			E('div', { 'class': 'fw-card-body' }, bodyContent),
 			E('div', { 'class': 'fw-card-foot' }, footBtns)
