@@ -1,59 +1,524 @@
 #!/bin/sh
-# rpcd plugin for familywarden ubus API
+# rpcd plugin for familywarden - generates nftables include from UCI config
+#
+# Architecture: fully declarative. Every state change triggers a full
+# compile-and-apply pipeline that rebuilds the include file atomically.
+#
+#   read UCI + RAM state + GC expired tickets
+#         ↓
+#   compile /tmp/familywarden.include.new
+#         ↓
+#   nft -c -f ...   (validate)
+#         ↓
+#   mv ... /var/etc/familywarden.include   (atomic)
+#         ↓
+#   fw4 reload
+#
+# No direct nft mutations, no rule handles, no background processes.
+# The 100-300ms cost of fw4 reload is acceptable for parental control.
 
 . /usr/share/libubox/jshn.sh
 . /lib/functions.sh
 
+FW_CONFIG="/etc/config/familywarden"
+FW_STATE="/tmp/familywarden.state"
+FW_INCLUDE="/var/etc/familywarden.include"
+FW_INCLUDE_NEW="/tmp/familywarden.include.new"
+FW_LOCK="/var/lock/familywarden.lock"
+FW_CHAIN="familywarden_forward"
+
+# ---- Helpers ----
+
+# Day name to number: sun=0, mon=1, ..., sat=6
+day_to_num() {
+    case "$1" in
+        sun) echo "0" ;;
+        mon) echo "1" ;;
+        tue) echo "2" ;;
+        wed) echo "3" ;;
+        thu) echo "4" ;;
+        fri) echo "5" ;;
+        sat) echo "6" ;;
+        *)   echo "" ;;
+    esac
+}
+
+# Shift day number by +1 mod 7
+day_shift() {
+    echo $(( ($1 + 1) % 7 ))
+}
+
+# Convert HH:MM to minutes since midnight
+time_to_minutes() {
+    local h="${1%%:*}" m="${1#*:}"
+    h="${h#0}" && [ -z "$h" ] && h=0
+    m="${m#0}" && [ -z "$m" ] && m=0
+    echo $(( h * 60 + m ))
+}
+
+# State file helpers
+state_set() {
+    local key="$1"
+    local value="$2"
+    mkdir -p "$(dirname "${FW_STATE}")"
+    sed -i "/^${key}=/d" "${FW_STATE}" 2>/dev/null
+    echo "${key}=${value}" >> "${FW_STATE}"
+}
+
+state_get() {
+    local key="$1"
+    local default="${2:-}"
+    local line
+    line=$(grep "^${key}=" "${FW_STATE}" 2>/dev/null) || { echo "$default"; return; }
+    echo "${line#*=}"
+}
+
+# GC expired ticket overrides. Called at start of compile_and_apply.
+# Returns 1 if any state was changed (caller should recompile).
+gc_expired_tickets() {
+    local now=$(date +%s)
+    local changed=0
+    local key expires_epoch
+
+    [ -f "${FW_STATE}" ] || return 0
+
+    for key in $(grep -o '^[^.]*\.override_expires=[0-9]*' "${FW_STATE}" 2>/dev/null | cut -d= -f1); do
+        expires_epoch=$(state_get "${key}" "")
+        if [ -n "$expires_epoch" ] && [ "$now" -gt "$expires_epoch" ]; then
+            local profile="${key%.override_expires}"
+            state_set "${profile}.override" "none"
+            state_set "${profile}.override_expires" ""
+            changed=1
+        fi
+    done
+
+    return $changed
+}
+
+# ---- Rule generators (write to FW_INCLUDE_NEW) ----
+
+# Echo one or two nftables rules for a scheduled block.
+# Args: profile mac sched_name (uses current UCI config)
+gen_scheduled_rules() {
+    local profile="$1"
+    local mac="$2"
+    local sched="$3"
+
+    local days start stop
+    config_get days "$sched" days ""
+    config_get start "$sched" start ""
+    config_get stop "$sched" stop ""
+
+    [ -z "$days" ] || [ -z "$start" ] || [ -z "$stop" ] && return
+
+    # Convert day names to numbers
+    local day_nums=""
+    for d in $days; do
+        local n=$(day_to_num "$d")
+        [ -n "$n" ] && day_nums="$day_nums, $n"
+    done
+    day_nums="${day_nums#, }"
+    [ -z "$day_nums" ] && return
+
+    # Extract hours
+    local sh="${start%:*}" eh="${stop%:*}"
+    sh="${sh#0}"; [ -z "$sh" ] && sh=0
+    eh="${eh#0}"; [ -z "$eh" ] && eh=0
+
+    # Compute shifted day set for overnight ranges
+    local shifted_day_nums=""
+    for d in $days; do
+        local n=$(day_to_num "$d")
+        if [ -n "$n" ]; then
+            local sn=$(day_shift "$n")
+            shifted_day_nums="$shifted_day_nums, $sn"
+        fi
+    done
+    shifted_day_nums="${shifted_day_nums#, }"
+
+    # Decide single-rule vs split (overnight)
+    local start_min stop_min
+    start_min=$(time_to_minutes "$start")
+    stop_min=$(time_to_minutes "$stop")
+
+    if [ "$start_min" -lt "$stop_min" ]; then
+        # Daytime: 07:00-20:00
+        echo "    ether saddr ${mac} meta hour >= ${sh} meta hour < ${eh} meta day { ${day_nums} } counter drop comment \"familywarden:${profile}:scheduled\""
+    else
+        # Overnight: 20:00-06:00 — split into two rules with shifted day set
+        echo "    ether saddr ${mac} meta hour >= ${sh} meta day { ${day_nums} } counter drop comment \"familywarden:${profile}:scheduled\""
+        echo "    ether saddr ${mac} meta hour < ${eh} meta day { ${shifted_day_nums} } counter drop comment \"familywarden:${profile}:scheduled\""
+    fi
+}
+
+# Echo nftables override rules (block/allow) for a profile
+gen_override_rules() {
+    local section="$1"
+    local enabled override override_expires
+
+    config_get enabled "$section" enabled "0"
+    [ "$enabled" != "1" ] && return
+
+    override=$(state_get "${section}.override" "none")
+    [ "$override" = "none" ] && return
+
+    _cur_profile="$section"
+    _override_target="$override"
+    config_list_foreach "$section" device gen_device_override_rule
+}
+
+gen_device_override_rule() {
+    local mac="$1"
+    local action="drop"
+    [ "$_override_target" = "allow" ] && action="accept"
+    echo "    ether saddr ${mac} counter ${action} comment \"familywarden:${_cur_profile}:override:${_override_target}\""
+}
+
+# ---- Compiler pipeline ----
+
+generate_include() {
+    mkdir -p "$(dirname "$FW_INCLUDE")"
+
+    # Write include file directly, generating rules inline
+    {
+        echo "# /var/etc/familywarden.include"
+        echo "# Generated by familywarden — do not edit"
+        echo ""
+        echo "chain familywarden_forward {"
+
+        config_load familywarden
+
+        # Override rules first (matched before scheduled)
+        config_foreach gen_override_rules profile
+
+        # Then scheduled rules
+        _sched_devices=""
+        config_foreach gen_profile_scheduled profile
+
+        echo "}"
+        echo ""
+        echo "chain forward {"
+        echo "    jump familywarden_forward"
+        echo "}"
+    } > "$FW_INCLUDE_NEW"
+}
+
+gen_profile_scheduled() {
+    local section="$1"
+    local enabled policy
+
+    config_get enabled "$section" enabled "0"
+    config_get policy "$section" policy "allow"
+    [ "$enabled" != "1" ] && return
+    [ "$policy" != "scheduled" ] && return
+
+    # Store profile name in global for nested callbacks
+    _cur_profile="$section"
+
+    _sched_devices=""
+    config_list_foreach "$section" device _collect_dev
+
+    config_foreach gen_sched_for_schedule schedule
+}
+
+_collect_dev() {
+    _sched_devices="$_sched_devices $1"
+}
+
+gen_sched_for_schedule() {
+    local sched="$1"
+    local sched_profile
+    config_get sched_profile "$sched" profile ""
+    [ "$sched_profile" = "$_cur_profile" ] || return
+
+    for mac in $_sched_devices; do
+        gen_scheduled_rules "$_cur_profile" "$mac" "$sched"
+    done
+}
+
+compile_and_apply() {
+    (
+        flock -x 200 || {
+            echo '{"error":"could not acquire lock"}'
+            return 1
+        }
+
+        # GC expired tickets before reading state
+        gc_expired_tickets
+
+        # Generate the new include file
+        generate_include
+
+        # Validate syntax before applying.
+        # Include files are fragments (no table wrapper), so we must wrap
+        # them in a temporary table context for nft -c to parse them.
+        if ! nft -c -f - <<EOF 2>/tmp/fw_validation_err
+table inet fw4 {
+    include "$FW_INCLUDE_NEW"
+}
+EOF
+        then
+            logger -t familywarden "ERROR: include validation failed: $(cat /tmp/fw_validation_err)"
+            rm -f "$FW_INCLUDE_NEW" /tmp/fw_validation_err
+            echo '{"error":"include validation failed"}'
+            return 1
+        fi
+        rm -f /tmp/fw_validation_err
+
+        # Atomic swap
+        mv "$FW_INCLUDE_NEW" "$FW_INCLUDE"
+
+        # Apply via fw4
+        fw4 reload 2>/dev/null
+
+        echo '{"status":"ok"}'
+    ) 200>"$FW_LOCK"
+}
+
+# ---- Ubus handlers ----
+
+ubus_list() {
+    (
+        flock -s 200 || return 1
+        json_init
+        json_add_object "profiles"
+        config_load familywarden
+        config_foreach ubus_list_profile profile
+        json_close_object
+        json_dump
+    ) 200>"$FW_LOCK"
+}
+
+ubus_list_profile() {
+    local profile="$1"
+    local name enabled policy override override_expires
+
+    config_get name "$profile" name "$profile"
+    config_get enabled "$profile" enabled "0"
+    [ "$enabled" != "1" ] && return
+
+    config_get policy "$profile" policy "allow"
+    override=$(state_get "${profile}.override" "none")
+    override_expires=$(state_get "${profile}.override_expires" "")
+
+    # Compute effective status from override + policy
+    local status
+    if [ "$override" != "none" ]; then
+        status="$override"
+    elif [ "$policy" = "block" ]; then
+        status="blocked"
+    else
+        status="allowed"
+    fi
+
+    json_add_object "$profile"
+    json_add_string "name" "$name"
+    json_add_string "policy" "$policy"
+    json_add_string "status" "$status"
+    json_add_string "override" "$override"
+    json_add_int "override_expires" "${override_expires:-0}"
+
+    json_add_array "devices"
+    config_list_foreach "$profile" device json_add_dev
+    json_close_array
+
+    # Add schedules for this profile
+    json_add_array "schedules"
+    config_foreach ubus_list_schedule schedule "$profile"
+    json_close_array
+
+    json_close_object
+}
+
+json_add_dev() {
+    json_add_string "" "$1"
+}
+
+ubus_list_schedule() {
+    local section="$1"
+    local wanted_profile="$2"
+    local days start stop
+
+    local sched_profile
+    config_get sched_profile "$section" profile ""
+    [ "$sched_profile" != "$wanted_profile" ] && return
+
+    config_get days "$section" days ""
+    config_get start "$section" start ""
+    config_get stop "$section" stop ""
+
+    json_add_object
+    json_add_string "days" "$days"
+    json_add_string "start" "$start"
+    json_add_string "stop" "$stop"
+    json_close_object
+}
+
+ubus_status() {
+    local profile="$1"
+
+    (
+        flock -s 200 || return 1
+
+        config_load familywarden
+        local name enabled policy
+        config_get name "$profile" name ""
+        config_get enabled "$profile" enabled "0"
+        config_get policy "$profile" policy "allow"
+
+        if [ -z "$name" ] || [ "$enabled" != "1" ]; then
+            echo '{"error":"profile not found or disabled"}'
+            return 1
+        fi
+
+        local override override_expires
+        override=$(state_get "${profile}.override" "none")
+        override_expires=$(state_get "${profile}.override_expires" "")
+
+        json_init
+        json_add_string "name" "$name"
+        json_add_string "policy" "$policy"
+        json_add_string "override" "$override"
+        json_add_int "override_expires" "${override_expires:-0}"
+
+        json_add_array "devices"
+        config_list_foreach "$profile" device json_add_dev
+        json_close_array
+        json_dump
+    ) 200>"$FW_LOCK"
+}
+
+ubus_block() {
+    local profile="$1"
+
+    config_load familywarden
+    local name
+    config_get name "$profile" name ""
+    [ -z "$name" ] && { echo '{"error":"profile not found"}'; return 1; }
+
+    state_set "${profile}.override" "block"
+    state_set "${profile}.override_expires" ""
+    compile_and_apply || {
+        echo '{"error":"compile failed"}'
+        return 1
+    }
+}
+
+ubus_allow() {
+    local profile="$1"
+
+    config_load familywarden
+    local name
+    config_get name "$profile" name ""
+    [ -z "$name" ] && { echo '{"error":"profile not found"}'; return 1; }
+
+    state_set "${profile}.override" "allow"
+    state_set "${profile}.override_expires" ""
+    compile_and_apply || {
+        echo '{"error":"compile failed"}'
+        return 1
+    }
+}
+
+ubus_reset() {
+    local profile="$1"
+
+    config_load familywarden
+    local name
+    config_get name "$profile" name ""
+    [ -z "$name" ] && { echo '{"error":"profile not found"}'; return 1; }
+
+    state_set "${profile}.override" "none"
+    state_set "${profile}.override_expires" ""
+    compile_and_apply || {
+        echo '{"error":"compile failed"}'
+        return 1
+    }
+}
+
+ubus_ticket() {
+    local profile="$1"
+    local minutes="${2:-30}"
+
+    config_load familywarden
+    local name
+    config_get name "$profile" name ""
+    [ -z "$name" ] && { echo '{"error":"profile not found"}'; return 1; }
+
+    local expires_epoch expires_iso
+    expires_epoch=$(($(date +%s) + minutes * 60))
+    expires_iso=$(date -d "@${expires_epoch}" -Iseconds 2>/dev/null || date -u -d "@${expires_epoch}" +%Y-%m-%dT%H:%M:%S 2>/dev/null || echo "${expires_epoch}")
+
+    state_set "${profile}.override" "allow"
+    state_set "${profile}.override_expires" "${expires_epoch}"
+    if ! compile_and_apply; then
+        echo '{"error":"compile failed"}'
+        return 1
+    fi
+    echo "{\"status\":\"ok\",\"profile\":\"${profile}\",\"expires\":\"${expires_iso}\"}"
+}
+
+ubus_reload() {
+    compile_and_apply || {
+        echo '{"error":"compile failed"}'
+        return 1
+    }
+}
+
+# ---- Main entry point ----
+
 case "$1" in
     list)
-        echo '{'
-        echo '  "list": {},'
-        echo '  "status": { "profile": "string" },'
-        echo '  "block": { "profile": "string" },'
-        echo '  "allow": { "profile": "string" },'
-        echo '  "reset": { "profile": "string" },'
-        echo '  "ticket": { "profile": "string", "minutes": 0 },'
-        echo '  "reload": {}'
-        echo '}'
+        cat <<'EOF'
+{
+  "list": {},
+  "status": { "profile": "string" },
+  "block": { "profile": "string" },
+  "allow": { "profile": "string" },
+  "reset": { "profile": "string" },
+  "ticket": { "profile": "string", "minutes": 0 },
+  "reload": {}
+}
+EOF
         ;;
     call)
         case "$2" in
             list)
-                /usr/bin/familywarden list
+                ubus_list
                 ;;
             status)
                 read -r input
                 json_load "$input"
                 json_get_var profile profile
-                /usr/bin/familywarden status "$profile"
+                ubus_status "$profile"
                 ;;
             block)
                 read -r input
                 json_load "$input"
                 json_get_var profile profile
-                /usr/bin/familywarden block "$profile"
+                ubus_block "$profile"
                 ;;
             allow)
                 read -r input
                 json_load "$input"
                 json_get_var profile profile
-                /usr/bin/familywarden allow "$profile"
+                ubus_allow "$profile"
                 ;;
             reset)
                 read -r input
                 json_load "$input"
                 json_get_var profile profile
-                /usr/bin/familywarden reset "$profile"
+                ubus_reset "$profile"
                 ;;
             ticket)
                 read -r input
                 json_load "$input"
                 json_get_var profile profile
                 json_get_var minutes minutes 30
-                /usr/bin/familywarden ticket "$profile" "$minutes"
+                ubus_ticket "$profile" "$minutes"
                 ;;
             reload)
-                /usr/bin/familywarden reload
+                ubus_reload
                 ;;
         esac
         ;;
