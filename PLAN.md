@@ -329,6 +329,43 @@ Lag 1 er gaten.
 
 ---
 
+## 16. UI-polish + schedule/policy save-bug — PLANLAGT
+
+Kun frontend (`luci-app-familywarden`). Backend røres ikke. Bump 0.3.9 → 0.3.10.
+
+### A. Bug: policy nulstilles ved samtidig schedule-tilføjelse
+Sætter man policy → "Scheduled" OG tilføjer en schedule i samme ombæring → Save &
+Apply, ender man med schedulen men policy tilbage på "Unrestricted".
+- **Årsag:** Profil-siden er ét `form.Map` (profil-NamedSection m. policy +
+  schedule-GridSection). Schedule-modalens gem kalder `map.save()` og re-renderer
+  hele map'et fra UCI; den endnu-ikke-gemte policy-widget genskabes fra UCI's
+  gamle værdi → tabt. Save & Apply gemmer så 'allow'.
+- [ ] **Fix:** Override `ss.renderMoreOptionsModal` så profil-sektionens felter
+  (`name/enabled/policy/device/dns_profile`) persisteres til UCI (via
+  `o.parse(pid)`) *før* modalen åbnes. Dækker både Add og redigér-række.
+  Alternativ hvis det driller: split i to `form.Map` (profil + schedule).
+- [ ] **Verifikation:** Playwright-test der sætter policy=Scheduled + tilføjer
+  schedule + Save & Apply + reload → asserter policy STADIG Scheduled og schedule findes.
+
+### B. Settings native rendering (`settings.js`)
+- [ ] Fjern custom wrapper `E('div',[E('h2'),formEl])` → returnér `m.render()`
+  direkte (native LuCI side-chrome/faner).
+- [ ] Tilføj manglende `'require uci'` (handleSaveApply kalder `uci.load` →
+  latent ReferenceError i dag).
+
+### C. Af-customisér farver (profil + settings; Overview uændret)
+- [ ] Action-knapper (Block/Allow/Reset/+30) → native `cbi-button-positive/
+  negative/neutral/action`; slet `.fw-action-btn*`-CSS (hardcodede hex).
+- [ ] Status-dot farves via tema-variabler (`--success/--error/--warn-color`),
+  ingen hardcodede hex/glow.
+- [ ] `.fw-tab-add` hardcodet `#007bff` → `--primary-color-*`.
+
+### Out of scope (bevidst)
+Overview-dashboardets card-design/farver; profil-skifter → native faner; in-page
+faner i profil-editor; backend-ændringer.
+
+---
+
 ## 14. Ulysses-pagt (self-binding lock) — IKKE STARTET
 
 ### Baggrund
