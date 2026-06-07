@@ -212,3 +212,83 @@ Claude Code: Please tick off these checkboxes `[x]` as you complete each major s
 - [x] 13. UI E2E Testing (Playwright) — **ALL 6 TESTS PASS**
   Login, overview, block/allow, profiles page, settings page alle verificeret
   Kør: `cd test/e2e && npx playwright test`
+
+---
+
+## 14b. Robusthed / self-healing firewall — FÆRDIG (0.5.7, 2026-06-07)
+
+Opdaget da rivendell (produktion) sad fast med tom `familywarden_forward` chain
+og manglende include-fil. Tre fixes:
+
+- [x] **`policy='block'` gav ingen regel.** Kun `scheduled` + override genererede
+      regler. Tilføjet `gen_profile_block` → en profil sat permanent til "Blocked"
+      dropper nu alle dens devices (override-regler ligger først, så allow-override vinder).
+- [x] **Validerings-wedge.** `nft -c` validerede inde i den levende `inet fw4`-tabel,
+      så en gammel chain (anden hook/priority) fik validering til at fejle for evigt.
+      Nu valideres i en **throwaway-tabel** (`fw_familywarden_validate`) — isoleret
+      parse-tjek der ikke kan blokeres af live state.
+- [x] **Apply-wedge.** `fw4 reload` fejler "chain already exists with different
+      declaration" når live-chainens priority afviger fra include, og dropper så
+      vores include. Nu **slettes chainen før `fw4 reload`** → genskabes rent hver gang.
+
+Verificeret på QEMU: injicér stale priority-0 chain + regel, kør KUN
+`ubus call familywarden reload` → selv-healer til priority filter+1, stale-regel væk.
+Rivendell: tom chain + manglende include fuldt gendannet af ét reload.
+
+> Migrations-note: gamle installationer kan have firewall-include registreret
+> gammel-stil (`name='familywarden'`, uden `type='nftables'`/`fw4_compatible='1'`).
+> postinst tilføjer kun hvis ingen findes — tjek for dubletter ved opgradering:
+> `uci show firewall | grep familywarden.include` skal give præcis én entry m. type=nftables.
+
+---
+
+## 14. Ulysses-pagt (self-binding lock) — IKKE STARTET
+
+### Baggrund
+En forælder (med ADHD) vil **binde sig selv til masten** (Ulysses/Odysseus): fx
+"internet slukket 23:00–06:00, og jeg kan IKKE tale mig selv fra det i øjeblikket".
+En beslutning truffet nu, der fjerner det fremtidige jegs mulighed for at overrule.
+
+Besluttet med bruger:
+- **Hele profilen fryses**: hverken override (block/allow/ticket/reset) eller
+  redigering i UI mens pagten er aktiv.
+- **Escape hatch = kun root via SSH**: UI/ubus nægter at bryde pagten før udløb.
+- **Skal overleve reboot** (kritisk) — ellers er escape bare at genstarte routeren.
+
+### Kernebeslutning: persistent state
+Pagter ligger i `/etc/familywarden.pacts` (mode 600, root), format `profile=expiry_epoch`.
+IKKE i `/tmp/familywarden.state` (ryddes ved reboot). Denne fil ER root-escape-hatchen:
+`sed -i '/^dennis=/d' /etc/familywarden.pacts && /etc/init.d/familywarden reload`.
+
+### TODO
+- [ ] Backend `familywarden/usr/lib/rpcd/familywarden`:
+  - [ ] pact-helpers: `pact_get/pact_set/pact_del/pact_active` (læser `$FW_PACTS`)
+  - [ ] `gc_expired_pacts()` (kopi af `gc_expired_tickets`-mønster), kald i `compile_and_apply`
+  - [ ] `ubus_pact <profile> <minutes>`: expiry = now+min*60; kun forlæng aldrig forkort;
+        ryd allow-override; persist; recompile. **Ingen `unpact`-metode** (det er pointen).
+  - [ ] Håndhævelse: `ubus_block/allow/reset/ticket` afviser hvis `pact_active` →
+        `{"error":"locked by Ulysses pact","locked_until":<epoch>}`
+  - [ ] `gen_override_rules`: spring allow-override over for pacted profil
+  - [ ] Eksponér `"pact_until":<epoch|0>` i `ubus_list_profile` + `ubus_status`
+  - [ ] Dispatch: `pact` i `list)`-skema + `pact)`-case i `call)`
+- [ ] ACL: tilføj `pact` til write i `familywarden/.../acl.d/familywarden.json`
+      og `luci-app-familywarden/.../acl.d/luci-app-familywarden.json`
+- [ ] Frontend (`profiles.js` + `overview.js`):
+  - [ ] `callPact` rpc.declare + "🔒 Bind til masten"-knap m. klokkeslæt-vælger
+        (beregn minutter til næste forekomst), bekræftelses-advarsel
+  - [ ] Når `pact_until` i fremtiden: read-only frysning, skjul Delete/override-knapper,
+        lås-banner m. live nedtælling (genbrug `override_expires`-nedtælling)
+- [ ] i18n: danske strenge for nye labels/advarsler
+- [ ] Version-bump + `bash scripts/build-apk-docker.sh` + deploy QEMU
+
+### Verifikation (QEMU)
+1. `ubus call familywarden pact '{"profile":"dennis","minutes":1}'` → ok
+2. `allow/block/ticket/reset` på dennis → `error: locked ... locked_until`
+3. `status` → `pact_until` i fremtiden; nft: scheduled/block-regler står, ingen allow-regel
+4. **Reboot QEMU** → pagt stadig aktiv (beviser `/etc`-persistens)
+5. Vent til udløb → `reload` → gc rydder pagt; overrides virker igen
+6. Root-escape: slet linje i `/etc/familywarden.pacts` + reload → pagt væk straks
+7. Playwright: kort pagt → lås-banner + disablede kontroller; allow afvises; efter udløb retur
+
+> Note (server-side scope): config-redigerings-frysning håndhæves på UI-niveau.
+> Hård revert af UCI-edits er bevidst ude af scope — root-SSH er den aftalte escape.
