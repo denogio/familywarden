@@ -513,6 +513,13 @@ case "$1" in
 }
 EOF
         ;;
+    reload)
+        # Plain CLI entrypoint used by the init script (start_service and the
+        # procd reload trigger run "$BIN reload"). Without this case a bare
+        # "reload" arg is a no-op, so boot and config-change triggers would
+        # silently never regenerate the include.
+        ubus_reload
+        ;;
     call)
         case "$2" in
             list)

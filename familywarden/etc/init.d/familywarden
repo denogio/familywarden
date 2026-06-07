@@ -1,7 +1,8 @@
 #!/bin/sh /etc/rc.common
 
 # familywarden procd init script
-# Triggers nftables include regeneration and fw4 reload on UCI changes
+# Regenerates the nftables include at boot and whenever the familywarden
+# UCI config changes (LuCI Save & Apply, CLI, Home Assistant).
 
 USE_PROCD=1
 START=95
@@ -11,18 +12,26 @@ BIN="/usr/libexec/rpcd/familywarden"
 FW_INCLUDE="/var/etc/familywarden.include"
 
 start_service() {
-    # Generate initial nftables include and apply via fw4
-    $BIN reload
-}
+    # Generate the include at boot.
+    "$BIN" reload
 
-stop_service() {
-    # Remove our include file and reload fw4 to clean up
-    rm -f "$FW_INCLUDE"
-    fw4 reload 2>/dev/null
+    # procd only keeps a service's reload trigger active while the service has
+    # a RUNNING instance. We have no real daemon (rules are kernel-evaluated),
+    # so we run a cheap idle process purely to keep the service alive so the
+    # procd_add_reload_trigger below fires on config changes.
+    procd_open_instance
+    procd_set_param command /bin/sleep 2147483647
+    procd_set_param respawn
+    procd_close_instance
 }
 
 reload_service() {
-    $BIN reload
+    "$BIN" reload
+}
+
+stop_service() {
+    rm -f "$FW_INCLUDE"
+    fw4 reload 2>/dev/null
 }
 
 service_triggers() {
