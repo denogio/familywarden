@@ -242,6 +242,27 @@ Rivendell: tom chain + manglende include fuldt gendannet af ét reload.
 
 ---
 
+## 14c. Schedule-semantik: allow-vindue — FÆRDIG (0.5.9, 2026-06-07)
+
+Bug: schedules droppede *inde i* vinduet (blok-vindue), men spec/UI siger
+"blocks by default and only allows access during the time windows" = allow-vindue.
+En profil med 07:00–18:45 var derfor fri om aftenen i stedet for blokeret.
+
+- [x] Omskrevet til **accept-vindue + default drop pr. enhed**: for hver enhed
+      accept-regler for hvert allow-vindue, derefter en afsluttende `drop`.
+      Inde i vindue → accept (terminerer); ellers falder ned til drop.
+      Flere/overlappende vinduer OR'er sammen (ingen merge). Override-accepts
+      ligger før i chainen, så midlertidig allow stadig vinder.
+- [x] Overnight (start>stop): accept `>=start` på dagen + accept `<stop` på næste
+      dag (day_shift). Profil uden vinduer = blokeret 24/7.
+- [x] ~14 regler/enhed/uge → ~2. Verificeret QEMU (daytime/overnight/override-orden)
+      + rivendell.
+
+> Bemærk semantik: vinduet er ALLOW-perioden. 07:00–21:45 = fri i dagtimerne,
+> blokeret 21:45–07:00. Vil man blokeres om aftenen, sættes sluttid tidligere.
+
+---
+
 ## 14. Ulysses-pagt (self-binding lock) — IKKE STARTET
 
 ### Baggrund
