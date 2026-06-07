@@ -1,5 +1,25 @@
 # familywarden — OpenWrt Parental Control Plugin
 
+## Documentation sources (context7)
+
+Brug disse library-IDs direkte (spring resolve-library-id over):
+
+# Repos (kildekode/implementering)
+- OpenWrt core / UCI / netifd / nftables:  /openwrt/openwrt
+- ubus IPC / JSON-RPC / C API:             /openwrt/ubus
+- LuCI feed / pakke-kildekode:             /openwrt/luci
+
+# Website (genereret JS API-reference — præcise signaturer)
+- LuCI client-side JS API (rpc/uci/form/ui/network):  /websites/openwrt_github_io_luci
+
+## Valg af kilde for familywarden
+- LuCI frontend (rpc.declare, CBI-klasser, widgets) → /websites/openwrt_github_io_luci
+- ubus backend i C (ubus_add_object, blobmsg-policy) → /openwrt/ubus
+- UCI/nftables/system-integration                    → /openwrt/openwrt
+
+Angiv altid et topic ved opslag (fx "rpc.declare signatur", "TypedSection",
+"ubus method registration") frem for bare repo-navnet.
+
 ## Status (2026-06-04)
 
 ### Hvad er lavet?
