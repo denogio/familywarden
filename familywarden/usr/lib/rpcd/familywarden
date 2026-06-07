@@ -169,6 +169,24 @@ gen_device_override_rule() {
     echo "        ether saddr ${mac} counter ${action} comment \"familywarden:${_cur_profile}:override:${_override_target}\""
 }
 
+# Echo drop rules for a profile permanently set to policy=block.
+# Override rules are emitted earlier, so an active allow-override (accept)
+# matches first and wins over this drop.
+gen_profile_block() {
+    local section="$1"
+    local enabled policy
+    config_get enabled "$section" enabled "0"
+    config_get policy "$section" policy "allow"
+    [ "$enabled" != "1" ] && return
+    [ "$policy" != "block" ] && return
+    _cur_profile="$section"
+    config_list_foreach "$section" device gen_device_block_rule
+}
+
+gen_device_block_rule() {
+    echo "        ether saddr ${1} counter drop comment \"familywarden:${_cur_profile}:block\""
+}
+
 # ---- Compiler pipeline ----
 
 generate_include() {
@@ -190,8 +208,11 @@ generate_include() {
 
         config_load familywarden
 
-        # Override rules first (matched before scheduled)
+        # Override rules first (matched before policy rules)
         config_foreach gen_override_rules profile
+
+        # Permanent block-policy profiles
+        config_foreach gen_profile_block profile
 
         # Then scheduled rules
         _sched_devices=""
@@ -249,8 +270,14 @@ compile_and_apply() {
 
         # Validate syntax before applying. The include is an fw4 fragment
         # (chain decls, no table), so wrap it in table context for nft -c.
+        # Use a THROWAWAY table name (not fw4): validating inside the real
+        # inet fw4 would fail if a stale familywarden_forward chain from an
+        # older version is loaded with a different hook/priority ("chain
+        # already exists with different declaration"), wedging reload forever.
+        # fw4 reload rebuilds the real table, so an isolated parse check is
+        # enough and lets a stuck router self-heal on the next reload.
         if ! nft -c -f - <<EOF 2>/tmp/fw_validation_err
-table inet fw4 {
+table inet fw_familywarden_validate {
     include "$FW_INCLUDE_NEW"
 }
 EOF
@@ -264,6 +291,14 @@ EOF
 
         # Atomic swap
         mv "$FW_INCLUDE_NEW" "$FW_INCLUDE"
+
+        # Drop any pre-existing chain so fw4 recreates it cleanly from the
+        # include. Without this, fw4 reload errors ("chain already exists with
+        # different declaration") whenever an older version left the chain at a
+        # different hook/priority — which silently drops our include and wedges
+        # the firewall. Deleting first makes every reload self-healing.
+        # The sub-second fail-open window before fw4 reload is acceptable.
+        nft delete chain inet fw4 familywarden_forward 2>/dev/null
 
         # Apply via fw4 reload. fw4 flushes and rebuilds the whole inet fw4
         # table, so rules are idempotent and survive reboot.

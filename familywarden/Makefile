@@ -6,7 +6,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=familywarden
-PKG_VERSION:=0.5.4
+PKG_VERSION:=0.5.7
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=Dennis Højgaard <github@dehoej.dk>
