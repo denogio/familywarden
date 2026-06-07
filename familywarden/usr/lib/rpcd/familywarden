@@ -96,54 +96,94 @@ gc_expired_tickets() {
 }
 
 # ---- Rule generators (write to FW_INCLUDE_NEW) ----
+#
+# Schedules are ALLOW-windows: a scheduled profile is blocked by default and
+# only allowed inside its windows ("blocks by default and only allows access
+# during the time windows"). We therefore emit drop rules for the COMPLEMENT
+# of the allowed windows, computed per weekday so overnight windows and
+# multiple/overlapping windows compose correctly.
 
-# Echo one or two nftables rules for a scheduled block.
-# Args: profile mac sched_name (uses current UCI config)
-gen_scheduled_rules() {
-    local profile="$1"
-    local mac="$2"
-    local sched="$3"
+# minutes since midnight -> "HH:MM"
+min_to_hhmm() {
+    printf '%02d:%02d' $(( $1 / 60 )) $(( $1 % 60 ))
+}
 
-    local days start stop
+# Append allowed interval [s,e) (minutes) to weekday d (0=sun..6=sat).
+_add_allow() {
+    eval "_allow_d$1=\"\${_allow_d$1} $2:$3\""
+}
+
+# Parse one schedule of the current profile into per-day allowed intervals.
+# Overnight windows (start>stop) are split at midnight onto the next weekday.
+_sched_collect() {
+    local sched="$1"
+    local sched_profile days start stop
+    config_get sched_profile "$sched" profile ""
+    [ "$sched_profile" = "$_cur_profile" ] || return
     config_get days "$sched" days ""
     config_get start "$sched" start ""
     config_get stop "$sched" stop ""
-
     [ -z "$days" ] || [ -z "$start" ] || [ -z "$stop" ] && return
 
-    # Convert day names to numbers
-    local day_nums=""
+    local smin emin d n
+    smin=$(time_to_minutes "$start")
+    emin=$(time_to_minutes "$stop")
     for d in $days; do
-        local n=$(day_to_num "$d")
-        [ -n "$n" ] && day_nums="$day_nums, $n"
-    done
-    day_nums="${day_nums#, }"
-    [ -z "$day_nums" ] && return
-
-    # Compute shifted day set for overnight ranges
-    local shifted_day_nums=""
-    for d in $days; do
-        local n=$(day_to_num "$d")
-        if [ -n "$n" ]; then
-            local sn=$(day_shift "$n")
-            shifted_day_nums="$shifted_day_nums, $sn"
+        n=$(day_to_num "$d")
+        [ -z "$n" ] && continue
+        if [ "$smin" -lt "$emin" ]; then
+            _add_allow "$n" "$smin" "$emin"
+        elif [ "$smin" -gt "$emin" ]; then
+            _add_allow "$n" "$smin" 1440
+            _add_allow "$(day_shift "$n")" 0 "$emin"
+        else
+            _add_allow "$n" 0 1440   # start==stop → allow all day
         fi
     done
-    shifted_day_nums="${shifted_day_nums#, }"
+}
 
-    # Decide single-rule vs split (overnight)
-    local start_min stop_min
-    start_min=$(time_to_minutes "$start")
-    stop_min=$(time_to_minutes "$stop")
+# Read "s:e ..." tokens on $1, print merged non-overlapping "s e" lines.
+_merge_day() {
+    [ -z "$1" ] && return
+    printf '%s\n' $1 | sort -t: -n -k1,1 -k2,2 | awk -F: '
+        NR==1 { cs=$1; ce=$2; next }
+        { if ($1<=ce) { if ($2>ce) ce=$2 } else { print cs, ce; cs=$1; ce=$2 } }
+        END { if (NR>0) print cs, ce }'
+}
 
-    if [ "$start_min" -lt "$stop_min" ]; then
-        # Daytime: 07:00-20:00
-        echo "        ether saddr ${mac} meta hour >= ${start} meta hour < ${stop} meta day { ${day_nums} } counter drop comment \"familywarden:${profile}:scheduled\""
+# Emit a drop rule for each device of the profile, covering gap [gs,ge) on
+# weekday $1. Omits the hour bound at the 00:00 / 24:00 edges.
+_emit_gap_rule() {
+    local day="$1" gs="$2" ge="$3" cond mac
+    if [ "$gs" -eq 0 ] && [ "$ge" -ge 1440 ]; then
+        cond=""
+    elif [ "$gs" -eq 0 ]; then
+        cond="meta hour < $(min_to_hhmm "$ge") "
+    elif [ "$ge" -ge 1440 ]; then
+        cond="meta hour >= $(min_to_hhmm "$gs") "
     else
-        # Overnight: 20:00-06:00 — split into two rules with shifted day set
-        echo "        ether saddr ${mac} meta hour >= ${start} meta day { ${day_nums} } counter drop comment \"familywarden:${profile}:scheduled\""
-        echo "        ether saddr ${mac} meta hour < ${stop} meta day { ${shifted_day_nums} } counter drop comment \"familywarden:${profile}:scheduled\""
+        cond="meta hour >= $(min_to_hhmm "$gs") meta hour < $(min_to_hhmm "$ge") "
     fi
+    for mac in $_sched_devices; do
+        echo "        ether saddr ${mac} ${cond}meta day { ${day} } counter drop comment \"familywarden:${_cur_profile}:scheduled\""
+    done
+}
+
+# For one weekday: drop everything outside the merged allowed intervals.
+_emit_scheduled_day_drops() {
+    local day="$1" merged="$2" prev=0 cs ce
+    if [ -z "$merged" ]; then
+        _emit_gap_rule "$day" 0 1440   # no window that day → blocked all day
+        return
+    fi
+    while read -r cs ce; do
+        [ -z "$cs" ] && continue
+        [ "$cs" -gt "$prev" ] && _emit_gap_rule "$day" "$prev" "$cs"
+        prev="$ce"
+    done <<EOF
+$merged
+EOF
+    [ "$prev" -lt 1440 ] && _emit_gap_rule "$day" "$prev" 1440
 }
 
 # Echo nftables override rules (block/allow) for a profile
@@ -222,6 +262,10 @@ generate_include() {
     } > "$FW_INCLUDE_NEW"
 }
 
+_collect_dev() {
+    _sched_devices="$_sched_devices $1"
+}
+
 gen_profile_scheduled() {
     local section="$1"
     local enabled policy
@@ -231,27 +275,22 @@ gen_profile_scheduled() {
     [ "$enabled" != "1" ] && return
     [ "$policy" != "scheduled" ] && return
 
-    # Store profile name in global for nested callbacks
     _cur_profile="$section"
-
     _sched_devices=""
     config_list_foreach "$section" device _collect_dev
+    [ -z "$_sched_devices" ] && return
 
-    config_foreach gen_sched_for_schedule schedule
-}
+    # Reset per-weekday allowed-interval accumulators, then fill from schedules.
+    _allow_d0=""; _allow_d1=""; _allow_d2=""; _allow_d3=""
+    _allow_d4=""; _allow_d5=""; _allow_d6=""
+    config_foreach _sched_collect schedule
 
-_collect_dev() {
-    _sched_devices="$_sched_devices $1"
-}
-
-gen_sched_for_schedule() {
-    local sched="$1"
-    local sched_profile
-    config_get sched_profile "$sched" profile ""
-    [ "$sched_profile" = "$_cur_profile" ] || return
-
-    for mac in $_sched_devices; do
-        gen_scheduled_rules "$_cur_profile" "$mac" "$sched"
+    # Drop the complement of the allowed windows on each weekday. A scheduled
+    # profile with no windows is blocked 24/7 (each day hits the empty case).
+    local d merged
+    for d in 0 1 2 3 4 5 6; do
+        eval "merged=\$(_merge_day \"\$_allow_d${d}\")"
+        _emit_scheduled_day_drops "$d" "$merged"
     done
 }
 
