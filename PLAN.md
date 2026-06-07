@@ -279,13 +279,53 @@ En profil med 07:00–18:45 var derfor fri om aftenen i stedet for blokeret.
 
 ---
 
-## 15. Bedre tests (test-strategi) — IKKE STARTET
+## 15. Test-strategi — PLANLAGT (ikke bygget endnu)
 
-Kaosset kom af at "færdig" blev målt strukturelt, ikke på adfærd. Vi vil have en
-**definition of done** = en automatiseret end-to-end adfærds-checkliste på QEMU,
-så intet markeres færdigt uden bevis. Skal dække: boot→include; UI-apply auto-
-propagerer (reload_config); allow-vindue dropper udenfor; overrides; self-heal;
-reboot-overlevelse; kørende procd-instans. (Detaljer besluttes som næste skridt.)
+**Princip:** "Definition of done" = **adfærds-bevis**, ikke struktur. Alt det kaos
+vi har set (validerings-wedge, fw4-drop, no-op reload, inaktiv trigger, inverteret
+schedule) ville være fanget af Lag 1. Tre lag, prioriteret:
+
+### Lag 1 — QEMU end-to-end adfærdstest  ← anti-kaos-gaten
+Fil: `scripts/test-behavior.sh` (committet). Antager QEMU kører; installerer den
+byggede apk, sætter en kendt config (1 scheduled profil + device + vindue), kører
+assertions med PASS/FAIL og exit≠0 ved fejl, rydder op til sidst.
+Checklist (hver = assert):
+1. boot/start → `/var/etc/familywarden.include` findes
+2. kørende procd-instans (`ubus call service list`)
+3. scheduled profil → accept-regel for vinduet + trailing default-drop
+4. allow-vindue: drop *udenfor* vinduet (accept dækker kun vinduet)
+5. **UI-apply propagerer**: `uci set stop=UNIK; uci commit; reload_config; sleep`
+   → include afspejler UNIK uden manuelt reload (beviser trigger)
+6. override block→`override:block` drop; allow→`override:allow` accept før sched-drop;
+   reset→ingen override
+7. ticket N min → `override:allow` + expiry sat
+8. self-heal: injicér stale priority-0 chain+regel; `ubus reload`
+   → priority filter+1 genskabt, stale væk
+9. reboot-persistens: `/etc/init.d/familywarden restart` → include+chain genskabt
+10. `ubus call familywarden version` → ren backend/frontend (ingen hale-tekst)
+
+### Lag 2 — Host logik-unit-test (hurtig, ingen router)
+Fil: `test/unit/schedule_test.sh` (kører med `sh` på host, busybox-kompatibelt).
+Tester ren matematik/regel-generering isoleret: `time_to_minutes`, `day_to_num`,
+`day_shift`, og accept-regel-output for: dagtimevindue, overnight-split, flere
+vinduer, start==stop, tomme dage. Asserter eksakte regel-strenge. ~1s.
+
+### Lag 3 — Playwright (udvid eksisterende `test/e2e/familywarden.spec.js`)
+Tilføj: version-Info-boks viser to versionsstrenge; schedule-edit + Save & Apply
+afspejles. Mindst kritisk; UI-regression.
+
+### Kør / CI
+- `sh test/unit/schedule_test.sh`        (host, altid)
+- `sh scripts/test-behavior.sh`          (kræver kørende QEMU)
+- `cd test/e2e && npx playwright test`   (kræver QEMU)
+- evt. `scripts/test-all.sh` der kører unit altid + behavior/playwright hvis QEMU svarer
+
+### Reglen
+Intet PLAN.md-punkt markeres `[x]` før den relevante **Lag 1**-assertion passerer.
+Lag 1 er gaten.
+
+### Byggerækkefølge (besluttet: planlæg først)
+1. Lag 1 (`scripts/test-behavior.sh`)  2. Lag 2 (host-unit)  3. Lag 3 (Playwright)
 
 ---
 
