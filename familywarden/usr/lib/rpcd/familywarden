@@ -99,23 +99,19 @@ gc_expired_tickets() {
 #
 # Schedules are ALLOW-windows: a scheduled profile is blocked by default and
 # only allowed inside its windows ("blocks by default and only allows access
-# during the time windows"). We therefore emit drop rules for the COMPLEMENT
-# of the allowed windows, computed per weekday so overnight windows and
-# multiple/overlapping windows compose correctly.
+# during the time windows").
+#
+# Model: for each device, emit accept rules for every allow-window, then a
+# trailing default-drop. Rules in the chain are matched top-to-bottom and
+# accept/drop are terminal, so inside a window the device is accepted and
+# everything else falls through to the drop. Multiple/overlapping windows
+# just OR together (no merging needed). Override accept rules are emitted
+# earlier in the chain, so a temporary allow still wins over the default drop.
 
-# minutes since midnight -> "HH:MM"
-min_to_hhmm() {
-    printf '%02d:%02d' $(( $1 / 60 )) $(( $1 % 60 ))
-}
-
-# Append allowed interval [s,e) (minutes) to weekday d (0=sun..6=sat).
-_add_allow() {
-    eval "_allow_d$1=\"\${_allow_d$1} $2:$3\""
-}
-
-# Parse one schedule of the current profile into per-day allowed intervals.
-# Overnight windows (start>stop) are split at midnight onto the next weekday.
-_sched_collect() {
+# Emit accept rules for one schedule's window(s), for every device of the
+# current profile. Overnight windows (start>stop) split at midnight onto the
+# next weekday.
+_sched_accept_rules() {
     local sched="$1"
     local sched_profile days start stop
     config_get sched_profile "$sched" profile ""
@@ -125,65 +121,32 @@ _sched_collect() {
     config_get stop "$sched" stop ""
     [ -z "$days" ] || [ -z "$start" ] || [ -z "$stop" ] && return
 
-    local smin emin d n
-    smin=$(time_to_minutes "$start")
-    emin=$(time_to_minutes "$stop")
+    local day_nums="" shifted_nums="" d n
     for d in $days; do
         n=$(day_to_num "$d")
         [ -z "$n" ] && continue
+        day_nums="$day_nums, $n"
+        shifted_nums="$shifted_nums, $(day_shift "$n")"
+    done
+    day_nums="${day_nums#, }"
+    shifted_nums="${shifted_nums#, }"
+    [ -z "$day_nums" ] && return
+
+    local smin emin mac
+    smin=$(time_to_minutes "$start")
+    emin=$(time_to_minutes "$stop")
+    for mac in $_sched_devices; do
         if [ "$smin" -lt "$emin" ]; then
-            _add_allow "$n" "$smin" "$emin"
+            echo "        ether saddr ${mac} meta hour >= ${start} meta hour < ${stop} meta day { ${day_nums} } counter accept comment \"familywarden:${_cur_profile}:sched-allow\""
         elif [ "$smin" -gt "$emin" ]; then
-            _add_allow "$n" "$smin" 1440
-            _add_allow "$(day_shift "$n")" 0 "$emin"
+            # Overnight: allow start..24:00 on the day, 00:00..stop on next day
+            echo "        ether saddr ${mac} meta hour >= ${start} meta day { ${day_nums} } counter accept comment \"familywarden:${_cur_profile}:sched-allow\""
+            echo "        ether saddr ${mac} meta hour < ${stop} meta day { ${shifted_nums} } counter accept comment \"familywarden:${_cur_profile}:sched-allow\""
         else
-            _add_allow "$n" 0 1440   # start==stop → allow all day
+            # start==stop → allow all day on those days
+            echo "        ether saddr ${mac} meta day { ${day_nums} } counter accept comment \"familywarden:${_cur_profile}:sched-allow\""
         fi
     done
-}
-
-# Read "s:e ..." tokens on $1, print merged non-overlapping "s e" lines.
-_merge_day() {
-    [ -z "$1" ] && return
-    printf '%s\n' $1 | sort -t: -n -k1,1 -k2,2 | awk -F: '
-        NR==1 { cs=$1; ce=$2; next }
-        { if ($1<=ce) { if ($2>ce) ce=$2 } else { print cs, ce; cs=$1; ce=$2 } }
-        END { if (NR>0) print cs, ce }'
-}
-
-# Emit a drop rule for each device of the profile, covering gap [gs,ge) on
-# weekday $1. Omits the hour bound at the 00:00 / 24:00 edges.
-_emit_gap_rule() {
-    local day="$1" gs="$2" ge="$3" cond mac
-    if [ "$gs" -eq 0 ] && [ "$ge" -ge 1440 ]; then
-        cond=""
-    elif [ "$gs" -eq 0 ]; then
-        cond="meta hour < $(min_to_hhmm "$ge") "
-    elif [ "$ge" -ge 1440 ]; then
-        cond="meta hour >= $(min_to_hhmm "$gs") "
-    else
-        cond="meta hour >= $(min_to_hhmm "$gs") meta hour < $(min_to_hhmm "$ge") "
-    fi
-    for mac in $_sched_devices; do
-        echo "        ether saddr ${mac} ${cond}meta day { ${day} } counter drop comment \"familywarden:${_cur_profile}:scheduled\""
-    done
-}
-
-# For one weekday: drop everything outside the merged allowed intervals.
-_emit_scheduled_day_drops() {
-    local day="$1" merged="$2" prev=0 cs ce
-    if [ -z "$merged" ]; then
-        _emit_gap_rule "$day" 0 1440   # no window that day → blocked all day
-        return
-    fi
-    while read -r cs ce; do
-        [ -z "$cs" ] && continue
-        [ "$cs" -gt "$prev" ] && _emit_gap_rule "$day" "$prev" "$cs"
-        prev="$ce"
-    done <<EOF
-$merged
-EOF
-    [ "$prev" -lt 1440 ] && _emit_gap_rule "$day" "$prev" 1440
 }
 
 # Echo nftables override rules (block/allow) for a profile
@@ -280,17 +243,14 @@ gen_profile_scheduled() {
     config_list_foreach "$section" device _collect_dev
     [ -z "$_sched_devices" ] && return
 
-    # Reset per-weekday allowed-interval accumulators, then fill from schedules.
-    _allow_d0=""; _allow_d1=""; _allow_d2=""; _allow_d3=""
-    _allow_d4=""; _allow_d5=""; _allow_d6=""
-    config_foreach _sched_collect schedule
+    # Accept inside each allow-window...
+    config_foreach _sched_accept_rules schedule
 
-    # Drop the complement of the allowed windows on each weekday. A scheduled
-    # profile with no windows is blocked 24/7 (each day hits the empty case).
-    local d merged
-    for d in 0 1 2 3 4 5 6; do
-        eval "merged=\$(_merge_day \"\$_allow_d${d}\")"
-        _emit_scheduled_day_drops "$d" "$merged"
+    # ...then default-drop the device. A scheduled profile with no windows
+    # has no accepts, so the device is blocked 24/7.
+    local mac
+    for mac in $_sched_devices; do
+        echo "        ether saddr ${mac} counter drop comment \"familywarden:${_cur_profile}:scheduled\""
     done
 }
 
