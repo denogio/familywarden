@@ -263,6 +263,32 @@ En profil med 07:00–18:45 var derfor fri om aftenen i stedet for blokeret.
 
 ---
 
+## 14d. Version-info + pålidelig config-reload — FÆRDIG (0.6.4 / 0.3.7, 2026-06-07)
+
+- [x] **Pålidelig reload** (0.6.1): to bugs gjorde at UCI-ændringer aldrig nåede
+      firewallen uden manuelt reload (brugeren måtte hand-edite include):
+  - `$BIN reload` var no-op (manglede top-level `reload)` i dispatch) → boot +
+    procd-trigger gjorde intet. Fixet med `reload)` → `ubus_reload`.
+  - procd holder kun reload-trigger aktiv mens servicen har en KØRENDE instans;
+    `start_service` åbnede ingen. Tilføjet idle-instans (`sleep` + respawn) så
+    `procd_add_reload_trigger` rent faktisk fyrer.
+- [x] **Version-fane** (0.6.4 / 0.3.7): ny ubus-metode `version` (read-ACL i begge
+      acl.d-filer) returnerer `{backend, frontend}` via `apk -v list -I`. Settings-
+      siden viser et Info-kort med begge versioner (fejler blødt → "unknown").
+- [x] Verificeret QEMU 10-punkts checkliste + rivendell; version vises rent.
+
+---
+
+## 15. Bedre tests (test-strategi) — IKKE STARTET
+
+Kaosset kom af at "færdig" blev målt strukturelt, ikke på adfærd. Vi vil have en
+**definition of done** = en automatiseret end-to-end adfærds-checkliste på QEMU,
+så intet markeres færdigt uden bevis. Skal dække: boot→include; UI-apply auto-
+propagerer (reload_config); allow-vindue dropper udenfor; overrides; self-heal;
+reboot-overlevelse; kørende procd-instans. (Detaljer besluttes som næste skridt.)
+
+---
+
 ## 14. Ulysses-pagt (self-binding lock) — IKKE STARTET
 
 ### Baggrund

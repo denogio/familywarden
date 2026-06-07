@@ -497,6 +497,22 @@ ubus_reload() {
     }
 }
 
+# Report installed versions of the familywarden plugin and the luci frontend
+# app so the settings page can show "frontend X / backend Y". Both pkgs carry
+# the version in their apk package metadata; `apk -v list -I` prints the
+# installed copy in the form "name-VERSION".
+ubus_version() {
+    local backend_pkg luci_pkg
+    # `apk -v list -I <pkg>` prints "name-VERSION ..." on the first line and a
+    # wrapped description on following lines, so take field 1 of line 1 only.
+    backend_pkg=$(apk -v list -I familywarden 2>/dev/null | awk 'NR==1{print $1}')
+    luci_pkg=$(apk -v list -I luci-app-familywarden 2>/dev/null | awk 'NR==1{print $1}')
+    json_init
+    json_add_string "backend" "${backend_pkg:-unknown}"
+    json_add_string "frontend" "${luci_pkg:-unknown}"
+    json_dump
+}
+
 # ---- Main entry point ----
 
 case "$1" in
@@ -509,7 +525,8 @@ case "$1" in
   "allow": { "profile": "string" },
   "reset": { "profile": "string" },
   "ticket": { "profile": "string", "minutes": 0 },
-  "reload": {}
+  "reload": {},
+  "version": {}
 }
 EOF
         ;;
@@ -558,6 +575,9 @@ EOF
                 ;;
             reload)
                 ubus_reload
+                ;;
+            version)
+                ubus_version
                 ;;
         esac
         ;;
