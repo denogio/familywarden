@@ -11,6 +11,26 @@ async function loginAsRoot(page) {
   await page.waitForLoadState('networkidle', { timeout: 15000 });
 }
 
+// Select weekdays in the first schedule row's LuCI multi-select dropdown.
+// Operate on the LAST schedule row (the one just added) so tests are robust
+// to schedules left behind by earlier tests.
+async function selectDays(schedSection, page, values) {
+  const dd = schedSection.locator('[id$=".days"].cbi-dropdown').last();
+  await dd.click();                       // open
+  for (const v of values)
+    await dd.locator(`ul > li[data-value="${v}"]`).first().click();
+  await page.keyboard.press('Escape');    // close
+  await page.waitForTimeout(200);
+}
+
+// Read selected day values back from the last row's dropdown (selected li's
+// carry a `display` attr). Used to assert days actually round-trip through save.
+async function selectedDays(schedSection) {
+  return schedSection.locator('[id$=".days"].cbi-dropdown').last()
+    .locator('li[data-value][display]')
+    .evaluateAll(els => els.map(e => e.getAttribute('data-value')).filter(Boolean));
+}
+
 test.describe('FamilyWarden LuCI UI', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsRoot(page);
@@ -56,6 +76,10 @@ test.describe('FamilyWarden LuCI UI', () => {
 
 test.describe('FamilyWarden Profile Creation', () => {
   test.beforeEach(async ({ page }) => {
+    // Auto-accept the delete confirm() dialog. Registered before any click so
+    // it can never be missed (the per-test handler raced and let confirm()
+    // return false, silently aborting the delete).
+    page.on('dialog', dialog => dialog.accept());
     await loginAsRoot(page);
   });
 
@@ -201,12 +225,8 @@ test.describe('FamilyWarden Profile Creation', () => {
     await firstTab.click();
     await page.waitForLoadState('networkidle');
 
-    page.on('dialog', dialog => {
-      console.log(`Dialog: ${dialog.message()}`);
-      dialog.accept();
-    });
-
-    const deleteBtn = page.locator('.fw-delete-btn, button:has-text("Delete")').first();
+    // confirm() dialog is auto-accepted in beforeEach.
+    const deleteBtn = page.locator('button:has-text("Delete Profile")').first();
 
     if (await deleteBtn.isVisible()) {
       console.log('Found delete button, clicking');
@@ -282,12 +302,9 @@ test.describe('FamilyWarden Schedules', () => {
     const schedSection = page.locator('#cbi-familywarden-schedule');
     await schedSection.locator('.cbi-button-add').click();
     await page.waitForTimeout(1000);
-    const dayBoxes = schedSection.locator('[id*="days"] input[type="checkbox"]');
-    await dayBoxes.first().waitFor({ timeout: 5000 });
-    await dayBoxes.nth(0).check({ force: true });
-    await dayBoxes.nth(1).check({ force: true });
-    await schedSection.locator('input[id$=".start"]').first().fill('07:00');
-    await schedSection.locator('input[id$=".stop"]').first().fill('20:00');
+    await selectDays(schedSection, page, ['mon', 'tue']);
+    await schedSection.locator('input[id$=".start"]').last().fill('07:00');
+    await schedSection.locator('input[id$=".stop"]').last().fill('20:00');
 
     // Save & Apply
     const saveApplyBtn = page.locator('button:has-text("Save"), li:has-text("Save & Apply")').first();
@@ -349,13 +366,9 @@ test.describe('FamilyWarden Schedules', () => {
     const schedSection = page.locator('#cbi-familywarden-schedule');
     await schedSection.locator('.cbi-button-add').click();
     await page.waitForTimeout(1000);
-    // days = 7 inline checkboxes in the new row; tick the first two
-    const dayBoxes = schedSection.locator('[id*="days"] input[type="checkbox"]');
-    await dayBoxes.first().waitFor({ timeout: 5000 });
-    await dayBoxes.nth(0).check({ force: true });
-    await dayBoxes.nth(1).check({ force: true });
-    await schedSection.locator('input[id$=".start"]').first().fill('07:00');
-    await schedSection.locator('input[id$=".stop"]').first().fill('20:00');
+    await selectDays(schedSection, page, ['mon', 'tue']);
+    await schedSection.locator('input[id$=".start"]').last().fill('07:00');
+    await schedSection.locator('input[id$=".stop"]').last().fill('20:00');
 
     // 3. Save & Apply
     const saveApply = page.locator('button:has-text("Save"), li:has-text("Save & Apply")').first();
@@ -368,5 +381,12 @@ test.describe('FamilyWarden Schedules', () => {
     const policyAfter = await page.locator('select[id*="policy"]').first().inputValue();
     console.log('Policy after save+reload:', policyAfter);
     expect(policyAfter).toBe('scheduled');
+
+    // 5. And assert the DAYS actually persisted (this is what silently broke
+    //    before: the row existed but days were empty on disk).
+    const days = await selectedDays(schedSection);
+    console.log('Days after save+reload:', JSON.stringify(days));
+    expect(days).toContain('mon');
+    expect(days).toContain('tue');
   });
 });

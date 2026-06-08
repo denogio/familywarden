@@ -393,6 +393,9 @@ return view.extend({
 		// daemon ignores incomplete schedules (days/start/stop all required to
 		// take effect). rmempty=true means a blank field is dropped on save
 		// instead of raising "must not be empty"; validators tolerate empty.
+		// Stock MultiValue (multi-select dropdown). A custom ui.Select checkbox
+		// override was tried but its getValue() returned null → days were lost
+		// on save; the stock dropdown round-trips reliably.
 		var o = ss.option(form.MultiValue, 'days', _('Days'));
 		o.value('mon', _('Mon'));
 		o.value('tue', _('Tue'));
@@ -402,18 +405,6 @@ return view.extend({
 		o.value('sat', _('Sat'));
 		o.value('sun', _('Sun'));
 		o.rmempty = true;
-		// form.MultiValue always renders a multi-select dropdown; override with a
-		// ui.Select checkbox group so weekdays are 7 real inline checkboxes.
-		o.renderWidget = function(section_id, option_index, cfgvalue) {
-			var choices = {};
-			this.keylist.forEach(function(k, i) { choices[k] = this.vallist[i]; }, this);
-			return new ui.Select((cfgvalue != null) ? cfgvalue : this.default, choices, {
-				id: this.cbid(section_id),
-				multiple: true,
-				widget: 'checkbox',
-				orientation: 'horizontal'
-			}).render();
-		};
 
 		o = ss.option(form.Value, 'start', _('Start'));
 		o.placeholder = '07:00';
