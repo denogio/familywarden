@@ -274,82 +274,99 @@ test.describe('FamilyWarden Schedules', () => {
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
-    // Change policy to Scheduled if not already
-    const policySelect = page.locator('select[name*="policy"]').first();
-    if (await policySelect.isVisible()) {
-      await policySelect.selectOption('scheduled');
-      console.log('Changed policy to scheduled');
-    }
+    // Policy = Scheduled reveals the schedule section
+    await page.locator('select[id*="policy"]').first().selectOption('scheduled');
+    await page.waitForTimeout(500);
 
-    // Look for "Add schedule" button
-    // The schedule section has its own Save button
-    const addScheduleBtn = page.locator('button:has-text("Add schedule"), .cbi-section-create .cbi-button');
-    console.log('Looking for Add schedule button...');
+    // Add a schedule inline (no modal)
+    const schedSection = page.locator('#cbi-familywarden-schedule');
+    await schedSection.locator('.cbi-button-add').click();
+    await page.waitForTimeout(1000);
+    const dayBoxes = schedSection.locator('[id*="days"] input[type="checkbox"]');
+    await dayBoxes.first().waitFor({ timeout: 5000 });
+    await dayBoxes.nth(0).check({ force: true });
+    await dayBoxes.nth(1).check({ force: true });
+    await schedSection.locator('input[id$=".start"]').first().fill('07:00');
+    await schedSection.locator('input[id$=".stop"]').first().fill('20:00');
 
-    // Try to find the schedules section and add button
-    const scheduleSection = page.locator('#cbi-familywarden-schedule');
-    const addBtnInSection = scheduleSection.locator('.cbi-button-add, button:has-text("Add")');
-
-    if (await addBtnInSection.count() > 0) {
-      console.log('Found Add schedule button');
-      await addBtnInSection.first().click();
-      await page.waitForTimeout(1000);
-
-      // Fill in schedule modal if it appears
-      // Days MultiValue, Start Time, Stop Time
-      const daysSelect = page.locator('select[name*="days"]');
-      if (await daysSelect.isVisible()) {
-        await daysSelect.selectOption(['mon', 'tue', 'wed', 'thu', 'fri']);
-        console.log('Selected days: mon-fri');
-      }
-
-      const startInput = page.locator('input[name*="start"]');
-      if (await startInput.isVisible()) {
-        await startInput.fill('07:00');
-        console.log('Set start time: 07:00');
-      }
-
-      const stopInput = page.locator('input[name*="stop"]');
-      if (await stopInput.isVisible()) {
-        await stopInput.fill('20:00');
-        console.log('Set stop time: 20:00');
-      }
-
-      // Save the schedule
-      const saveScheduleBtn = page.locator('.cbi-modal .cbi-button-positive, button:has-text("Save")');
-      if (await saveScheduleBtn.count() > 0) {
-        console.log('Clicking Save schedule');
-        await saveScheduleBtn.first().click({ force: true });
-        // Wait for modal to close
-        await page.waitForTimeout(3000);
-      }
-
-      // Close modal overlay if still present by pressing Escape
-      const overlay = page.locator('#modal_overlay');
-      if (await overlay.count() > 0) {
-        await page.keyboard.press('Escape');
-        await page.waitForTimeout(1000);
-      }
-    }
-
-    // Now click main Save & Apply
+    // Save & Apply
     const saveApplyBtn = page.locator('button:has-text("Save"), li:has-text("Save & Apply")').first();
     if (await saveApplyBtn.isVisible()) {
-      console.log('Clicking Save & Apply');
       await saveApplyBtn.click({ force: true });
       await page.waitForTimeout(5000);
     }
 
-    // Reload and verify schedule was created
+    // Reload and verify a schedule row exists
     await page.reload();
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
+    const rows = await schedSection.locator('input[id$=".start"]').count();
+    console.log('Schedule rows after reload:', rows);
+    expect(rows).toBeGreaterThan(0);
+  });
 
-    // Check if schedule appears in the UI (should show "✔ Mon, Tue, Wed, Thu, Fri  07:00 – 20:00")
-    const scheduleText = await page.locator('.cbi-section-table-row, .fw-sched-row').allTextContents();
-    console.log('Schedule rows found:', scheduleText.length);
-    console.log('Schedule content:', scheduleText);
+  test('policy stays Scheduled when adding a schedule in the same save', async ({ page }) => {
+    // Regression: setting policy=Scheduled AND adding a schedule then Save &
+    // Apply used to revert policy to Unrestricted (the schedule modal's
+    // map.save() re-rendered the form and discarded the unsaved policy widget).
+    await page.goto(`${FW_URL}/profiles`);
+    await page.waitForLoadState('networkidle');
 
-    expect(scheduleText.length).toBeGreaterThan(0);
+    var profileTabs = page.locator('.fw-tab:not(.fw-tab-add)');
+    if (await profileTabs.count() === 0) {
+      await page.locator('.fw-tab-add').click();
+      await page.waitForSelector('div.modal', { timeout: 5000 });
+      await page.locator('div.modal input[type="text"]').fill('PolicyBugProfile');
+      await page.locator('div.modal .cbi-button-positive').click();
+      await page.waitForURL(/\/profiles/, { timeout: 10000 });
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(1000);
+      const sb = page.locator('button:has-text("Save"), li:has-text("Save & Apply")').first();
+      if (await sb.isVisible()) { await sb.click(); await page.waitForTimeout(5000); }
+      await page.reload(); await page.waitForLoadState('networkidle'); await page.waitForTimeout(1500);
+      profileTabs = page.locator('.fw-tab:not(.fw-tab-add)');
+    }
+
+    await profileTabs.first().click();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1000);
+
+    // LuCI ListValue renders as a native <select> with an id (no name attr).
+    const policySelect = page.locator('select[id*="policy"]').first();
+
+    // Make sure we start from a non-scheduled policy so the change is real.
+    await policySelect.selectOption('allow');
+    await page.waitForTimeout(300);
+
+    // 1. Set policy = Scheduled (do NOT save yet). This also reveals the
+    //    schedule section (hidden while policy != scheduled).
+    await policySelect.selectOption('scheduled');
+    await page.waitForTimeout(500);
+    console.log('Set policy=scheduled (unsaved)');
+
+    // 2. Add a schedule in the same go. Inline TableSection — no modal; the
+    //    new row's fields appear directly in the schedule table.
+    const schedSection = page.locator('#cbi-familywarden-schedule');
+    await schedSection.locator('.cbi-button-add').click();
+    await page.waitForTimeout(1000);
+    // days = 7 inline checkboxes in the new row; tick the first two
+    const dayBoxes = schedSection.locator('[id*="days"] input[type="checkbox"]');
+    await dayBoxes.first().waitFor({ timeout: 5000 });
+    await dayBoxes.nth(0).check({ force: true });
+    await dayBoxes.nth(1).check({ force: true });
+    await schedSection.locator('input[id$=".start"]').first().fill('07:00');
+    await schedSection.locator('input[id$=".stop"]').first().fill('20:00');
+
+    // 3. Save & Apply
+    const saveApply = page.locator('button:has-text("Save"), li:has-text("Save & Apply")').first();
+    if (await saveApply.isVisible()) { await saveApply.click({ force: true }); await page.waitForTimeout(5000); }
+
+    // 4. Reload and assert policy is STILL scheduled (the regression)
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1500);
+    const policyAfter = await page.locator('select[id*="policy"]').first().inputValue();
+    console.log('Policy after save+reload:', policyAfter);
+    expect(policyAfter).toBe('scheduled');
   });
 });

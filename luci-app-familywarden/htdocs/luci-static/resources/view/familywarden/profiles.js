@@ -4,6 +4,7 @@
 'require uci';
 'require rpc';
 'require poll';
+'require ui';
 
 var callStatus = rpc.declare({
 	object: 'familywarden',
@@ -71,29 +72,18 @@ function injectStyles() {
 		.fw-tab:hover{color:var(--text-color-high,#333);background:var(--background-color-high,#f8f9fa)}\
 		.fw-tab.active{color:var(--text-color-high,#333);background:var(--background-color-high,white);\
 			border-color:var(--border-color-medium,#dee2e6);border-bottom-color:var(--background-color-high,white);font-weight:600}\
-		.fw-tab-add{color:#007bff !important;font-weight:500}\
-		.fw-tab-add:hover{background:rgba(0,123,255,.08) !important}\
+		.fw-tab-add{color:var(--primary-color-high,#0069d9);font-weight:500}\
+		.fw-tab-add:hover{background:var(--background-color-high,#f8f9fa)}\
 		.fw-status-bar{display:flex;align-items:center;gap:16px;padding:16px;\
 			background:var(--background-color-high,#f8f9fa);border:1px solid var(--border-color-medium,#dee2e6);\
 			border-radius:8px;margin-bottom:20px;flex-wrap:wrap}\
-		.fw-status-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}\
-		.fw-status-dot.allowed{background:#28a745;box-shadow:0 0 6px #28a745}\
-		.fw-status-dot.blocked{background:#dc3545;box-shadow:0 0 6px #dc3545}\
-		.fw-status-dot.override{background:#ffc107;box-shadow:0 0 6px #ffc107}\
+		.fw-status-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;background:var(--border-color-medium,#ccc)}\
+		.fw-status-dot.allowed{background:var(--success-color-high,#5e9eff)}\
+		.fw-status-dot.blocked{background:var(--error-color-high,#ff6b6b)}\
+		.fw-status-dot.override{background:var(--warn-color-medium,#fbbf24)}\
 		.fw-status-text{font-size:16px;font-weight:600;flex:1;margin-right:auto}\
-		.fw-action-btn{padding:6px 14px;border:none;border-radius:4px;cursor:pointer;\
-			font-size:13px;font-weight:500;color:white;transition:opacity .15s;max-width:115px}\
-		.fw-action-btn:hover{opacity:.85}\
-		.fw-action-btn:disabled{opacity:.5;cursor:wait}\
-		.fw-action-btn.allow{background:#28a745}\
-		.fw-action-btn.block{background:#dc3545}\
-		.fw-action-btn.reset{background:#6c757d}\
-		.fw-action-btn.ticket{background:#17a2b8}\
 		.fw-empty-profile{text-align:center;padding:60px 20px;color:var(--text-color-medium,#6c757d)}\
 		.fw-delete-section{margin-top:24px;padding-top:16px;border-top:1px solid var(--border-color-medium,#dee2e6)}\
-		.fw-delete-btn{padding:8px 20px;border:1px solid #dc3545;border-radius:4px;cursor:pointer;\
-			font-size:13px;color:#dc3545;background:transparent}\
-		.fw-delete-btn:hover{background:#dc3545;color:white}\
 	';
 	document.head.appendChild(css);
 }
@@ -132,12 +122,12 @@ function refreshStatus() {
 
 		var btns = [];
 		if (hasOverride) {
-			btns.push(E('button', { 'class': 'fw-action-btn reset', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callReset); }) }, _('Reset')));
+			btns.push(E('button', { 'class': 'cbi-button cbi-button-neutral', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callReset); }) }, _('Reset')));
 		} else if (isBlocked) {
-			btns.push(E('button', { 'class': 'fw-action-btn allow', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callAllow); }) }, _('Allow')));
-			btns.push(E('button', { 'class': 'fw-action-btn ticket', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, function(p) { return callTicket(p, 30); }); }) }, '+30 ' + _('min')));
+			btns.push(E('button', { 'class': 'cbi-button cbi-button-positive', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callAllow); }) }, _('Allow')));
+			btns.push(E('button', { 'class': 'cbi-button cbi-button-action', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, function(p) { return callTicket(p, 30); }); }) }, '+30 ' + _('min')));
 		} else {
-			btns.push(E('button', { 'class': 'fw-action-btn block', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callBlock); }) }, _('Block')));
+			btns.push(E('button', { 'class': 'cbi-button cbi-button-negative', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callBlock); }) }, _('Block')));
 		}
 
 		// Rebuild status bar content
@@ -248,12 +238,12 @@ function buildStatusBar(status) {
 
 	var btns = [];
 	if (hasOverride) {
-		btns.push(E('button', { 'class': 'fw-action-btn reset', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callReset); }) }, _('Reset')));
+		btns.push(E('button', { 'class': 'cbi-button cbi-button-neutral', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callReset); }) }, _('Reset')));
 	} else if (isBlocked) {
-		btns.push(E('button', { 'class': 'fw-action-btn allow', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callAllow); }) }, _('Allow')));
-		btns.push(E('button', { 'class': 'fw-action-btn ticket', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, function(p) { return callTicket(p, 30); }); }) }, '+30 ' + _('min')));
+		btns.push(E('button', { 'class': 'cbi-button cbi-button-positive', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callAllow); }) }, _('Allow')));
+		btns.push(E('button', { 'class': 'cbi-button cbi-button-action', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, function(p) { return callTicket(p, 30); }); }) }, '+30 ' + _('min')));
 	} else {
-		btns.push(E('button', { 'class': 'fw-action-btn block', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callBlock); }) }, _('Block')));
+		btns.push(E('button', { 'class': 'cbi-button cbi-button-negative', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callBlock); }) }, _('Block')));
 	}
 
 	statusNode = E('div', { 'class': 'fw-status-bar' }, [
@@ -344,110 +334,100 @@ return view.extend({
 		var s = m.section(form.NamedSection, selectedProfile, 'profile', _('Profile Settings'));
 		s.addremove = false;
 
-		var o = s.option(form.Value, 'name', _('Name'));
-		o.rmempty = false;
+		var nameOption = s.option(form.Value, 'name', _('Name'));
+		nameOption.rmempty = false;
 
-		o = s.option(form.Flag, 'enabled', _('Enabled'));
-		o.rmempty = false;
-		o.default = '1';
+		var enabledOption = s.option(form.Flag, 'enabled', _('Enabled'));
+		enabledOption.rmempty = false;
+		enabledOption.default = '1';
 
-		o = s.option(form.ListValue, 'policy', _('Access Policy'),
+		var policyOption = s.option(form.ListValue, 'policy', _('Access Policy'),
 			_('"Unrestricted" allows all traffic. "Blocked" turns the internet off. "Scheduled" blocks by default and only allows access during the time windows below.'));
-		o.value('allow', _('Unrestricted'));
-		o.value('block', _('Blocked'));
-		o.value('scheduled', _('Scheduled'));
-		var policyOption = o;
+		policyOption.value('allow', _('Unrestricted'));
+		policyOption.value('block', _('Blocked'));
+		policyOption.value('scheduled', _('Scheduled'));
 
-		o = s.option(form.DynamicList, 'device', _('Devices'),
+		var deviceOption = s.option(form.DynamicList, 'device', _('Devices'),
 			_('Select known devices or enter MAC addresses manually.'));
-		o.datatype = 'macaddr';
-		o.rmempty = true;
+		deviceOption.datatype = 'macaddr';
+		deviceOption.rmempty = true;
 		var macs = Object.keys(knownDevices).sort(function(a, b) {
 			return knownDevices[a].localeCompare(knownDevices[b]);
 		});
 		macs.forEach(function(mac) {
-			o.value(mac, knownDevices[mac]);
+			deviceOption.value(mac, knownDevices[mac]);
 		});
 
-		o = s.option(form.Value, 'dns_profile', _('DNS Filtering'));
-		o.rmempty = true;
-		o.optional = true;
-		o.description = _('Optional: AdGuard Home / DNS filter group name.');
+		var dnsOption = s.option(form.Value, 'dns_profile', _('DNS Filtering'));
+		dnsOption.rmempty = true;
+		dnsOption.optional = true;
+		dnsOption.description = _('Optional: AdGuard Home / DNS filter group name.');
 
 		// --- Schedules for this profile ---
+		// Inline TableSection (NOT GridSection): rows are edited in place with
+		// no modal. The modal was the source of a bug where its map.save()
+		// re-render left a stale policy widget that reverted policy on Save &
+		// Apply. Inline editing makes that bug class structurally impossible.
 		var pid = selectedProfile;
-		var ss = m.section(form.GridSection, 'schedule', _('Schedules'),
+		var ss = m.section(form.TableSection, 'schedule', _('Schedules'),
 			_('Internet is off by default in this mode. Add the time windows when access is allowed; any time outside every window is blocked.'));
 		ss.addremove = true;
 		ss.anonymous = true;
 		ss.addbtntitle = _('Add schedule');
-		ss.modaltitle = function() { return _('Edit Schedule'); };
 
 		ss.filter = function(section_id) {
 			return uci.get('familywarden', section_id, 'profile') === pid;
 		};
 
+		// New schedules belong to the currently selected profile. Add the
+		// section ourselves (to set profile=pid) then save \u2014 do NOT call the
+		// prototype handleAdd, which would add a second empty section.
 		ss.handleAdd = function(ev) {
 			var id = uci.add('familywarden', 'schedule');
 			uci.set('familywarden', id, 'profile', pid);
-			return this.renderMoreOptionsModal(id);
+			return this.map.save(null, true);
 		};
 
-		ss.renderSectionAdd = function() {
-			var btn = E('button', {
-				'class': 'cbi-button cbi-button-add',
-				'click': L.ui.createHandlerFn(this, 'handleAdd')
-			}, this.addbtntitle || _('Add'));
-			return E('div', { 'class': 'cbi-section-create', 'style': 'margin-bottom:16px' }, btn);
+		// All options inline (no modalonly) \u2192 editable directly in the row.
+		// Fields are optional: a freshly added row is briefly blank, and the
+		// daemon ignores incomplete schedules (days/start/stop all required to
+		// take effect). rmempty=true means a blank field is dropped on save
+		// instead of raising "must not be empty"; validators tolerate empty.
+		var o = ss.option(form.MultiValue, 'days', _('Days'));
+		o.value('mon', _('Mon'));
+		o.value('tue', _('Tue'));
+		o.value('wed', _('Wed'));
+		o.value('thu', _('Thu'));
+		o.value('fri', _('Fri'));
+		o.value('sat', _('Sat'));
+		o.value('sun', _('Sun'));
+		o.rmempty = true;
+		// form.MultiValue always renders a multi-select dropdown; override with a
+		// ui.Select checkbox group so weekdays are 7 real inline checkboxes.
+		o.renderWidget = function(section_id, option_index, cfgvalue) {
+			var choices = {};
+			this.keylist.forEach(function(k, i) { choices[k] = this.vallist[i]; }, this);
+			return new ui.Select((cfgvalue != null) ? cfgvalue : this.default, choices, {
+				id: this.cbid(section_id),
+				multiple: true,
+				widget: 'checkbox',
+				orientation: 'horizontal'
+			}).render();
 		};
 
-		// Summary column
-		o = ss.option(form.DummyValue, '_summary', _('Schedule'));
-		o.modalonly = false;
-		o.textvalue = function(section_id) {
-			var days = uci.get('familywarden', section_id, 'days') || '';
-			var start = uci.get('familywarden', section_id, 'start') || '';
-			var stop = uci.get('familywarden', section_id, 'stop') || '';
-			if (!days || !start || !stop) return _('(incomplete)');
-			var dayMap = { mon:'Mon', tue:'Tue', wed:'Wed', thu:'Thu', fri:'Fri', sat:'Sat', sun:'Sun' };
-			var dayArr = (typeof days === 'string') ? days.split(/\s+/) : days;
-			var dayStr = dayArr.map(function(d) { return dayMap[d] || d; }).join(', ');
-			return '\u2714 ' + dayStr + '  ' + start + ' \u2013 ' + stop;
-		};
-
-		o = ss.option(form.Value, 'profile', _('Profile'));
-		o.modalonly = true;
-		o.readonly = true;
-		o.default = pid;
-
-		o = ss.option(form.MultiValue, 'days', _('Days'));
-		o.value('mon', _('Monday'));
-		o.value('tue', _('Tuesday'));
-		o.value('wed', _('Wednesday'));
-		o.value('thu', _('Thursday'));
-		o.value('fri', _('Friday'));
-		o.value('sat', _('Saturday'));
-		o.value('sun', _('Sunday'));
-		o.rmempty = false;
-		o.modalonly = true;
-
-		o = ss.option(form.Value, 'start', _('Start Time'));
+		o = ss.option(form.Value, 'start', _('Start'));
 		o.placeholder = '07:00';
-		o.rmempty = false;
-		o.modalonly = true;
-		o.description = _('24-hour format, e.g. 07:00');
+		o.rmempty = true;
 		o.validate = function(section_id, value) {
-			if (!/^\d{2}:\d{2}$/.test(value)) return _('Use HH:MM format');
+			if (value && !/^\d{2}:\d{2}$/.test(value)) return _('Use HH:MM format');
 			return true;
 		};
 
-		o = ss.option(form.Value, 'stop', _('Stop Time'));
+		o = ss.option(form.Value, 'stop', _('Stop'));
 		o.placeholder = '20:00';
-		o.rmempty = false;
-		o.modalonly = true;
-		o.description = _('24-hour format, e.g. 20:00');
+		o.rmempty = true;
 		o.validate = function(section_id, value) {
-			if (!/^\d{2}:\d{2}$/.test(value)) return _('Use HH:MM format');
+			if (value && !/^\d{2}:\d{2}$/.test(value)) return _('Use HH:MM format');
 			return true;
 		};
 
@@ -455,7 +435,7 @@ return view.extend({
 		var self = this;
 		var deleteSection = E('div', { 'class': 'fw-delete-section' }, [
 			E('button', {
-				'class': 'fw-delete-btn',
+				'class': 'cbi-button cbi-button-negative',
 				// createHandlerFn keeps the button disabled/spinning while the
 				// save/apply/reload/redirect chain runs, preventing double-submit.
 				'click': L.ui.createHandlerFn(self, function() {

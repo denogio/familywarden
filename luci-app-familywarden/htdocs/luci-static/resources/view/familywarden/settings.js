@@ -2,6 +2,7 @@
 'require view';
 'require form';
 'require rpc';
+'require uci';
 
 var callReload = rpc.declare({
 	object: 'familywarden',
@@ -42,11 +43,8 @@ return view.extend({
 		o.value('block', _('Block Internet'));
 		o.default = 'allow';
 
-		return m.render().then(function(formEl) {
-			return E('div', {}, [
-				E('h2', {}, _('Settings')),
-				formEl
-			]);
-		});
+		// Return the form.Map directly so LuCI renders it with native page
+		// chrome (title + tab bar) like every other config page.
+		return m.render();
 	}
 });
