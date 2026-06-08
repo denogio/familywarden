@@ -9,7 +9,7 @@ LUCI_TITLE:=LuCI support for FamilyWarden Parental Control
 LUCI_DEPENDS:=+familywarden +luci-base
 LUCI_PKGARCH:=all
 
-PKG_VERSION:=0.3.14
+PKG_VERSION:=0.3.15
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=Dennis Højgaard <github@dehoej.dk>
