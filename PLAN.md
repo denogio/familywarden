@@ -329,36 +329,41 @@ Lag 1 er gaten.
 
 ---
 
-## 16. UI-polish + schedule/policy save-bug — PLANLAGT
+## 16. UI-polish + schedule/policy save-bug — FÆRDIG (2026-06-10, luci 0.3.17)
 
-Kun frontend (`luci-app-familywarden`). Backend røres ikke. Bump 0.3.9 → 0.3.10.
+Kun frontend (`luci-app-familywarden`). Backend røres ikke.
 
-### A. Bug: policy nulstilles ved samtidig schedule-tilføjelse
+### A. Bug: policy nulstilles ved samtidig schedule-tilføjelse — FIXET
 Sætter man policy → "Scheduled" OG tilføjer en schedule i samme ombæring → Save &
-Apply, ender man med schedulen men policy tilbage på "Unrestricted".
-- **Årsag:** Profil-siden er ét `form.Map` (profil-NamedSection m. policy +
-  schedule-GridSection). Schedule-modalens gem kalder `map.save()` og re-renderer
-  hele map'et fra UCI; den endnu-ikke-gemte policy-widget genskabes fra UCI's
-  gamle værdi → tabt. Save & Apply gemmer så 'allow'.
-- [ ] **Fix:** Override `ss.renderMoreOptionsModal` så profil-sektionens felter
-  (`name/enabled/policy/device/dns_profile`) persisteres til UCI (via
-  `o.parse(pid)`) *før* modalen åbnes. Dækker både Add og redigér-række.
-  Alternativ hvis det driller: split i to `form.Map` (profil + schedule).
-- [ ] **Verifikation:** Playwright-test der sætter policy=Scheduled + tilføjer
-  schedule + Save & Apply + reload → asserter policy STADIG Scheduled og schedule findes.
+Apply, endte man med schedulen men policy tilbage på "Unrestricted".
+- **Årsag:** Schedule-GridSection-modalens `map.save()` re-renderede map'et og
+  efterlod en stale policy-widget. Patch-forsøg (onchange-staging, parse-override)
+  fejlede → **frisk design**: schedules redigeres inline i en `form.TableSection`
+  (ingen modal → ingen re-render → bug-klassen strukturelt umulig).
+- [x] **Fix:** Inline TableSection m. custom `handleAdd` (`map.save(null, true)`,
+  ikke prototype-handleAdd som double-adder). `rmempty=true` overalt.
+- [x] **Days-widget:** dropdown var et "UI-misfoster" og ui.Select-checkboxenes
+  `getValue()` returnerede null (days tabt ved gem). Nu 7 rene inline checkboxes
+  (`input[data-day]` i `div.fw-days`) med egen `renderWidget` + `formvalue` —
+  round-trip verificeret på disk (`days='mon' 'tue'`).
+- [x] **Rollback-bug i create/delete-profil:** `uci.apply()` resolver FØR den
+  detachede confirm-poll (setTimeout 1s) kører; redirect afbrød confirm →
+  routeren rullede committet tilbage ~10s senere (forklarede al flakiness:
+  profil "oprettet"/"slettet" og så genopstået). Fix: eksplicit
+  `uci.callConfirm()` i kæden før redirect, også i catch-grenen.
+- [x] **Verifikation:** Playwright-tests "policy stays Scheduled…" (asserter
+  policy OG days-persistens efter reload) + hærdet delete-test (dialog-accept i
+  beforeEach, unikt offernavn, waitForURL-prædikat uden `?name=`). 10/10 grønne
+  mod installeret 0.3.17 på QEMU; deployet rivendell.
 
-### B. Settings native rendering (`settings.js`)
-- [ ] Fjern custom wrapper `E('div',[E('h2'),formEl])` → returnér `m.render()`
-  direkte (native LuCI side-chrome/faner).
-- [ ] Tilføj manglende `'require uci'` (handleSaveApply kalder `uci.load` →
-  latent ReferenceError i dag).
+### B. Settings native rendering (`settings.js`) — FÆRDIG
+- [x] Custom wrapper fjernet → `m.render()` direkte (native side-chrome).
+- [x] `'require uci'` tilføjet.
 
-### C. Af-customisér farver (profil + settings; Overview uændret)
-- [ ] Action-knapper (Block/Allow/Reset/+30) → native `cbi-button-positive/
-  negative/neutral/action`; slet `.fw-action-btn*`-CSS (hardcodede hex).
-- [ ] Status-dot farves via tema-variabler (`--success/--error/--warn-color`),
-  ingen hardcodede hex/glow.
-- [ ] `.fw-tab-add` hardcodet `#007bff` → `--primary-color-*`.
+### C. Af-customisér farver (profil + settings; Overview uændret) — FÆRDIG
+- [x] Action-knapper → native `cbi-button-positive/negative/neutral/action`.
+- [x] Status-dot via tema-variabler (`--success/--error/--warn-color`).
+- [x] `.fw-tab-add` → `--primary-color-high`.
 
 ### Out of scope (bevidst)
 Overview-dashboardets card-design/farver; profil-skifter → native faner; in-page

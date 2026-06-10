@@ -177,13 +177,19 @@ function showAddProfileModal() {
 					uci.set('familywarden', id, 'name', name);
 					uci.set('familywarden', id, 'policy', 'allow');
 					// Save and apply immediately so the profile is persisted to disk.
-					// uci.apply() may timeout if fw4 reload takes >10s, but changes
-					// are still staged and will apply. We catch the error to avoid
-					// breaking the flow.
+					// uci.apply() commits with a rollback timer and resolves BEFORE
+					// the detached confirm poll runs — redirecting at that point
+					// aborts the confirm and the router reverts the commit ~10s
+					// later. Confirm explicitly before navigating away.
 					return uci.save().then(function() {
-						return uci.apply();
+						return uci.apply().then(function() {
+							return uci.callConfirm();
+						});
 					}).catch(function(e) {
-						console.log('uci.apply timeout (ignored):', e.message);
+						// Even on a client-side timeout the commit may have landed
+						// with the rollback timer armed — confirm it anyway.
+						console.log('uci.apply error (confirming anyway):', e.message || e);
+						return uci.callConfirm().catch(function() {});
 					}).then(function() {
 						return callReload();
 					}).then(function() {
@@ -393,18 +399,45 @@ return view.extend({
 		// daemon ignores incomplete schedules (days/start/stop all required to
 		// take effect). rmempty=true means a blank field is dropped on save
 		// instead of raising "must not be empty"; validators tolerate empty.
-		// Stock MultiValue (multi-select dropdown). A custom ui.Select checkbox
-		// override was tried but its getValue() returned null → days were lost
-		// on save; the stock dropdown round-trips reliably.
+		// Days renders as 7 plain inline checkboxes. A ui.Select checkbox-group
+		// widget was tried first, but its getValue() returned null so days were
+		// silently lost on save. Instead we own BOTH ends of the contract:
+		// renderWidget emits plain checkboxes, and formvalue reads the checked
+		// boxes straight from the DOM — CBI's save path then sees exactly what
+		// the user ticked, with no widget class in between to lose the value.
+		var dayKeys = [ 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun' ];
+		var dayLabels = { mon: _('Mon'), tue: _('Tue'), wed: _('Wed'),
+			thu: _('Thu'), fri: _('Fri'), sat: _('Sat'), sun: _('Sun') };
+
 		var o = ss.option(form.MultiValue, 'days', _('Days'));
-		o.value('mon', _('Mon'));
-		o.value('tue', _('Tue'));
-		o.value('wed', _('Wed'));
-		o.value('thu', _('Thu'));
-		o.value('fri', _('Fri'));
-		o.value('sat', _('Sat'));
-		o.value('sun', _('Sun'));
+		dayKeys.forEach(function(d) { o.value(d, dayLabels[d]); });
 		o.rmempty = true;
+		o.renderWidget = function(section_id, option_index, cfgvalue) {
+			var selected = L.toArray(cfgvalue);
+			return E('div', {
+				'id': this.cbid(section_id),
+				'class': 'fw-days',
+				'style': 'display:flex;gap:10px;flex-wrap:wrap'
+			}, dayKeys.map(function(d) {
+				return E('label', { 'style': 'display:flex;align-items:center;gap:3px;white-space:nowrap;cursor:pointer' }, [
+					E('input', {
+						'type': 'checkbox',
+						'data-day': d,
+						'checked': (selected.indexOf(d) > -1) ? '' : null
+					}),
+					dayLabels[d]
+				]);
+			}));
+		};
+		o.formvalue = function(section_id) {
+			var node = document.getElementById(this.cbid(section_id));
+			if (!node) return null;
+			var vals = [];
+			node.querySelectorAll('input[data-day]:checked').forEach(function(cb) {
+				vals.push(cb.getAttribute('data-day'));
+			});
+			return vals.length ? vals : null;
+		};
 
 		o = ss.option(form.Value, 'start', _('Start'));
 		o.placeholder = '07:00';
@@ -440,10 +473,16 @@ return view.extend({
 					});
 					uci.remove('familywarden', pid);
 					// Save and apply immediately so the deletion is persisted to disk.
+					// Confirm explicitly before redirecting (see create handler):
+					// uci.apply() resolves before its detached confirm poll runs,
+					// and navigating away unconfirmed makes the router roll back.
 					return uci.save().then(function() {
-						return uci.apply();
+						return uci.apply().then(function() {
+							return uci.callConfirm();
+						});
 					}).catch(function(e) {
-						console.log('uci.apply timeout (ignored):', e.message);
+						console.log('uci.apply error (confirming anyway):', e.message || e);
+						return uci.callConfirm().catch(function() {});
 					}).then(function() {
 						return callReload();
 					}).then(function() {

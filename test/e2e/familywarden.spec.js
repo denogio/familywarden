@@ -11,24 +11,22 @@ async function loginAsRoot(page) {
   await page.waitForLoadState('networkidle', { timeout: 15000 });
 }
 
-// Select weekdays in the first schedule row's LuCI multi-select dropdown.
-// Operate on the LAST schedule row (the one just added) so tests are robust
-// to schedules left behind by earlier tests.
+// Tick weekday checkboxes in the schedule row. Days render as 7 plain inline
+// checkboxes (input[data-day]). Operate on the LAST schedule row (the one
+// just added) so tests are robust to schedules left behind by earlier tests.
 async function selectDays(schedSection, page, values) {
-  const dd = schedSection.locator('[id$=".days"].cbi-dropdown').last();
-  await dd.click();                       // open
+  const row = schedSection.locator('.fw-days').last();
   for (const v of values)
-    await dd.locator(`ul > li[data-value="${v}"]`).first().click();
-  await page.keyboard.press('Escape');    // close
+    await row.locator(`input[data-day="${v}"]`).check();
   await page.waitForTimeout(200);
 }
 
-// Read selected day values back from the last row's dropdown (selected li's
-// carry a `display` attr). Used to assert days actually round-trip through save.
+// Read checked day values back from the last row's checkboxes. Used to assert
+// days actually round-trip through save.
 async function selectedDays(schedSection) {
-  return schedSection.locator('[id$=".days"].cbi-dropdown').last()
-    .locator('li[data-value][display]')
-    .evaluateAll(els => els.map(e => e.getAttribute('data-value')).filter(Boolean));
+  return schedSection.locator('.fw-days').last()
+    .locator('input[data-day]:checked')
+    .evaluateAll(els => els.map(e => e.getAttribute('data-day')).filter(Boolean));
 }
 
 test.describe('FamilyWarden LuCI UI', () => {
@@ -179,50 +177,25 @@ test.describe('FamilyWarden Profile Creation', () => {
     await page.goto(`${FW_URL}/profiles`);
     await page.waitForLoadState('networkidle');
 
-    let profileTabs = page.locator('.fw-tab:not(.fw-tab-add)');
-    let profileCount = await profileTabs.count();
+    // Create a profile with a UNIQUE name just for this test. (A fixed name
+    // like "DeleteMeProfile" collided with a profile id left by other tests,
+    // so the create was a no-op and the count baseline was wrong.)
+    const victimName = 'DelMe' + Date.now();
+    await page.locator('.fw-tab-add').click();
+    await page.waitForSelector('div.modal', { timeout: 5000 });
+    await page.locator('div.modal input[type="text"]').fill(victimName);
+    await page.locator('div.modal .cbi-button-positive').click();
+    await page.waitForURL(/\/profiles/, { timeout: 10000 });
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2000);
 
-    if (profileCount === 0) {
-      console.log('No profiles, creating one for delete test...');
-      await page.locator('.fw-tab-add').click();
-      await page.waitForSelector('div.modal', { timeout: 5000 });
-      await page.locator('div.modal input[type="text"]').fill('DeleteMeProfile');
-      await page.locator('div.modal .cbi-button-positive').click();
-      await page.waitForURL(/\/profiles/, { timeout: 10000 });
-      await page.waitForLoadState('networkidle');
-      await page.waitForTimeout(2000);
-      profileTabs = page.locator('.fw-tab:not(.fw-tab-add)');
-      profileCount = await profileTabs.count();
-    }
+    // Baseline taken AFTER the create, and we delete exactly that profile.
+    const victimTab = page.locator(`.fw-tab:has-text("${victimName.toLowerCase()}")`).first();
+    await victimTab.waitFor({ timeout: 5000 });
+    const profileCount = await page.locator('.fw-tab:not(.fw-tab-add)').count();
+    console.log(`Deleting profile: ${victimName} (count before: ${profileCount})`);
 
-    if (profileCount < 2) {
-      console.log(`Only ${profileCount} profile(s), creating one more for delete test...`);
-      await page.locator('.fw-tab-add').click();
-      await page.waitForSelector('div.modal', { timeout: 5000 });
-      await page.locator('div.modal input[type="text"]').fill('DeleteMeProfile');
-      await page.locator('div.modal .cbi-button-positive').click();
-      await page.waitForURL(/\/profiles/, { timeout: 10000 });
-      await page.waitForLoadState('networkidle');
-      await page.waitForTimeout(1000);
-
-      const saveBtn = page.locator('button:has-text("Save"), li:has-text("Save & Apply")').first();
-      if (await saveBtn.isVisible()) {
-        await saveBtn.click();
-        await page.waitForTimeout(5000);
-      }
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await page.waitForTimeout(2000);
-
-      profileTabs = page.locator('.fw-tab:not(.fw-tab-add)');
-      profileCount = await profileTabs.count();
-    }
-
-    const firstTab = profileTabs.first();
-    const profileName = await firstTab.textContent();
-    console.log(`Deleting profile: ${profileName}`);
-
-    await firstTab.click();
+    await victimTab.click();
     await page.waitForLoadState('networkidle');
 
     // confirm() dialog is auto-accepted in beforeEach.
@@ -232,16 +205,14 @@ test.describe('FamilyWarden Profile Creation', () => {
       console.log('Found delete button, clicking');
       await deleteBtn.click();
 
-      await page.waitForURL(/\/profiles/, { timeout: 10000 });
+      // The delete handler redirects to /profiles WITHOUT ?name= only after
+      // uci.save+apply+reload have completed. Waiting for /\/profiles/ alone
+      // matched the CURRENT url (/profiles?name=...) immediately, so the test
+      // reloaded mid-apply and LuCI's rollback restored the profile.
+      await page.waitForURL(u => u.pathname.endsWith('/profiles') && !u.search.includes('name'),
+        { timeout: 30000 });
       await page.waitForLoadState('networkidle');
       await page.waitForTimeout(1000);
-
-      const saveBtn = page.locator('button:has-text("Save"), li:has-text("Save & Apply")').first();
-      if (await saveBtn.isVisible()) {
-        console.log('Clicking Save & Apply');
-        await saveBtn.click();
-        await page.waitForTimeout(5000);
-      }
 
       await page.reload();
       await page.waitForLoadState('networkidle');
@@ -250,6 +221,8 @@ test.describe('FamilyWarden Profile Creation', () => {
       const newCount = await page.locator('.fw-tab:not(.fw-tab-add)').count();
       console.log(`Profile count after delete: ${newCount}`);
       expect(newCount).toBe(profileCount - 1);
+      // And the victim tab must be gone by name, not just by count.
+      await expect(page.locator(`.fw-tab:has-text("${victimName.toLowerCase()}")`)).toHaveCount(0);
     }
   });
 });
