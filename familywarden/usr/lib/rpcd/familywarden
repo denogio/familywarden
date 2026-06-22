@@ -56,6 +56,59 @@ time_to_minutes() {
     echo $(( h * 60 + m ))
 }
 
+# ---- Current-time schedule evaluation (status reporting) ----
+#
+# Mirror of the nft rule generation in _sched_accept_rules: decide whether
+# "now" (current weekday + minutes-since-midnight) falls inside one of a
+# profile's allow-windows, so reported status matches the firewall. Set
+# _now_profile/_now_day/_now_min before iterating; _now_allowed=1 on a match.
+_now_profile=""; _now_day=""; _now_min=""; _now_allowed=0
+
+_now_match_schedule() {
+    local sched="$1" sp days start stop smin emin d n
+    config_get sp "$sched" profile ""
+    [ "$sp" = "$_now_profile" ] || return
+    config_get days "$sched" days ""
+    config_get start "$sched" start ""
+    config_get stop "$sched" stop ""
+    [ -z "$days" ] || [ -z "$start" ] || [ -z "$stop" ] && return
+    smin=$(time_to_minutes "$start"); emin=$(time_to_minutes "$stop")
+    for d in $days; do
+        n=$(day_to_num "$d"); [ -z "$n" ] && continue
+        if [ "$smin" -lt "$emin" ]; then
+            [ "$n" = "$_now_day" ] && [ "$_now_min" -ge "$smin" ] && [ "$_now_min" -lt "$emin" ] && _now_allowed=1
+        elif [ "$smin" -gt "$emin" ]; then
+            # Overnight: start..24:00 on the day, 00:00..stop on the next day
+            [ "$n" = "$_now_day" ] && [ "$_now_min" -ge "$smin" ] && _now_allowed=1
+            [ "$(day_shift "$n")" = "$_now_day" ] && [ "$_now_min" -lt "$emin" ] && _now_allowed=1
+        else
+            # start==stop → allowed all day on those days
+            [ "$n" = "$_now_day" ] && _now_allowed=1
+        fi
+    done
+}
+
+# Canonical effective status: always "allowed" or "blocked" (frontend matches
+# on the substring "blocked"). Requires `config_load familywarden` beforehand.
+profile_effective_status() {
+    local profile="$1" policy="$2" override="$3"
+    case "$override" in
+        allow) echo "allowed"; return ;;
+        block) echo "blocked"; return ;;
+    esac
+    case "$policy" in
+        block) echo "blocked" ;;
+        scheduled)
+            _now_profile="$profile"; _now_allowed=0
+            _now_day=$(date +%w)                       # 0=sun..6=sat (matches day_to_num)
+            _now_min=$(time_to_minutes "$(date +%H:%M)")
+            config_foreach _now_match_schedule schedule
+            [ "$_now_allowed" = "1" ] && echo "allowed" || echo "blocked"
+            ;;
+        *) echo "allowed" ;;
+    esac
+}
+
 # State file helpers
 state_set() {
     local key="$1"
@@ -333,15 +386,9 @@ ubus_list_profile() {
     override=$(state_get "${profile}.override" "none")
     override_expires=$(state_get "${profile}.override_expires" "")
 
-    # Compute effective status from override + policy
+    # Compute effective status from override + policy (+ schedule windows)
     local status
-    if [ "$override" != "none" ]; then
-        status="$override"
-    elif [ "$policy" = "block" ]; then
-        status="blocked"
-    else
-        status="allowed"
-    fi
+    status=$(profile_effective_status "$profile" "$policy" "$override")
 
     json_add_object "$profile"
     json_add_string "name" "$name"
@@ -410,6 +457,7 @@ ubus_status() {
         json_init
         json_add_string "name" "$name"
         json_add_string "policy" "$policy"
+        json_add_string "status" "$(profile_effective_status "$profile" "$policy" "$override")"
         json_add_string "override" "$override"
         json_add_int "override_expires" "${override_expires:-0}"
 
