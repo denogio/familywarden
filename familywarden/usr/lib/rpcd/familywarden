@@ -26,6 +26,11 @@ FW_INCLUDE="/var/etc/familywarden.include"
 FW_INCLUDE_NEW="/tmp/familywarden.include.new"
 FW_LOCK="/var/lock/familywarden.lock"
 FW_CHAIN="familywarden_forward"
+# Input hook: drops incoming TCP to the router itself (LuCI, SSH, etc.) for
+# profiles with block_router='1' while they are in an effective blocked state.
+# Matched by source MAC, so it works regardless of the router's LAN IP
+# (192.168.1.1, 192.168.0.1, 10.0.0.1, ...).
+FW_CHAIN_INPUT="familywarden_input"
 
 # ---- Helpers ----
 
@@ -126,6 +131,21 @@ state_get() {
     echo "${line#*=}"
 }
 
+# Echo "<override> <expires>" for a profile with expiry applied at read time:
+# an expired ticket (allow with override_expires in the past) reads as "none".
+# This makes status reporting correct the instant a ticket lapses, independent
+# of any firewall recompile — the kernel removes the nft set element on its own.
+effective_override() {
+    local profile="$1" o e
+    o=$(state_get "${profile}.override" "none")
+    e=$(state_get "${profile}.override_expires" "")
+    if [ -n "$e" ] && [ "$o" != "none" ] && [ "$(date +%s)" -gt "$e" ]; then
+        echo "none "
+        return
+    fi
+    echo "$o $e"
+}
+
 # GC expired ticket overrides. Called at start of compile_and_apply.
 # Returns 1 if any state was changed (caller should recompile).
 gc_expired_tickets() {
@@ -213,6 +233,12 @@ gen_override_rules() {
     override=$(state_get "${section}.override" "none")
     [ "$override" = "none" ] && return
 
+    # A timed allow (ticket) is handled by the familywarden_ticket timeout set so
+    # the kernel can expire it on its own — never emit it as a static rule here.
+    # Permanent block, and permanent allow (no expiry), stay as static rules.
+    override_expires=$(state_get "${section}.override_expires" "")
+    [ "$override" = "allow" ] && [ -n "$override_expires" ] && return
+
     _cur_profile="$section"
     _override_target="$override"
     config_list_foreach "$section" device gen_device_override_rule
@@ -243,13 +269,140 @@ gen_device_block_rule() {
     echo "        ether saddr ${1} counter drop comment \"familywarden:${_cur_profile}:block\""
 }
 
+# ---- Input chain generators (block_router feature) ----
+#
+# Mirror the forward-chain rules but scoped to the `input` hook and TCP only.
+# Drops all incoming TCP from a profile's MACs to the router itself (LuCI, SSH,
+# any TCP service) when the profile is in an effective blocked state and
+# block_router='1'. ICMP/UDP/ARP are left alone so the device still gets a
+# DHCP lease, gateway ARP, and DNS resolution.
+#
+# Rule order inside the chain mirrors familywarden_forward (ticket > override
+# > block > scheduled) so an active allow-override / ticket always wins over
+# a block/scheduled drop.
+
+# Permanent allow overrides (timed allows / tickets are handled by the
+# familywarden_ticket set at the top of the chain — see generate_include).
+gen_input_override_rules() {
+    local section="$1"
+    local enabled override override_expires
+
+    config_get enabled "$section" enabled "0"
+    [ "$enabled" != "1" ] && return
+
+    override=$(state_get "${section}.override" "none")
+    [ "$override" = "allow" ] || return
+
+    override_expires=$(state_get "${section}.override_expires" "")
+    [ -n "$override_expires" ] && return  # ticket → handled by set
+
+    _cur_profile="$section"
+    config_list_foreach "$section" device gen_input_device_override_rule
+}
+
+gen_input_device_override_rule() {
+    echo "        ether saddr ${1} tcp dport 0-65535 counter accept comment \"familywarden:${_cur_profile}:override:allow:input\""
+}
+
+# Block-policy profiles with block_router='1' that are currently effective-blocked.
+gen_input_profile_block() {
+    local section="$1"
+    local enabled policy block_router
+    config_get enabled "$section" enabled "0"
+    [ "$enabled" != "1" ] && return
+    config_get policy "$section" policy "allow"
+    [ "$policy" = "block" ] || return
+    config_get block_router "$section" block_router "0"
+    [ "$block_router" = "1" ] || return
+    _cur_profile="$section"
+    config_list_foreach "$section" device gen_input_device_block_rule
+}
+
+gen_input_device_block_rule() {
+    echo "        ether saddr ${1} tcp dport 0-65535 counter drop comment \"familywarden:${_cur_profile}:block:input\""
+}
+
+# Scheduled profiles with block_router='1' currently outside an allow window
+# (and not under an active allow-override / ticket).
+gen_input_profile_scheduled() {
+    local section="$1"
+    local enabled policy block_router override override_expires
+
+    config_get enabled "$section" enabled "0"
+    [ "$enabled" != "1" ] && return
+    config_get policy "$section" policy "allow"
+    [ "$policy" = "scheduled" ] || return
+    config_get block_router "$section" block_router "0"
+    [ "$block_router" = "1" ] || return
+
+    # An active allow-override or ticket means we are not blocked right now —
+    # the override accept / ticket set at the top of the chain covers us.
+    override=$(state_get "${section}.override" "none")
+    [ "$override" = "allow" ] && return
+
+    # Reuse the canonical "is now in an allow window?" predicate.
+    _now_profile="$section"
+    _now_allowed=0
+    _now_day=$(date +%w)
+    _now_min=$(time_to_minutes "$(date +%H:%M)")
+    config_foreach _now_match_schedule schedule
+    [ "$_now_allowed" = "1" ] && return
+
+    _cur_profile="$section"
+    config_list_foreach "$section" device gen_input_device_block_rule
+}
+
+# Collect nft timeout-set elements for active tickets (timed allow-overrides).
+# Each emits "<mac> timeout <remaining>s"; the kernel auto-removes the element
+# when it expires, so a ticket lapses with no cron/poller. The remaining time is
+# derived from the absolute expiry epoch, so a reload mid-ticket preserves the
+# correct countdown. Expired tickets are already cleared from state by
+# gc_expired_tickets before this runs, so they never appear here.
+_ticket_elements=""
+gen_ticket_elements() {
+    local section="$1" enabled override expires rem
+    config_get enabled "$section" enabled "0"
+    [ "$enabled" != "1" ] && return
+    override=$(state_get "${section}.override" "none")
+    [ "$override" = "allow" ] || return
+    expires=$(state_get "${section}.override_expires" "")
+    [ -n "$expires" ] || return                  # permanent allow → not a ticket
+    rem=$(( expires - $(date +%s) ))
+    [ "$rem" -gt 0 ] || return
+    _cur_profile="$section"
+    _ticket_rem="$rem"
+    config_list_foreach "$section" device gen_ticket_elem
+}
+
+gen_ticket_elem() {
+    local mac="$1"
+    if [ -z "$_ticket_elements" ]; then
+        _ticket_elements="${mac} timeout ${_ticket_rem}s"
+    else
+        _ticket_elements="${_ticket_elements}, ${mac} timeout ${_ticket_rem}s"
+    fi
+}
+
 # ---- Compiler pipeline ----
 
 generate_include() {
     mkdir -p "$(dirname "$FW_INCLUDE")"
 
+    config_load familywarden
+
+    # Collect active tickets up front so the timeout set can be declared before
+    # the chain that references it.
+    _ticket_elements=""
+    config_foreach gen_ticket_elements profile
+
     # Write fw4-include format. fw4 wraps the include in `table inet fw4 { ... }`
-    # context, so we emit only chain declarations (no outer table).
+    # context, so we emit only table-level objects (a set + a chain, no outer
+    # table).
+    #
+    # familywarden_ticket is a timeout set: tickets are added with a per-element
+    # timeout so the KERNEL expires them on its own (no cron — schedules and
+    # tickets are both kernel-evaluated). It is referenced first in the chain so
+    # an active ticket wins over schedule/block drops, just like a manual allow.
     #
     # familywarden_forward is a base chain hooked on forward at priority 1
     # (just after fw4's own forward filter). policy accept means only explicit
@@ -259,12 +412,38 @@ generate_include() {
         echo "# /var/etc/familywarden.include"
         echo "# Generated by familywarden — do not edit"
         echo ""
+        echo "set familywarden_ticket {"
+        echo "    type ether_addr"
+        echo "    flags timeout"
+        [ -n "$_ticket_elements" ] && echo "    elements = { $_ticket_elements }"
+        echo "}"
+        echo ""
+        # familywarden_input is a base chain hooked on input at priority 1. It
+        # drops incoming TCP from blocked profiles with block_router='1' so a
+        # blocked device cannot reach the router itself (LuCI, SSH, etc.). The
+        # ticket accept rule at the top means an active ticket restores router
+        # access for the ticket duration. ICMP/UDP/ARP are intentionally not
+        # matched so the device still gets a DHCP lease and DNS.
+        echo "chain familywarden_input {"
+        echo "    type filter hook input priority 1; policy accept;"
+        echo "        ether saddr @familywarden_ticket tcp dport 0-65535 counter accept comment \"familywarden:ticket:input\""
+
+        # Permanent allow overrides restore router access
+        config_foreach gen_input_override_rules profile
+
+        # Block-policy profiles with block_router='1'
+        config_foreach gen_input_profile_block profile
+
+        # Scheduled profiles currently outside an allow window, with block_router='1'
+        config_foreach gen_input_profile_scheduled profile
+
+        echo "}"
+        echo ""
         echo "chain familywarden_forward {"
         echo "    type filter hook forward priority 1; policy accept;"
+        echo "        ether saddr @familywarden_ticket counter accept comment \"familywarden:ticket\""
 
-        config_load familywarden
-
-        # Override rules first (matched before policy rules)
+        # Permanent override rules (block / non-expiring allow)
         config_foreach gen_override_rules profile
 
         # Permanent block-policy profiles
@@ -351,6 +530,10 @@ EOF
         # the firewall. Deleting first makes every reload self-healing.
         # The sub-second fail-open window before fw4 reload is acceptable.
         nft delete chain inet fw4 familywarden_forward 2>/dev/null
+        nft delete chain inet fw4 familywarden_input 2>/dev/null
+        # Same for the ticket set (now unreferenced after the chain is gone), so
+        # fw4 recreates it from the include with the current remaining timeouts.
+        nft delete set inet fw4 familywarden_ticket 2>/dev/null
 
         # Apply via fw4 reload. fw4 flushes and rebuilds the whole inet fw4
         # table, so rules are idempotent and survive reboot.
@@ -376,15 +559,20 @@ ubus_list() {
 
 ubus_list_profile() {
     local profile="$1"
-    local name enabled policy override override_expires
+    local name enabled policy override override_expires block_router
 
     config_get name "$profile" name "$profile"
     config_get enabled "$profile" enabled "0"
     [ "$enabled" != "1" ] && return
 
     config_get policy "$profile" policy "allow"
-    override=$(state_get "${profile}.override" "none")
-    override_expires=$(state_get "${profile}.override_expires" "")
+    config_get block_router "$profile" block_router "0"
+    # Apply ticket expiry at read time so an elapsed ticket reads as "none"
+    # immediately, independent of the kernel's set-element expiry.
+    read -r override override_expires <<EOF
+$(effective_override "$profile")
+EOF
+    [ -z "$override" ] && override="none"
 
     # Compute effective status from override + policy (+ schedule windows)
     local status
@@ -396,6 +584,7 @@ ubus_list_profile() {
     json_add_string "status" "$status"
     json_add_string "override" "$override"
     json_add_int "override_expires" "${override_expires:-0}"
+    json_add_boolean "block_router" "$block_router"
 
     json_add_array "devices"
     config_list_foreach "$profile" device json_add_dev
@@ -440,10 +629,11 @@ ubus_status() {
         flock -s 200 || return 1
 
         config_load familywarden
-        local name enabled policy
+        local name enabled policy block_router
         config_get name "$profile" name ""
         config_get enabled "$profile" enabled "0"
         config_get policy "$profile" policy "allow"
+        config_get block_router "$profile" block_router "0"
 
         if [ -z "$name" ] || [ "$enabled" != "1" ]; then
             echo '{"error":"profile not found or disabled"}'
@@ -460,6 +650,7 @@ ubus_status() {
         json_add_string "status" "$(profile_effective_status "$profile" "$policy" "$override")"
         json_add_string "override" "$override"
         json_add_int "override_expires" "${override_expires:-0}"
+        json_add_boolean "block_router" "$block_router"
 
         json_add_array "devices"
         config_list_foreach "$profile" device json_add_dev

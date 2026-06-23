@@ -12,6 +12,7 @@ config global 'settings'
 #     option policy 'scheduled'
 #     list device '00:11:22:33:44:55'
 #     option dns_profile 'child'
+#     option block_router '1'
 #
 # config schedule 'josva_weekday'
 #     option profile 'josva'

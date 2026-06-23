@@ -353,6 +353,13 @@ return view.extend({
 		policyOption.value('block', _('Blocked'));
 		policyOption.value('scheduled', _('Scheduled'));
 
+		var blockRouterOption = s.option(form.Flag, 'block_router',
+			_('Block router access when blocked'),
+			_('Also drop incoming TCP to the router (LuCI, SSH) when this profile is blocked. ' +
+				'Has no effect while the profile is allowed, and leaves ICMP/UDP/ARP intact so the device still gets a DHCP lease and DNS.'));
+		blockRouterOption.rmempty = true;
+		blockRouterOption.default = '0';
+
 		var deviceOption = s.option(form.DynamicList, 'device', _('Devices'),
 			_('Select known devices or enter MAC addresses manually.'));
 		deviceOption.datatype = 'macaddr';
