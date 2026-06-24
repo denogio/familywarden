@@ -322,11 +322,20 @@ gen_input_device_block_rule() {
     echo "        ether saddr ${1} tcp dport 0-65535 counter drop comment \"familywarden:${_cur_profile}:block:input\""
 }
 
-# Scheduled profiles with block_router='1' currently outside an allow window
-# (and not under an active allow-override / ticket).
+# Scheduled profiles with block_router='1' drop TCP to the router OUTSIDE
+# their allow windows. The drop conditions use nftables meta hour/day matching
+# so the kernel evaluates the schedule at packet time — no user-space polling,
+# no stale-state bug across schedule transitions (the kernel itself flips the
+# rule on/off at HH:MM). Override accept rules and the ticket set at the top
+# of the chain short-circuit drops for active allow-override / ticket.
+#
+# Inverse-window emission: for each allow window [start,stop) on days D, we
+# emit a drop with the COMPLEMENT — i.e. everything outside that window on
+# days D (and the day-before-D for overnight windows). Mirrors the forward
+# chain's `_sched_accept_rules` pattern but with inverted time bounds.
 gen_input_profile_scheduled() {
     local section="$1"
-    local enabled policy block_router override override_expires
+    local enabled policy block_router
 
     config_get enabled "$section" enabled "0"
     [ "$enabled" != "1" ] && return
@@ -335,21 +344,99 @@ gen_input_profile_scheduled() {
     config_get block_router "$section" block_router "0"
     [ "$block_router" = "1" ] || return
 
-    # An active allow-override or ticket means we are not blocked right now —
-    # the override accept / ticket set at the top of the chain covers us.
-    override=$(state_get "${section}.override" "none")
-    [ "$override" = "allow" ] && return
-
-    # Reuse the canonical "is now in an allow window?" predicate.
-    _now_profile="$section"
-    _now_allowed=0
-    _now_day=$(date +%w)
-    _now_min=$(time_to_minutes "$(date +%H:%M)")
-    config_foreach _now_match_schedule schedule
-    [ "$_now_allowed" = "1" ] && return
-
     _cur_profile="$section"
-    config_list_foreach "$section" device gen_input_device_block_rule
+    _sched_devices=""
+    config_list_foreach "$section" device _collect_dev
+    [ -z "$_sched_devices" ] && return
+
+    # Emit inverse-window drops: for each schedule's allow-window, drop TCP
+    # at all OTHER times on the same days (and day-before-D for overnight).
+    # The override accept / ticket set at the top of the chain short-circuits
+    # these drops during an active allow-override / ticket — we do NOT need to
+    # special-case override here.
+    config_foreach _sched_input_drop_rules schedule
+
+    # Fallback: if the profile has no schedule windows defined, drop TCP 24/7
+    # (the forward chain's trailing default-drop, mirrored here).
+    local has_windows=0
+    config_foreach _input_count_windows schedule
+    if [ "$has_windows" = "0" ]; then
+        local mac
+        for mac in $_sched_devices; do
+            echo "        ether saddr ${mac} tcp dport 0-65535 counter drop comment \"familywarden:${_cur_profile}:scheduled:input\""
+        done
+    fi
+}
+
+_input_count_windows() {
+    local sched="$1" sp days start stop
+    config_get sp "$sched" profile ""
+    [ "$sp" = "$_cur_profile" ] || return
+    config_get days "$sched" days ""
+    config_get start "$sched" start ""
+    config_get stop "$sched" stop ""
+    [ -n "$days" ] && [ -n "$start" ] && [ -n "$stop" ] && has_windows=1
+}
+
+# Mirror of _sched_accept_rules but emits DROP rules with INVERTED time bounds.
+# For an allow window [start, stop) on days D, drops everything OUTSIDE that
+# window — so the kernel short-circuits drop on its own at HH:MM boundaries
+# without a recompile.
+_sched_input_drop_rules() {
+    local sched="$1"
+    local sched_profile days start stop
+    config_get sched_profile "$sched" profile ""
+    [ "$sched_profile" = "$_cur_profile" ] || return
+    config_get days "$sched" days ""
+    config_get start "$sched" start ""
+    config_get stop "$sched" stop ""
+    [ -z "$days" ] || [ -z "$start" ] || [ -z "$stop" ] && return
+
+    local day_nums="" shifted_nums="" d n
+    for d in $days; do
+        n=$(day_to_num "$d")
+        [ -z "$n" ] && continue
+        day_nums="$day_nums, $n"
+        shifted_nums="$shifted_nums, $(day_shift "$n")"
+    done
+    day_nums="${day_nums#, }"
+    shifted_nums="${shifted_nums#, }"
+    [ -z "$day_nums" ] && return
+
+    local smin emin mac
+    smin=$(time_to_minutes "$start")
+    emin=$(time_to_minutes "$stop")
+    for mac in $_sched_devices; do
+        if [ "$smin" -lt "$emin" ]; then
+            # Normal day window [start, stop): drop outside it on days D.
+            # Drop < start on days D, and >= stop on days D. The second clause
+            # also covers the day-before-D overnight tail (>= stop on shifted
+            # days is just (>= stop on days D), so we keep the inverse on D).
+            echo "        ether saddr ${mac} meta hour < ${start} meta day { ${day_nums} } tcp dport 0-65535 counter drop comment \"familywarden:${_cur_profile}:sched-block:input\""
+            echo "        ether saddr ${mac} meta hour >= ${stop} meta day { ${day_nums} } tcp dport 0-65535 counter drop comment \"familywarden:${_cur_profile}:sched-block:input\""
+        elif [ "$smin" -gt "$emin" ]; then
+            # Overnight window [start..24:00 on D, 00:00..stop on D+1).
+            # Inverse: [00:00..start) on D, and [stop..24:00) on D+1 — i.e. on
+            # D+1 the drop is >= stop; on D the drop is < start.
+            echo "        ether saddr ${mac} meta hour < ${start} meta day { ${day_nums} } tcp dport 0-65535 counter drop comment \"familywarden:${_cur_profile}:sched-block:input\""
+            echo "        ether saddr ${mac} meta hour >= ${stop} meta day { ${shifted_nums} } tcp dport 0-65535 counter drop comment \"familywarden:${_cur_profile}:sched-block:input\""
+        else
+            # start==stop: all-day allow. Inverse = block ALL other days
+            # (the days not in D). Drop on the complement of D. We approximate
+            # by emitting drops for all 7 days then over-allowing the schedule
+            # days — but since start==stop means "all day on D" is allowed,
+            # the inverse block is "all day NOT on D". Easier: drop on the
+            # 7-day set, but that would over-block the allow days. Since the
+            # all-day case is rare and the inverse is complex, fall back to
+            # drop on all 7 days when the schedule is all-day, and rely on
+            # the override/ticket at the top to restore access during an
+            # active ticket. (Same compromise as the forward chain makes for
+            # block-policy profiles: the rule is "drop", the allow comes from
+            # the override layer.)
+            echo "        ether saddr ${mac} meta day { ${day_nums} } tcp dport 0-65535 counter accept comment \"familywarden:${_cur_profile}:sched-allow:input\""
+            echo "        ether saddr ${mac} tcp dport 0-65535 counter drop comment \"familywarden:${_cur_profile}:sched-block:input\""
+        fi
+    done
 }
 
 # Collect nft timeout-set elements for active tickets (timed allow-overrides).
