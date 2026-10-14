@@ -4,6 +4,7 @@
 'require rpc';
 'require uci';
 'require poll';
+'require familywarden.ulysses as ulysses';
 
 var callList = rpc.declare({
 	object: 'familywarden',
@@ -178,6 +179,7 @@ function injectStyles() {
 		.fw-dev-mac{font-size:11px;font-family:monospace;color:var(--text-color-medium,#888);flex-shrink:0;\
 			padding:1px 7px;border-radius:3px;border:1px solid var(--border-color-low,#e0e0e0)}\
 		.fw-no-devs{font-size:12px;color:var(--text-color-medium,#999);font-style:italic;margin-top:4px}\
+		.fw-ulysses{padding:7px 11px;border-radius:6px;margin-top:9px;font-size:13px;background:rgba(127,127,127,.12)}\
 		.fw-ovr{display:flex;align-items:center;gap:7px;padding:7px 11px;border-radius:6px;margin-top:9px;font-size:13px;font-weight:500}\
 		.fw-ovr.blk{background:rgba(198,40,40,.10);color:var(--error-color-high,#ff6b6b)}\
 		.fw-ovr.allw{background:rgba(46,125,50,.10);color:var(--success-color-high,#5e9eff)}\
@@ -343,18 +345,22 @@ function deviceRow(mac) {
 	]);
 }
 
+// Schedules as enforced, from the backend's list reply. Not from UCI: for a
+// Ulysses-locked profile UCI may hold an edit that only takes effect in 24 h.
+function schedulesOf(profiles) {
+	var out = {};
+	Object.keys(profiles || {}).forEach(function(id) {
+		out[id] = Array.isArray(profiles[id].schedules) ? profiles[id].schedules : [];
+	});
+	return out;
+}
+
 function refreshDashboard() {
 	return Promise.all([callList(), uci.load('familywarden'), callDHCPLeases(), callHostHints()]).then(function(results) {
 		if (!dashboardNode) return;
 		var profiles = results[0];
 		hostMap = buildHostMap(results[2], results[3]);
-		scheduleData = {};
-		uci.sections('familywarden', 'schedule', function(s) {
-			var prof = s.profile;
-			if (!prof) return;
-			if (!scheduleData[prof]) scheduleData[prof] = [];
-			scheduleData[prof].push({ days: s.days, start: s.start, stop: s.stop });
-		});
+		scheduleData = schedulesOf(profiles);
 
 		// Instead of replacing .fw-body (which restarts CSS animations), update
 		// individual cards in place. If card structure changes, rebuild just the grid.
@@ -409,7 +415,6 @@ function refreshDashboard() {
 			var p = profiles[id];
 			if (!p) return;
 
-			var isBlocked = p.status && p.status.indexOf('blocked') >= 0;
 			var hasOverride = p.override && p.override !== 'none';
 
 			// Update badge + traffic
@@ -444,6 +449,8 @@ function refreshDashboard() {
 						body.appendChild(E('div', { 'class': 'fw-ovr ' + (p.override === 'block' ? 'blk' : 'allw') },
 							E('span', {}, remaining + ' ' + _('min remaining'))));
 				}
+				var uNote = ulysses.note(p);
+				if (uNote) body.appendChild(uNote);
 				// Re-add schedule section (was lost when body was cleared)
 				var pScheds = scheduleData[id] || [];
 				if (p.policy === 'scheduled' && pScheds.length > 0)
@@ -453,22 +460,38 @@ function refreshDashboard() {
 			// Update foot buttons
 			var foot = card.querySelector('.fw-card-foot');
 			if (foot) {
-				var btns = [];
-				if (hasOverride) {
-					btns.push(makeBtn('cbi-button-reset', _('Reset'), function() { return callReset(id); }));
-				} else if (isBlocked) {
-					btns.push(makeBtn('cbi-button-positive', _('Allow'), function() { return callAllow(id); }));
-					[5, 10, 30].forEach(function(mins) {
-						btns.push(makeBtn('cbi-button-action', '+' + mins, function() { return callTicket(id, mins); }));
-					});
-				} else {
-					btns.push(makeBtn('cbi-button-negative', _('Block'), function() { return callBlock(id); }));
-				}
 				foot.innerHTML = '';
-				btns.forEach(function(b) { foot.appendChild(b); });
+				cardButtons(id, p).forEach(function(b) { foot.appendChild(b); });
 			}
 		});
 	});
+}
+
+// Action buttons for a profile card. Allow/tickets are hidden for profiles bound
+// by a Ulysses lock or pact (the backend refuses them anyway); Block and Reset
+// stay, since they only ever tighten back towards the bound rules.
+function cardButtons(id, p) {
+	var isBlocked = p.status && p.status.indexOf('blocked') >= 0;
+	var hasOverride = p.override && p.override !== 'none';
+	var btns = [];
+	if (ulysses.pactActive(p)) {
+		// nothing to reset or allow while a pact runs
+	} else if (hasOverride) {
+		btns.push(makeBtn('cbi-button-reset', _('Reset'), function() { return callReset(id); }));
+	} else if (isBlocked) {
+		if (!ulysses.isBound(p)) {
+			btns.push(makeBtn('cbi-button-positive', _('Allow'), function() { return callAllow(id); }));
+			[5, 10, 30].forEach(function(mins) {
+				btns.push(makeBtn('cbi-button-action', '+' + mins, function() { return callTicket(id, mins); }));
+			});
+		}
+	} else {
+		btns.push(makeBtn('cbi-button-negative', _('Block'), function() { return callBlock(id); }));
+	}
+	btns.push(makeBtn('cbi-button-neutral', '🔒 ' + _('Pact'), function() {
+		return ulysses.showPactModal(id, p.name, p);
+	}));
+	return btns;
 }
 
 function makeBtn(cls, label, fn) {
@@ -561,7 +584,6 @@ function buildContent(profiles, schedsByProfile) {
 
 	keys.forEach(function(id) {
 		var p = profiles[id];
-		var isBlocked = p.status && p.status.indexOf('blocked') >= 0;
 		var hasOverride = p.override && p.override !== 'none';
 		var profileUrl = L.url('admin/services/familywarden/profiles') + '?name=' + encodeURIComponent(id);
 
@@ -585,18 +607,7 @@ function buildContent(profiles, schedsByProfile) {
 			? buildScheduleSection(profileSchedules)
 			: null;
 
-		// Action buttons
-		var footBtns = [];
-		if (hasOverride) {
-			footBtns.push(makeBtn('cbi-button-reset', _('Reset'), function() { return callReset(id); }));
-		} else if (isBlocked) {
-			footBtns.push(makeBtn('cbi-button-positive', _('Allow'), function() { return callAllow(id); }));
-			[5, 10, 30].forEach(function(mins) {
-				footBtns.push(makeBtn('cbi-button-action', '+' + mins, function() { return callTicket(id, mins); }));
-			});
-		} else {
-			footBtns.push(makeBtn('cbi-button-negative', _('Block'), function() { return callBlock(id); }));
-		}
+		var footBtns = cardButtons(id, p);
 
 		// Build card body content
 		var bodyContent = [];
@@ -607,6 +618,8 @@ function buildContent(profiles, schedsByProfile) {
 			bodyContent.push(E('div', { 'class': 'fw-no-devs' }, _('No devices')));
 		}
 		if (overrideBar) bodyContent.push(overrideBar);
+		var uNote = ulysses.note(p);
+		if (uNote) bodyContent.push(uNote);
 		if (schedSection) bodyContent.push(schedSection);
 
 		cards.push(E('div', { 'class': 'fw-card' }, [
@@ -643,13 +656,7 @@ return view.extend({
 		injectStyles();
 		var profiles = data[0];
 		hostMap = buildHostMap(data[2], data[3]);
-		scheduleData = {};
-		uci.sections('familywarden', 'schedule', function(s) {
-			var prof = s.profile;
-			if (!prof) return;
-			if (!scheduleData[prof]) scheduleData[prof] = [];
-			scheduleData[prof].push({ days: s.days, start: s.start, stop: s.stop });
-		});
+		scheduleData = schedulesOf(profiles);
 
 		// Use a CBI form.Map container so we inherit the native LuCI theme
 		// styling (title bar, margins, card-like background) without having

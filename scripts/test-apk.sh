@@ -28,13 +28,14 @@ echo "Testing $(basename "$FW") + $(basename "$LUCI")"
 apk add --allow-untrusted --no-network --force-broken-world "$FW" "$LUCI" >/tmp/apk.log 2>&1 \
     && pass "apk install" || { fail "apk install"; cat /tmp/apk.log; }
 
-for f in /usr/libexec/rpcd/familywarden /etc/init.d/familywarden; do
+for f in /usr/libexec/rpcd/familywarden /etc/init.d/familywarden /usr/sbin/familywarden; do
     [ -x "$f" ] && pass "executable: $f" || fail "missing/not executable: $f"
 done
 for f in /etc/config/familywarden /usr/share/rpcd/acl.d/familywarden.json \
          /usr/share/rpcd/acl.d/luci-app-familywarden.json \
          /usr/share/luci/menu.d/luci-app-familywarden.json \
-         /www/luci-static/resources/view/familywarden/overview.js; do
+         /www/luci-static/resources/view/familywarden/overview.js \
+         /www/luci-static/resources/familywarden/ulysses.js; do
     [ -f "$f" ] && pass "installed: $f" || fail "missing: $f"
 done
 grep -q '@@VERSION@@' /www/luci-static/resources/view/familywarden/info.js \

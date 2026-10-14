@@ -55,9 +55,18 @@ ubus call familywarden block  '{"profile":"josva"}'
 ubus call familywarden allow  '{"profile":"josva"}'
 ubus call familywarden reset  '{"profile":"josva"}'
 ubus call familywarden ticket '{"profile":"josva","minutes":30}'
+ubus call familywarden pact   '{"profile":"josva","minutes":420}'
 ubus call familywarden reload
 ubus call familywarden version
 ```
+
+## Ulysses — bind dig selv til masten
+
+- **Lås** (profil-indstilling): ændringer af en låst profil træder først i kraft 24 timer
+  efter seneste ændring. Allow og tickets afvises; Block virker altid.
+- **Pagt** (🔒-knappen): internettet slukkes til et valgt klokkeslæt og kan ikke ophæves
+  eller forkortes fra LuCI eller Home Assistant — kun forlænges.
+- Nødudgang, kun som root over SSH: `familywarden unlock <profil>`
 
 ## Licens
 

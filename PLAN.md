@@ -371,7 +371,9 @@ faner i profil-editor; backend-ændringer.
 
 ---
 
-## 14. Ulysses-pagt (self-binding lock) — IKKE STARTET
+## 14. Ulysses-pagt (self-binding lock) — ERSTATTET
+
+> Implementeret i 0.8.0 med et ændret design (stående lås med 24 t karenstid + ad hoc-pagt). Se `plans/roadmap.md` Fase 1 og CLAUDE.md "Ulysses". Teksten nedenfor er historisk.
 
 ### Baggrund
 En forælder (med ADHD) vil **binde sig selv til masten** (Ulysses/Odysseus): fx

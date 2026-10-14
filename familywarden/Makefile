@@ -6,7 +6,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=familywarden
-PKG_VERSION:=0.7.3
+PKG_VERSION:=0.8.0
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=Dennis Højgaard <github@dehoej.dk>
@@ -41,6 +41,10 @@ define Package/familywarden/install
 
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
 	$(INSTALL_BIN) ./usr/lib/rpcd/familywarden $(1)/usr/libexec/rpcd/familywarden
+
+	# CLI for root over SSH, e.g. the Ulysses escape hatch: familywarden unlock <profile>
+	$(INSTALL_DIR) $(1)/usr/sbin
+	$(LN) ../libexec/rpcd/familywarden $(1)/usr/sbin/familywarden
 
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DATA) ./usr/share/rpcd/acl.d/familywarden.json $(1)/usr/share/rpcd/acl.d/familywarden.json

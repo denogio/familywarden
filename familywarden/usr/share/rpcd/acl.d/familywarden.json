@@ -8,7 +8,7 @@
     },
     "write": {
       "ubus": {
-        "familywarden": ["block", "allow", "reset", "ticket", "reload"]
+        "familywarden": ["block", "allow", "reset", "ticket", "pact", "reload"]
       }
     }
   }

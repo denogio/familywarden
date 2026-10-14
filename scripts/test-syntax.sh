@@ -66,7 +66,9 @@ echo ""
 echo "=== Ubus API Endpoints ==="
 
 # Each method must be both advertised (rpcd "list" JSON) and dispatched ("call").
-ubus_methods=("list" "status" "block" "allow" "reset" "ticket" "reload" "version")
+ubus_methods=("list" "status" "block" "allow" "reset" "ticket" "pact" "reload" "version")
+ACL_FILES=("${PROJECT_ROOT}/familywarden/usr/share/rpcd/acl.d/familywarden.json"
+           "${PROJECT_ROOT}/luci-app-familywarden/root/usr/share/rpcd/acl.d/luci-app-familywarden.json")
 for method in "${ubus_methods[@]}"; do
     if ! grep -q "^  \"$method\":" "$RPCD_SCRIPT"; then
         fail "Not advertised in list: $method"
@@ -75,7 +77,17 @@ for method in "${ubus_methods[@]}"; do
     else
         echo "✓ Endpoint: $method"
     fi
+    for acl in "${ACL_FILES[@]}"; do
+        grep -q "\"$method\"" "$acl" || fail "$method missing from ACL $(basename "$acl")"
+    done
 done
+
+# The escape hatch must stay CLI-only (root over SSH), never a ubus method
+if grep -q '"unlock"' "$RPCD_SCRIPT" "${ACL_FILES[@]}"; then
+    fail "unlock is exposed via ubus/ACL - it must stay root-CLI only"
+else
+    echo "✓ unlock is CLI-only"
+fi
 
 echo ""
 echo "=== nftables chain/set consistency ==="
@@ -93,7 +105,8 @@ done
 echo ""
 echo "=== LuCI views + JSON ==="
 
-for f in "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/*.js; do
+for f in "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/*.js \
+         "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/familywarden/*.js; do
     # LuCI views use a top-level `return`, so parse them as a function body
     if ! command -v node &> /dev/null; then
         echo "node not found - skipping JS parse"; break
@@ -108,10 +121,12 @@ for f in "${PROJECT_ROOT}"/familywarden/usr/share/rpcd/acl.d/*.json \
         && echo "✓ Valid JSON: $(basename "$(dirname "$f")")/$(basename "$f")" || fail "Invalid JSON: $f"
 done
 
-# Every view the Makefile installs must exist, and vice versa
-for f in "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/*.js; do
-    grep -q "view/familywarden/$(basename "$f") " "${PROJECT_ROOT}/luci-app-familywarden/Makefile" \
-        || fail "View not installed by luci Makefile: $(basename "$f")"
+# Every view/module in the source tree must be installed by the luci Makefile
+for f in "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/*.js \
+         "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/familywarden/*.js; do
+    rel="${f#*/htdocs/luci-static/resources/}"
+    grep -q "resources/$rel " "${PROJECT_ROOT}/luci-app-familywarden/Makefile" \
+        || fail "Not installed by luci Makefile: $rel"
 done
 
 echo ""

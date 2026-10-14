@@ -22,7 +22,7 @@ Angiv altid et topic ved opslag (fx "rpc.declare signatur", "TypedSection",
 
 ## Status (2026-10-14)
 
-Versioner: `familywarden` **0.7.3**, `luci-app-familywarden` **0.4.0**.
+Versioner: `familywarden` **0.8.0**, `luci-app-familywarden` **0.5.0** (Ulysses, branch `feature/ulysses`). Seneste release: v0.7.3.
 Repo: https://github.com/denogio/familywarden — releases bygges af CI (se "CI / release").
 
 ### Arkitektur (siden 0.5.x)
@@ -45,13 +45,37 @@ Repo: https://github.com/denogio/familywarden — releases bygges af CI (se "CI 
 ✅ **nft forward-chain** (`familywarden_forward`, hook forward prio 1) - override, policy=block, scheduled (accept-vindue + default drop)
 ✅ **nft input-chain** (`familywarden_input`, 0.7.x) - `block_router='1'` per profil dropper TCP til routeren (LuCI/SSH) mens profilen er blokeret; DHCP/DNS virker stadig. Samme model som forward (accept per vindue + trailing drop, delt `_sched_accept_rules`) — fixet i 0.7.3, før låste flere vinduer samme dag routeren
 ✅ **Selvhelende firewall** - stale chains slettes før fw4 reload; ugyldigt include afvises og sidste gode ruleset bevares
+✅ **Ulysses (0.8.0)** - se afsnittet "Ulysses" nedenfor
 ✅ **Pakke-scripts** - postinst tilføjer firewall-include én gang (virkede ikke under apk før 0.7.2), prerm fjerner det
 ✅ **LuCI views (JS)** - overview (kort, per-dag highlight), profiles (inline schedules via TableSection), settings, info (versioner)
 ✅ **Makefiles** - OpenWrt apk-builds; `scripts/build-apk-docker.sh` bygger med OpenWrt SDK i Docker
 ✅ **`scripts/deploy.sh`** - kopiér kildefiler (backend + LuCI) direkte til en router, samme stier som Makefiles
 ✅ **CI/CD** - GitHub Actions: test → build → apk-smoke-test, release ved tag
 
+### Ulysses (selvbindende lås)
+To mekanismer, begge persistente i `/etc/familywarden/` (overlever reboot):
+- **Stående lås** (`option lock '1'` per profil): profilen håndhæves fra et snapshot
+  (`locked/<profil>.snap`: enabled, policy, block_router, lock, devices, schedules).
+  Ændringer i UCI noteres som ventende (`.pending`) og overtages først **24 t efter
+  seneste ændring** (`FW_LOCK_DELAY`, konstant med vilje). At låse gælder straks; at
+  låse op er en ændring som alle andre. Navnet er kosmetisk og tages altid fra UCI.
+- **Ad hoc-pagt** (`ubus call familywarden pact '{"profile":"x","minutes":N}'`, maks 7 dage):
+  `pacts`-linje `profil udløb mac...` (MAC'er fanget ved oprettelse). Drop-regel med
+  `meta time < <epoch>` øverst i begge chains, så kernen selv slipper den. Kan kun forlænges.
+- Låst/pagt: `allow` og `ticket` afvises (`{"error":"locked by Ulysses pact",...}`), og der
+  emittes aldrig allow-/ticket-regler. `block` og `reset` virker (strammer kun).
+- **Effektiv config**: `lock_sync` (i `compile_and_apply`) skriver `/var/run/familywarden/familywarden`
+  = UCI med låste profiler erstattet af snapshot. Alt der håndhæver/rapporterer bruger `fw_load`,
+  aldrig `config_load` direkte. LuCI-oversigten viser tidsplaner fra `list` (effektive), ikke UCI.
+- **Tick**: init-scriptets procd-instans kører `familywarden tick` hvert minut; recompiler kun når
+  en ventende ændring er moden.
+- **Nødudgang (kun root/SSH)**: `familywarden unlock <profil>` (symlink i `/usr/sbin`) fjerner
+  snapshot, pending og pagt og sætter `lock=0`. Må aldrig eksponeres via ubus (test-syntax tjekker).
+- Kendte omveje med root-adgang til LuCI: stop/deaktivér tjenesten under System → Startup,
+  afinstallér pakken, eller slet firewall-includet. Låsen er friktion, ikke en sikkerhedsgrænse.
+
 ### Kendte huller
+- ⚠️ **Global "Enable FamilyWarden"/"Default Policy"** i Settings læses ikke af backenden (død knap).
 - ⚠️ **Traffic per profil**: `overview.js` kalder ubus-metoden `traffic` (nlbwmon), men rpcd-pluginet har ingen `traffic`-metode. Modalen lukker bare stille ved fejl.
 - ⚠️ **Ingen i18n**: de gamle Lua-filer (controller + `familywarden.da.lua`) er fjernet, og der findes ingen `.po`-filer.
 - ⚠️ **Knowledge graph er forældet** (analyseret ved `66c2701`, før block_router og kernel-scheduling). Kør `/understand` igen.
@@ -83,7 +107,7 @@ Repo: https://github.com/denogio/familywarden — releases bygges af CI (se "CI 
 - `dist/` indeholder historiske apk'er; nye builds hører hjemme i GitHub releases.
 
 ### Næste skridt
-Se **`plans/roadmap.md`**: 1) traffic, 2) Ulysses-pagt, 3) i18n, 4) Home Assistant, 5) DNS-filtrering.
+Se **`plans/roadmap.md`**: ~~Ulysses~~ (0.8.0), traffic, i18n, Home Assistant, DNS-filtrering.
 
 ---
 
@@ -182,6 +206,7 @@ ubus call familywarden block '{"profile":"test"}'
 ubus call familywarden allow '{"profile":"test"}'
 ubus call familywarden reset '{"profile":"test"}'
 ubus call familywarden ticket '{"profile":"test","minutes":30}'
+ubus call familywarden pact '{"profile":"test","minutes":420}'   # Ulysses, kan kun forlænges
 ubus call familywarden reload
 ubus call familywarden version           # installerede backend/frontend-versioner
 ```

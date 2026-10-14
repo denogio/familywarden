@@ -7,8 +7,8 @@ stabilt, før Home Assistant begynder at afhænge af det.
 
 | # | Feature | Størrelse | Afhænger af | Version |
 |---|---------|-----------|-------------|---------|
-| 1 | Traffic per profil (nlbwmon) | S | — | backend 0.8.0, luci 0.5.0 |
-| 2 | Ulysses-pagt (selvbindende lås) | M | — | backend 0.9.0, luci 0.6.0 |
+| 1 | ~~Ulysses-pagt (selvbindende lås)~~ ✅ | M | — | backend 0.8.0, luci 0.5.0 |
+| 2 | Traffic per profil (nlbwmon) | S | — | backend 0.9.0, luci 0.6.0 |
 | 3 | Dansk oversættelse (i18n) | S | 1+2 (strenge er faste) | luci 0.6.x + `luci-i18n-familywarden-da` |
 | 4 | Home Assistant (HACS) | L | 2 (`pact_until` i API) | eget repo, 0.1.0 |
 | 5 | DNS-filtrering | M–L | — | backend 1.0.0 |
@@ -25,7 +25,7 @@ stabilt, før Home Assistant begynder at afhænge af det.
 
 ---
 
-## Fase 1 — Traffic per profil
+## Fase 2 — Traffic per profil
 
 **Status:** frontenden findes allerede (`showTrafficModal` i `overview.js`, kalder
 `traffic` og forventer `{available, daily, day, week, month}` eller
@@ -54,7 +54,21 @@ traffic-knappen.
 
 ---
 
-## Fase 2 — Ulysses-pagt
+## Fase 1 — Ulysses-pagt ✅ (0.8.0, branch `feature/ulysses`)
+
+**Endeligt design (besluttet 2026-10-14)** — erstatter PLAN.md § 14:
+- **Stående lås** (`option lock '1'`): alle ændringer af profilen (tidsplan, enheder, policy,
+  slå fra, låse op) træder først i kraft **24 t efter seneste ændring**. Låsning gælder straks.
+- **Ad hoc-pagt** ("lås mig til 06:00"): blokerer profilens enheder til et klokkeslæt; kan kun
+  forlænges. Håndhæves af kernen (`meta time`).
+- Allow/ticket afvises for låste profiler og under pagt; Block/Reset virker.
+- Nødudgang: `familywarden unlock <profil>` som root over SSH.
+- Testet: 37 integrations-checks + UI i LuCI-container (Playwright).
+
+Mangler før merge: test på rivendell (Save & Apply → procd-trigger → pending; reboot-persistens).
+
+<details><summary>Oprindelig plan (historisk)</summary>
+
 
 Fuldt designet i `PLAN.md` § 14 (besluttet med dig: hele profilen fryses, eneste
 escape er root over SSH, og pagten skal overleve reboot). Planen følges med disse
@@ -83,6 +97,10 @@ justeringer til den nuværende arkitektur:
 - [ ] QEMU: reboot-test (procd + rigtig boot kan ikke testes i containeren)
 
 **Beslutning til dig:** er designet fra juni stadig det, du vil have?
+
+---
+
+</details>
 
 ---
 
@@ -172,4 +190,6 @@ evt. en `uci-defaults`-hjælper.
 - [ ] QEMU i CI (GitHub-runnere har KVM): procd-trigger, reboot-persistens, Playwright.
       Det er det eneste, containeren ikke kan dække (PLAN.md § 15 Lag 1, punkt 2, 5 og 9)
 - [ ] `PLAN.md` og `new-thoughts.md` er historiske — arkivér dem til `plans/archive/`
+- [ ] LuCI i OpenWrt-container (ubusd + rpcd + uhttpd, stub for `system`) virker til UI-test —
+      kan blive et Playwright-job i CI uden QEMU
 - [ ] `PKG_MAINTAINER`/copyright i Makefiles står stadig som "Dennis Højgaard <github@dehoej.dk>"

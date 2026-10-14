@@ -9,7 +9,7 @@ LUCI_TITLE:=LuCI support for FamilyWarden Parental Control
 LUCI_DEPENDS:=+familywarden +luci-base
 LUCI_PKGARCH:=all
 
-PKG_VERSION:=0.4.0
+PKG_VERSION:=0.5.0
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=Dennis Højgaard <github@dehoej.dk>
@@ -25,6 +25,9 @@ define Package/luci-app-familywarden/install
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/familywarden/settings.js $(1)/www/luci-static/resources/view/familywarden/settings.js
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/familywarden/info.js $(1)/www/luci-static/resources/view/familywarden/info.js
 	$(SED) 's/@@VERSION@@/$(PKG_VERSION)-r$(PKG_RELEASE)/' $(1)/www/luci-static/resources/view/familywarden/info.js
+
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/familywarden
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/ulysses.js $(1)/www/luci-static/resources/familywarden/ulysses.js
 
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/luci-app-familywarden.json $(1)/usr/share/luci/menu.d/luci-app-familywarden.json
