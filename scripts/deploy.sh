@@ -1,86 +1,60 @@
 #!/bin/bash
-# Deploy FamilyWarden to OpenWrt (cat-based, no sftp required)
-# Usage: ./scripts/deploy.sh [root@]<host>
+# Deploy FamilyWarden straight from the source tree (no apk build) for quick
+# iteration. Installs to the same paths as the package Makefiles.
+# For real installs use the apk from a GitHub release or scripts/build-apk-docker.sh.
+#
+# Usage: ./scripts/deploy.sh [root@]<host>    (default root@192.168.1.1)
 
 set -e
 
 HOST="${1:-root@192.168.1.1}"
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+VIEWS="luci-app-familywarden/htdocs/luci-static/resources/view/familywarden"
+VERSION="$(sed -n 's/^PKG_VERSION:=//p' luci-app-familywarden/Makefile)-dev"
 
-echo "=== FamilyWarden Deploy ==="
-echo "Target: $HOST"
-echo ""
-
-# Test connection
-echo "Testing connection..."
-ssh $SSH_OPTS $HOST "uname -a" >/dev/null 2>&1 || {
-    echo "❌ Cannot connect to $HOST"
-    exit 1
-}
-echo "✓ Connected"
-echo ""
-
-# Function to copy file via ssh cat
-ssh_cat_put() {
-    local src="$1"
-    local dst="$2"
-    cat "$src" | ssh $SSH_OPTS $HOST "cat > '$dst'"
+ssh_put() {
+    ssh $SSH_OPTS "$HOST" "cat > '$2'" < "$1"
 }
 
-# Create directories
-echo "Creating directories..."
-ssh $SSH_OPTS $HOST "
-    mkdir -p /etc/config /etc/init.d /usr/bin /usr/lib/rpcd /usr/share/rpcd/acl.d
-"
+echo "=== FamilyWarden deploy → $HOST ==="
+ssh $SSH_OPTS "$HOST" "uname -a" >/dev/null || { echo "❌ Cannot connect to $HOST"; exit 1; }
 
-# Copy files
-echo "Copying files..."
-ssh_cat_put familywarden/usr/bin/familywarden.sh /usr/bin/familywarden
-ssh_cat_put familywarden/etc/init.d/familywarden /etc/init.d/familywarden
-ssh_cat_put familywarden/usr/lib/rpcd/familywarden /usr/lib/rpcd/familywarden
-ssh_cat_put familywarden/usr/share/rpcd/acl.d/familywarden.json /usr/share/rpcd/acl.d/familywarden.json
+ssh $SSH_OPTS "$HOST" "mkdir -p /etc/init.d /usr/libexec/rpcd /usr/share/rpcd/acl.d \
+    /www/luci-static/resources/view/familywarden /usr/share/luci/menu.d"
 
-# Make executable
-echo "Setting permissions..."
-ssh $SSH_OPTS $HOST "
-    chmod +x /usr/bin/familywarden /etc/init.d/familywarden /usr/lib/rpcd/familywarden
-"
+echo "Backend..."
+ssh_put familywarden/etc/init.d/familywarden /etc/init.d/familywarden
+ssh_put familywarden/usr/lib/rpcd/familywarden /usr/libexec/rpcd/familywarden
+ssh_put familywarden/usr/share/rpcd/acl.d/familywarden.json /usr/share/rpcd/acl.d/familywarden.json
+ssh $SSH_OPTS "$HOST" "[ -f /etc/config/familywarden ] || cat > /etc/config/familywarden" \
+    < familywarden/etc/config/familywarden
 
-# Create config
-echo "Creating config..."
-ssh $SSH_OPTS $HOST "
-    if [ ! -f /etc/config/familywarden ]; then
-        cat > /etc/config/familywarden << 'EOFCONFIG'
-config global 'settings'
-    option enabled '1'
-    option default_policy 'allow'
+echo "LuCI..."
+for f in "$VIEWS"/*.js; do
+    ssh_put "$f" "/www/luci-static/resources/view/familywarden/$(basename "$f")"
+done
+ssh_put luci-app-familywarden/root/usr/share/luci/menu.d/luci-app-familywarden.json \
+    /usr/share/luci/menu.d/luci-app-familywarden.json
+ssh_put luci-app-familywarden/root/usr/share/rpcd/acl.d/luci-app-familywarden.json \
+    /usr/share/rpcd/acl.d/luci-app-familywarden.json
 
-config profile 'test'
-    option name 'Test Profile'
-    option enabled '1'
-    option policy 'allow'
-    list device 'aa:bb:cc:dd:ee:ff'
-
-config schedule 'test_schedule'
-    option profile 'test'
-    option days 'mon tue wed thu fri'
-    option start '09:00'
-    option stop '21:00'
-EOFCONFIG
+echo "Activating..."
+# Mirrors the familywarden package postinst (firewall include) + luci cache flush
+ssh $SSH_OPTS "$HOST" "
+    chmod +x /etc/init.d/familywarden /usr/libexec/rpcd/familywarden
+    sed -i 's/@@VERSION@@/$VERSION/' /www/luci-static/resources/view/familywarden/info.js
+    if ! uci show firewall | grep -q \"path='/var/etc/familywarden.include'\"; then
+        uci add firewall include >/dev/null
+        uci set firewall.@include[-1].fw4_compatible='1'
+        uci set firewall.@include[-1].type='nftables'
+        uci set firewall.@include[-1].path='/var/etc/familywarden.include'
+        uci commit firewall
     fi
-"
-
-# Restart services
-echo "Restarting services..."
-ssh $SSH_OPTS $HOST "
-    /etc/init.d/rpcd restart 2>/dev/null || true
-    /etc/init.d/familywarden enable 2>/dev/null || true
+    rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache
+    /etc/init.d/rpcd restart
+    /etc/init.d/familywarden enable
     /etc/init.d/familywarden restart
-    sleep 1
 "
 
-echo ""
-echo "✓ FamilyWarden daemon deployed!"
-echo ""
-echo "=== Test ==="
-ssh $SSH_OPTS $HOST "ubus list | grep familywarden && ubus call familywarden list"
+echo "✓ Deployed"
+ssh $SSH_OPTS "$HOST" "ubus call familywarden list"

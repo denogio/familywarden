@@ -1,59 +1,62 @@
 # FamilyWarden - OpenWrt Parental Control
 
-Profile-baseret parental control til OpenWrt med tidsplaner, internet-blokering og DNS-filtrering — eksponeret via ubus API så Home Assistant kan styre det.
+[![CI](https://github.com/denogio/familywarden/actions/workflows/ci.yml/badge.svg)](https://github.com/denogio/familywarden/actions/workflows/ci.yml)
 
-## Status
+Profilbaseret parental control til OpenWrt: tidsplaner, internet-blokering per enhed
+og tidsbegrænsede "tickets" — eksponeret via ubus, så LuCI og Home Assistant kan styre det.
 
-🚧 Under udvikling - MVP på vej
+Tidsplaner og tickets håndhæves af kernen (nftables `meta hour`/`meta day` og et
+timeout-set), så der kører ingen daemon eller cron på routeren.
+
+## Installation
+
+Hent de to `.apk`-filer fra seneste [release](https://github.com/denogio/familywarden/releases)
+(OpenWrt 25.12+, arkitekturuafhængige):
+
+```sh
+apk add --allow-untrusted ./familywarden-*.apk ./luci-app-familywarden-*.apk
+```
+
+Herefter: **Services → FamilyWarden** i LuCI.
 
 ## Struktur
 
 ```
-familywarden/                 # Daemon pakke
-├── usr/bin/familywarden.sh   # Hovedscript (shell)
-├── etc/init.d/familywarden   # Init script
-├── usr/lib/rpcd/familywarden # Ubus plugin
-├── usr/share/rpcd/acl.d/     # ACL for HTTP adgang
-└── etc/config/familywarden   # UCI konfiguration
+familywarden/                     # Backend-pakke
+├── usr/lib/rpcd/familywarden     # ubus API + nft include-compiler (→ /usr/libexec/rpcd)
+├── etc/init.d/familywarden       # procd: regenerér ved boot + UCI-ændring
+├── etc/config/familywarden       # UCI-konfiguration
+└── usr/share/rpcd/acl.d/         # ACL
 
-luci-app-familywarden/        # LuCI webinterface
-└── luasrc/                   # Lua MVC struktur
+luci-app-familywarden/            # LuCI-frontend (JS views)
+scripts/                          # build, test, deploy
+test/e2e/                         # Playwright-tests mod QEMU
 ```
 
-## Kompilering
+## Udvikling
 
-```bash
-# OpenWrt SDK
-cd familywarden
-make package
-
-# LuCI app
-cd luci-app-familywarden
-make package
+```sh
+./scripts/test-syntax.sh          # statiske checks
+./scripts/test-integration.sh     # rigtig fw4 + nftables i OpenWrt-container (docker)
+./scripts/build-apk-docker.sh     # byg apk'er med OpenWrt SDK → dist/
+./scripts/test-apk.sh             # installér/afinstallér de byggede apk'er i container
+./scripts/deploy.sh root@router   # kopiér kildefiler direkte til en router
 ```
 
-## Installation
+CI kører test → build → apk-smoke-test på hver push. Et tag `vX.Y.Z`, der matcher
+`PKG_VERSION` i `familywarden/Makefile`, udgiver en GitHub-release med apk'erne.
 
-```bash
-opkg install familywarden_*.ipk
-opkg install luci-app-familywarden_*.ipk
+## API
 
-# Aktiver
-/etc/init.d/familywarden enable
-/etc/init.d/familywarden start
-```
-
-## API Eksempler
-
-```bash
-# List profiler
+```sh
 ubus call familywarden list
-
-# Blokér profil
-ubus call familywarden block '{"profile":"josva"}'
-
-# Giv 30 min ticket
+ubus call familywarden status '{"profile":"josva"}'
+ubus call familywarden block  '{"profile":"josva"}'
+ubus call familywarden allow  '{"profile":"josva"}'
+ubus call familywarden reset  '{"profile":"josva"}'
 ubus call familywarden ticket '{"profile":"josva","minutes":30}'
+ubus call familywarden reload
+ubus call familywarden version
 ```
 
 ## Licens

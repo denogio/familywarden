@@ -756,10 +756,8 @@ ubus_block() {
 
     state_set "${profile}.override" "block"
     state_set "${profile}.override_expires" ""
-    compile_and_apply || {
-        echo '{"error":"compile failed"}'
-        return 1
-    }
+    # compile_and_apply prints the single JSON reply (status or error)
+    compile_and_apply
 }
 
 ubus_allow() {
@@ -772,10 +770,8 @@ ubus_allow() {
 
     state_set "${profile}.override" "allow"
     state_set "${profile}.override_expires" ""
-    compile_and_apply || {
-        echo '{"error":"compile failed"}'
-        return 1
-    }
+    # compile_and_apply prints the single JSON reply (status or error)
+    compile_and_apply
 }
 
 ubus_reset() {
@@ -788,10 +784,8 @@ ubus_reset() {
 
     state_set "${profile}.override" "none"
     state_set "${profile}.override_expires" ""
-    compile_and_apply || {
-        echo '{"error":"compile failed"}'
-        return 1
-    }
+    # compile_and_apply prints the single JSON reply (status or error)
+    compile_and_apply
 }
 
 ubus_ticket() {
@@ -809,7 +803,8 @@ ubus_ticket() {
 
     state_set "${profile}.override" "allow"
     state_set "${profile}.override_expires" "${expires_epoch}"
-    if ! compile_and_apply; then
+    # Silence compile_and_apply's own {"status":"ok"} so the reply is one JSON object
+    if ! compile_and_apply >/dev/null; then
         echo '{"error":"compile failed"}'
         return 1
     fi
@@ -817,10 +812,8 @@ ubus_ticket() {
 }
 
 ubus_reload() {
-    compile_and_apply || {
-        echo '{"error":"compile failed"}'
-        return 1
-    }
+    # compile_and_apply prints the single JSON reply (status or error)
+    compile_and_apply
 }
 
 # Report installed versions of the familywarden plugin and the luci frontend

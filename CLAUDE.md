@@ -22,7 +22,8 @@ Angiv altid et topic ved opslag (fx "rpc.declare signatur", "TypedSection",
 
 ## Status (2026-10-14)
 
-Versioner: `familywarden` **0.7.1**, `luci-app-familywarden` **0.4.0** (apk'er i `dist/`).
+Versioner: `familywarden` **0.7.2**, `luci-app-familywarden` **0.4.0**.
+Repo: https://github.com/denogio/familywarden — releases bygges af CI (se "CI / release").
 
 ### Arkitektur (siden 0.5.x)
 - **Ingen daemon og ingen cron.** Al backend-logik ligger i rpcd-pluginet
@@ -34,26 +35,37 @@ Versioner: `familywarden` **0.7.1**, `luci-app-familywarden` **0.4.0** (apk'er i
   og tickets er elementer i timeout-settet `familywarden_ticket`. Ingen recompile ved tidsgrænser.
 - **Init script** (procd) kører `$BIN reload` ved boot og via `procd_add_reload_trigger`
   ved UCI-ændringer. En idle `sleep`-instans holder servicen i live, så triggeren virker.
-- `usr/bin/familywarden.sh` er en udfaset stub, og `usr/share/rpcd/ucode/familywarden` er død kode
-  (kalder `/usr/bin/familywarden`, som ikke installeres). Ingen af dem installeres af Makefile.
+- **rpcd-svar skal være ét JSON-objekt.** `compile_and_apply` printer selv `{"status":"ok"}`
+  eller en fejl; handlers må ikke echo'e noget ekstra oveni (fixet i 0.7.2).
+- **apk-scripts**: postinst må ikke tjekke `"$1" = configure` (opkg-konvention, apk sender det
+  aldrig). Brug `[ -n "$IPKG_INSTROOT" ] && exit 0` for at springe image-builds over.
 
 ### Hvad er lavet?
 ✅ **rpcd plugin** - ubus API: list, status, block, allow, reset, ticket, reload, version
 ✅ **nft forward-chain** (`familywarden_forward`, hook forward prio 1) - override, policy=block, scheduled (accept-vindue + default drop)
 ✅ **nft input-chain** (`familywarden_input`, 0.7.x) - `block_router='1'` per profil dropper TCP til routeren (LuCI/SSH) mens profilen er blokeret; DHCP/DNS virker stadig
-✅ **Selvhelende firewall** - stale chains slettes før fw4 reload; postinst tilføjer firewall-include idempotent
+✅ **Selvhelende firewall** - stale chains slettes før fw4 reload; ugyldigt include afvises og sidste gode ruleset bevares
+✅ **Pakke-scripts** - postinst tilføjer firewall-include én gang (virkede ikke under apk før 0.7.2), prerm fjerner det
 ✅ **LuCI views (JS)** - overview (kort, per-dag highlight), profiles (inline schedules via TableSection), settings, info (versioner)
 ✅ **Makefiles** - OpenWrt apk-builds; `scripts/build-apk-docker.sh` bygger med OpenWrt SDK i Docker
-✅ **Deploy scripts** - til kørende system + QEMU-test
+✅ **`scripts/deploy.sh`** - kopiér kildefiler (backend + LuCI) direkte til en router, samme stier som Makefiles
+✅ **CI/CD** - GitHub Actions: test → build → apk-smoke-test, release ved tag
 
 ### Kendte huller
+- ❌ **block_router-bug** (input-chain): `_sched_input_drop_rules` emitter inverterede drops per vindue.
+  Ved ≥ 2 vinduer samme dag udelukker de hinanden (router låst hele dagen), og på dage uden vinduer
+  emittes ingen drops (router åben hele dagen). Fix: spejl forward-chainen — accept per vindue + trailing drop.
 - ⚠️ **Traffic per profil**: `overview.js` kalder ubus-metoden `traffic` (nlbwmon), men rpcd-pluginet har ingen `traffic`-metode. Modalen lukker bare stille ved fejl.
 - ⚠️ **Ingen i18n**: de gamle Lua-filer (controller + `familywarden.da.lua`) er fjernet, og der findes ingen `.po`-filer.
 - ⚠️ **Knowledge graph er forældet** (analyseret ved `66c2701`, før block_router og kernel-scheduling). Kør `/understand` igen.
-- ⚠️ Ingen git remote — alt ligger kun lokalt.
 
 ### Test status
-- ✅ `scripts/test-syntax.sh`: rpcd/init parser, påkrævede funktioner, endpoints (advertised + dispatched), chain/set-konsistens, Makefile↔init↔rpcd-stier. Exit-kode ≠ 0 ved fejl.
+- ✅ `scripts/test-syntax.sh`: rpcd/init parser, påkrævede funktioner, endpoints (advertised + dispatched), chain/set-konsistens, Makefile↔init↔rpcd-stier, LuCI-views parser, JSON gyldig.
+- ✅ `scripts/test-integration.sh`: kører det rigtige rpcd-plugin mod rigtig fw4 + nftables i
+  `openwrt/rootfs`-container. Dækker scheduled (dag + overnat), block, allow, disabled, block_router,
+  block/allow/reset/ticket via `call`, ticket-GC, idempotent reload, afvisning af ugyldigt include.
+  **Tilføj en case her, når du ændrer regelgenereringen.**
+- ✅ `scripts/test-apk.sh`: installerer byggede apk'er i container; tjekker filer, postinst/prerm, at config overlever reinstall.
 - ⚠️ shellcheck giver kun støj-advarsler (SC1091 OpenWrt-includes, SC3043 `local` i ash)
 - ✅ **Playwright e2e** (`test/e2e/`, mod QEMU på 192.168.1.1): sider loader, block/allow, opret/slet profil, tilføj enhed, opret schedule, policy bevares ved save. Sidste kørsel: bestået.
 - ✅ **block_router + kernel-scheduling verificeret på rivendell** (2026-06-24): kun `< start`/`>= stop`-drops emittes; LuCI tilgængelig inden for vinduet.
@@ -67,9 +79,16 @@ Versioner: `familywarden` **0.7.1**, `luci-app-familywarden` **0.4.0** (apk'er i
 - Nuværende blokering er ren MAC-baseret nft drop (internet on/off), ikke DNS
 - Mulige modeller (ikke valgt endnu): AdGuard Home API, dnsmasq nftset, eller per-klient DNS-redirect i nft
 
+### CI / release
+- `.github/workflows/ci.yml`: push/PR → `test-syntax` + `test-integration` → SDK-build
+  (`openwrt/sdk:x86-64-25.12.4`) → `test-apk` → apk'er som artifact.
+- Release: bump `PKG_VERSION`, commit, `git tag vX.Y.Z && git push --tags`. Tagget skal matche
+  `familywarden/Makefile`, ellers fejler release-jobbet. luci-appen versioneres separat.
+- `dist/` indeholder historiske apk'er; nye builds hører hjemme i GitHub releases.
+
 ### Næste skridt
-1. Beslut: byg `traffic`-backend (nlbwmon) eller fjern traffic-UI'et
-2. Ryd død kode (`familywarden.sh`-stub, ucode-variant)
+1. Fix block_router-bug (se Kendte huller)
+2. Beslut: byg `traffic`-backend (nlbwmon) eller fjern traffic-UI'et
 3. Fase 3: Home Assistant HACS-integration
 4. Fase 4 (sidst): DNS-filtrering — beslut model og byg backend
 
@@ -223,7 +242,7 @@ ubus call familywarden version           # installerede backend/frontend-version
 Der findes en interaktiv videnbase over projektet i `.understand-anything/knowledge-graph.json`.
 
 ⚠️ Den er analyseret ved commit `66c2701` (se `meta.json`) og kender ikke block_router
-eller kernel-scheduling. Den beskriver også ucode-varianten og `familywarden.sh` som aktive.
+eller kernel-scheduling. Den beskriver også ucode-varianten og `familywarden.sh`, som er slettet.
 Kør `/understand` igen, før du stoler på den.
 
 **Læs den ALTID før du koder!** Den indeholder:

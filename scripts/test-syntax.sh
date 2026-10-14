@@ -89,6 +89,30 @@ for name in familywarden_forward familywarden_input familywarden_ticket; do
 done
 
 echo ""
+echo "=== LuCI views + JSON ==="
+
+for f in "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/*.js; do
+    # LuCI views use a top-level `return`, so parse them as a function body
+    if ! command -v node &> /dev/null; then
+        echo "node not found - skipping JS parse"; break
+    fi
+    node -e 'new Function(require("fs").readFileSync(process.argv[1], "utf8"))' "$f" \
+        && echo "✓ Parses: $(basename "$f")" || fail "JS syntax error: $f"
+done
+
+for f in "${PROJECT_ROOT}"/familywarden/usr/share/rpcd/acl.d/*.json \
+         "${PROJECT_ROOT}"/luci-app-familywarden/root/usr/share/*/*/*.json; do
+    python3 -m json.tool "$f" > /dev/null \
+        && echo "✓ Valid JSON: $(basename "$(dirname "$f")")/$(basename "$f")" || fail "Invalid JSON: $f"
+done
+
+# Every view the Makefile installs must exist, and vice versa
+for f in "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/*.js; do
+    grep -q "view/familywarden/$(basename "$f") " "${PROJECT_ROOT}/luci-app-familywarden/Makefile" \
+        || fail "View not installed by luci Makefile: $(basename "$f")"
+done
+
+echo ""
 echo "=== Packaging consistency ==="
 
 grep -q 'usr/libexec/rpcd/familywarden' "$MAKEFILE" \

@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  OPENWRT_VERSION: 25.12.4
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax + structure
+        run: ./scripts/test-syntax.sh
+
+      - name: Integration (real fw4 + nftables in OpenWrt rootfs)
+        env:
+          OPENWRT_IMAGE: openwrt/rootfs:x86-64-${{ env.OPENWRT_VERSION }}
+        run: ./scripts/test-integration.sh
+
+  build:
+    name: Build apks
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build with OpenWrt SDK
+        env:
+          SDK_IMAGE: openwrt/sdk:x86-64-${{ env.OPENWRT_VERSION }}
+          OUT: ${{ runner.temp }}/apk
+        run: ./scripts/build-apk-docker.sh
+
+      - name: Smoke-test apks (install, postinst, reinstall, remove)
+        env:
+          OPENWRT_IMAGE: openwrt/rootfs:x86-64-${{ env.OPENWRT_VERSION }}
+        run: ./scripts/test-apk.sh "${{ runner.temp }}/apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apks
+          path: ${{ runner.temp }}/apk/*.apk
+          if-no-files-found: error
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag must match familywarden PKG_VERSION
+        id: ver
+        run: |
+          fw=$(sed -n 's/^PKG_VERSION:=//p' familywarden/Makefile)
+          luci=$(sed -n 's/^PKG_VERSION:=//p' luci-app-familywarden/Makefile)
+          if [ "${GITHUB_REF_NAME}" != "v${fw}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match familywarden PKG_VERSION ${fw}"
+            exit 1
+          fi
+          echo "fw=$fw" >> "$GITHUB_OUTPUT"
+          echo "luci=$luci" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: apks
+          path: apk
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<EOF
+          Packages (architecture-independent, OpenWrt ${OPENWRT_VERSION}+ / apk):
+
+          - \`familywarden\` ${{ steps.ver.outputs.fw }}
+          - \`luci-app-familywarden\` ${{ steps.ver.outputs.luci }}
+
+          Install on the router:
+
+          \`\`\`sh
+          apk add --allow-untrusted ./familywarden-*.apk ./luci-app-familywarden-*.apk
+          \`\`\`
+          EOF
+          gh release create "${GITHUB_REF_NAME}" apk/*.apk \
+            --title "FamilyWarden ${GITHUB_REF_NAME}" \
+            --notes-file notes.md \
+            --generate-notes \
+            --verify-tag

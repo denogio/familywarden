@@ -8,14 +8,17 @@
 #
 #   SDK_IMAGE=openwrt/sdk:x86-64-main ./scripts/build-apk-docker.sh
 #
-# Resulting .apk files are written to ./dist/
+# Resulting .apk files are written to ./dist/ (override with OUT=...)
 
 set -e
 
 SDK_IMAGE="${SDK_IMAGE:-openwrt/sdk:x86-64-25.12.4}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="$REPO/dist"
+OUT="${OUT:-$REPO/dist}"
 mkdir -p "$OUT"
+# The SDK runs as buildbot (uid 1000); let it write here even when the host
+# user differs (e.g. GitHub runners are uid 1001).
+chmod a+w "$OUT"
 
 echo "Using SDK image: $SDK_IMAGE"
 echo "Repo:            $REPO"

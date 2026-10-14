@@ -6,7 +6,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=familywarden
-PKG_VERSION:=0.7.1
+PKG_VERSION:=0.7.2
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=Dennis Højgaard <github@dehoej.dk>
@@ -19,7 +19,7 @@ define Package/familywarden
   CATEGORY:=Utilities
   TITLE:=OpenWrt Parental Control Daemon
   DEPENDS:=+firewall4 +nftables +rpcd
-  URL:=https://github.com/dehoej/familywarden
+  URL:=https://github.com/denogio/familywarden
   PKGARCH:=all
 endef
 
@@ -48,9 +48,12 @@ endef
 
 define Package/familywarden/postinst
 #!/bin/sh
-[ "$$1" = "configure" ] || exit 0
-# Idempotent: add firewall include if not already present
-if ! uci -q get firewall.familywarden >/dev/null 2>&1; then
+# Only on a live system, not while assembling a firmware image. (No
+# "configure" arg check: that is an opkg convention and apk never passes it.)
+[ -n "$${IPKG_INSTROOT}" ] && exit 0
+# Idempotent: add firewall include if not already present. The include is an
+# anonymous section, so match on its path (same as prerm).
+if ! uci show firewall | grep -q "path='/var/etc/familywarden.include'"; then
     uci batch <<-EOF
 	add firewall include
 	set firewall.@include[-1].fw4_compatible='1'
@@ -65,7 +68,6 @@ endef
 define Package/familywarden/prerm
 #!/bin/sh
 # Remove firewall include on package removal
-local idx
 idx=$$(uci show firewall | grep "path='/var/etc/familywarden.include'" | head -1 | cut -d. -f2)
 [ -n "$$idx" ] && uci delete "firewall.$$idx" && uci commit firewall
 exit 0
