@@ -1,0 +1,552 @@
+{
+  "version": "1.0.0",
+  "gitCommitHash": "66c27014ec6a048dd890c10842ecaea46ced79d8",
+  "generatedAt": "2026-06-08T13:04:21.060Z",
+  "files": {
+    ".understand-anything/.understandignore": {
+      "filePath": ".understand-anything/.understandignore",
+      "contentHash": "edf7ae376cbe2ffce4a1258960802cefbb093cd4108a1f8ffbcd4c5f1ecc83a9",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 26,
+      "hasStructuralAnalysis": false
+    },
+    "CLAUDE.md": {
+      "filePath": "CLAUDE.md",
+      "contentHash": "3d46ee53941990fc07a34c617c64c14a8d308b11d0db35c0a4c089871455ade1",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 228,
+      "hasStructuralAnalysis": true
+    },
+    "familywarden/etc/config/familywarden": {
+      "filePath": "familywarden/etc/config/familywarden",
+      "contentHash": "bb7506a8e39b69a0393279bf19fbeae50812b072b0e7f4995c784ac68e4d79f0",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 22,
+      "hasStructuralAnalysis": false
+    },
+    "familywarden/etc/init.d/familywarden": {
+      "filePath": "familywarden/etc/init.d/familywarden",
+      "contentHash": "ad0f118746de088ca391e1e68963b7e9b9041653d2638ff4bad6a80e3ced8c4b",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 40,
+      "hasStructuralAnalysis": false
+    },
+    "familywarden/Makefile": {
+      "filePath": "familywarden/Makefile",
+      "contentHash": "315bad44343666d3fe1fe52b87cc0761d91035f76212c034c27b9467e2924454",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 75,
+      "hasStructuralAnalysis": true
+    },
+    "familywarden/usr/bin/familywarden.sh": {
+      "filePath": "familywarden/usr/bin/familywarden.sh",
+      "contentHash": "650165d8b2552eebdd13661527a993f78d90523c126e6e005b7f1233269abc53",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 13,
+      "hasStructuralAnalysis": true
+    },
+    "familywarden/usr/lib/rpcd/familywarden": {
+      "filePath": "familywarden/usr/lib/rpcd/familywarden",
+      "contentHash": "4973b3d1de291a33b90e4b25b9e7e8230cb303afc289e75252a680005a7607a2",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 585,
+      "hasStructuralAnalysis": false
+    },
+    "familywarden/usr/share/rpcd/acl.d/familywarden.json": {
+      "filePath": "familywarden/usr/share/rpcd/acl.d/familywarden.json",
+      "contentHash": "79145f5a623ce6a9ecd91905b225870f8089e47de5ee1bb676b923dd8246f1f0",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 16,
+      "hasStructuralAnalysis": true
+    },
+    "familywarden/usr/share/rpcd/ucode/familywarden": {
+      "filePath": "familywarden/usr/share/rpcd/ucode/familywarden",
+      "contentHash": "b380b0831d8dcd9d3af5f8d283e0713fed689432051fbadcb8134e5540d89274",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 93,
+      "hasStructuralAnalysis": false
+    },
+    "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/info.js": {
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/info.js",
+      "contentHash": "91feffc9bc6c626c3225551a0322d9daaacdfab5b3e722a7d850374907852651",
+      "functions": [
+        {
+          "name": "pkgVer",
+          "params": [
+            "s"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "row",
+          "params": [
+            "label",
+            "value",
+            "extra"
+          ],
+          "exported": false,
+          "lineCount": 6
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 76,
+      "hasStructuralAnalysis": true
+    },
+    "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js": {
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "contentHash": "b211bc5bc5d79b308858c86113c051c2c46e926b350944f355447f805dc719a3",
+      "functions": [
+        {
+          "name": "timeToMin",
+          "params": [
+            "hhmm"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "minToTime",
+          "params": [
+            "m"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "scheduleActiveAt",
+          "params": [
+            "sched",
+            "date"
+          ],
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "isAllowedAt",
+          "params": [
+            "schedules",
+            "date"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "isScheduleActiveNow",
+          "params": [
+            "sched"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "getNextChange",
+          "params": [
+            "schedules"
+          ],
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "injectStyles",
+          "params": [],
+          "exported": false,
+          "lineCount": 89
+        },
+        {
+          "name": "statusBadge",
+          "params": [
+            "status",
+            "override"
+          ],
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "formatBytes",
+          "params": [
+            "n"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "trafficEl",
+          "params": [
+            "bytes",
+            "id",
+            "name"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "trafficRow",
+          "params": [
+            "label",
+            "bytes"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "showTrafficModal",
+          "params": [
+            "id",
+            "name"
+          ],
+          "exported": false,
+          "lineCount": 32
+        },
+        {
+          "name": "policyLabel",
+          "params": [
+            "policy"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "doAction",
+          "params": [
+            "ev",
+            "profile",
+            "fn"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "buildHostMap",
+          "params": [
+            "leases",
+            "hostHints"
+          ],
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "deviceRow",
+          "params": [
+            "mac"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "refreshDashboard",
+          "params": [],
+          "exported": false,
+          "lineCount": 127
+        },
+        {
+          "name": "makeBtn",
+          "params": [
+            "cls",
+            "label",
+            "fn"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "buildScheduleSection",
+          "params": [
+            "schedules"
+          ],
+          "exported": false,
+          "lineCount": 41
+        },
+        {
+          "name": "buildContent",
+          "params": [
+            "profiles",
+            "schedsByProfile"
+          ],
+          "exported": false,
+          "lineCount": 112
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 672,
+      "hasStructuralAnalysis": true
+    },
+    "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js": {
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js",
+      "contentHash": "265b64c93d2c5c4f50b0d90e6ae7034a930f273978fc33cfbb5dc5928c37cb5d",
+      "functions": [
+        {
+          "name": "injectStyles",
+          "params": [],
+          "exported": false,
+          "lineCount": 27
+        },
+        {
+          "name": "getSelectedProfile",
+          "params": [],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "profileUrl",
+          "params": [
+            "id"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "refreshStatus",
+          "params": [],
+          "exported": false,
+          "lineCount": 37
+        },
+        {
+          "name": "doAction",
+          "params": [
+            "ev",
+            "fn"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "showAddProfileModal",
+          "params": [],
+          "exported": false,
+          "lineCount": 53
+        },
+        {
+          "name": "buildTabs",
+          "params": [
+            "allProfiles",
+            "activeId"
+          ],
+          "exported": false,
+          "lineCount": 23
+        },
+        {
+          "name": "buildStatusBar",
+          "params": [
+            "status"
+          ],
+          "exported": false,
+          "lineCount": 31
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 489,
+      "hasStructuralAnalysis": true
+    },
+    "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/settings.js": {
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/settings.js",
+      "contentHash": "4eb9712f89210e94ca23e69139f5afbf9e71d06c8a7991214f8a04f898244af5",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 51,
+      "hasStructuralAnalysis": true
+    },
+    "luci-app-familywarden/Makefile": {
+      "filePath": "luci-app-familywarden/Makefile",
+      "contentHash": "63982294b054e2984562e81b13255615e31e0a87eff58cf3448e9948c663aa93",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 37,
+      "hasStructuralAnalysis": true
+    },
+    "luci-app-familywarden/root/usr/share/luci/menu.d/luci-app-familywarden.json": {
+      "filePath": "luci-app-familywarden/root/usr/share/luci/menu.d/luci-app-familywarden.json",
+      "contentHash": "20ba588b72f8eb204c5128e5b62777573488aed6abb8e8a4481b188c43156414",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 51,
+      "hasStructuralAnalysis": true
+    },
+    "luci-app-familywarden/root/usr/share/rpcd/acl.d/luci-app-familywarden.json": {
+      "filePath": "luci-app-familywarden/root/usr/share/rpcd/acl.d/luci-app-familywarden.json",
+      "contentHash": "eec89799519f034b80434d36157a4ecdf7f449ceab8ef091c230ab937f1e8573",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 19,
+      "hasStructuralAnalysis": true
+    },
+    "new-thoughts.md": {
+      "filePath": "new-thoughts.md",
+      "contentHash": "f6bc246b974c0ccdd5101fcd65a2f640d82a0ce9efb4ece3acd1ec512226dea0",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 299,
+      "hasStructuralAnalysis": true
+    },
+    "PLAN.md": {
+      "filePath": "PLAN.md",
+      "contentHash": "ce58988e06c40eec0903b411f05245ff724d111b3fdc0400b9606ed800fcf663",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 419,
+      "hasStructuralAnalysis": true
+    },
+    "plans/melodic-swimming-shamir.md": {
+      "filePath": "plans/melodic-swimming-shamir.md",
+      "contentHash": "b482a20fc5f8ae3cc0f05c92ae6a02b2c99a380843043ce54114e8bb7c855fb4",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 187,
+      "hasStructuralAnalysis": true
+    },
+    "README.md": {
+      "filePath": "README.md",
+      "contentHash": "d248639408e965976724a50e87cda0ea5b117af943f8f7d4447f97ab82d6b396",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 62,
+      "hasStructuralAnalysis": true
+    },
+    "test-results/.last-run.json": {
+      "filePath": "test-results/.last-run.json",
+      "contentHash": "e22df5d0991eb28c09093b1e678b3fa8cd1fab48185d38e67cf79fb6e63ad5ea",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 4,
+      "hasStructuralAnalysis": true
+    },
+    "test/basic_test.sh": {
+      "filePath": "test/basic_test.sh",
+      "contentHash": "6959d33855151504aa79399e96dd8367e5a2bb3d0cb3fd6c82ded5f2a2ce527c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 42,
+      "hasStructuralAnalysis": true
+    },
+    "test/e2e/familywarden.spec.js": {
+      "filePath": "test/e2e/familywarden.spec.js",
+      "contentHash": "9160724085c0332c076e3ef4b6c2a60cebed1ae4873be87aab5ff6c028966ccb",
+      "functions": [
+        {
+          "name": "loginAsRoot",
+          "params": [
+            "page"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "selectDays",
+          "params": [
+            "schedSection",
+            "page",
+            "values"
+          ],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "selectedDays",
+          "params": [
+            "schedSection"
+          ],
+          "exported": false,
+          "lineCount": 5
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 393,
+      "hasStructuralAnalysis": true
+    },
+    "test/e2e/fwdbg.js": {
+      "filePath": "test/e2e/fwdbg.js",
+      "contentHash": "7824531e252faed4185b09369828f69e25eaba622c4d476a630d59b9b5da30e8",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 31,
+      "hasStructuralAnalysis": true
+    },
+    "test/e2e/package.json": {
+      "filePath": "test/e2e/package.json",
+      "contentHash": "38a6d420ac87555e5f2754824c01adfc711c5fcc63a659838d9dc84c0992742e",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 14,
+      "hasStructuralAnalysis": true
+    },
+    "test/e2e/playwright.config.js": {
+      "filePath": "test/e2e/playwright.config.js",
+      "contentHash": "1b29da9ce55c805433d05414e0f8e2e5a8ac174e5ed2909e302dcada680e55da",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 25,
+      "hasStructuralAnalysis": true
+    },
+    "test/e2e/test-results/.last-run.json": {
+      "filePath": "test/e2e/test-results/.last-run.json",
+      "contentHash": "91d1c43004802cd49950d78eb11c8fa7d05da8ffffe219a8b13b2f561bc00903",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 4,
+      "hasStructuralAnalysis": true
+    }
+  }
+}

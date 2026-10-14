@@ -20,49 +20,58 @@ Brug disse library-IDs direkte (spring resolve-library-id over):
 Angiv altid et topic ved opslag (fx "rpc.declare signatur", "TypedSection",
 "ubus method registration") frem for bare repo-navnet.
 
-## Status (2026-06-04)
+## Status (2026-10-14)
+
+Versioner: `familywarden` **0.7.1**, `luci-app-familywarden` **0.4.0** (apk'er i `dist/`).
+
+### Arkitektur (siden 0.5.x)
+- **Ingen daemon og ingen cron.** Al backend-logik ligger i rpcd-pluginet
+  `familywarden/usr/lib/rpcd/familywarden` (installeres som `/usr/libexec/rpcd/familywarden`).
+- **Deklarativ pipeline** (`compile_and_apply`): UCI + RAM-state (`/tmp/familywarden.state`)
+  → generér `/var/etc/familywarden.include` → `nft -c` validering i throwaway-tabel
+  → atomisk `mv` → `nft delete` af gamle chains/set → `fw4 reload`.
+- **Kernen evaluerer tidsplaner og tickets**: schedules bliver til `meta hour`/`meta day`-regler,
+  og tickets er elementer i timeout-settet `familywarden_ticket`. Ingen recompile ved tidsgrænser.
+- **Init script** (procd) kører `$BIN reload` ved boot og via `procd_add_reload_trigger`
+  ved UCI-ændringer. En idle `sleep`-instans holder servicen i live, så triggeren virker.
+- `usr/bin/familywarden.sh` er en udfaset stub, og `usr/share/rpcd/ucode/familywarden` er død kode
+  (kalder `/usr/bin/familywarden`, som ikke installeres). Ingen af dem installeres af Makefile.
 
 ### Hvad er lavet?
-✅ **Pakkestruktur** - familywarden/ og luci-app-familywarden/ mapper oprettet
-✅ **UCI config format** - defineret i scope dokumentet
-✅ **Shell-daemon** - `familywarden.sh` med alle funktioner (tidligere bugs fixet)
-✅ **Init script** - procd-baseret service
-✅ **rpcd plugin** - ubus API integration (shell + ucode variant)
-✅ **ACL fil** - til HTTP adgang
-✅ **LuCI controller** - routing + AJAX endpoints
-✅ **LuCI views** - overview, profiles (m. schedules), settings (JS/client-side)
-✅ **Cron-baseret schedule-evaluering** - automatisk evaluering hvert minut
-✅ **Makefiles** - rigtige OpenWrt-pakkebuilds for begge pakker
-✅ **Danske oversættelser** - i18n fil
-✅ **Deploy scripts** - til installation på kørende system + QEMU-test
-✅ **UI reload-mønster** - `uci.apply().then(callReload)` efter save på alle views
+✅ **rpcd plugin** - ubus API: list, status, block, allow, reset, ticket, reload, version
+✅ **nft forward-chain** (`familywarden_forward`, hook forward prio 1) - override, policy=block, scheduled (accept-vindue + default drop)
+✅ **nft input-chain** (`familywarden_input`, 0.7.x) - `block_router='1'` per profil dropper TCP til routeren (LuCI/SSH) mens profilen er blokeret; DHCP/DNS virker stadig
+✅ **Selvhelende firewall** - stale chains slettes før fw4 reload; postinst tilføjer firewall-include idempotent
+✅ **LuCI views (JS)** - overview (kort, per-dag highlight), profiles (inline schedules via TableSection), settings, info (versioner)
+✅ **Makefiles** - OpenWrt apk-builds; `scripts/build-apk-docker.sh` bygger med OpenWrt SDK i Docker
+✅ **Deploy scripts** - til kørende system + QEMU-test
 
-### Tidligere bugs — NU FIXET
-✅ **config_get syntaks** - bruger nu korrekt `config_get <var> <section> <option>`
-✅ **config_list_get** - erstattet med `config_list_foreach` + callbacks
-✅ **Log statements** - parentes-problem håndteret
+### Kendte huller
+- ⚠️ **Traffic per profil**: `overview.js` kalder ubus-metoden `traffic` (nlbwmon), men rpcd-pluginet har ingen `traffic`-metode. Modalen lukker bare stille ved fejl.
+- ⚠️ **Ingen i18n**: de gamle Lua-filer (controller + `familywarden.da.lua`) er fjernet, og der findes ingen `.po`-filer.
+- ⚠️ **Knowledge graph er forældet** (analyseret ved `66c2701`, før block_router og kernel-scheduling). Kør `/understand` igen.
+- ⚠️ Ingen git remote — alt ligger kun lokalt.
 
 ### Test status
-- ✅ Statisk verifikation: alle scripts parser (`bash -n`), alle påkrævede funktioner + ubus-endpoints findes (`scripts/test-syntax.sh`)
-- ⚠️ shellcheck giver kun støj-advarsler (SC1091 OpenWrt-includes, SC3043 `local` i ash, mindre quoting)
-- ✅ **QEMU runtime-test bestået** (2026-06-04): `list` + `status` returnerer korrekt JSON
-- ✅ **Firewall verificeret**: nft-chain `familywarden_forward` matcher status; scheduled-blokering dropper Josvas MAC med `familywarden:josva` comment
-- ✅ **Override verificeret**: `block`/`allow` tilføjer/fjerner nft-regler korrekt på runtime
-- ✅ **Ticket + cron verificeret** (2026-06-04): 1-min ticket fjernede drop-reglen, og cron-`eval` ryddede override + genblokerede automatisk ved udløb
-- ⏳ Mangler: webinterface i browser (Save & Apply → reload)
+- ✅ `scripts/test-syntax.sh`: rpcd/init parser, påkrævede funktioner, endpoints (advertised + dispatched), chain/set-konsistens, Makefile↔init↔rpcd-stier. Exit-kode ≠ 0 ved fejl.
+- ⚠️ shellcheck giver kun støj-advarsler (SC1091 OpenWrt-includes, SC3043 `local` i ash)
+- ✅ **Playwright e2e** (`test/e2e/`, mod QEMU på 192.168.1.1): sider loader, block/allow, opret/slet profil, tilføj enhed, opret schedule, policy bevares ved save. Sidste kørsel: bestået.
+- ✅ **block_router + kernel-scheduling verificeret på rivendell** (2026-06-24): kun `< start`/`>= stop`-drops emittes; LuCI tilgængelig inden for vinduet.
+- QEMU-image ligger i `images/` (git-ignoreret). `npm install` i `test/e2e/` før e2e-kørsel.
 
 ### DNS-filtrering — IKKE IMPLEMENTERET (kun UI-stub)
 ⚠️ Visionen nævner DNS-filtrering, men det er **ikke bygget**:
-- Daemonen (`familywarden.sh`) læser aldrig `dns_profile` og gør intet med DNS
+- rpcd-pluginet læser aldrig `dns_profile` og gør intet med DNS
 - LuCI har et `dns_profile`-felt der gemmer værdien i UCI — men den bruges ingen steder
-- i18n-strenge + udkommenteret UCI-eksempel findes, men ingen backend-logik
+- Udkommenteret UCI-eksempel findes, men ingen backend-logik
 - Nuværende blokering er ren MAC-baseret nft drop (internet on/off), ikke DNS
 - Mulige modeller (ikke valgt endnu): AdGuard Home API, dnsmasq nftset, eller per-klient DNS-redirect i nft
 
 ### Næste skridt
-1. Test webinterface i browser mod QEMU (http://192.168.1.1/) — Save & Apply → reload
-2. Fase 3: Home Assistant HACS-integration
-3. Fase 4 (sidst): DNS-filtrering — beslut model og byg backend
+1. Beslut: byg `traffic`-backend (nlbwmon) eller fjern traffic-UI'et
+2. Ryd død kode (`familywarden.sh`-stub, ucode-variant)
+3. Fase 3: Home Assistant HACS-integration
+4. Fase 4 (sidst): DNS-filtrering — beslut model og byg backend
 
 ---
 
@@ -80,12 +89,14 @@ Tænkt som det der mangler i OpenWrt-økosystemet: noget der matcher stock firmw
 
 ```
 familywarden/
-├── familywarden/              # Daemon (shell) — kører på routeren
-│   ├── usr/bin/familywarden   # Hovedscript
-│   ├── etc/init.d/familywarden
-│   ├── usr/lib/rpcd/familywarden
+├── familywarden/              # Backend (shell) — kører på routeren
+│   ├── usr/lib/rpcd/familywarden   # Al logik: ubus API + nft include-compiler
+│   ├── etc/init.d/familywarden     # procd: reload ved boot + UCI-ændring
+│   ├── etc/config/familywarden
 │   └── usr/share/rpcd/acl.d/
-├── luci-app-familywarden/     # LuCI frontend — webinterface
+├── luci-app-familywarden/     # LuCI frontend (JS views i htdocs/)
+├── test/e2e/                  # Playwright mod QEMU
+├── dist/                      # Byggede apk'er
 └── hass-openwrt-familywarden # Home Assistant HACS integration (senere)
 ```
 
@@ -121,18 +132,30 @@ tid+dag falder inden for et af dens schedules. Der er ingen `action`-option læn
 
 ## 2. Daemon (`familywarden`)
 
-### Ansvar
-- Læser UCI-konfiguration ved opstart og ved `ubus call familywarden reload`
-- Evaluerer tidsplaner hvert minut (via procd respawn)
-- Tilføjer/fjerner nftables-regler for at blokere/tillade internet per MAC
-- Eksponerer ubus-objektet `familywarden`
-- Skriver status til `/tmp/familywarden.status` (JSON)
+Der er ingen kørende daemon længere — se "Arkitektur" under Status. rpcd-pluginet
+genererer et fw4-include ved hver ændring, og kernen håndhæver tidsplaner og tickets.
 
-### Firewall-integration (nftables)
+### Ansvar (rpcd-plugin)
+- Læser UCI + RAM-state (`/tmp/familywarden.state`: overrides og ticket-udløb)
+- Kompilerer `/var/etc/familywarden.include` og kører `fw4 reload`
+- Eksponerer ubus-objektet `familywarden`
+
+### Firewall-integration (nftables, fw4-include)
 ```nft
+set familywarden_ticket { type ether_addr; flags timeout; }
+
+chain familywarden_input {        # kun profiler med block_router='1'
+    type filter hook input priority 1; policy accept;
+    ether saddr @familywarden_ticket tcp dport 0-65535 counter accept
+    ...drop-regler med inverterede meta hour/day-grænser...
+}
+
 chain familywarden_forward {
-    type filter hook forward priority 0; policy accept;
-    ether saddr 00:11:22:33:44:55 counter drop comment "familywarden:test"
+    type filter hook forward priority 1; policy accept;
+    ether saddr @familywarden_ticket counter accept comment "familywarden:ticket"
+    # override → policy=block → scheduled: accept i vinduet, ellers drop
+    ether saddr aa:bb:cc:dd:ee:ff meta hour >= 07:00 meta hour < 20:00 meta day { 1, 2, 3, 4, 5 } counter accept comment "familywarden:test:sched-allow"
+    ether saddr aa:bb:cc:dd:ee:ff counter drop comment "familywarden:test:scheduled"
 }
 ```
 
@@ -148,6 +171,7 @@ ubus call familywarden allow '{"profile":"test"}'
 ubus call familywarden reset '{"profile":"test"}'
 ubus call familywarden ticket '{"profile":"test","minutes":30}'
 ubus call familywarden reload
+ubus call familywarden version           # installerede backend/frontend-versioner
 ```
 
 ---
@@ -156,9 +180,9 @@ ubus call familywarden reload
 
 ### Sider
 - **Overview** - Dashboard med profil-status, quick-actions, auto-refresh
-- **Profiles** - Profil-editor (enheder, policy)
-- **Schedules** - Tidsplan-editor (dage, tidsrum)
+- **Profiles** - Profil-editor (enheder, policy, block_router) med inline tidsplaner (dage, tidsrum)
 - **Settings** - Globale indstillinger
+- **Info** - Installerede versioner (via `ubus version`)
 
 ---
 
@@ -166,18 +190,20 @@ ubus call familywarden reload
 
 #### Fase 1 — MVP backend (FÆRDIG — runtime-verificeret 2026-06-04)
 - [x] UCI-konfigurationsformat defineret
-- [x] Shell-baseret daemon med init.d service
-- [x] nftables chain management (verificeret på QEMU)
-- [x] Tidsplan-evaluering (cron-baseret)
+- [x] rpcd-plugin + procd init.d service (oprindeligt shell-daemon, erstattet i 0.5.x)
+- [x] nftables chain management via fw4-include (verificeret på QEMU)
+- [x] Tidsplan-evaluering i kernen (`meta hour`/`meta day`, erstattede cron)
 - [x] ubus API fuldt implementeret (verificeret på QEMU)
 - [x] rpcd ACL-fil til HTTP-adgang
 
-#### Fase 2 — Brugervenlig (NÆSTEN FÆRDIG)
+#### Fase 2 — Brugervenlig (FÆRDIG)
 - [x] LuCI oversigtsside (profilstatus, toggle)
 - [x] LuCI profil-editor (enheder, policy)
 - [x] LuCI tidsplan-editor
 - [x] `ticket` kommando fuldt testet (runtime-verificeret 2026-06-04)
-- [ ] Webinterface verificeret i browser (Save & Apply → reload)
+- [x] Webinterface verificeret i browser (Playwright e2e mod QEMU)
+- [x] block_router: blokér adgang til routeren for blokerede profiler (0.7.x)
+- [ ] Traffic per profil — kun frontend findes, backend mangler
 
 #### Fase 3 — Home Assistant (IKKE STARTET)
 - [ ] HACS custom integration
@@ -191,6 +217,44 @@ ubus call familywarden reload
 - [ ] Test DNS-filtrering på runtime
 
 ---
+
+## Knowledge Graph
+
+Der findes en interaktiv videnbase over projektet i `.understand-anything/knowledge-graph.json`.
+
+⚠️ Den er analyseret ved commit `66c2701` (se `meta.json`) og kender ikke block_router
+eller kernel-scheduling. Den beskriver også ucode-varianten og `familywarden.sh` som aktive.
+Kør `/understand` igen, før du stoler på den.
+
+**Læs den ALTID før du koder!** Den indeholder:
+- 44 noder (filer, funktioner, configs) med formål og complexity
+- 5 arkitektur-lag: daemon, frontend, build, test, documentation
+- 25 edges (contains, related, documents) der viser afhængigheder
+- 10 guided tour steps der forklarer arkitekturen
+
+**Sådan bruger du den:**
+
+1. **Før du ændrer noget** — læs `.understand-anything/knowledge-graph.json` for at forstå:
+   - Hvilke funktioner der allerede findes (undgå duplikering)
+   - Hvilke lag filen tilhører
+   - Hvilke andre filer der bruger den
+
+2. **Når du tilføjer funktioner** — tjek at navngivning følger eksisterende mønster
+   - Daemon: `handle_<method>` i `familywarden/usr/lib/rpcd/familywarden`
+   - LuCI: `build*`, `show*`, `refresh*`, `injectStyles` i view-filer
+
+3. **Før du kode nyt** — spørg dig selv:
+   - Tilhører det daemon-laget eller frontend-laget?
+   - Skal det via ubus API eller direkte UCI?
+   - Hvilke nftables-regler skal ændres?
+
+** Eksempel på brug:**
+```
+Før jeg tilføjer DNS-filtrering, vil jeg forstå:
+- Hvordan nftables-reglerne pt. tilføjes (se knowledge-graph noder)
+- Hvilke funktioner i daemon der håndterer firewall
+- Hvordan LuCI frontend kalder daemon via ubus
+```
 
 ## Tekniske noter
 
@@ -224,4 +288,4 @@ config_list_foreach "${profile}" device _list_callback
 
 *Projekt: FamilyWarden*
 *Startet: 2026-04-20*
-*Seneste update: 2026-06-04*
+*Seneste update: 2026-10-14*

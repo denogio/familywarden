@@ -1,31 +1,34 @@
 #!/bin/bash
 # Syntax and structure tests for familywarden
-
-set -e
+#
+# All backend logic lives in the rpcd plugin (installed as
+# /usr/libexec/rpcd/familywarden). The init script only calls "$BIN reload".
 
 PROJECT_ROOT="$(dirname "$0")/.."
-FW_SCRIPT="${PROJECT_ROOT}/familywarden/usr/bin/familywarden.sh"
 RPCD_SCRIPT="${PROJECT_ROOT}/familywarden/usr/lib/rpcd/familywarden"
 INIT_SCRIPT="${PROJECT_ROOT}/familywarden/etc/init.d/familywarden"
+MAKEFILE="${PROJECT_ROOT}/familywarden/Makefile"
+
+FAILED=0
+fail() { echo "❌ $1"; FAILED=1; }
 
 echo "=== FamilyWarden Syntax Tests ==="
 echo ""
 
-# Check all scripts exist
-for script in "$FW_SCRIPT" "$RPCD_SCRIPT" "$INIT_SCRIPT"; do
+for script in "$RPCD_SCRIPT" "$INIT_SCRIPT"; do
     if [ ! -f "$script" ]; then
-        echo "❌ Missing: $script"
-        exit 1
+        fail "Missing: $script"
+        continue
     fi
     echo "✓ Found: $script"
+    sh -n "$script" && echo "✓ Parses: $script" || fail "Syntax error: $script"
 done
 
 echo ""
 echo "=== ShellCheck (if available) ==="
 if command -v shellcheck &> /dev/null; then
-    shellcheck -x "$FW_SCRIPT" && echo "✓ familywarden.sh passed" || echo "⚠ familywarden.sh has warnings"
-    shellcheck -x "$RPCD_SCRIPT" && echo "✓ rpcd plugin passed" || echo "⚠ rpcd plugin has warnings"
-    shellcheck -x "$INIT_SCRIPT" && echo "✓ init.d script passed" || echo "⚠ init.d script has warnings"
+    shellcheck -x "$RPCD_SCRIPT" > /dev/null && echo "✓ rpcd plugin passed" || echo "⚠ rpcd plugin has warnings"
+    shellcheck -x "$INIT_SCRIPT" > /dev/null && echo "✓ init.d script passed" || echo "⚠ init.d script has warnings"
 else
     echo "shellcheck not found - skipping"
 fi
@@ -34,46 +37,74 @@ echo ""
 echo "=== Required Functions ==="
 
 required_functions=(
-    "nft_init"
-    "evaluate_profile"
-    "evaluate_all"
+    "generate_include"
+    "compile_and_apply"
+    "gc_expired_tickets"
+    "_sched_accept_rules"
+    "_sched_input_drop_rules"
     "ubus_list"
     "ubus_status"
     "ubus_block"
     "ubus_allow"
     "ubus_reset"
     "ubus_ticket"
+    "ubus_reload"
+    "ubus_version"
 )
 
 for func in "${required_functions[@]}"; do
-    if grep -q "^${func}()" "$FW_SCRIPT"; then
+    if grep -q "^${func}()" "$RPCD_SCRIPT"; then
         echo "✓ Function: $func"
     else
-        echo "❌ Missing function: $func"
+        fail "Missing function: $func"
     fi
 done
 
 echo ""
 echo "=== Ubus API Endpoints ==="
 
-ubus_methods=("list" "status" "block" "allow" "reset" "ticket" "reload")
+# Each method must be both advertised (rpcd "list" JSON) and dispatched ("call").
+ubus_methods=("list" "status" "block" "allow" "reset" "ticket" "reload" "version")
 for method in "${ubus_methods[@]}"; do
-    if grep -q "\"$method\"" "$RPCD_SCRIPT" || grep -q "$method" "$RPCD_SCRIPT"; then
-        echo "✓ Endpoint: $method"
+    if ! grep -q "^  \"$method\":" "$RPCD_SCRIPT"; then
+        fail "Not advertised in list: $method"
+    elif ! grep -qE "^ +$method\)$" "$RPCD_SCRIPT"; then
+        fail "Not dispatched in call: $method"
     else
-        echo "⚠ Missing endpoint: $method"
+        echo "✓ Endpoint: $method"
     fi
 done
 
 echo ""
-echo "=== nftables chain name consistency ==="
+echo "=== nftables chain/set consistency ==="
 
-CHAIN_NAME="familywarden_forward"
-if grep -q "$CHAIN_NAME" "$FW_SCRIPT"; then
-    echo "✓ Chain name: $CHAIN_NAME"
-else
-    echo "❌ Chain name not found"
-fi
+for name in familywarden_forward familywarden_input familywarden_ticket; do
+    # Must be declared in the include and deleted before fw4 reload
+    if grep -qE "echo \"(chain|set) $name \{" "$RPCD_SCRIPT" \
+        && grep -qE "nft delete (chain|set) inet fw4 $name" "$RPCD_SCRIPT"; then
+        echo "✓ $name: declared + cleaned up"
+    else
+        fail "$name not declared or not cleaned up before fw4 reload"
+    fi
+done
 
 echo ""
-echo "All checks complete!"
+echo "=== Packaging consistency ==="
+
+grep -q 'usr/libexec/rpcd/familywarden' "$MAKEFILE" \
+    && grep -q 'BIN="/usr/libexec/rpcd/familywarden"' "$INIT_SCRIPT" \
+    && echo "✓ init.d BIN matches Makefile install path" \
+    || fail "init.d BIN does not match Makefile install path"
+
+grep -q "/var/etc/familywarden.include" "$MAKEFILE" \
+    && grep -q 'FW_INCLUDE="/var/etc/familywarden.include"' "$RPCD_SCRIPT" \
+    && echo "✓ firewall include path matches" \
+    || fail "firewall include path mismatch between Makefile and rpcd plugin"
+
+echo ""
+if [ "$FAILED" -eq 0 ]; then
+    echo "All checks passed!"
+else
+    echo "Some checks FAILED"
+fi
+exit "$FAILED"

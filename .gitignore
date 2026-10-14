@@ -2,3 +2,10 @@
 /openwrt-*-initramfs
 /*.qcow2
 /qemu.sh
+
+# QEMU test images
+/images/
+
+# e2e test deps + output
+node_modules/
+test-results/

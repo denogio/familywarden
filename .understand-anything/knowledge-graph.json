@@ -1,0 +1,1003 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "familywarden",
+    "languages": [
+      "shell",
+      "javascript",
+      "makefile",
+      "json",
+      "markdown"
+    ],
+    "frameworks": [
+      "OpenWrt",
+      "LuCI",
+      "procd",
+      "nftables",
+      "ubus"
+    ],
+    "description": "OpenWrt Parental Control plugin with profile-based internet blocking, time schedules, and ubus API for Home Assistant integration",
+    "analyzedAt": "2026-06-08T13:03:10Z",
+    "gitCommitHash": "66c27014ec6a048dd890c10842ecaea46ced79d8"
+  },
+  "nodes": [
+    {
+      "id": "document:CLAUDE.md",
+      "type": "document",
+      "name": "CLAUDE.md",
+      "filePath": "CLAUDE.md",
+      "summary": "Project documentation for FamilyWarden OpenWrt parental control plugin, covering status, scope document, UCI configuration format, daemon responsibilities, ubus API, LuCI frontend, and implementation plan phases.",
+      "tags": [
+        "documentation",
+        "project-overview",
+        "openwrt",
+        "parental-control"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:PLAN.md",
+      "type": "document",
+      "name": "PLAN.md",
+      "filePath": "PLAN.md",
+      "summary": "Detailed implementation plan for FamilyWarden v0.5, documenting architecture decisions, critical bugs, TODO items, progress tracker, test strategy, and UI polish requirements.",
+      "tags": [
+        "documentation",
+        "implementation-plan",
+        "architecture",
+        "openwrt"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:README.md",
+      "type": "document",
+      "name": "README.md",
+      "filePath": "README.md",
+      "summary": "Project README for FamilyWarden OpenWrt parental control, providing quick overview, status, file structure, compilation instructions, installation guide, and API examples.",
+      "tags": [
+        "documentation",
+        "readme",
+        "entry-point",
+        "openwrt"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:new-thoughts.md",
+      "type": "document",
+      "name": "new-thoughts.md",
+      "filePath": "new-thoughts.md",
+      "summary": "Architectural design document exploring fully declarative nftables integration for FamilyWarden, covering state model, compiler algorithm, overnight schedule correctness, and locking mechanisms.",
+      "tags": [
+        "documentation",
+        "architecture",
+        "nftables",
+        "design"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:.understand-anything/.understandignore",
+      "type": "file",
+      "name": ".understandignore",
+      "filePath": ".understand-anything/.understandignore",
+      "summary": "Ignore file specifying patterns for code analysis tooling exclusion.",
+      "tags": [
+        "configuration",
+        "analysis-tooling"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:familywarden/etc/config/familywarden",
+      "type": "file",
+      "name": "familywarden",
+      "filePath": "familywarden/etc/config/familywarden",
+      "summary": "UCI configuration file defining the familywarden package configuration schema including global settings, profiles, and schedule sections.",
+      "tags": [
+        "configuration",
+        "uci",
+        "parental-control"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:familywarden/etc/init.d/familywarden",
+      "type": "file",
+      "name": "familywarden",
+      "filePath": "familywarden/etc/init.d/familywarden",
+      "summary": "OpenWrt procd init script for the familywarden service, providing start, stop, reload, and restart actions.",
+      "tags": [
+        "infrastructure",
+        "openwrt",
+        "service"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "resource:familywarden/Makefile",
+      "type": "resource",
+      "name": "Makefile",
+      "filePath": "familywarden/Makefile",
+      "summary": "OpenWrt package Makefile for building the familywarden daemon package with PKG_NAME, PKG_VERSION, PKG_RELEASE and standard package build targets.",
+      "tags": [
+        "infrastructure",
+        "build-system",
+        "openwrt"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:familywarden/usr/bin/familywarden.sh",
+      "type": "file",
+      "name": "familywarden.sh",
+      "filePath": "familywarden/usr/bin/familywarden.sh",
+      "summary": "Shell script entry point wrapper for the familywarden daemon.",
+      "tags": [
+        "entry-point",
+        "shell",
+        "daemon"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:familywarden/usr/lib/rpcd/familywarden",
+      "type": "file",
+      "name": "familywarden",
+      "filePath": "familywarden/usr/lib/rpcd/familywarden",
+      "summary": "Shell-based rpcd plugin exposing the familywarden ubus API for parental control management including list, status, block, allow, reset, ticket, and reload operations.",
+      "tags": [
+        "api-handler",
+        "ubus",
+        "parental-control"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "config:familywarden/usr/share/rpcd/acl.d/familywarden.json",
+      "type": "config",
+      "name": "familywarden.json",
+      "filePath": "familywarden/usr/share/rpcd/acl.d/familywarden.json",
+      "summary": "rpcd ACL configuration granting access permissions for the familywarden ubus API endpoints.",
+      "tags": [
+        "configuration",
+        "acl",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:familywarden/usr/share/rpcd/ucode/familywarden",
+      "type": "file",
+      "name": "familywarden",
+      "filePath": "familywarden/usr/share/rpcd/ucode/familywarden",
+      "summary": "Ucode variant of the familywarden rpcd plugin providing the same ubus API functionality as the shell version.",
+      "tags": [
+        "api-handler",
+        "ubus",
+        "ucode"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/info.js",
+      "type": "file",
+      "name": "info.js",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/info.js",
+      "summary": "LuCI view displaying package version information and metadata for the familywarden plugin.",
+      "tags": [
+        "view",
+        "luci",
+        "info-display"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "type": "file",
+      "name": "overview.js",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "summary": "LuCI overview dashboard view showing all profile statuses, device lists, traffic metrics, and schedule information with auto-refresh and quick action buttons.",
+      "tags": [
+        "view",
+        "luci",
+        "dashboard"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js",
+      "type": "file",
+      "name": "profiles.js",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js",
+      "summary": "LuCI profiles editor view for creating and managing parental control profiles with device assignments, policy configuration, and schedule management.",
+      "tags": [
+        "view",
+        "luci",
+        "editor"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/settings.js",
+      "type": "file",
+      "name": "settings.js",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/settings.js",
+      "summary": "LuCI settings view for global familywarden configuration including enabled status and default policy.",
+      "tags": [
+        "view",
+        "luci",
+        "settings"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "resource:luci-app-familywarden/Makefile",
+      "type": "resource",
+      "name": "Makefile",
+      "filePath": "luci-app-familywarden/Makefile",
+      "summary": "OpenWrt package Makefile for building the luci-app-familywarden LuCI frontend package.",
+      "tags": [
+        "infrastructure",
+        "build-system",
+        "openwrt"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:luci-app-familywarden/root/usr/share/luci/menu.d/luci-app-familywarden.json",
+      "type": "config",
+      "name": "luci-app-familywarden.json",
+      "filePath": "luci-app-familywarden/root/usr/share/luci/menu.d/luci-app-familywarden.json",
+      "summary": "LuCI menu configuration defining the navigation structure for familywarden including overview, profiles, settings, and info pages.",
+      "tags": [
+        "configuration",
+        "luci",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:luci-app-familywarden/root/usr/share/rpcd/acl.d/luci-app-familywarden.json",
+      "type": "config",
+      "name": "luci-app-familywarden.json",
+      "filePath": "luci-app-familywarden/root/usr/share/rpcd/acl.d/luci-app-familywarden.json",
+      "summary": "rpcd ACL configuration for the luci-app-familywarden HTTP API access permissions.",
+      "tags": [
+        "configuration",
+        "acl",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:plans/melodic-swimming-shamir.md",
+      "type": "document",
+      "name": "melodic-swimming-shamir.md",
+      "filePath": "plans/melodic-swimming-shamir.md",
+      "summary": "Architectural plan document for migrating familywarden to use nftables kernel-level scheduling with procd reload triggers instead of cron-based polling.",
+      "tags": [
+        "documentation",
+        "planning",
+        "architecture"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:test-results/.last-run.json",
+      "type": "config",
+      "name": ".last-run.json",
+      "filePath": "test-results/.last-run.json",
+      "summary": "Test run results metadata file storing status and failed test information from the last test execution.",
+      "tags": [
+        "configuration",
+        "testing",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:test/basic_test.sh",
+      "type": "file",
+      "name": "basic_test.sh",
+      "filePath": "test/basic_test.sh",
+      "summary": "Shell-based basic test script for validating familywarden functionality including config generation and syntax checking.",
+      "tags": [
+        "test",
+        "shell",
+        "validation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:test/e2e/familywarden.spec.js",
+      "type": "file",
+      "name": "familywarden.spec.js",
+      "filePath": "test/e2e/familywarden.spec.js",
+      "summary": "Playwright end-to-end test specification for familywarden verifying LuCI interface functionality, profile management, and schedule creation.",
+      "tags": [
+        "test",
+        "e2e",
+        "playwright"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:test/e2e/fwdbg.js",
+      "type": "file",
+      "name": "fwdbg.js",
+      "filePath": "test/e2e/fwdbg.js",
+      "summary": "Debugging utilities for familywarden e2e tests providing helper functions for test inspection and troubleshooting.",
+      "tags": [
+        "test",
+        "debugging",
+        "utilities"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:test/e2e/package.json",
+      "type": "config",
+      "name": "package.json",
+      "filePath": "test/e2e/package.json",
+      "summary": "Node.js package configuration for familywarden e2e tests with Playwright as a devDependency.",
+      "tags": [
+        "configuration",
+        "nodejs",
+        "testing"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:test/e2e/playwright.config.js",
+      "type": "file",
+      "name": "playwright.config.js",
+      "filePath": "test/e2e/playwright.config.js",
+      "summary": "Playwright test runner configuration specifying browser targets, timeouts, and test directory settings.",
+      "tags": [
+        "test",
+        "configuration",
+        "playwright"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:test/e2e/test-results/.last-run.json",
+      "type": "config",
+      "name": ".last-run.json",
+      "filePath": "test/e2e/test-results/.last-run.json",
+      "summary": "E2E test run results metadata file storing status and failed test information from the last Playwright test execution.",
+      "tags": [
+        "configuration",
+        "testing",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/info.js:pkgVer",
+      "type": "function",
+      "name": "pkgVer",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/info.js",
+      "lineRange": [
+        21,
+        25
+      ],
+      "summary": "Extracts and formats the package version from a version string.",
+      "tags": [
+        "utility",
+        "version",
+        "formatting"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/info.js:row",
+      "type": "function",
+      "name": "row",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/info.js",
+      "lineRange": [
+        27,
+        32
+      ],
+      "summary": "Creates a table row element with label, value, and optional extra content.",
+      "tags": [
+        "utility",
+        "ui",
+        "element-creation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js:scheduleActiveAt",
+      "type": "function",
+      "name": "scheduleActiveAt",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "lineRange": [
+        79,
+        91
+      ],
+      "summary": "Determines if a schedule is active at a specific date/time by checking day of week and time range.",
+      "tags": [
+        "utility",
+        "schedule",
+        "time"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js:getNextChange",
+      "type": "function",
+      "name": "getNextChange",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "lineRange": [
+        108,
+        124
+      ],
+      "summary": "Calculates the next schedule state change time given current schedules.",
+      "tags": [
+        "utility",
+        "schedule",
+        "time"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js:injectStyles",
+      "type": "function",
+      "name": "injectStyles",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "lineRange": [
+        126,
+        214
+      ],
+      "summary": "Injects custom CSS styles into the document head for the dashboard view including schedule timeline and status badge styling.",
+      "tags": [
+        "utility",
+        "styling",
+        "css-injection"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js:statusBadge",
+      "type": "function",
+      "name": "statusBadge",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "lineRange": [
+        216,
+        231
+      ],
+      "summary": "Creates a status badge element showing the current profile status and override state.",
+      "tags": [
+        "ui",
+        "component",
+        "status"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js:showTrafficModal",
+      "type": "function",
+      "name": "showTrafficModal",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "lineRange": [
+        260,
+        291
+      ],
+      "summary": "Displays a modal dialog with traffic statistics for a profile including daily, weekly, and monthly breakdowns.",
+      "tags": [
+        "ui",
+        "modal",
+        "traffic"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js:refreshDashboard",
+      "type": "function",
+      "name": "refreshDashboard",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "lineRange": [
+        346,
+        472
+      ],
+      "summary": "Main dashboard refresh function that fetches profile data, DHCP leases, host hints, and rebuilds the entire dashboard UI with status badges, device lists, and action buttons.",
+      "tags": [
+        "entry-point",
+        "dashboard",
+        "refresh"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js:buildScheduleSection",
+      "type": "function",
+      "name": "buildScheduleSection",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "lineRange": [
+        482,
+        522
+      ],
+      "summary": "Builds a visual schedule section showing weekly schedule grid with active/inactive periods and next change time.",
+      "tags": [
+        "ui",
+        "schedule",
+        "component"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js:buildContent",
+      "type": "function",
+      "name": "buildContent",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "lineRange": [
+        524,
+        635
+      ],
+      "summary": "Constructs the complete dashboard content including profile cards with devices, status, policy labels, schedules, and action buttons.",
+      "tags": [
+        "ui",
+        "dashboard",
+        "layout"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js:injectStyles",
+      "type": "function",
+      "name": "injectStyles",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js",
+      "lineRange": [
+        63,
+        89
+      ],
+      "summary": "Injects custom CSS styles into the document head for the profiles editor view.",
+      "tags": [
+        "utility",
+        "styling",
+        "css-injection"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js:refreshStatus",
+      "type": "function",
+      "name": "refreshStatus",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js",
+      "lineRange": [
+        103,
+        139
+      ],
+      "summary": "Refreshes the profile status display including blocked duration timer and action buttons.",
+      "tags": [
+        "ui",
+        "status",
+        "refresh"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js:showAddProfileModal",
+      "type": "function",
+      "name": "showAddProfileModal",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js",
+      "lineRange": [
+        147,
+        199
+      ],
+      "summary": "Displays a modal dialog for creating a new profile with name input and auto-generated ID.",
+      "tags": [
+        "ui",
+        "modal",
+        "profile-creation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js:buildTabs",
+      "type": "function",
+      "name": "buildTabs",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js",
+      "lineRange": [
+        201,
+        223
+      ],
+      "summary": "Builds profile tabs navigation including existing profile links and an add new profile button.",
+      "tags": [
+        "ui",
+        "navigation",
+        "tabs"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js:buildStatusBar",
+      "type": "function",
+      "name": "buildStatusBar",
+      "filePath": "luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js",
+      "lineRange": [
+        225,
+        255
+      ],
+      "summary": "Creates the status bar showing current profile status with dot indicator, text label, and action buttons.",
+      "tags": [
+        "ui",
+        "status",
+        "component"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:test/e2e/familywarden.spec.js:loginAsRoot",
+      "type": "function",
+      "name": "loginAsRoot",
+      "filePath": "test/e2e/familywarden.spec.js",
+      "lineRange": [
+        6,
+        12
+      ],
+      "summary": "Logs into the LuCI interface as root user with default password.",
+      "tags": [
+        "test",
+        "authentication",
+        "e2e"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:test/e2e/familywarden.spec.js:selectDays",
+      "type": "function",
+      "name": "selectDays",
+      "filePath": "test/e2e/familywarden.spec.js",
+      "lineRange": [
+        17,
+        24
+      ],
+      "summary": "Selects specified days in a schedule section's day picker dropdown.",
+      "tags": [
+        "test",
+        "ui-interaction",
+        "e2e"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "document:CLAUDE.md",
+      "target": "document:PLAN.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:CLAUDE.md",
+      "target": "document:README.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PLAN.md",
+      "target": "document:new-thoughts.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:PLAN.md",
+      "target": "document:CLAUDE.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:README.md",
+      "target": "document:CLAUDE.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:new-thoughts.md",
+      "target": "document:PLAN.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/info.js",
+      "target": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/info.js:pkgVer",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/info.js",
+      "target": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/info.js:row",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "target": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js:scheduleActiveAt",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "target": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js:getNextChange",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "target": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js:injectStyles",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "target": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js:statusBadge",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "target": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js:showTrafficModal",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "target": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js:refreshDashboard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "target": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js:buildScheduleSection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+      "target": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js:buildContent",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js",
+      "target": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js:injectStyles",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js",
+      "target": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js:refreshStatus",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js",
+      "target": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js:showAddProfileModal",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js",
+      "target": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js:buildTabs",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js",
+      "target": "function:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js:buildStatusBar",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:test/e2e/familywarden.spec.js",
+      "target": "function:test/e2e/familywarden.spec.js:loginAsRoot",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:test/e2e/familywarden.spec.js",
+      "target": "function:test/e2e/familywarden.spec.js:selectDays",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "document:plans/melodic-swimming-shamir.md",
+      "target": "file:familywarden/usr/lib/rpcd/familywarden",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:plans/melodic-swimming-shamir.md",
+      "target": "file:familywarden/etc/init.d/familywarden",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    }
+  ],
+  "layers": [
+    {
+      "id": "layer:daemon",
+      "name": "Daemon Layer",
+      "description": "OpenWrt daemon with ubus API, nftables firewall integration, shell and ucode rpcd plugins, procd init script, and UCI configuration",
+      "nodeIds": [
+        "file:familywarden/etc/config/familywarden",
+        "file:familywarden/etc/init.d/familywarden",
+        "file:familywarden/usr/bin/familywarden.sh",
+        "file:familywarden/usr/lib/rpcd/familywarden",
+        "config:familywarden/usr/share/rpcd/acl.d/familywarden.json",
+        "file:familywarden/usr/share/rpcd/ucode/familywarden"
+      ]
+    },
+    {
+      "id": "layer:frontend",
+      "name": "Frontend Layer",
+      "description": "LuCI web interface views and HTTP API ACL configuration for the parental control dashboard",
+      "nodeIds": [
+        "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/info.js",
+        "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js",
+        "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js",
+        "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/settings.js",
+        "config:luci-app-familywarden/root/usr/share/luci/menu.d/luci-app-familywarden.json",
+        "config:luci-app-familywarden/root/usr/share/rpcd/acl.d/luci-app-familywarden.json"
+      ]
+    },
+    {
+      "id": "layer:build",
+      "name": "Build Infrastructure",
+      "description": "OpenWrt package Makefiles for building the daemon and LuCI app packages",
+      "nodeIds": [
+        "resource:familywarden/Makefile",
+        "resource:luci-app-familywarden/Makefile"
+      ]
+    },
+    {
+      "id": "layer:test",
+      "name": "Test Layer",
+      "description": "Shell-based validation tests and Playwright end-to-end tests with configuration",
+      "nodeIds": [
+        "file:test/basic_test.sh",
+        "file:test/e2e/familywarden.spec.js",
+        "file:test/e2e/fwdbg.js",
+        "config:test/e2e/package.json",
+        "file:test/e2e/playwright.config.js",
+        "config:test-results/.last-run.json",
+        "config:test/e2e/test-results/.last-run.json"
+      ]
+    },
+    {
+      "id": "layer:documentation",
+      "name": "Documentation Layer",
+      "description": "Project documentation, implementation plans, and design documents for FamilyWarden",
+      "nodeIds": [
+        "document:CLAUDE.md",
+        "document:PLAN.md",
+        "document:README.md",
+        "document:new-thoughts.md",
+        "document:plans/melodic-swimming-shamir.md",
+        "file:.understand-anything/.understandignore"
+      ]
+    }
+  ],
+  "tour": [
+    {
+      "order": 1,
+      "title": "Project Overview",
+      "description": "The README.md file introduces FamilyWarden, a native OpenWrt parental control plugin that provides profile-based internet blocking with time schedules. It covers the project status, package structure, installation instructions, and a quick API reference. This is the best starting point before diving into the implementation.",
+      "nodeIds": [
+        "document:README.md"
+      ]
+    },
+    {
+      "order": 2,
+      "title": "UCI Configuration Schema",
+      "description": "The UCI configuration file at /etc/config/familywarden defines the entire data model for parental control: global settings (enabled, default_policy), named profiles (devices, policy, dns_profile), and time schedules (days, start, stop). Every component in the system -- daemon, ubus API, and frontend -- reads and writes this same schema.",
+      "nodeIds": [
+        "file:familywarden/etc/config/familywarden"
+      ]
+    },
+    {
+      "order": 3,
+      "title": "Daemon Init Script and Bootstrapping",
+      "description": "The procd init script is the service bootstrapper for OpenWrt. It declares the familywarden service to procd, which handles start, stop, reload, and respawn. This is where the daemon gets wired into OpenWrt's boot process and how it survives router restarts.",
+      "nodeIds": [
+        "file:familywarden/etc/init.d/familywarden"
+      ]
+    },
+    {
+      "order": 4,
+      "title": "Shell and Ucode ubus API Plugins",
+      "description": "FamilyWarden exposes its control interface via OpenWrt's ubus RPC mechanism. Two implementations exist in parallel: a shell script at usr/lib/rpcd/familywarden and a ucode variant at usr/share/rpcd/ucode/familywarden. Both expose the same API (list, status, block, allow, reset, ticket, reload) used by the LuCI frontend and Home Assistant. The ACL configuration file restricts which callers can invoke each method.",
+      "nodeIds": [
+        "file:familywarden/usr/lib/rpcd/familywarden",
+        "file:familywarden/usr/share/rpcd/ucode/familywarden",
+        "config:familywarden/usr/share/rpcd/acl.d/familywarden.json"
+      ],
+      "languageLesson": "OpenWrt's ubus (micro bus) is a lightweight RPC system for inter-process communication. The rpcd plugin registers an object with methods; callers use `ubus call familywarden <method>` to invoke them. ACL files enforce that only authorized sessions (e.g., from LuCI's HTTP API) can access certain methods."
+    },
+    {
+      "order": 5,
+      "title": "LuCI Frontend Overview Dashboard",
+      "description": "The overview.js view is the main dashboard displayed when a user opens FamilyWarden in the OpenWrt web interface. It fetches profile statuses via the ubus API, renders device lists and traffic metrics, displays active schedules, and provides quick-action buttons (block/allow/ticket) for each profile. It is the highest-fan-out file in the codebase, reflecting its central role in the UI.",
+      "nodeIds": [
+        "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/overview.js"
+      ]
+    },
+    {
+      "order": 6,
+      "title": "LuCI Profiles and Settings Editors",
+      "description": "The profiles.js view handles profile creation and editing -- adding devices by MAC address, assigning schedules, and setting policies (allow/scheduled/block). The settings.js view exposes global options such as whether FamilyWarden is enabled and what the default internet policy should be. Together they form the configuration interface built on top of the ubus API from Step 4.",
+      "nodeIds": [
+        "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/profiles.js",
+        "file:luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/settings.js"
+      ]
+    },
+    {
+      "order": 7,
+      "title": "LuCI Navigation and ACL Configuration",
+      "description": "The LuCI menu configuration file maps the four frontend views (overview, profiles, settings, info) into OpenWrt's web interface navigation tree. The accompanying ACL file grants the luci-app-familywarden package HTTP API access permissions, controlling which RPC methods the frontend can call on behalf of the browser user.",
+      "nodeIds": [
+        "config:luci-app-familywarden/root/usr/share/luci/menu.d/luci-app-familywarden.json",
+        "config:luci-app-familywarden/root/usr/share/rpcd/acl.d/luci-app-familywarden.json"
+      ]
+    },
+    {
+      "order": 8,
+      "title": "OpenWrt Package Build Infrastructure",
+      "description": "Two Makefiles drive the OpenWrt package build: one for the familywarden daemon and one for luci-app-familywarden. Both follow OpenWrt's PKG_* convention (PKG_NAME, PKG_VERSION, PKG_RELEASE) and declare dependencies, sources, and build targets. Building installs the daemon, init script, ubus plugins, ACL files, and LuCI views into the correct paths on the target system.",
+      "nodeIds": [
+        "resource:familywarden/Makefile",
+        "resource:luci-app-familywarden/Makefile"
+      ],
+      "languageLesson": "OpenWrt packages use a two-stage Makefile structure. The main package Makefile declares metadata and pulls sources; the OpenWrt build system (scripts/mk/openwrt.sh or the feeds system) processes it. PKG_BUILD-flags control which features or file sets are included at compile time."
+    },
+    {
+      "order": 9,
+      "title": "Test Infrastructure",
+      "description": "The test layer uses two complementary approaches: a shell-based syntax and config-generation test (basic_test.sh) that runs on the target or QEMU, and a Playwright-based end-to-end browser test (familywarden.spec.js) that exercises the full LuCI UI flow including login, profile creation, and schedule setup. The package.json declares Playwright as a devDependency for the e2e suite.",
+      "nodeIds": [
+        "file:test/basic_test.sh",
+        "file:test/e2e/familywarden.spec.js",
+        "config:test/e2e/package.json"
+      ],
+      "languageLesson": "Playwright is a browser automation framework that controls a real Chromium or Firefox instance. Tests use page.goto() to navigate, locators to find UI elements, and expect() assertions to verify behavior -- providing confidence that the entire HTTP -> ubus -> nftables chain works end-to-end."
+    },
+    {
+      "order": 10,
+      "title": "Implementation Planning and Architecture",
+      "description": "CLAUDE.md and PLAN.md together document the full scope, current status, and implementation roadmap. CLAUDE.md captures the vision (profile-based parental control with ubus API for Home Assistant integration), the UCI schema, the daemon responsibilities, and the four-phase implementation plan. PLAN.md tracks architecture decisions, bugs fixed, and test results. The plans/melodic-swimming-shamir.md file documents a proposed future migration to kernel-level nftables scheduling via procd reload triggers.",
+      "nodeIds": [
+        "document:CLAUDE.md",
+        "document:PLAN.md",
+        "document:plans/melodic-swimming-shamir.md"
+      ]
+    }
+  ]
+}
