@@ -354,17 +354,24 @@ sed -i 's/^parent [0-9]*/parent 1/' /etc/familywarden/pacts
 refute_rule "expired pact garbage-collected" 'parent:pact'
 
 echo ""
-echo "=== Ulysses: root escape hatch ==="
+echo "=== Ulysses: root escape hatch (sailing-home) ==="
 uci set familywarden.kid.lock='1'
 uci commit familywarden
 "$BIN" reload >/dev/null
 call pact '{"profile":"kid","minutes":60}' >/dev/null
-"$BIN" unlock kid >/dev/null
+if echo "let me go" | "$BIN" sailing-home kid >/dev/null; then
+    fail "sailing-home accepted a wrong answer"
+else
+    pass "sailing-home refuses a wrong answer"
+fi
+assert_json "wrong answer: still locked" "$(call status '{"profile":"kid"}')" '@.locked' "true"
+out=$(echo "  Press on! " | "$BIN" sailing-home kid)
+echo "$out" | grep -q "sailing home" && pass "sailing-home accepts the line" || fail "sailing-home: $out"
 out=$(call status '{"profile":"kid"}')
-assert_json "unlock: lock lifted now" "$out" '@.locked' "false"
-assert_json "unlock: pact lifted now" "$out" '@.pact_until' "0"
-refute_rule "unlock: pact rule gone" 'kid:pact'
-[ "$(uci -q get familywarden.kid.lock)" = "0" ] && pass "unlock clears lock in UCI" || fail "lock still set in UCI"
+assert_json "sailing-home: lock lifted now" "$out" '@.locked' "false"
+assert_json "sailing-home: pact lifted now" "$out" '@.pact_until' "0"
+refute_rule "sailing-home: pact rule gone" 'kid:pact'
+[ "$(uci -q get familywarden.kid.lock)" = "0" ] && pass "sailing-home clears lock in UCI" || fail "lock still set in UCI"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

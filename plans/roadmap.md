@@ -62,7 +62,7 @@ traffic-knappen.
 - **Ad hoc-pagt** ("lås mig til 06:00"): blokerer profilens enheder til et klokkeslæt; kan kun
   forlænges. Håndhæves af kernen (`meta time`).
 - Allow/ticket afvises for låste profiler og under pagt; Block/Reset virker.
-- Nødudgang: `familywarden unlock <profil>` som root over SSH.
+- Nødudgang: `familywarden sailing-home <profil>` som root over SSH (kræver at fuldføre en linje fra Josh Garrels' "Ulysses").
 - Testet: 37 integrations-checks + UI i LuCI-container (Playwright).
 
 Mangler før merge: test på rivendell (Save & Apply → procd-trigger → pending; reboot-persistens).

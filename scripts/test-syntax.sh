@@ -83,10 +83,11 @@ for method in "${ubus_methods[@]}"; do
 done
 
 # The escape hatch must stay CLI-only (root over SSH), never a ubus method
-if grep -q '"unlock"' "$RPCD_SCRIPT" "${ACL_FILES[@]}"; then
-    fail "unlock is exposed via ubus/ACL - it must stay root-CLI only"
+if grep -qE '"sailing-home"|sailing-home\)$' "${ACL_FILES[@]}" \
+    || sed -n '/^    call)$/,/^esac$/p' "$RPCD_SCRIPT" | grep -q 'sailing-home'; then
+    fail "sailing-home is exposed via ubus/ACL - it must stay root-CLI only"
 else
-    echo "✓ unlock is CLI-only"
+    echo "✓ sailing-home is CLI-only"
 fi
 
 echo ""

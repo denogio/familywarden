@@ -66,7 +66,8 @@ ubus call familywarden version
   efter seneste ændring. Allow og tickets afvises; Block virker altid.
 - **Pagt** (🔒-knappen): internettet slukkes til et valgt klokkeslæt og kan ikke ophæves
   eller forkortes fra LuCI eller Home Assistant — kun forlænges.
-- Nødudgang, kun som root over SSH: `familywarden unlock <profil>`
+- Nødudgang, kun som root over SSH: `familywarden sailing-home <profil>` — og du skal kunne
+  fuldføre linjen fra Josh Garrels' "Ulysses"
 
 ## Licens
 

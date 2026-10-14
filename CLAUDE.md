@@ -69,8 +69,9 @@ To mekanismer, begge persistente i `/etc/familywarden/` (overlever reboot):
   aldrig `config_load` direkte. LuCI-oversigten viser tidsplaner fra `list` (effektive), ikke UCI.
 - **Tick**: init-scriptets procd-instans kører `familywarden tick` hvert minut; recompiler kun når
   en ventende ændring er moden.
-- **Nødudgang (kun root/SSH)**: `familywarden unlock <profil>` (symlink i `/usr/sbin`) fjerner
-  snapshot, pending og pagt og sætter `lock=0`. Må aldrig eksponeres via ubus (test-syntax tjekker).
+- **Nødudgang (kun root/SSH)**: `familywarden sailing-home <profil>` (symlink i `/usr/sbin`). Spørger
+  efter slutningen på linjen "By the light of moon I will ..." (svar: `press on`, fra Josh Garrels'
+  "Ulysses"); læser fra stdin. Fjerner snapshot, pending og pagt og sætter `lock=0`. Må aldrig eksponeres via ubus (test-syntax tjekker).
 - Kendte omveje med root-adgang til LuCI: stop/deaktivér tjenesten under System → Startup,
   afinstallér pakken, eller slet firewall-includet. Låsen er friktion, ikke en sikkerhedsgrænse.
 

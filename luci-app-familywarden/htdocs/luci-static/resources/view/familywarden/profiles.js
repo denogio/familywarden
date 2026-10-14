@@ -353,7 +353,7 @@ return view.extend({
 				'every saved change to this profile - schedules, devices, policy, disabling the profile ' +
 				'or turning the lock off - only takes effect 24 hours after the last change. ' +
 				'Allow and tickets are refused; Block still works. Only root over SSH can lift it sooner: %s')
-				.format('familywarden unlock ' + selectedProfile));
+				.format('familywarden sailing-home ' + selectedProfile));
 		lockOption.rmempty = true;
 		lockOption.default = '0';
 

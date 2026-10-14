@@ -42,7 +42,7 @@ define Package/familywarden/install
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
 	$(INSTALL_BIN) ./usr/lib/rpcd/familywarden $(1)/usr/libexec/rpcd/familywarden
 
-	# CLI for root over SSH, e.g. the Ulysses escape hatch: familywarden unlock <profile>
+	# CLI for root over SSH, e.g. the Ulysses escape hatch: familywarden sailing-home <profile>
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(LN) ../libexec/rpcd/familywarden $(1)/usr/sbin/familywarden
 

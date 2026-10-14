@@ -33,7 +33,7 @@ FW_CHAIN="familywarden_forward"
 FW_CHAIN_INPUT="familywarden_input"
 
 # Ulysses lock + pacts. Persistent (survives reboot) so rebooting the router is
-# not a way out; root over SSH (`familywarden unlock <profile>`) is the only one.
+# not a way out; root over SSH (`familywarden sailing-home <profile>`) is the only one.
 FW_PERSIST="/etc/familywarden"
 FW_SNAPDIR="$FW_PERSIST/locked"
 FW_PACTS="$FW_PERSIST/pacts"
@@ -1028,10 +1028,24 @@ _collect_pact_mac() {
     _pact_macs="$_pact_macs $1"
 }
 
-# Root-only escape hatch (CLI, not exposed via ubus): lift lock + pact now
-cli_unlock() {
-    local profile="$1"
-    [ -n "$profile" ] || { echo "usage: $0 unlock <profile>" >&2; return 1; }
+# Root-only escape hatch (CLI over SSH, never exposed via ubus): untie a
+# profile from the mast, lifting lock + pact at once. After Josh Garrels'
+# "Ulysses": you only get home by finishing the line. The answer is read from
+# stdin, so it also works piped (echo "press on" | familywarden sailing-home x).
+cli_sailing_home() {
+    local profile="$1" answer
+    [ -n "$profile" ] || { echo "usage: familywarden sailing-home <profile>" >&2; return 1; }
+
+    echo "Sirens call your name. Finish the line to be untied from the mast:"
+    echo '  "By the light of moon I will ..."'
+    printf '> '
+    read -r answer
+    answer=$(echo "$answer" | tr 'A-Z' 'a-z' | sed 's/[^a-z ]//g; s/^ *//; s/ *$//')
+    if [ "$answer" != "press on" ]; then
+        echo "The sirens sing on. Still tied to the mast."
+        return 1
+    fi
+
     rm -f "$FW_SNAPDIR/$profile.snap" "$FW_SNAPDIR/$profile.pending"
     if [ -f "$FW_PACTS" ]; then
         awk -v p="$profile" '$1 != p' "$FW_PACTS" > "$FW_PACTS.new"
@@ -1039,8 +1053,9 @@ cli_unlock() {
     fi
     # Without this the next compile would re-lock straight from UCI
     uci -q set "familywarden.$profile.lock=0" && uci -q commit familywarden
-    logger -t familywarden "profile $profile unlocked by root (escape hatch)"
-    compile_and_apply
+    logger -t familywarden "profile $profile untied from the mast by root (sailing-home)"
+    compile_and_apply >/dev/null || { echo "Untied, but the firewall reload failed - check logread." >&2; return 1; }
+    echo "⚓ Untied from the mast. $profile is sailing home."
 }
 
 # Run periodically by the init script's procd instance: recompile only when a
@@ -1097,8 +1112,8 @@ case "$1" in
 }
 EOF
         ;;
-    unlock)
-        cli_unlock "$2"
+    sailing-home)
+        cli_sailing_home "$2"
         ;;
     tick)
         cli_tick
