@@ -83,9 +83,7 @@ Repo: https://github.com/denogio/familywarden — releases bygges af CI (se "CI 
 - `dist/` indeholder historiske apk'er; nye builds hører hjemme i GitHub releases.
 
 ### Næste skridt
-1. Beslut: byg `traffic`-backend (nlbwmon) eller fjern traffic-UI'et
-2. Fase 3: Home Assistant HACS-integration
-3. Fase 4 (sidst): DNS-filtrering — beslut model og byg backend
+Se **`plans/roadmap.md`**: 1) traffic, 2) Ulysses-pagt, 3) i18n, 4) Home Assistant, 5) DNS-filtrering.
 
 ---
 
