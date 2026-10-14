@@ -21,7 +21,9 @@ for script in "$RPCD_SCRIPT" "$INIT_SCRIPT"; do
         continue
     fi
     echo "✓ Found: $script"
-    sh -n "$script" && echo "✓ Parses: $script" || fail "Syntax error: $script"
+    # bash, not sh: Ubuntu's dash rejects fd>9 redirects (200>) that OpenWrt's ash
+    # accepts. test-integration.sh parses + runs everything under real ash.
+    bash -n "$script" && echo "✓ Parses: $script" || fail "Syntax error: $script"
 done
 
 echo ""
