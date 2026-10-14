@@ -41,7 +41,7 @@ required_functions=(
     "compile_and_apply"
     "gc_expired_tickets"
     "_sched_accept_rules"
-    "_sched_input_drop_rules"
+    "gen_input_profile_scheduled"
     "ubus_list"
     "ubus_status"
     "ubus_block"

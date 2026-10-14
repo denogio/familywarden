@@ -22,7 +22,7 @@ Angiv altid et topic ved opslag (fx "rpc.declare signatur", "TypedSection",
 
 ## Status (2026-10-14)
 
-Versioner: `familywarden` **0.7.2**, `luci-app-familywarden` **0.4.0**.
+Versioner: `familywarden` **0.7.3**, `luci-app-familywarden` **0.4.0**.
 Repo: https://github.com/denogio/familywarden — releases bygges af CI (se "CI / release").
 
 ### Arkitektur (siden 0.5.x)
@@ -43,7 +43,7 @@ Repo: https://github.com/denogio/familywarden — releases bygges af CI (se "CI 
 ### Hvad er lavet?
 ✅ **rpcd plugin** - ubus API: list, status, block, allow, reset, ticket, reload, version
 ✅ **nft forward-chain** (`familywarden_forward`, hook forward prio 1) - override, policy=block, scheduled (accept-vindue + default drop)
-✅ **nft input-chain** (`familywarden_input`, 0.7.x) - `block_router='1'` per profil dropper TCP til routeren (LuCI/SSH) mens profilen er blokeret; DHCP/DNS virker stadig
+✅ **nft input-chain** (`familywarden_input`, 0.7.x) - `block_router='1'` per profil dropper TCP til routeren (LuCI/SSH) mens profilen er blokeret; DHCP/DNS virker stadig. Samme model som forward (accept per vindue + trailing drop, delt `_sched_accept_rules`) — fixet i 0.7.3, før låste flere vinduer samme dag routeren
 ✅ **Selvhelende firewall** - stale chains slettes før fw4 reload; ugyldigt include afvises og sidste gode ruleset bevares
 ✅ **Pakke-scripts** - postinst tilføjer firewall-include én gang (virkede ikke under apk før 0.7.2), prerm fjerner det
 ✅ **LuCI views (JS)** - overview (kort, per-dag highlight), profiles (inline schedules via TableSection), settings, info (versioner)
@@ -52,9 +52,6 @@ Repo: https://github.com/denogio/familywarden — releases bygges af CI (se "CI 
 ✅ **CI/CD** - GitHub Actions: test → build → apk-smoke-test, release ved tag
 
 ### Kendte huller
-- ❌ **block_router-bug** (input-chain): `_sched_input_drop_rules` emitter inverterede drops per vindue.
-  Ved ≥ 2 vinduer samme dag udelukker de hinanden (router låst hele dagen), og på dage uden vinduer
-  emittes ingen drops (router åben hele dagen). Fix: spejl forward-chainen — accept per vindue + trailing drop.
 - ⚠️ **Traffic per profil**: `overview.js` kalder ubus-metoden `traffic` (nlbwmon), men rpcd-pluginet har ingen `traffic`-metode. Modalen lukker bare stille ved fejl.
 - ⚠️ **Ingen i18n**: de gamle Lua-filer (controller + `familywarden.da.lua`) er fjernet, og der findes ingen `.po`-filer.
 - ⚠️ **Knowledge graph er forældet** (analyseret ved `66c2701`, før block_router og kernel-scheduling). Kør `/understand` igen.
@@ -68,7 +65,6 @@ Repo: https://github.com/denogio/familywarden — releases bygges af CI (se "CI 
 - ✅ `scripts/test-apk.sh`: installerer byggede apk'er i container; tjekker filer, postinst/prerm, at config overlever reinstall.
 - ⚠️ shellcheck giver kun støj-advarsler (SC1091 OpenWrt-includes, SC3043 `local` i ash)
 - ✅ **Playwright e2e** (`test/e2e/`, mod QEMU på 192.168.1.1): sider loader, block/allow, opret/slet profil, tilføj enhed, opret schedule, policy bevares ved save. Sidste kørsel: bestået.
-- ✅ **block_router + kernel-scheduling verificeret på rivendell** (2026-06-24): kun `< start`/`>= stop`-drops emittes; LuCI tilgængelig inden for vinduet.
 - QEMU-image ligger i `images/` (git-ignoreret). `npm install` i `test/e2e/` før e2e-kørsel.
 
 ### DNS-filtrering — IKKE IMPLEMENTERET (kun UI-stub)
@@ -87,10 +83,9 @@ Repo: https://github.com/denogio/familywarden — releases bygges af CI (se "CI 
 - `dist/` indeholder historiske apk'er; nye builds hører hjemme i GitHub releases.
 
 ### Næste skridt
-1. Fix block_router-bug (se Kendte huller)
-2. Beslut: byg `traffic`-backend (nlbwmon) eller fjern traffic-UI'et
-3. Fase 3: Home Assistant HACS-integration
-4. Fase 4 (sidst): DNS-filtrering — beslut model og byg backend
+1. Beslut: byg `traffic`-backend (nlbwmon) eller fjern traffic-UI'et
+2. Fase 3: Home Assistant HACS-integration
+3. Fase 4 (sidst): DNS-filtrering — beslut model og byg backend
 
 ---
 

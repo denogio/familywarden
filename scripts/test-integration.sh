@@ -84,6 +84,25 @@ config schedule 'kid_weekend'
     option start '22:00'
     option stop '01:30'
 
+config profile 'split'
+    option name 'Split'
+    option enabled '1'
+    option policy 'scheduled'
+    option block_router '1'
+    list device 'aa:bb:cc:00:00:06'
+
+config schedule 'split_morning'
+    option profile 'split'
+    option days 'mon'
+    option start '07:00'
+    option stop '09:00'
+
+config schedule 'split_afternoon'
+    option profile 'split'
+    option days 'mon'
+    option start '15:00'
+    option stop '20:00'
+
 config profile 'teen'
     option name 'Teen'
     option enabled '1'
@@ -128,7 +147,18 @@ refute_rule "disabled profile emits nothing" 'aa:bb:cc:00:00:05'
 
 assert_rule "input chain hooked" "hook input priority filter \+ 1; policy accept" familywarden_input
 assert_rule "block_router: block policy drops TCP" 'aa:bb:cc:00:00:03 tcp dport 0-65535 .* drop' familywarden_input
-assert_rule "block_router: scheduled drops TCP" 'aa:bb:cc:00:00:01 .* tcp dport 0-65535 .* drop' familywarden_input
+assert_rule "block_router: scheduled window accepts TCP" 'aa:bb:cc:00:00:01 meta hour >= "07:00" meta hour < "20:00" .* tcp dport 0-65535 .* accept' familywarden_input
+assert_rule "block_router: scheduled trailing drop" 'aa:bb:cc:00:00:01 tcp dport 0-65535 counter .* drop comment "familywarden:kid:scheduled:input"' familywarden_input
+assert_rule "block_router: overnight window, next day" 'aa:bb:cc:00:00:01 meta hour < "01:30" meta day "Sunday" tcp dport 0-65535 .* accept' familywarden_input
+# Regression: two windows on one day must both allow (inverted per-window drops
+# used to cancel each other out and lock the router all day)
+assert_rule "block_router: 1st window same day" 'aa:bb:cc:00:00:06 meta hour >= "07:00" meta hour < "09:00" meta day "Monday" tcp dport 0-65535 .* accept' familywarden_input
+assert_rule "block_router: 2nd window same day" 'aa:bb:cc:00:00:06 meta hour >= "15:00" meta hour < "20:00" meta day "Monday" tcp dport 0-65535 .* accept' familywarden_input
+refute_rule "block_router: no time-bounded drops" 'meta hour .* drop' familywarden_input
+# Input chain mirrors forward: same profile has the same windows in both
+fwd=$(nft list chain inet fw4 familywarden_forward | grep -c 'aa:bb:cc:00:00:06 meta hour')
+inp=$(nft list chain inet fw4 familywarden_input | grep -c 'aa:bb:cc:00:00:06 meta hour')
+[ "$fwd" = "$inp" ] && [ "$fwd" = "2" ] && pass "forward/input windows match ($fwd)" || fail "forward has $fwd windows, input has $inp"
 
 echo ""
 echo "=== reload is idempotent ==="
