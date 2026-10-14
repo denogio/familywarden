@@ -110,12 +110,21 @@ function refreshStatus() {
 	});
 }
 
-// Status dot + label + action buttons. Allow/ticket are hidden while the
-// profile is bound by a Ulysses lock or pact (the backend refuses them).
+// Pact button, only on the captain's profile: make a pact, extend an "until"
+// pact, or amend an ongoing one inside its window
+function pactButtonLabel(id, p) {
+	if (id !== ulysses.captainId()) return null;
+	if (!ulysses.isBound(p)) return '⚓ ' + _('Make a pact');
+	if (p.pact_type === 'until') return '⚓ ' + _('Extend pact');
+	if (p.pact_in_window) return '⚓ ' + _('Amend pact');
+	return null;
+}
+
+// Status dot + label + action buttons. Allow/ticket are hidden for the captain
+// during a pact (the backend refuses them).
 function fillStatus(node, data) {
 	var hasOverride = data.override && data.override !== 'none';
 	var isBlocked = data.status && data.status.indexOf('blocked') >= 0;
-	var pact = ulysses.pactActive(data);
 	var dotClass = hasOverride ? 'override' : (isBlocked ? 'blocked' : 'allowed');
 
 	var label = hasOverride
@@ -128,9 +137,7 @@ function fillStatus(node, data) {
 	}
 
 	var btns = [];
-	if (pact) {
-		// nothing to reset or allow while a pact runs
-	} else if (hasOverride) {
+	if (hasOverride) {
 		btns.push(E('button', { 'class': 'cbi-button cbi-button-neutral', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callReset); }) }, _('Reset')));
 	} else if (isBlocked) {
 		if (!ulysses.isBound(data)) {
@@ -140,9 +147,11 @@ function fillStatus(node, data) {
 	} else {
 		btns.push(E('button', { 'class': 'cbi-button cbi-button-negative', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callBlock); }) }, _('Block')));
 	}
-	btns.push(E('button', { 'class': 'cbi-button cbi-button-neutral', 'click': L.ui.createHandlerFn(this, function(ev) {
-		return doAction(ev, function(p) { return ulysses.showPactModal(p, data.name, data); });
-	}) }, '🔒 ' + _('Pact')));
+	var pactLabel = pactButtonLabel(selectedProfile, data);
+	if (pactLabel)
+		btns.push(E('button', { 'class': 'cbi-button cbi-button-neutral', 'click': L.ui.createHandlerFn(this, function(ev) {
+			return doAction(ev, function() { return ulysses.showPactModal(data.name, data); });
+		}) }, pactLabel));
 
 	while (node.firstChild) node.removeChild(node.firstChild);
 	node.appendChild(E('span', { 'class': 'fw-status-dot ' + dotClass }));
@@ -248,7 +257,15 @@ function buildStatusBar(status) {
 	return statusNode;
 }
 
+// Set by render: the captain's profile is frozen by a pact
+var frozenView = false;
+
 return view.extend({
+	// No Save/Apply/Reset for a frozen profile
+	addFooter: function() {
+		return frozenView ? E([]) : this.super('addFooter', arguments);
+	},
+
 	load: function() {
 		return Promise.all([
 			callList(),
@@ -325,6 +342,14 @@ return view.extend({
 			});
 		};
 
+		// The captain's profile is frozen for the pact's lifetime, except in
+		// its weekly window (the backend ignores edits anyway): every widget
+		// read-only, no add/delete, no Save buttons
+		var frozen = ulysses.isFrozen(status);
+		frozenView = frozen;
+		if (frozen)
+			m.readonly = true;
+
 		var s = m.section(form.NamedSection, selectedProfile, 'profile', _('Profile Settings'));
 		s.addremove = false;
 
@@ -348,19 +373,12 @@ return view.extend({
 		blockRouterOption.rmempty = true;
 		blockRouterOption.default = '0';
 
-		var lockOption = s.option(form.Flag, 'lock', '🔒 ' + _('Ulysses lock'),
-			_('Bind yourself to the mast. Turning this on takes effect immediately. While it is on, ' +
-				'every saved change to this profile - schedules, devices, policy, disabling the profile ' +
-				'or turning the lock off - only takes effect 24 hours after the last change. ' +
-				'Allow and tickets are refused; Block still works. Only root over SSH can lift it sooner: %s')
-				.format('familywarden sailing-home ' + selectedProfile));
-		lockOption.rmempty = true;
-		lockOption.default = '0';
 
 		var deviceOption = s.option(form.DynamicList, 'device', _('Devices'),
 			_('Select known devices or enter MAC addresses manually.'));
 		deviceOption.datatype = 'macaddr';
 		deviceOption.rmempty = true;
+		deviceOption.readonly = frozen;
 		var macs = Object.keys(knownDevices).sort(function(a, b) {
 			return knownDevices[a].localeCompare(knownDevices[b]);
 		});
@@ -370,6 +388,7 @@ return view.extend({
 
 		var dnsOption = s.option(form.Value, 'dns_profile', _('DNS Filtering'));
 		dnsOption.rmempty = true;
+		dnsOption.readonly = frozen;
 		dnsOption.optional = true;
 		dnsOption.description = _('Optional: AdGuard Home / DNS filter group name.');
 
@@ -381,7 +400,7 @@ return view.extend({
 		var pid = selectedProfile;
 		var ss = m.section(form.TableSection, 'schedule', _('Schedules'),
 			_('Internet is off by default in this mode. Add the time windows when access is allowed; any time outside every window is blocked.'));
-		ss.addremove = true;
+		ss.addremove = !frozen;
 		ss.anonymous = true;
 		ss.addbtntitle = _('Add schedule');
 
@@ -427,6 +446,7 @@ return view.extend({
 					E('input', {
 						'type': 'checkbox',
 						'data-day': d,
+						'disabled': frozen ? '' : null,
 						'checked': (selected.indexOf(d) > -1) ? '' : null
 					}),
 					dayLabels[d]
@@ -524,7 +544,7 @@ return view.extend({
 				tabs,
 				statusBar,
 				formEl,
-				deleteSection
+				ulysses.isFrozen(status) ? '' : deleteSection
 			]);
 		});
 	}

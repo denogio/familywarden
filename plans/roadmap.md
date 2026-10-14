@@ -56,16 +56,18 @@ traffic-knappen.
 
 ## Fase 1 — Ulysses-pagt ✅ (0.8.0, branch `feature/ulysses`)
 
-**Endeligt design (besluttet 2026-10-14)** — erstatter PLAN.md § 14:
-- **Stående lås** (`option lock '1'`): alle ændringer af profilen (tidsplan, enheder, policy,
-  slå fra, låse op) træder først i kraft **24 t efter seneste ændring**. Låsning gælder straks.
-- **Ad hoc-pagt** ("lås mig til 06:00"): blokerer profilens enheder til et klokkeslæt; kan kun
-  forlænges. Håndhæves af kernen (`meta time`).
-- Allow/ticket afvises for låste profiler og under pagt; Block/Reset virker.
-- Nødudgang: `familywarden sailing-home <profil>` som root over SSH (kræver at fuldføre en linje fra Josh Garrels' "Ulysses").
-- Testet: 37 integrations-checks + UI i LuCI-container (Playwright).
+**Endeligt design (besluttet 2026-10-15)**, erstatter PLAN.md § 14. Se CLAUDE.md "Ulysses":
+- Én **kaptajn** (Ulysses-profil). Pagter kun for den: `until` (kan forlænges) eller `ongoing`
+  med et ugentligt ændringsvindue (søndag 10–11). Ændringer i vinduet gælder med det samme.
+- Under pagten er kaptajnens profil frosset, og hans MAC'er kan ikke slippe ud via andre profiler.
+- Mens kaptajnen er blokeret, er routeren lukket for alle (TCP) undtagen DNS og port 7700.
+- Eneste udvej: sail-siden på 7700 (root-password + sanglinje) og derefter en konfigurerbar
+  karenstid (standard 24 t, frosset ved oprettelse).
+- Testet: 89 integrations-checks (heraf ~50 for Ulysses inkl. CGI med rigtigt password-tjek), apk-test,
+  og i browser mod LuCI i container. Dér blev LuCI målt uopnåelig under lockdown og 7700 tilgængelig.
 
-Mangler før merge: test på rivendell (Save & Apply → procd-trigger → pending; reboot-persistens).
+Mangler før merge: test på rivendell (procd-trigger, rigtig uhttpd-instans, reboot).
+Mulig udvidelse: blokér ukendte enheder i kaptajnens blokerede perioder.
 
 <details><summary>Oprindelig plan (historisk)</summary>
 

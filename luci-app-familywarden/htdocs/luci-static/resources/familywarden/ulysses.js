@@ -1,95 +1,148 @@
 'use strict';
 'require baseclass';
 'require rpc';
+'require uci';
 'require ui';
 
-// Shared Ulysses (self-binding lock) helpers for the overview and profile views.
-// Backend fields per profile: locked (standing lock), lock_pending_until (epoch
-// a pending edit takes effect, 0 = none), pact_until (ad-hoc pact expiry, 0 = none).
+// Shared Ulysses helpers for the overview, profile and settings views.
+// The captain is settings.ulysses_profile. Backend fields per profile: captain
+// (bound by an active pact), and for the captain pact_type ("until" or
+// "ongoing"), pact_until (0 when ongoing), pact_window ("sun 10:00-11:00"),
+// pact_in_window and release_at (0 unless sailing home was requested).
+
+var SAIL_PORT = 7700;
 
 var callPact = rpc.declare({
 	object: 'familywarden',
 	method: 'pact',
-	params: [ 'profile', 'minutes' ]
+	params: [ 'until', 'window_day', 'window_start', 'window_stop' ]
 });
+
+var DAYS = [ 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun' ];
 
 function fmtTime(epoch) {
 	var d = new Date(epoch * 1000);
-	var now = new Date();
 	var time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-	if (d.toDateString() === now.toDateString())
+	if (d.toDateString() === new Date().toDateString())
 		return time;
 	return d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + time;
 }
 
-function fmtDuration(minutes) {
-	var h = Math.floor(minutes / 60), m = minutes % 60;
-	return h > 0 ? (h + ' h ' + m + ' min') : (m + ' min');
+// "YYYY-MM-DDTHH:MM" in local time, for <input type="datetime-local">
+function localInput(date) {
+	var pad = function(n) { return String(n).padStart(2, '0'); };
+	return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) +
+		'T' + pad(date.getHours()) + ':' + pad(date.getMinutes());
 }
 
-// Minutes from now until the next occurrence of HH:MM (today or tomorrow)
-function minutesUntil(hhmm) {
-	var parts = hhmm.split(':');
-	var target = new Date();
-	target.setHours(+parts[0], +parts[1], 0, 0);
-	if (target <= new Date())
-		target.setDate(target.getDate() + 1);
-	return Math.ceil((target - new Date()) / 60000);
+function dayLabel(d) {
+	return { mon: _('Monday'), tue: _('Tuesday'), wed: _('Wednesday'), thu: _('Thursday'),
+		fri: _('Friday'), sat: _('Saturday'), sun: _('Sunday') }[d] || d;
+}
+
+function windowLabel(w) {
+	var m = (w || '').match(/^(\w+) (\S+)-(\S+)$/);
+	return m ? dayLabel(m[1]) + ' ' + m[2] + '–' + m[3] : w;
 }
 
 return baseclass.extend({
-	pactActive: function(p) {
-		return !!(p && p.pact_until && p.pact_until * 1000 > Date.now());
+	// The configured captain profile id (pact or not), or ''
+	captainId: function() {
+		return uci.get('familywarden', 'settings', 'ulysses_profile') || '';
 	},
 
-	// Allow/ticket are refused by the backend for locked or pacted profiles
+	// Captain bound by an active pact
 	isBound: function(p) {
-		return !!(p && (p.locked || this.pactActive(p)));
+		return !!(p && p.captain);
 	},
 
-	// Info line(s) for a bound profile, or null
+	// The captain's profile can't be edited (bound and outside the window)
+	isFrozen: function(p) {
+		return this.isBound(p) && !p.pact_in_window;
+	},
+
+	sailUrl: function() {
+		return window.location.protocol + '//' + window.location.hostname + ':' + SAIL_PORT + '/';
+	},
+
+	// Info lines for the captain, or null
 	note: function(p) {
-		var lines = [];
-		if (this.pactActive(p))
-			lines.push('🔒 ' + _('Bound by pact until %s').format(fmtTime(p.pact_until)));
-		else if (p && p.locked)
-			lines.push('🔒 ' + _('Ulysses lock: rules can only be loosened 24 h after an edit'));
-		if (p && p.lock_pending_until > 0)
-			lines.push('⏳ ' + _('Saved changes take effect %s').format(fmtTime(p.lock_pending_until)));
-		if (!lines.length)
+		if (!this.isBound(p))
 			return null;
+		var lines = [];
+		if (p.pact_type === 'ongoing')
+			lines.push('⚓ ' + _('Bound to the mast by an ongoing pact. Changes only in the window: %s').format(windowLabel(p.pact_window)));
+		else
+			lines.push('⚓ ' + _('Bound to the mast until %s').format(fmtTime(p.pact_until)));
+		if (p.pact_in_window)
+			lines.push('🕊 ' + _('The window is open: changes to this profile apply now.'));
+		if (p.release_at > 0)
+			lines.push('⛵ ' + _('Sailing home: free at %s').format(fmtTime(p.release_at)));
 		return E('div', { 'class': 'fw-ulysses' }, lines.map(function(l) { return E('div', {}, l); }));
 	},
 
-	// Modal: "bind me until HH:MM". Resolves once the pact is made or cancelled.
-	showPactModal: function(id, name, current) {
+	// Modal to make or amend the captain's pact. Resolves true once made.
+	showPactModal: function(name, p) {
 		var self = this;
-		return new Promise(function(resolve) {
-			var input = E('input', { 'type': 'time', 'class': 'cbi-input-text', 'value': '06:00' });
-			var preview = E('p', { 'style': 'font-weight:bold' });
-			var update = function() {
-				if (!input.value) { preview.textContent = ''; return; }
-				var mins = minutesUntil(input.value);
-				preview.textContent = _('Internet off until %s (%s)').format(
-					fmtTime(Math.floor(Date.now() / 1000) + mins * 60), fmtDuration(mins));
-			};
-			input.addEventListener('input', update);
-			update();
+		var bound = this.isBound(p);
+		var parts = (bound && p.pact_window || 'sun 10:00-11:00').match(/^(\w+) (\S+)-(\S+)$/) || [];
 
-			ui.showModal(_('Bind to the mast') + ' · ' + (name || id), [
-				E('p', {}, _('Blocks every device in this profile until the chosen time. Until then it cannot be allowed, given a ticket, shortened or lifted - not from LuCI, not from Home Assistant. Only root over SSH can break it.')),
-				self.pactActive(current)
-					? E('p', {}, _('Current pact ends %s. A pact can only be extended.').format(fmtTime(current.pact_until)))
+		var tomorrow6 = new Date();
+		tomorrow6.setDate(tomorrow6.getDate() + 1);
+		tomorrow6.setHours(6, 0, 0, 0);
+
+		var typeUntil = E('input', { 'type': 'radio', 'name': 'fw-pact-type', 'value': 'until' });
+		var typeOngoing = E('input', { 'type': 'radio', 'name': 'fw-pact-type', 'value': 'ongoing' });
+		var untilInput = E('input', { 'type': 'datetime-local', 'class': 'cbi-input-text',
+			'value': localInput(bound && p.pact_until ? new Date(p.pact_until * 1000) : tomorrow6) });
+		var daySelect = E('select', { 'class': 'cbi-input-select' }, DAYS.map(function(d) {
+			return E('option', { 'value': d, 'selected': d === (parts[1] || 'sun') ? '' : null }, dayLabel(d));
+		}));
+		var startInput = E('input', { 'type': 'time', 'class': 'cbi-input-text', 'value': parts[2] || '10:00' });
+		var stopInput = E('input', { 'type': 'time', 'class': 'cbi-input-text', 'value': parts[3] || '11:00' });
+
+		var untilRow = E('div', { 'style': 'margin:4px 0 12px 24px' }, [ untilInput ]);
+		var ongoingRow = E('div', { 'style': 'margin:4px 0 12px 24px' }, [
+			_('Weekly window') + ' ', daySelect, ' ', startInput, ' – ', stopInput
+		]);
+
+		(bound && p.pact_type === 'ongoing' ? typeOngoing : typeUntil).checked = true;
+		var sync = function() {
+			untilRow.style.opacity = typeUntil.checked ? 1 : .4;
+			ongoingRow.style.opacity = typeOngoing.checked ? 1 : .4;
+		};
+		typeUntil.addEventListener('change', sync);
+		typeOngoing.addEventListener('change', sync);
+		sync();
+
+		var delay = uci.get('familywarden', 'settings', 'ulysses_delay') || '24';
+
+		return new Promise(function(resolve) {
+			ui.showModal('⚓ ' + _('Bind to the mast') + ' · ' + (name || ''), [
+				E('p', {}, _('For as long as the pact lasts, this profile is frozen: no changes, no Allow, no tickets. While you are blocked, the router is closed to every device except the sail page.')),
+				E('p', {}, _('The only way out early is the sail page (%s): the router password, the line from the song, and then %s of waiting.').format(
+					self.sailUrl(), delay == '1' ? _('1 hour') : _('%s hours').format(delay))),
+				(!bound && p && p.status && p.status.indexOf('blocked') >= 0)
+					? E('p', { 'class': 'alert-message warning' }, _('You are blocked right now: the router closes the moment you bind yourself, and this page will stop responding.'))
 					: '',
-				E('label', {}, [ _('Until') + ' ', input ]),
-				preview,
+				bound ? E('p', { 'style': 'font-weight:bold' }, p.pact_type === 'until'
+					? _('Current pact ends %s. It can only be extended.').format(fmtTime(p.pact_until))
+					: _('The window is open: you can amend the pact now.')) : '',
+				E('label', { 'style': 'display:block' }, [ typeUntil, ' ', _('Until a time') ]),
+				untilRow,
+				E('label', { 'style': 'display:block' }, [ typeOngoing, ' ', _('Ongoing, runs on its own') ]),
+				ongoingRow,
 				E('div', { 'class': 'right' }, [
 					E('button', { 'class': 'cbi-button', 'click': function() { ui.hideModal(); resolve(false); } }, _('Cancel')),
 					' ',
 					E('button', { 'class': 'cbi-button cbi-button-negative', 'click': function(ev) {
-						if (!input.value) return;
+						var until = 0;
+						if (typeUntil.checked) {
+							until = Math.floor(new Date(untilInput.value).getTime() / 1000);
+							if (!until) return;
+						}
 						ev.currentTarget.disabled = true;
-						return callPact(id, minutesUntil(input.value)).then(function(res) {
+						return callPact(until, daySelect.value, startInput.value, stopInput.value).then(function(res) {
 							ui.hideModal();
 							if (res && res.error)
 								ui.addNotification(null, E('p', {}, _('Pact refused: %s').format(res.error)), 'warning');
@@ -99,7 +152,7 @@ return baseclass.extend({
 							ui.addNotification(null, E('p', {}, _('Pact failed: %s').format(err.message)), 'danger');
 							resolve(false);
 						});
-					} }, '🔒 ' + _('Bind me'))
+					} }, '⚓ ' + _('Bind me'))
 				])
 			]);
 		});

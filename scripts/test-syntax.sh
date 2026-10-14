@@ -15,7 +15,8 @@ fail() { echo "❌ $1"; FAILED=1; }
 echo "=== FamilyWarden Syntax Tests ==="
 echo ""
 
-for script in "$RPCD_SCRIPT" "$INIT_SCRIPT"; do
+SAIL_CGI="${PROJECT_ROOT}/familywarden/www-familywarden/cgi-bin/sail"
+for script in "$RPCD_SCRIPT" "$INIT_SCRIPT" "$SAIL_CGI"; do
     if [ ! -f "$script" ]; then
         fail "Missing: $script"
         continue
@@ -44,6 +45,9 @@ required_functions=(
     "gc_expired_tickets"
     "_sched_accept_rules"
     "gen_input_profile_scheduled"
+    "ulysses_sync"
+    "gen_lockdown_rules"
+    "gc_pact"
     "ubus_list"
     "ubus_status"
     "ubus_block"
@@ -82,18 +86,19 @@ for method in "${ubus_methods[@]}"; do
     done
 done
 
-# The escape hatch must stay CLI-only (root over SSH), never a ubus method
-if grep -qE '"sailing-home"|sailing-home\)$' "${ACL_FILES[@]}" \
-    || sed -n '/^    call)$/,/^esac$/p' "$RPCD_SCRIPT" | grep -q 'sailing-home'; then
-    fail "sailing-home is exposed via ubus/ACL - it must stay root-CLI only"
+# Releasing a Ulysses pact must only be possible via the sail page (CGI on
+# port 7700 calling the CLI), never as a ubus method LuCI or HA could call
+if grep -qE 'sail-(request|cancel)' "${ACL_FILES[@]}" \
+    || sed -n '/^    call)$/,/^esac$/p' "$RPCD_SCRIPT" | grep -q 'sail-'; then
+    fail "sail-* is exposed via ubus/ACL - release must stay on the sail page"
 else
-    echo "✓ sailing-home is CLI-only"
+    echo "✓ release only via the sail page"
 fi
 
 echo ""
 echo "=== nftables chain/set consistency ==="
 
-for name in familywarden_forward familywarden_input familywarden_ticket; do
+for name in familywarden_forward familywarden_input familywarden_lockdown familywarden_ticket; do
     # Must be declared in the include and deleted before fw4 reload
     if grep -qE "echo \"(chain|set) $name \{" "$RPCD_SCRIPT" \
         && grep -qE "nft delete (chain|set) inet fw4 $name" "$RPCD_SCRIPT"; then
@@ -137,6 +142,13 @@ grep -q 'usr/libexec/rpcd/familywarden' "$MAKEFILE" \
     && grep -q 'BIN="/usr/libexec/rpcd/familywarden"' "$INIT_SCRIPT" \
     && echo "✓ init.d BIN matches Makefile install path" \
     || fail "init.d BIN does not match Makefile install path"
+
+for f in www-familywarden/index.html www-familywarden/cgi-bin/sail; do
+    grep -q "./$f " "$MAKEFILE" && [ -f "${PROJECT_ROOT}/familywarden/$f" ] \
+        && echo "✓ sail page installed: $f" || fail "sail page file not installed: $f"
+done
+grep -q "listen_http='0.0.0.0:7700'" "$MAKEFILE" && grep -q '^FW_SAIL_PORT=7700$' "$RPCD_SCRIPT" \
+    && echo "✓ sail port matches (uhttpd ↔ lockdown)" || fail "sail port mismatch between Makefile and rpcd plugin"
 
 grep -q "/var/etc/familywarden.include" "$MAKEFILE" \
     && grep -q 'FW_INCLUDE="/var/etc/familywarden.include"' "$RPCD_SCRIPT" \

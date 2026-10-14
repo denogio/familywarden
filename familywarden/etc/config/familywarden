@@ -4,6 +4,10 @@
 config global 'settings'
     option enabled '1'
     option default_policy 'allow'
+    # Ulysses: the captain profile that can make a pact, and the cooling-off
+    # (hours) before "sailing home" on port 7700 releases it
+    # option ulysses_profile 'dennis'
+    option ulysses_delay '24'
 
 # Example profile for a child
 # config profile 'josva'
@@ -19,4 +23,3 @@ config global 'settings'
 #     option days 'mon tue wed thu fri'
 #     option start '07:00'
 #     option stop '20:00'
-#     option action 'allow'

@@ -146,9 +146,9 @@ refute_rule "allow policy emits nothing" 'aa:bb:cc:00:00:04'
 refute_rule "disabled profile emits nothing" 'aa:bb:cc:00:00:05'
 
 assert_rule "input chain hooked" "hook input priority filter \+ 1; policy accept" familywarden_input
-assert_rule "block_router: block policy drops TCP" 'aa:bb:cc:00:00:03 tcp dport 0-65535 .* drop' familywarden_input
+assert_rule "block_router: block policy drops TCP" 'aa:bb:cc:00:00:03 tcp dport != 7700 .* drop' familywarden_input
 assert_rule "block_router: scheduled window accepts TCP" 'aa:bb:cc:00:00:01 meta hour >= "07:00" meta hour < "20:00" .* tcp dport 0-65535 .* accept' familywarden_input
-assert_rule "block_router: scheduled trailing drop" 'aa:bb:cc:00:00:01 tcp dport 0-65535 counter .* drop comment "familywarden:kid:scheduled:input"' familywarden_input
+assert_rule "block_router: scheduled trailing drop" 'aa:bb:cc:00:00:01 tcp dport != 7700 counter .* drop comment "familywarden:kid:scheduled:input"' familywarden_input
 assert_rule "block_router: overnight window, next day" 'aa:bb:cc:00:00:01 meta hour < "01:30" meta day "Sunday" tcp dport 0-65535 .* accept' familywarden_input
 # Regression: two windows on one day must both allow (inverted per-window drops
 # used to cancel each other out and lock the router all day)
@@ -230,148 +230,152 @@ uci set familywarden.parent.policy='allow'
 uci commit familywarden
 "$BIN" reload >/dev/null
 
-# Pretend the 24 h cooling-off for <profile>'s pending edit has passed
-age_pending() {
-    read -r h since < "/etc/familywarden/locked/$1.pending"
-    echo "$h $((since - 86401))" > "/etc/familywarden/locked/$1.pending"
-}
+# ---- Ulysses ----
+DAYS="sun mon tue wed thu fri sat"
+day_name() { echo $DAYS | cut -d' ' -f$(( ($1 % 7) + 1 )); }
+today=$(day_name "$(date +%w)")
+tomorrow=$(day_name $(( $(date +%w) + 1 )))
+cp /etc/config/familywarden /tmp/fw.before-ulysses
 
 echo ""
-echo "=== Ulysses: lock ==="
-uci set familywarden.kid.lock='1'
+echo "=== Ulysses: pact needs a captain ==="
+assert_json "no captain → refused" "$(call pact '{"until":0}')" '@.error' "no Ulysses profile chosen in settings"
+uci set familywarden.settings.ulysses_profile='kid'
+uci set familywarden.settings.ulysses_delay='2'
 uci commit familywarden
 "$BIN" reload >/dev/null
-[ -f /etc/familywarden/locked/kid.snap ] && pass "lock takes effect immediately (snapshot)" || fail "no snapshot after lock"
-out=$(call status '{"profile":"kid"}')
-assert_json "status reports locked" "$out" '@.locked' "true"
-assert_json "no pending edit" "$out" '@.lock_pending_until' "0"
-out=$(call allow '{"profile":"kid"}')
-assert_json "allow refused while locked" "$out" '@.error' "locked by Ulysses pact"
-out=$(call ticket '{"profile":"kid","minutes":30}')
-assert_json "ticket refused while locked" "$out" '@.error' "locked by Ulysses pact"
-refute_rule "no allow override emitted" 'kid:override:allow'
-if nft list set inet fw4 familywarden_ticket | grep -q 'aa:bb:cc:00:00:01'; then
-    fail "ticket element for locked profile"
-else
-    pass "no ticket element for locked profile"
-fi
-call block '{"profile":"kid"}' >/dev/null
-assert_rule "block still allowed (tightening)" 'aa:bb:cc:00:00:01 counter .* drop comment "familywarden:kid:override:block"'
-call reset '{"profile":"kid"}' >/dev/null
-refute_rule "reset back to the locked contract" 'kid:override'
 
 echo ""
-echo "=== Ulysses: edits wait 24 h ==="
+echo "=== Ulysses: ongoing pact (outside its window) ==="
+out=$(call pact "{\"until\":0,\"window_day\":\"$tomorrow\",\"window_start\":\"10:00\",\"window_stop\":\"11:00\"}")
+assert_json "pact ok" "$out" '@.status' "ok"
+out=$(call status '{"profile":"kid"}')
+assert_json "kid is captain" "$out" '@.captain' "true"
+assert_json "pact type ongoing" "$out" '@.pact_type' "ongoing"
+assert_json "not in window" "$out" '@.pact_in_window' "false"
+assert_json "parent is not captain" "$(call status '{"profile":"parent"}')" '@.captain' "false"
+assert_json "allow refused for captain" "$(call allow '{"profile":"kid"}')" '@.error' "bound by Ulysses pact"
+assert_json "ticket refused for captain" "$(call ticket '{"profile":"kid","minutes":30}')" '@.error' "bound by Ulysses pact"
+call block '{"profile":"kid"}' >/dev/null
+assert_rule "block still works (tightening)" 'aa:bb:cc:00:00:01 counter .* drop comment "familywarden:kid:override:block"'
+call reset '{"profile":"kid"}' >/dev/null
+refute_rule "reset back to the pact" 'kid:override'
+call allow '{"profile":"parent"}' >/dev/null
+assert_rule "other profiles unaffected" 'aa:bb:cc:00:00:04 counter .* accept comment "familywarden:parent:override:allow"'
+call reset '{"profile":"parent"}' >/dev/null
+assert_json "can't change the pact outside its window" \
+    "$(call pact "{\"until\":0,\"window_day\":\"$today\",\"window_start\":\"00:00\",\"window_stop\":\"23:59\"}")" \
+    '@.error' "the pact can only be extended"
+
+echo ""
+echo "=== Ulysses: captain frozen ==="
 uci set familywarden.kid_school.stop='23:59'
 uci del_list familywarden.kid.device='aa:bb:cc:00:00:02'
+uci set familywarden.kid.policy='allow'
+uci set familywarden.settings.ulysses_profile='parent'
+uci set familywarden.settings.ulysses_delay='0'
 uci commit familywarden
 "$BIN" reload >/dev/null
-assert_rule "loosened window NOT applied" 'aa:bb:cc:00:00:01 meta hour >= "07:00" meta hour < "20:00"'
-refute_rule "new stop time not in ruleset" '"23:59"'
+assert_rule "schedule edit ignored" 'aa:bb:cc:00:00:01 meta hour >= "07:00" meta hour < "20:00"'
+refute_rule "new stop time not applied" '"23:59"'
 assert_rule "removed device still enforced" 'aa:bb:cc:00:00:02 .* drop comment "familywarden:kid:scheduled"'
-out=$(call status '{"profile":"kid"}')
-pending=$(echo "$out" | jsonfilter -e '@.lock_pending_until')
-now=$(date +%s)
-[ "$pending" -ge $((now + 86300)) ] && [ "$pending" -le $((now + 86400)) ] \
-    && pass "lock_pending_until = now + 24 h" || fail "lock_pending_until=$pending (now=$now)"
-
-"$BIN" tick
-refute_rule "tick before 24 h changes nothing" '"23:59"'
-
-# A second edit restarts the clock
-sed -i "s/ [0-9]*$/ $((now - 3600))/" /etc/familywarden/locked/kid.pending
-uci set familywarden.kid_school.stop='23:30'
-uci commit familywarden
-"$BIN" reload >/dev/null
-pending2=$(call status '{"profile":"kid"}' | jsonfilter -e '@.lock_pending_until')
-[ "$pending2" -ge $((now + 86300)) ] && pass "new edit restarts the 24 h" || fail "clock not restarted ($pending2)"
-
-age_pending kid
-"$BIN" tick
-assert_rule "after 24 h: edit adopted by tick" 'aa:bb:cc:00:00:01 meta hour >= "07:00" meta hour < "23:30"'
-refute_rule "after 24 h: removed device released" 'aa:bb:cc:00:00:02'
-[ -f /etc/familywarden/locked/kid.pending ] && fail "pending not cleared" || pass "pending cleared"
-assert_json "still locked after adopting" "$(call status '{"profile":"kid"}')" '@.locked' "true"
+assert_json "captain can't be swapped" "$(call status '{"profile":"kid"}')" '@.captain' "true"
 
 echo ""
-echo "=== Ulysses: survives reboot (only /etc persists) ==="
+echo "=== Ulysses: captain's MACs can't escape via other profiles ==="
+uci add_list familywarden.parent.device='aa:bb:cc:00:00:01'
+uci commit familywarden
+"$BIN" reload >/dev/null
+call allow '{"profile":"parent"}' >/dev/null
+refute_rule "captain MAC not accepted by another profile" 'aa:bb:cc:00:00:01 counter .* accept'
+assert_rule "the other profile's own device still is" 'aa:bb:cc:00:00:04 counter .* accept'
+call reset '{"profile":"parent"}' >/dev/null
+
+echo ""
+echo "=== Ulysses: router lockdown while the captain is blocked ==="
+assert_rule "lockdown chain hooked" "hook input priority filter \+ 2; policy accept" familywarden_lockdown
+assert_rule "loopback open" 'iifname "lo" accept' familywarden_lockdown
+assert_rule "established open" 'ct state established,related accept' familywarden_lockdown
+assert_rule "DNS + sail page open" 'tcp dport \{ 53, 7700 \} accept' familywarden_lockdown
+assert_rule "amendment window open" 'meta day .* meta hour >= "10:00" meta hour < "11:00" accept comment "familywarden:ulysses:window"' familywarden_lockdown
+assert_rule "captain's allowed hours open (any device)" '^[[:space:]]*meta hour >= "07:00" meta hour < "20:00" meta day .* accept' familywarden_lockdown
+assert_rule "everything else dropped" 'meta l4proto tcp counter .* drop comment "familywarden:ulysses:lockdown"' familywarden_lockdown
+assert_rule "block_router leaves the sail page open" 'aa:bb:cc:00:00:01 tcp dport != 7700 counter .* drop' familywarden_input
+
+echo ""
+echo "=== Ulysses: survives reboot ==="
 rm -rf /var/run/familywarden /tmp/familywarden.state
 "$BIN" reload >/dev/null
-assert_json "locked after simulated reboot" "$(call status '{"profile":"kid"}')" '@.locked' "true"
+assert_json "still captain after reboot" "$(call status '{"profile":"kid"}')" '@.captain' "true"
+refute_rule "still frozen after reboot" '"23:59"'
 
 echo ""
-echo "=== Ulysses: deleting a locked profile waits 24 h ==="
-cp /etc/config/familywarden /tmp/fw.bak
-uci delete familywarden.kid
+echo "=== Ulysses: amendment window ==="
+sed -i "s/^window_day=.*/window_day=$today/; s/^window_start=.*/window_start=00:00/; s/^window_stop=.*/window_stop=23:59/" /etc/familywarden/pact
+"$BIN" reload >/dev/null
+assert_json "in window" "$(call status '{"profile":"kid"}')" '@.pact_in_window' "true"
+refute_rule "edits apply at once (policy=allow → no kid rules)" 'familywarden:kid:scheduled'
+uci set familywarden.kid.policy='scheduled'
 uci commit familywarden
 "$BIN" reload >/dev/null
-assert_rule "deleted locked profile still enforced" 'aa:bb:cc:00:00:01 counter .* drop comment "familywarden:kid:scheduled"'
-assert_json "deleted locked profile still listed" "$(call list)" '@.profiles.kid.locked' "true"
-cp /tmp/fw.bak /etc/config/familywarden
-"$BIN" reload >/dev/null
-[ -f /etc/familywarden/locked/kid.pending ] && fail "reverting the edit should clear pending" || pass "reverting the edit clears pending"
+assert_rule "edited stop time applies in window" 'aa:bb:cc:00:00:01 meta hour >= "07:00" meta hour < "23:59"'
+out=$(call pact "{\"until\":0,\"window_day\":\"$tomorrow\",\"window_start\":\"10:00\",\"window_stop\":\"11:00\"}")
+assert_json "pact can be amended in window" "$out" '@.status' "ok"
+assert_json "window closed again" "$(call status '{"profile":"kid"}')" '@.pact_in_window' "false"
 
 echo ""
-echo "=== Ulysses: unlocking waits 24 h ==="
-uci set familywarden.kid.lock='0'
-uci commit familywarden
-"$BIN" reload >/dev/null
-assert_json "unlock pending → still locked" "$(call status '{"profile":"kid"}')" '@.locked' "true"
-age_pending kid
+echo "=== Ulysses: sail page (port 7700 CGI) ==="
+mkdir -p /var/run/ubus
+ubusd >/dev/null 2>&1 &
+sleep 1
+rpcd >/dev/null 2>&1 &
+sleep 1
+printf 'sirens\nsirens\n' | passwd root >/dev/null 2>&1
+SAIL=/src/familywarden/www-familywarden/cgi-bin/sail
+sail() {
+    if [ -z "$1" ]; then
+        REQUEST_METHOD=GET sh "$SAIL" | sed '1,/^$/d'
+    else
+        printf '%s' "$1" | REQUEST_METHOD=POST CONTENT_LENGTH=${#1} sh "$SAIL" | sed '1,/^$/d'
+    fi
+}
+out=$(sail)
+assert_json "status: pact" "$out" '@.pact' "true"
+assert_json "status: captain" "$out" '@.captain' "kid"
+assert_json "status: cooling-off frozen at 2 h" "$out" '@.delay' "7200"
+assert_json "wrong password refused" "$(sail '{"action":"release","password":"nope","answer":"press on"}')" '@.error' "wrong password"
+assert_json "wrong line refused" "$(sail '{"action":"release","password":"sirens","answer":"let me go"}')" '@.error' "The sirens sing on. Still tied to the mast."
+out=$(sail '{"action":"release","password":"sirens","answer":"  Press on! "}')
+rel=$(echo "$out" | jsonfilter -e '@.release_at')
+now=$(date +%s)
+[ "$rel" -ge $((now + 7190)) ] && [ "$rel" -le $((now + 7200)) ] && pass "release in 2 h" || fail "release_at=$rel now=$now"
 "$BIN" tick
-assert_json "unlocked after 24 h" "$(call status '{"profile":"kid"}')" '@.locked' "false"
-[ -f /etc/familywarden/locked/kid.snap ] && fail "snapshot left after unlock" || pass "snapshot removed"
+assert_json "still bound before the cooling-off" "$(call status '{"profile":"kid"}')" '@.captain' "true"
+assert_json "cancel needs the password" "$(sail '{"action":"cancel","password":"nope"}')" '@.error' "wrong password"
+assert_json "cancel" "$(sail '{"action":"cancel","password":"sirens"}')" '@.release_at' "0"
+sail '{"action":"release","password":"sirens","answer":"press on"}' >/dev/null
+echo $(( $(date +%s) - 1 )) > /etc/familywarden/release
+"$BIN" tick
+assert_json "released after the cooling-off" "$(call status '{"profile":"kid"}')" '@.captain' "false"
+refute_rule "no lockdown without a pact" 'drop' familywarden_lockdown
+[ -f /etc/familywarden/pact ] && fail "pact file left" || pass "pact removed"
 
 echo ""
-echo "=== Ulysses: ad-hoc pact ==="
-out=$(call pact '{"profile":"parent","minutes":60}')
-assert_json "pact ok" "$out" '@.status' "ok"
-until=$(echo "$out" | jsonfilter -e '@.pact_until')
-assert_rule "pact drop with kernel expiry" 'aa:bb:cc:00:00:04 meta time < "[0-9-]+ [0-9:]+" counter .* drop comment "familywarden:parent:pact"'
-first=$(nft list chain inet fw4 familywarden_forward | grep -m1 'ether saddr')
-echo "$first" | grep -q 'parent:pact' && pass "pact is the first rule (beats tickets/overrides)" || fail "pact not first: $first"
-assert_json "status blocked during pact" "$(call status '{"profile":"parent"}')" '@.status' "blocked"
-assert_json "status reports pact_until" "$(call status '{"profile":"parent"}')" '@.pact_until' "$until"
-assert_json "allow refused during pact" "$(call allow '{"profile":"parent"}')" '@.error' "locked by Ulysses pact"
-assert_json "ticket refused during pact" "$(call ticket '{"profile":"parent","minutes":5}')" '@.error' "locked by Ulysses pact"
-call reset '{"profile":"parent"}' >/dev/null
-assert_rule "reset does not lift pact" 'parent:pact'
-assert_json "pact cannot be shortened" "$(call pact '{"profile":"parent","minutes":30}')" '@.error' "a pact can only be extended"
-assert_json "pact max 7 days" "$(call pact '{"profile":"parent","minutes":20000}')" '@.error' "minutes must be 1-10080"
-out=$(call pact '{"profile":"parent","minutes":120}')
-[ "$(echo "$out" | jsonfilter -e '@.pact_until')" -gt "$until" ] && pass "pact can be extended" || fail "extend failed: $out"
-uci del_list familywarden.parent.device='aa:bb:cc:00:00:04'
-uci set familywarden.parent.enabled='0'
+echo "=== Ulysses: pact until a time ==="
+cp /tmp/fw.before-ulysses /etc/config/familywarden
+uci set familywarden.settings.ulysses_profile='kid'
 uci commit familywarden
 "$BIN" reload >/dev/null
-assert_rule "editing the profile can't escape the pact" 'aa:bb:cc:00:00:04 meta time < .* drop'
-uci add_list familywarden.parent.device='aa:bb:cc:00:00:04'
-uci set familywarden.parent.enabled='1'
-uci commit familywarden
-
-sed -i 's/^parent [0-9]*/parent 1/' /etc/familywarden/pacts
-"$BIN" reload >/dev/null
-refute_rule "expired pact garbage-collected" 'parent:pact'
-
-echo ""
-echo "=== Ulysses: root escape hatch (sailing-home) ==="
-uci set familywarden.kid.lock='1'
-uci commit familywarden
-"$BIN" reload >/dev/null
-call pact '{"profile":"kid","minutes":60}' >/dev/null
-if echo "let me go" | "$BIN" sailing-home kid >/dev/null; then
-    fail "sailing-home accepted a wrong answer"
-else
-    pass "sailing-home refuses a wrong answer"
-fi
-assert_json "wrong answer: still locked" "$(call status '{"profile":"kid"}')" '@.locked' "true"
-out=$(echo "  Press on! " | "$BIN" sailing-home kid)
-echo "$out" | grep -q "sailing home" && pass "sailing-home accepts the line" || fail "sailing-home: $out"
-out=$(call status '{"profile":"kid"}')
-assert_json "sailing-home: lock lifted now" "$out" '@.locked' "false"
-assert_json "sailing-home: pact lifted now" "$out" '@.pact_until' "0"
-refute_rule "sailing-home: pact rule gone" 'kid:pact'
-[ "$(uci -q get familywarden.kid.lock)" = "0" ] && pass "sailing-home clears lock in UCI" || fail "lock still set in UCI"
+until=$(( $(date +%s) + 3600 ))
+assert_json "until pact ok" "$(call pact "{\"until\":$until}")" '@.status' "ok"
+assert_rule "lockdown ends on time in the kernel" 'meta l4proto tcp meta time < "[0-9-]+ [0-9:]+" counter .* drop' familywarden_lockdown
+assert_json "can be extended" "$(call pact "{\"until\":$((until + 600))}")" '@.status' "ok"
+assert_json "can't be shortened" "$(call pact "{\"until\":$((until - 600))}")" '@.error' "the pact can only be extended"
+assert_json "can't become ongoing" "$(call pact '{"until":0}')" '@.error' "the pact can only be extended"
+sed -i "s/^until=.*/until=$(( $(date +%s) - 1 ))/" /etc/familywarden/pact
+"$BIN" tick
+[ -f /etc/familywarden/pact ] && fail "expired pact left" || pass "expired pact cleaned up"
+assert_json "free after the pact" "$(call status '{"profile":"kid"}')" '@.captain' "false"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

@@ -55,19 +55,20 @@ ubus call familywarden block  '{"profile":"josva"}'
 ubus call familywarden allow  '{"profile":"josva"}'
 ubus call familywarden reset  '{"profile":"josva"}'
 ubus call familywarden ticket '{"profile":"josva","minutes":30}'
-ubus call familywarden pact   '{"profile":"josva","minutes":420}'
+ubus call familywarden pact   '{"until":0,"window_day":"sun","window_start":"10:00","window_stop":"11:00"}'
 ubus call familywarden reload
 ubus call familywarden version
 ```
 
 ## Ulysses — bind dig selv til masten
 
-- **Lås** (profil-indstilling): ændringer af en låst profil træder først i kraft 24 timer
-  efter seneste ændring. Allow og tickets afvises; Block virker altid.
-- **Pagt** (🔒-knappen): internettet slukkes til et valgt klokkeslæt og kan ikke ophæves
-  eller forkortes fra LuCI eller Home Assistant — kun forlænges.
-- Nødudgang, kun som root over SSH: `familywarden sailing-home <profil>` — og du skal kunne
-  fuldføre linjen fra Josh Garrels' "Ulysses"
+Vælg din egen profil som *Ulysses-profil* (kaptajn) under Settings, og lav en **pagt**:
+til et bestemt tidspunkt eller løbende med et ugentligt ændringsvindue.
+
+- Så længe pagten varer, er din profil frosset: ingen ændringer, ingen Allow og ingen tickets.
+- Mens du er blokeret, er routeren lukket for alle enheder. Kun DNS og sail-siden er åbne.
+- Den eneste vej ud før tid er **sail-siden på port 7700**: router-password, linjen fra
+  Josh Garrels' "Ulysses" og derefter en karenstid (standard 24 timer).
 
 ## Licens
 

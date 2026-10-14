@@ -22,7 +22,7 @@ Angiv altid et topic ved opslag (fx "rpc.declare signatur", "TypedSection",
 
 ## Status (2026-10-14)
 
-Versioner: `familywarden` **0.8.0**, `luci-app-familywarden` **0.5.0** (Ulysses, branch `feature/ulysses`). Seneste release: v0.7.3.
+Versioner: `familywarden` **0.8.0**, `luci-app-familywarden` **0.5.0** (Ulysses, PR #1, branch `feature/ulysses`). Seneste release: v0.7.3.
 Repo: https://github.com/denogio/familywarden — releases bygges af CI (se "CI / release").
 
 ### Arkitektur (siden 0.5.x)
@@ -52,28 +52,42 @@ Repo: https://github.com/denogio/familywarden — releases bygges af CI (se "CI 
 ✅ **`scripts/deploy.sh`** - kopiér kildefiler (backend + LuCI) direkte til en router, samme stier som Makefiles
 ✅ **CI/CD** - GitHub Actions: test → build → apk-smoke-test, release ved tag
 
-### Ulysses (selvbindende lås)
-To mekanismer, begge persistente i `/etc/familywarden/` (overlever reboot):
-- **Stående lås** (`option lock '1'` per profil): profilen håndhæves fra et snapshot
-  (`locked/<profil>.snap`: enabled, policy, block_router, lock, devices, schedules).
-  Ændringer i UCI noteres som ventende (`.pending`) og overtages først **24 t efter
-  seneste ændring** (`FW_LOCK_DELAY`, konstant med vilje). At låse gælder straks; at
-  låse op er en ændring som alle andre. Navnet er kosmetisk og tages altid fra UCI.
-- **Ad hoc-pagt** (`ubus call familywarden pact '{"profile":"x","minutes":N}'`, maks 7 dage):
-  `pacts`-linje `profil udløb mac...` (MAC'er fanget ved oprettelse). Drop-regel med
-  `meta time < <epoch>` øverst i begge chains, så kernen selv slipper den. Kan kun forlænges.
-- Låst/pagt: `allow` og `ticket` afvises (`{"error":"locked by Ulysses pact",...}`), og der
-  emittes aldrig allow-/ticket-regler. `block` og `reset` virker (strammer kun).
-- **Effektiv config**: `lock_sync` (i `compile_and_apply`) skriver `/var/run/familywarden/familywarden`
-  = UCI med låste profiler erstattet af snapshot. Alt der håndhæver/rapporterer bruger `fw_load`,
-  aldrig `config_load` direkte. LuCI-oversigten viser tidsplaner fra `list` (effektive), ikke UCI.
-- **Tick**: init-scriptets procd-instans kører `familywarden tick` hvert minut; recompiler kun når
-  en ventende ændring er moden.
-- **Nødudgang (kun root/SSH)**: `familywarden sailing-home <profil>` (symlink i `/usr/sbin`). Spørger
-  efter slutningen på linjen "By the light of moon I will ..." (svar: `press on`, fra Josh Garrels'
-  "Ulysses"); læser fra stdin. Fjerner snapshot, pending og pagt og sætter `lock=0`. Må aldrig eksponeres via ubus (test-syntax tjekker).
-- Kendte omveje med root-adgang til LuCI: stop/deaktivér tjenesten under System → Startup,
-  afinstallér pakken, eller slet firewall-includet. Låsen er friktion, ikke en sikkerhedsgrænse.
+### Ulysses (kaptajnens pagt)
+Designet sammen med Dennis 2026-10-14/15. Én profil er **kaptajn** (`settings.ulysses_profile`),
+og kun den kan lave en **pagt** (`ubus call familywarden pact`). Al state ligger i `/etc/familywarden/`
+(`pact`, `pact.snap`, `release`) og overlever derfor reboot.
+- **Pagttyper:** `until` (slutter på et epoch, kan kun forlænges) eller `ongoing` (ingen slutning,
+  ugentligt ændringsvindue, standard søndag 10–11). Ongoing kan kun ændres inde i vinduet.
+- **Frosset profil:** håndhævelsen bruger `pact.snap` (enabled, policy, block_router, devices,
+  schedules). UCI-ændringer ignoreres, undtagen i vinduet, hvor de gælder med det samme
+  (snapshottet genopfriskes). Kaptajn og karenstid fryses ind i `pact`-filen.
+- **Ingen udvej via andre profiler:** kaptajnens MAC'er fjernes fra alle andre profiler i den
+  effektive config. Allow og ticket afvises for kaptajnen; block og reset virker.
+- **Lockdown** (`familywarden_lockdown`, input prio 2, egen base-chain så dens accepts ikke
+  kortslutter `familywarden_input`): mens kaptajnen er blokeret, droppes AL TCP til routeren fra
+  alle enheder. Åbent er lo, established, DNS (53), sail-siden (7700) og ændringsvinduet.
+  Kerne-evalueret via kaptajnens tidsplan (`_sched_accept_rules` med `_sched_devices="any"`).
+  Ved `until` får drop-reglen `meta time < <epoch>`.
+- **Eneste udvej:** sail-siden på **port 7700**. Det er en separat uhttpd-instans (`uhttpd.familywarden`,
+  oprettes i postinst) med `www-familywarden/index.html` og CGI-scriptet `cgi-bin/sail`. Kræver
+  root-password (tjekkes via `ubus call session login`, 3 sek. straf og flock mod brute force) plus
+  linjen "By the light of moon I will ..." (svar `press on`, fra Josh Garrels' "Ulysses").
+  Derefter frigøres pagten efter karenstiden (`settings.ulysses_delay` timer, standard 24, frosset
+  ved oprettelse). Kan annulleres. CLI-kommandoerne `sail-*` må ALDRIG blive ubus-metoder
+  (test-syntax tjekker det). `block_router`-drops undtager også 7700.
+- **Effektiv config:** `ulysses_sync` (i `compile_and_apply`) skriver `/var/run/familywarden/familywarden`.
+  Alt der håndhæver eller rapporterer bruger `fw_load`, aldrig `config_load` direkte. LuCI-oversigten
+  viser tidsplaner fra `list` (effektive), ikke UCI.
+- **Tick:** init-scriptets procd-instans kører `familywarden tick` hvert minut og recompiler kun, når
+  en frigørelse er moden eller en `until`-pagt er udløbet.
+- **LuCI:** "⚓ Make a pact"/"Extend pact"/"Amend pact" findes kun på kaptajnens profil, via
+  `ulysses.js`. Den frosne profil er read-only uden footer og uden Delete. Ulysses-indstillingerne
+  i Settings er read-only under pagten. Pagten aktiveres via ubus og ikke som UCI-felt, fordi LuCI's
+  Save & Apply-rollback ville rulle den tilbage, når lockdown afbryder browseren.
+- **Kendt begrænsning:** enheder uden for alle profiler, fx en ny bærbar, er ikke omfattet.
+  Mulig udvidelse: blokér ukendte enheder i kaptajnens blokerede perioder.
+- **Hvis sail-siden fejler** under en `ongoing`-pagt, er den sidste udvej OpenWrt failsafe
+  (reset-knap ved boot).
 
 ### Kendte huller
 - ⚠️ **Global "Enable FamilyWarden"/"Default Policy"** i Settings læses ikke af backenden (død knap).
@@ -207,7 +221,7 @@ ubus call familywarden block '{"profile":"test"}'
 ubus call familywarden allow '{"profile":"test"}'
 ubus call familywarden reset '{"profile":"test"}'
 ubus call familywarden ticket '{"profile":"test","minutes":30}'
-ubus call familywarden pact '{"profile":"test","minutes":420}'   # Ulysses, kan kun forlænges
+ubus call familywarden pact '{"until":0,"window_day":"sun","window_start":"10:00","window_stop":"11:00"}'  # kaptajnens pagt (until=epoch eller 0=ongoing)
 ubus call familywarden reload
 ubus call familywarden version           # installerede backend/frontend-versioner
 ```

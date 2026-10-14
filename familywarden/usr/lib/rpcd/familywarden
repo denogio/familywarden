@@ -32,19 +32,17 @@ FW_CHAIN="familywarden_forward"
 # (192.168.1.1, 192.168.0.1, 10.0.0.1, ...).
 FW_CHAIN_INPUT="familywarden_input"
 
-# Ulysses lock + pacts. Persistent (survives reboot) so rebooting the router is
-# not a way out; root over SSH (`familywarden sailing-home <profile>`) is the only one.
+# Ulysses state. Persistent (survives reboot) so rebooting is not a way out.
 FW_PERSIST="/etc/familywarden"
-FW_SNAPDIR="$FW_PERSIST/locked"
-FW_PACTS="$FW_PERSIST/pacts"
-# Effective config: /etc/config/familywarden with locked profiles replaced by
-# their snapshot. Everything that enforces or reports reads this (fw_load).
+FW_PACT="$FW_PERSIST/pact"
+FW_PACT_SNAP="$FW_PERSIST/pact.snap"
+FW_RELEASE="$FW_PERSIST/release"
+# The sail page (separate uhttpd instance): the only way out of a pact, and
+# the only router port left open during a lockdown
+FW_SAIL_PORT=7700
+# Effective config: UCI with the captain replaced by the pact snapshot.
+# Everything that enforces or reports reads this (fw_load).
 FW_EFFECTIVE_DIR="/var/run/familywarden"
-# Cooling-off period for edits to a locked profile. Deliberately a constant, not
-# a UCI option: a configurable delay could itself be set to 0.
-FW_LOCK_DELAY=86400
-# Longest ad-hoc pact (7 days), so a typo can't lock a profile for a year.
-FW_PACT_MAX_MINUTES=10080
 
 # ---- Helpers ----
 
@@ -111,7 +109,6 @@ _now_match_schedule() {
 # on the substring "blocked"). Requires `fw_load` beforehand.
 profile_effective_status() {
     local profile="$1" policy="$2" override="$3"
-    [ "$(pact_until "$profile")" != "0" ] && { echo "blocked"; return; }
     case "$override" in
         allow) echo "allowed"; return ;;
         block) echo "blocked"; return ;;
@@ -183,15 +180,21 @@ gc_expired_tickets() {
     return $changed
 }
 
-# ---- Ulysses lock (standing pact) ----
+# ---- Ulysses: the captain's pact ----
 #
-# A profile with option lock '1' is enforced from a snapshot of its rules
-# (enabled, policy, block_router, lock, devices, schedules) kept in
-# $FW_SNAPDIR/<profile>.snap. Edits to the profile in UCI are recorded as
-# pending and only adopted FW_LOCK_DELAY after the LAST edit, so tonight's
-# temptation can't loosen tonight's rules. Unlocking is an edit like any other.
-# Locking is a tightening and applies immediately. The name is cosmetic and
-# always taken from UCI.
+# One profile is the captain (settings.ulysses_profile). The captain can make a
+# pact, stored in $FW_PACT (key=value). For the pact's lifetime:
+#   - the captain's profile is frozen: enforcement uses a snapshot taken when
+#     the pact was made ($FW_PACT_SNAP); UCI edits are ignored, except during
+#     an ongoing pact's weekly amendment window, where they apply at once
+#   - allow and ticket are refused for the captain, and the captain's MACs are
+#     stripped from every other profile, so no other profile can let them out
+#   - while the captain is blocked, all TCP to the router is dropped for every
+#     device except DNS and the sail page on $FW_SAIL_PORT (familywarden_lockdown)
+# A pact is either "until" (ends at an epoch; can only be extended) or
+# "ongoing" (no end; weekly window). The only way out early is the sail page:
+# root password + the line from Josh Garrels' "Ulysses", then the cooling-off
+# frozen into the pact ("delay") must pass.
 
 # Single-quote a value for a UCI config file
 _q() {
@@ -212,15 +215,15 @@ _frag_sched_line() {
     echo "${days}|${start}|${stop}"
 }
 
-# Print the normalised, enforcement-relevant config of a profile from the
-# currently loaded config (empty if the profile no longer exists). Stable
-# ordering, so two fragments are equal iff the rules are equal.
+# Print the enforcement-relevant config of a profile (enabled, policy,
+# block_router, devices, schedules) from the currently loaded config, as UCI
+# sections. Empty if the profile doesn't exist.
 profile_fragment() {
     local p="$1" type o v n=0 days start stop
     config_get type "$p" TYPE ""
     [ "$type" = "profile" ] || return 0
     echo "config profile '$p'"
-    for o in enabled policy block_router lock; do
+    for o in enabled policy block_router; do
         config_get v "$p" "$o" ""
         [ -n "$v" ] && echo "	option $o $(_q "$v")"
     done
@@ -228,7 +231,7 @@ profile_fragment() {
     _frag_profile="$p"
     config_foreach _frag_sched_line schedule | sort | while IFS='|' read -r days start stop; do
         n=$((n + 1))
-        echo "config schedule '${p}_lock${n}'"
+        echo "config schedule '${p}_pact${n}'"
         echo "	option profile '$p'"
         echo "	option days $(_q "$days")"
         echo "	option start $(_q "$start")"
@@ -236,91 +239,90 @@ profile_fragment() {
     done
 }
 
-profile_locked() {
-    [ -f "$FW_SNAPDIR/$1.snap" ]
+pact_get() {
+    sed -n "s/^$1=//p" "$FW_PACT" 2>/dev/null
 }
 
-# Epoch at which a pending edit to a locked profile takes effect (0 = none)
-lock_pending_until() {
-    local h since
-    read -r h since 2>/dev/null < "$FW_SNAPDIR/$1.pending" || { echo 0; return; }
-    echo $(( since + FW_LOCK_DELAY ))
+pact_active() {
+    [ -f "$FW_PACT" ] || return 1
+    [ "$(pact_get type)" = "ongoing" ] && return 0
+    [ "$(pact_get until)" -gt "$(date +%s)" ] 2>/dev/null
 }
 
-# Drop allow overrides and tickets: they must not survive into a lock or pact
+# The captain bound by an active pact (empty if none)
+pact_captain() {
+    pact_active && pact_get captain
+}
+
+# Inside an ongoing pact's weekly amendment window right now?
+pact_in_window() {
+    [ "$(pact_get type)" = "ongoing" ] || return 1
+    local d s e now
+    d=$(day_to_num "$(pact_get window_day)")
+    s=$(time_to_minutes "$(pact_get window_start)")
+    e=$(time_to_minutes "$(pact_get window_stop)")
+    now=$(time_to_minutes "$(date +%H:%M)")
+    [ "$(date +%w)" = "$d" ] && [ "$now" -ge "$s" ] && [ "$now" -lt "$e" ]
+}
+
+# Epoch the sail page's release takes effect (0 = not requested)
+release_at() {
+    cat "$FW_RELEASE" 2>/dev/null || echo 0
+}
+
+# End the pact when it expired or a requested release is due
+gc_pact() {
+    [ -f "$FW_PACT" ] || { rm -f "$FW_PACT_SNAP" "$FW_RELEASE"; return 0; }
+    local rel
+    rel=$(release_at)
+    if [ "$rel" != "0" ] && [ "$(date +%s)" -ge "$rel" ]; then
+        rm -f "$FW_PACT" "$FW_PACT_SNAP" "$FW_RELEASE"
+        logger -t familywarden "Ulysses: released from the mast (sail page)"
+    elif ! pact_active; then
+        rm -f "$FW_PACT" "$FW_PACT_SNAP" "$FW_RELEASE"
+        logger -t familywarden "Ulysses: pact ended"
+    fi
+}
+
+# Drop allow overrides and tickets: they must not survive into a pact
 _clear_allow() {
     [ "$(state_get "$1.override" none)" = "allow" ] || return 0
     state_set "$1.override" "none"
     state_set "$1.override_expires" ""
 }
 
-_lock_new() {
-    local p="$1" lock
-    config_get lock "$p" lock "0"
-    [ "$lock" = "1" ] || return
-    profile_locked "$p" && return
-    profile_fragment "$p" > "$FW_SNAPDIR/$p.snap"
-    _clear_allow "$p"
-    logger -t familywarden "profile $p locked (Ulysses)"
-}
-
-# Reconcile UCI with the snapshots and write the effective config. Called by
-# compile_and_apply under the exclusive lock.
-lock_sync() {
-    local now snap p cur hash ph since locked=" " name
-    now=$(date +%s)
-    mkdir -p "$FW_SNAPDIR" "$FW_EFFECTIVE_DIR"
-    chmod 700 "$FW_PERSIST"
-
+# Write the effective config: UCI with the captain replaced by the pact
+# snapshot (refreshed from UCI inside the amendment window) and the captain's
+# MACs removed from every other profile. Called by compile_and_apply under the
+# exclusive lock; all enforcement and reporting reads it via fw_load.
+ulysses_sync() {
+    local captain="" macs="" name
+    mkdir -p "$FW_EFFECTIVE_DIR"
     config_load familywarden
-    config_foreach _lock_new profile
 
-    for snap in "$FW_SNAPDIR"/*.snap; do
-        [ -f "$snap" ] || continue
-        p=$(basename "$snap" .snap)
-        cur=$(profile_fragment "$p")
-        if [ "$cur" = "$(cat "$snap")" ]; then
-            rm -f "$FW_SNAPDIR/$p.pending"
-        else
-            hash=$(echo "$cur" | md5sum | cut -d' ' -f1)
-            ph=""; since=""
-            read -r ph since 2>/dev/null < "$FW_SNAPDIR/$p.pending"
-            if [ "$ph" != "$hash" ]; then
-                # New or different edit: (re)start the cooling-off period. Every
-                # edit restarts it, so a harmless change can't be queued and
-                # swapped for a loosening one just before it is adopted.
-                echo "$hash $now" > "$FW_SNAPDIR/$p.pending"
-                logger -t familywarden "locked profile $p edited; takes effect $(date -d "@$((now + FW_LOCK_DELAY))" 2>/dev/null)"
-            elif [ "$now" -ge $(( since + FW_LOCK_DELAY )) ]; then
-                rm -f "$FW_SNAPDIR/$p.pending"
-                if echo "$cur" | grep -q "^	option lock '1'$"; then
-                    echo "$cur" > "$snap"
-                    logger -t familywarden "locked profile $p: pending edit adopted"
-                else
-                    rm -f "$snap"
-                    logger -t familywarden "profile $p unlocked after cooling-off"
-                    continue
-                fi
-            fi
+    if pact_active; then
+        captain=$(pact_get captain)
+        if pact_in_window || [ ! -s "$FW_PACT_SNAP" ]; then
+            profile_fragment "$captain" > "$FW_PACT_SNAP"
         fi
-        locked="$locked$p "
-    done
+        macs=$(sed -n "s/^	list device '\(.*\)'$/\1/p" "$FW_PACT_SNAP" | tr 'A-F' 'a-f' | tr '\n' ' ')
+    fi
 
-    # Effective config = UCI minus locked profiles (and their schedules) plus
-    # their snapshots, keeping the current display name.
     {
-        uci -q export familywarden | awk -v locked="$locked" '
+        uci -q export familywarden | awk -v cap="$captain" -v macs=" $macs " '
             function flush() { if (!drop) printf "%s", blk; blk = ""; drop = 0 }
-            /^config / { flush(); if ($2 == "profile") { n = $3; gsub("\047", "", n); if (index(locked, " " n " ")) drop = 1 } }
-            /^[ \t]*option profile / { v = $3; gsub("\047", "", v); if (index(locked, " " v " ")) drop = 1 }
+            function unq(s) { gsub("\047", "", s); return s }
+            /^config / { flush(); prof = ""; if ($2 == "profile") { prof = unq($3); if (cap != "" && prof == cap) drop = 1 } }
+            cap != "" && /^[ \t]*option profile / { if (unq($3) == cap) drop = 1 }
+            cap != "" && prof != "" && /^[ \t]*list device / { if (index(macs, " " tolower(unq($3)) " ")) next }
             { blk = blk $0 "\n" }
             END { flush() }'
-        for p in $locked; do
-            config_get name "$p" name "$p"
-            echo "config profile '$p'"
+        if [ -n "$captain" ] && [ -s "$FW_PACT_SNAP" ]; then
+            config_get name "$captain" name "$captain"
+            echo "config profile '$captain'"
             echo "	option name $(_q "$name")"
-            sed 1d "$FW_SNAPDIR/$p.snap"
-        done
+            sed 1d "$FW_PACT_SNAP"
+        fi
     } > "$FW_EFFECTIVE_DIR/familywarden.new"
     mv "$FW_EFFECTIVE_DIR/familywarden.new" "$FW_EFFECTIVE_DIR/familywarden"
 }
@@ -337,63 +339,52 @@ fw_load() {
     fi
 }
 
-# ---- Ad-hoc pacts ("lock me until 06:00") ----
-#
-# $FW_PACTS lines: "<profile> <until-epoch> <mac> [<mac>...]". The MACs are
-# captured when the pact is made, so editing the profile can't escape it. The
-# drop rule carries `meta time < <until>`, so the kernel releases it on time
-# without a recompile.
-
-pact_until() {
-    local p="$1" until
-    until=$(awk -v p="$p" '$1 == p { print $2 }' "$FW_PACTS" 2>/dev/null)
-    if [ -n "$until" ] && [ "$until" -gt "$(date +%s)" ]; then
-        echo "$until"
-    else
-        echo 0
-    fi
-}
-
-gc_expired_pacts() {
-    [ -f "$FW_PACTS" ] || return 0
-    awk -v now="$(date +%s)" '$2 > now' "$FW_PACTS" > "$FW_PACTS.new"
-    mv "$FW_PACTS.new" "$FW_PACTS"
-}
-
-# Allow/ticket are refused for locked profiles and during a pact
+# Allow/ticket are refused for the captain during a pact
 _refuse_if_bound() {
-    local p="$1" until locked=0
-    until=$(pact_until "$p")
-    profile_locked "$p" && locked=1
-    [ "$until" = "0" ] && [ "$locked" = "0" ] && return 1
+    [ -n "$1" ] && [ "$1" = "$(pact_captain)" ] || return 1
     json_init
-    json_add_string "error" "locked by Ulysses pact"
-    json_add_boolean "locked" "$locked"
-    json_add_int "pact_until" "$until"
+    json_add_string "error" "bound by Ulysses pact"
+    json_add_int "pact_until" "$(pact_get until)"
     json_dump
     return 0
 }
 
-# Drop rules for active pacts. $1 = "input" for the router-input chain (only
-# profiles with block_router='1').
-gen_pact_rules() {
-    local chain="$1" p until macs mac br now
-    [ -f "$FW_PACTS" ] || return 0
-    now=$(date +%s)
-    while read -r p until macs; do
-        [ "$until" -gt "$now" ] 2>/dev/null || continue
-        if [ "$chain" = "input" ]; then
-            config_get br "$p" block_router "0"
-            [ "$br" = "1" ] || continue
-        fi
-        for mac in $macs; do
-            if [ "$chain" = "input" ]; then
-                echo "        ether saddr ${mac} meta time < ${until} tcp dport 0-65535 counter drop comment \"familywarden:${p}:pact:input\""
-            else
-                echo "        ether saddr ${mac} meta time < ${until} counter drop comment \"familywarden:${p}:pact\""
-            fi
-        done
-    done < "$FW_PACTS"
+_is_captain_bound() {
+    [ -n "$1" ] && [ "$1" = "$(pact_captain)" ]
+}
+
+# familywarden_lockdown body: while the captain is blocked, drop all TCP to
+# the router except DNS and the sail page. Mirrors the captain's forward rules:
+# accept inside the captain's allow windows (and the amendment window), then
+# drop. Requires fw_load. Empty without an active pact.
+gen_lockdown_rules() {
+    local captain enabled policy override until wd
+    captain=$(pact_captain)
+    [ -n "$captain" ] || return 0
+    config_get enabled "$captain" enabled "0"
+    config_get policy "$captain" policy "allow"
+    override=$(state_get "${captain}.override" "none")
+    # A captain that is never blocked never locks the router down
+    [ "$enabled" = "1" ] || return 0
+    [ "$policy" = "allow" ] && [ "$override" != "block" ] && return 0
+
+    echo "        iifname \"lo\" accept"
+    echo "        ct state established,related accept"
+    echo "        tcp dport { 53, ${FW_SAIL_PORT} } accept"
+    if [ "$(pact_get type)" = "ongoing" ]; then
+        wd=$(day_to_num "$(pact_get window_day)")
+        echo "        meta day { ${wd} } meta hour >= $(pact_get window_start) meta hour < $(pact_get window_stop) accept comment \"familywarden:ulysses:window\""
+    fi
+    if [ "$policy" = "scheduled" ] && [ "$override" != "block" ]; then
+        _cur_profile="$captain"
+        _sched_devices="any"
+        _sched_tag=":lockdown"
+        config_foreach _sched_accept_rules schedule
+        _sched_tag=""
+    fi
+    until=""
+    [ "$(pact_get type)" = "until" ] && until="meta time < $(pact_get until) "
+    echo "        meta l4proto tcp ${until}counter drop comment \"familywarden:ulysses:lockdown\""
 }
 
 # ---- Rule generators (write to FW_INCLUDE_NEW) ----
@@ -435,19 +426,22 @@ _sched_accept_rules() {
     shifted_nums="${shifted_nums#, }"
     [ -z "$day_nums" ] && return
 
-    local smin emin mac
+    local smin emin mac src
     smin=$(time_to_minutes "$start")
     emin=$(time_to_minutes "$stop")
     for mac in $_sched_devices; do
+        # "any" = every source (familywarden_lockdown)
+        src="ether saddr ${mac} "
+        [ "$mac" = "any" ] && src=""
         if [ "$smin" -lt "$emin" ]; then
-            echo "        ether saddr ${mac} meta hour >= ${start} meta hour < ${stop} meta day { ${day_nums} } ${_sched_match}counter accept comment \"familywarden:${_cur_profile}:sched-allow${_sched_tag}\""
+            echo "        ${src}meta hour >= ${start} meta hour < ${stop} meta day { ${day_nums} } ${_sched_match}counter accept comment \"familywarden:${_cur_profile}:sched-allow${_sched_tag}\""
         elif [ "$smin" -gt "$emin" ]; then
             # Overnight: allow start..24:00 on the day, 00:00..stop on next day
-            echo "        ether saddr ${mac} meta hour >= ${start} meta day { ${day_nums} } ${_sched_match}counter accept comment \"familywarden:${_cur_profile}:sched-allow${_sched_tag}\""
-            echo "        ether saddr ${mac} meta hour < ${stop} meta day { ${shifted_nums} } ${_sched_match}counter accept comment \"familywarden:${_cur_profile}:sched-allow${_sched_tag}\""
+            echo "        ${src}meta hour >= ${start} meta day { ${day_nums} } ${_sched_match}counter accept comment \"familywarden:${_cur_profile}:sched-allow${_sched_tag}\""
+            echo "        ${src}meta hour < ${stop} meta day { ${shifted_nums} } ${_sched_match}counter accept comment \"familywarden:${_cur_profile}:sched-allow${_sched_tag}\""
         else
             # start==stop → allow all day on those days
-            echo "        ether saddr ${mac} meta day { ${day_nums} } ${_sched_match}counter accept comment \"familywarden:${_cur_profile}:sched-allow${_sched_tag}\""
+            echo "        ${src}meta day { ${day_nums} } ${_sched_match}counter accept comment \"familywarden:${_cur_profile}:sched-allow${_sched_tag}\""
         fi
     done
 }
@@ -462,7 +456,7 @@ gen_override_rules() {
 
     override=$(state_get "${section}.override" "none")
     [ "$override" = "none" ] && return
-    [ "$override" = "allow" ] && { profile_locked "$section" || [ "$(pact_until "$section")" != "0" ]; } && return
+    [ "$override" = "allow" ] && _is_captain_bound "$section" && return
 
     # A timed allow (ticket) is handled by the familywarden_ticket timeout set so
     # the kernel can expire it on its own — never emit it as a static rule here.
@@ -523,8 +517,7 @@ gen_input_override_rules() {
 
     override=$(state_get "${section}.override" "none")
     [ "$override" = "allow" ] || return
-    profile_locked "$section" && return
-    [ "$(pact_until "$section")" != "0" ] && return
+    _is_captain_bound "$section" && return
 
     override_expires=$(state_get "${section}.override_expires" "")
     [ -n "$override_expires" ] && return  # ticket → handled by set
@@ -552,7 +545,7 @@ gen_input_profile_block() {
 }
 
 gen_input_device_block_rule() {
-    echo "        ether saddr ${1} tcp dport 0-65535 counter drop comment \"familywarden:${_cur_profile}:block:input\""
+    echo "        ether saddr ${1} tcp dport != ${FW_SAIL_PORT} counter drop comment \"familywarden:${_cur_profile}:block:input\""
 }
 
 # Scheduled profiles with block_router='1' may reach the router (TCP) only
@@ -585,7 +578,7 @@ gen_input_profile_scheduled() {
 
     local mac
     for mac in $_sched_devices; do
-        echo "        ether saddr ${mac} tcp dport 0-65535 counter drop comment \"familywarden:${_cur_profile}:scheduled:input\""
+        echo "        ether saddr ${mac} tcp dport != ${FW_SAIL_PORT} counter drop comment \"familywarden:${_cur_profile}:scheduled:input\""
     done
 }
 
@@ -602,8 +595,7 @@ gen_ticket_elements() {
     [ "$enabled" != "1" ] && return
     override=$(state_get "${section}.override" "none")
     [ "$override" = "allow" ] || return
-    profile_locked "$section" && return
-    [ "$(pact_until "$section")" != "0" ] && return
+    _is_captain_bound "$section" && return
     expires=$(state_get "${section}.override_expires" "")
     [ -n "$expires" ] || return                  # permanent allow → not a ticket
     rem=$(( expires - $(date +%s) ))
@@ -665,7 +657,6 @@ generate_include() {
         # matched so the device still gets a DHCP lease and DNS.
         echo "chain familywarden_input {"
         echo "    type filter hook input priority 1; policy accept;"
-        gen_pact_rules input
         echo "        ether saddr @familywarden_ticket tcp dport 0-65535 counter accept comment \"familywarden:ticket:input\""
 
         # Permanent allow overrides restore router access
@@ -679,9 +670,15 @@ generate_include() {
 
         echo "}"
         echo ""
+        # familywarden_lockdown: Ulysses. A separate base chain (input, priority
+        # 2) so its accepts can't short-circuit familywarden_input's drops.
+        echo "chain familywarden_lockdown {"
+        echo "    type filter hook input priority 2; policy accept;"
+        gen_lockdown_rules
+        echo "}"
+        echo ""
         echo "chain familywarden_forward {"
         echo "    type filter hook forward priority 1; policy accept;"
-        gen_pact_rules forward
         echo "        ether saddr @familywarden_ticket counter accept comment \"familywarden:ticket\""
 
         # Permanent override rules (block / non-expiring allow)
@@ -737,8 +734,8 @@ compile_and_apply() {
         # GC expired tickets/pacts, then resolve Ulysses locks into the
         # effective config that everything below reads
         gc_expired_tickets
-        gc_expired_pacts
-        lock_sync
+        gc_pact
+        ulysses_sync
 
         # Generate the new include file
         generate_include
@@ -775,6 +772,7 @@ EOF
         # The sub-second fail-open window before fw4 reload is acceptable.
         nft delete chain inet fw4 familywarden_forward 2>/dev/null
         nft delete chain inet fw4 familywarden_input 2>/dev/null
+        nft delete chain inet fw4 familywarden_lockdown 2>/dev/null
         # Same for the ticket set (now unreferenced after the chain is gone), so
         # fw4 recreates it from the include with the current remaining timeouts.
         nft delete set inet fw4 familywarden_ticket 2>/dev/null
@@ -847,14 +845,22 @@ json_add_dev() {
     json_add_string "" "$1"
 }
 
-# Ulysses fields: locked (standing lock), lock_pending_until (epoch a pending
-# edit takes effect, 0 = none), pact_until (ad-hoc pact expiry, 0 = none)
+# Ulysses fields: captain (bound by an active pact), and for the captain the
+# pact details. pact_until is 0 for an ongoing pact; release_at is 0 unless
+# sailing home was requested on the sail page.
 json_add_bound() {
-    local locked=0
-    profile_locked "$1" && locked=1
-    json_add_boolean "locked" "$locked"
-    json_add_int "lock_pending_until" "$(lock_pending_until "$1")"
-    json_add_int "pact_until" "$(pact_until "$1")"
+    local captain=0
+    _is_captain_bound "$1" && captain=1
+    json_add_boolean "captain" "$captain"
+    if [ "$captain" = "1" ]; then
+        local in_window=0
+        pact_in_window && in_window=1
+        json_add_string "pact_type" "$(pact_get type)"
+        json_add_int "pact_until" "$(pact_get until)"
+        json_add_string "pact_window" "$(pact_get window_day) $(pact_get window_start)-$(pact_get window_stop)"
+        json_add_boolean "pact_in_window" "$in_window"
+        json_add_int "release_at" "$(release_at)"
+    fi
 }
 
 ubus_list_schedule() {
@@ -982,95 +988,117 @@ ubus_ticket() {
     echo "{\"status\":\"ok\",\"profile\":\"${profile}\",\"expires\":\"${expires_iso}\"}"
 }
 
-# Ad-hoc pact: block the profile's devices for <minutes>, unbreakable from
-# LuCI/ubus/Home Assistant. Can only be extended, never shortened or lifted.
+# Make (or amend) the captain's pact. until=<epoch> for a pact that ends,
+# until=0 for an ongoing pact with a weekly amendment window. An "until" pact
+# can only be extended; an ongoing pact can only be changed inside its window.
 ubus_pact() {
-    local profile="$1" minutes="$2"
+    local until="${1:-0}" wday="${2:-sun}" wstart="${3:-10:00}" wstop="${4:-11:00}"
+    local captain type now delay name
+    now=$(date +%s)
 
-    fw_load
-    local name
-    config_get name "$profile" name ""
-    [ -z "$name" ] && { echo '{"error":"profile not found"}'; return 1; }
-
-    case "$minutes" in ''|*[!0-9]*) echo '{"error":"minutes must be a positive integer"}'; return 1 ;; esac
-    if [ "$minutes" -lt 1 ] || [ "$minutes" -gt "$FW_PACT_MAX_MINUTES" ]; then
-        echo "{\"error\":\"minutes must be 1-${FW_PACT_MAX_MINUTES}\"}"
-        return 1
+    case "$until" in *[!0-9]*) echo '{"error":"until must be an epoch (0 = ongoing)"}'; return 1 ;; esac
+    if [ "$until" = "0" ]; then
+        type="ongoing"
+        [ -n "$(day_to_num "$wday")" ] || { echo '{"error":"window_day must be mon..sun"}'; return 1; }
+        case "$wstart$wstop" in [0-2][0-9]:[0-5][0-9][0-2][0-9]:[0-5][0-9]) ;; *) echo '{"error":"window times must be HH:MM"}'; return 1 ;; esac
+        [ "$(time_to_minutes "$wstart")" -lt "$(time_to_minutes "$wstop")" ] || { echo '{"error":"window must start before it stops"}'; return 1; }
+    else
+        type="until"
+        [ "$until" -gt $(( now + 60 )) ] || { echo '{"error":"until must be in the future"}'; return 1; }
     fi
 
-    _pact_macs=""
-    config_list_foreach "$profile" device _collect_pact_mac
-    [ -z "$_pact_macs" ] && { echo '{"error":"profile has no devices"}'; return 1; }
-
-    local until current
-    until=$(( $(date +%s) + minutes * 60 ))
-    current=$(pact_until "$profile")
-    if [ "$current" -ge "$until" ]; then
-        json_init
-        json_add_string "error" "a pact can only be extended"
-        json_add_int "pact_until" "$current"
-        json_dump
-        return 1
+    if pact_active; then
+        captain=$(pact_get captain)
+        delay=$(pact_get delay)
+        if [ "$(pact_get type)" = "until" ] && [ "$type" = "until" ] && [ "$until" -gt "$(pact_get until)" ]; then
+            :   # extending is always fine
+        elif pact_in_window; then
+            :   # the weekly window is for renegotiating
+        else
+            json_init
+            json_add_string "error" "the pact can only be extended"
+            json_add_string "type" "$(pact_get type)"
+            json_add_int "pact_until" "$(pact_get until)"
+            json_dump
+            return 1
+        fi
+    else
+        config_load familywarden
+        config_get captain settings ulysses_profile ""
+        config_get delay settings ulysses_delay "24"
+        [ -n "$captain" ] || { echo '{"error":"no Ulysses profile chosen in settings"}'; return 1; }
+        config_get name "$captain" name ""
+        [ -n "$name" ] || { echo '{"error":"Ulysses profile not found"}'; return 1; }
+        case "$delay" in ''|*[!0-9]*) delay=24 ;; esac
+        delay=$(( delay * 3600 ))
+        mkdir -p "$FW_PERSIST"
+        chmod 700 "$FW_PERSIST"
+        profile_fragment "$captain" > "$FW_PACT_SNAP"
     fi
 
-    mkdir -p "$FW_PERSIST"
-    chmod 700 "$FW_PERSIST"
-    { awk -v p="$profile" '$1 != p' "$FW_PACTS" 2>/dev/null; echo "$profile $until$_pact_macs"; } > "$FW_PACTS.new"
-    mv "$FW_PACTS.new" "$FW_PACTS"
-    _clear_allow "$profile"
-    logger -t familywarden "pact on $profile until $(date -d "@$until" 2>/dev/null)"
+    {
+        echo "captain=$captain"
+        echo "type=$type"
+        echo "until=$until"
+        echo "window_day=$wday"
+        echo "window_start=$wstart"
+        echo "window_stop=$wstop"
+        echo "delay=$delay"
+    } > "$FW_PACT.new"
+    mv "$FW_PACT.new" "$FW_PACT"
+    _clear_allow "$captain"
+    logger -t familywarden "Ulysses: $captain bound to the mast ($type${until:+ until $until})"
 
     compile_and_apply >/dev/null || { echo '{"error":"compile failed"}'; return 1; }
-    echo "{\"status\":\"ok\",\"profile\":\"${profile}\",\"pact_until\":${until}}"
+    json_init
+    json_add_string "status" "ok"
+    json_add_string "captain" "$captain"
+    json_add_string "type" "$type"
+    json_add_int "pact_until" "$until"
+    json_dump
 }
 
-_collect_pact_mac() {
-    _pact_macs="$_pact_macs $1"
+# ---- Sail page backend (CLI only; called by the CGI on $FW_SAIL_PORT) ----
+
+cli_sail_status() {
+    local captain="" active=0
+    pact_active && active=1 && captain=$(pact_get captain)
+    json_init
+    json_add_boolean "pact" "$active"
+    json_add_string "captain" "$captain"
+    json_add_string "type" "$(pact_get type)"
+    json_add_int "pact_until" "$(pact_get until)"
+    json_add_string "window" "$(pact_get window_day) $(pact_get window_start)-$(pact_get window_stop)"
+    json_add_int "delay" "$(pact_get delay)"
+    json_add_int "release_at" "$(release_at)"
+    json_add_int "now" "$(date +%s)"
+    json_dump
 }
 
-# Root-only escape hatch (CLI over SSH, never exposed via ubus): untie a
-# profile from the mast, lifting lock + pact at once. After Josh Garrels'
-# "Ulysses": you only get home by finishing the line. The answer is read from
-# stdin, so it also works piped (echo "press on" | familywarden sailing-home x).
-cli_sailing_home() {
-    local profile="$1" answer
-    [ -n "$profile" ] || { echo "usage: familywarden sailing-home <profile>" >&2; return 1; }
-
-    echo "Sirens call your name. Finish the line to be untied from the mast:"
-    echo '  "By the light of moon I will ..."'
-    printf '> '
-    read -r answer
-    answer=$(echo "$answer" | tr 'A-Z' 'a-z' | sed 's/[^a-z ]//g; s/^ *//; s/ *$//')
-    if [ "$answer" != "press on" ]; then
-        echo "The sirens sing on. Still tied to the mast."
-        return 1
+cli_sail_request() {
+    pact_active || { echo '{"error":"there is no pact"}'; return 1; }
+    if [ "$(release_at)" = "0" ]; then
+        echo $(( $(date +%s) + $(pact_get delay) )) > "$FW_RELEASE"
+        logger -t familywarden "Ulysses: sailing home requested, free at $(cat "$FW_RELEASE")"
     fi
-
-    rm -f "$FW_SNAPDIR/$profile.snap" "$FW_SNAPDIR/$profile.pending"
-    if [ -f "$FW_PACTS" ]; then
-        awk -v p="$profile" '$1 != p' "$FW_PACTS" > "$FW_PACTS.new"
-        mv "$FW_PACTS.new" "$FW_PACTS"
-    fi
-    # Without this the next compile would re-lock straight from UCI
-    uci -q set "familywarden.$profile.lock=0" && uci -q commit familywarden
-    logger -t familywarden "profile $profile untied from the mast by root (sailing-home)"
-    compile_and_apply >/dev/null || { echo "Untied, but the firewall reload failed - check logread." >&2; return 1; }
-    echo "⚓ Untied from the mast. $profile is sailing home."
+    cli_sail_status
 }
 
-# Run periodically by the init script's procd instance: recompile only when a
-# pending edit to a locked profile is due (pacts expire in the kernel).
+cli_sail_cancel() {
+    rm -f "$FW_RELEASE"
+    logger -t familywarden "Ulysses: sailing home cancelled"
+    cli_sail_status
+}
+
+# Run every minute by the init script's procd instance: recompile when a
+# requested release is due or an "until" pact has ended. A no-op otherwise.
 cli_tick() {
-    local pf h since now
-    now=$(date +%s)
-    for pf in "$FW_SNAPDIR"/*.pending; do
-        [ -f "$pf" ] || continue
-        read -r h since < "$pf"
-        if [ "$now" -ge $(( since + FW_LOCK_DELAY )) ]; then
-            compile_and_apply >/dev/null
-            return
-        fi
-    done
+    [ -f "$FW_PACT" ] || return 0
+    local rel
+    rel=$(release_at)
+    if { [ "$rel" != "0" ] && [ "$(date +%s)" -ge "$rel" ]; } || ! pact_active; then
+        compile_and_apply >/dev/null
+    fi
 }
 
 ubus_reload() {
@@ -1106,14 +1134,20 @@ case "$1" in
   "allow": { "profile": "string" },
   "reset": { "profile": "string" },
   "ticket": { "profile": "string", "minutes": 0 },
-  "pact": { "profile": "string", "minutes": 0 },
+  "pact": { "until": 0, "window_day": "string", "window_start": "string", "window_stop": "string" },
   "reload": {},
   "version": {}
 }
 EOF
         ;;
-    sailing-home)
-        cli_sailing_home "$2"
+    sail-status)
+        cli_sail_status
+        ;;
+    sail-request)
+        cli_sail_request
+        ;;
+    sail-cancel)
+        cli_sail_cancel
         ;;
     tick)
         cli_tick
@@ -1164,9 +1198,11 @@ EOF
             pact)
                 read -r input
                 json_load "$input"
-                json_get_var profile profile
-                json_get_var minutes minutes
-                ubus_pact "$profile" "$minutes"
+                json_get_var until until 0
+                json_get_var window_day window_day sun
+                json_get_var window_start window_start 10:00
+                json_get_var window_stop window_stop 11:00
+                ubus_pact "$until" "$window_day" "$window_start" "$window_stop"
                 ;;
             reload)
                 ubus_reload

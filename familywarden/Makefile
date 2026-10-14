@@ -18,7 +18,7 @@ define Package/familywarden
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=OpenWrt Parental Control Daemon
-  DEPENDS:=+firewall4 +nftables +rpcd
+  DEPENDS:=+firewall4 +nftables +rpcd +uhttpd
   URL:=https://github.com/denogio/familywarden
   PKGARCH:=all
 endef
@@ -42,9 +42,14 @@ define Package/familywarden/install
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
 	$(INSTALL_BIN) ./usr/lib/rpcd/familywarden $(1)/usr/libexec/rpcd/familywarden
 
-	# CLI for root over SSH, e.g. the Ulysses escape hatch: familywarden sailing-home <profile>
+	# CLI for root (reload, tick, ...)
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(LN) ../libexec/rpcd/familywarden $(1)/usr/sbin/familywarden
+
+	# Ulysses sail page, served on port 7700 by its own uhttpd instance
+	$(INSTALL_DIR) $(1)/www-familywarden/cgi-bin
+	$(INSTALL_DATA) ./www-familywarden/index.html $(1)/www-familywarden/index.html
+	$(INSTALL_BIN) ./www-familywarden/cgi-bin/sail $(1)/www-familywarden/cgi-bin/sail
 
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DATA) ./usr/share/rpcd/acl.d/familywarden.json $(1)/usr/share/rpcd/acl.d/familywarden.json
@@ -66,6 +71,21 @@ if ! uci show firewall | grep -q "path='/var/etc/familywarden.include'"; then
 	commit firewall
 EOF
 fi
+# Ulysses sail page: a separate uhttpd instance on port 7700 (static page + one
+# CGI, no LuCI, no /ubus). Kept reachable during a Ulysses lockdown.
+if ! uci -q get uhttpd.familywarden >/dev/null; then
+    uci batch <<-EOF
+	set uhttpd.familywarden=uhttpd
+	add_list uhttpd.familywarden.listen_http='0.0.0.0:7700'
+	add_list uhttpd.familywarden.listen_http='[::]:7700'
+	set uhttpd.familywarden.home='/www-familywarden'
+	set uhttpd.familywarden.cgi_prefix='/cgi-bin'
+	set uhttpd.familywarden.no_dirlists='1'
+	set uhttpd.familywarden.max_requests='3'
+	commit uhttpd
+EOF
+    /etc/init.d/uhttpd reload 2>/dev/null
+fi
 exit 0
 endef
 
@@ -74,6 +94,10 @@ define Package/familywarden/prerm
 # Remove firewall include on package removal
 idx=$$(uci show firewall | grep "path='/var/etc/familywarden.include'" | head -1 | cut -d. -f2)
 [ -n "$$idx" ] && uci delete "firewall.$$idx" && uci commit firewall
+if uci -q get uhttpd.familywarden >/dev/null; then
+    uci delete uhttpd.familywarden && uci commit uhttpd
+    /etc/init.d/uhttpd reload 2>/dev/null
+fi
 exit 0
 endef
 

@@ -467,16 +467,24 @@ function refreshDashboard() {
 	});
 }
 
-// Action buttons for a profile card. Allow/tickets are hidden for profiles bound
-// by a Ulysses lock or pact (the backend refuses them anyway); Block and Reset
-// stay, since they only ever tighten back towards the bound rules.
+// Pact button, only on the captain's profile: make a pact, extend an "until"
+// pact, or amend an ongoing one inside its window
+function pactButtonLabel(id, p) {
+	if (id !== ulysses.captainId()) return null;
+	if (!ulysses.isBound(p)) return '⚓ ' + _('Make a pact');
+	if (p.pact_type === 'until') return '⚓ ' + _('Extend pact');
+	if (p.pact_in_window) return '⚓ ' + _('Amend pact');
+	return null;
+}
+
+// Action buttons for a profile card. Allow/tickets are hidden for the captain
+// during a pact (the backend refuses them anyway); Block and Reset stay, since
+// they only ever tighten back towards the pact.
 function cardButtons(id, p) {
 	var isBlocked = p.status && p.status.indexOf('blocked') >= 0;
 	var hasOverride = p.override && p.override !== 'none';
 	var btns = [];
-	if (ulysses.pactActive(p)) {
-		// nothing to reset or allow while a pact runs
-	} else if (hasOverride) {
+	if (hasOverride) {
 		btns.push(makeBtn('cbi-button-reset', _('Reset'), function() { return callReset(id); }));
 	} else if (isBlocked) {
 		if (!ulysses.isBound(p)) {
@@ -488,9 +496,11 @@ function cardButtons(id, p) {
 	} else {
 		btns.push(makeBtn('cbi-button-negative', _('Block'), function() { return callBlock(id); }));
 	}
-	btns.push(makeBtn('cbi-button-neutral', '🔒 ' + _('Pact'), function() {
-		return ulysses.showPactModal(id, p.name, p);
-	}));
+	var pactLabel = pactButtonLabel(id, p);
+	if (pactLabel)
+		btns.push(makeBtn('cbi-button-neutral', pactLabel, function() {
+			return ulysses.showPactModal(p.name, p);
+		}));
 	return btns;
 }
 
