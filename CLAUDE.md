@@ -104,7 +104,14 @@ og kun den kan lave en **pagt** (`ubus call familywarden pact`). Al state ligger
 - ✅ `scripts/test-apk.sh`: installerer byggede apk'er i container; tjekker filer, postinst/prerm, at config overlever reinstall.
 - ⚠️ shellcheck giver kun støj-advarsler (SC1091 OpenWrt-includes, SC3043 `local` i ash)
 - ✅ **Playwright e2e** (`test/e2e/`, mod QEMU på 192.168.1.1): sider loader, block/allow, opret/slet profil, tilføj enhed, opret schedule, policy bevares ved save. Sidste kørsel: bestået.
-- QEMU-image ligger i `images/` (git-ignoreret). `npm install` i `test/e2e/` før e2e-kørsel.
+- ✅ **QEMU (rigtig OpenWrt 25.12 med procd)** via `scripts/qemu-dev.sh` (user-mode-net, ingen root;
+  `start --fresh`, `deploy`, `time "21:29"`, `console`, `run`, `reboot`). Verificeret 2026-10-15:
+  procd-trigger (~2 s), lockdown slår selv til kl. 21:30 (LuCI og SSH lukket, 7700 åben), release via
+  7700 + tick, lockdown overlever reboot. Konsollen er "fysisk adgang" under lockdown.
+  OpenWrt-særtræk: den første `reload_config` efter installation fyrer ikke for en config, der ikke
+  fandtes ved boot (LuCI-views kalder selv `reload`, så det er dækket).
+- Images i `images/` (git-ignoreret: base-image, overlay `qemu-dev.qcow2`, `run/`). `npm install` i
+  `test/e2e/` før e2e-kørsel (Playwright-specs peger stadig på 192.168.1.1 fra den gamle tap-opsætning).
 
 ### DNS-filtrering — IKKE IMPLEMENTERET (kun UI-stub)
 ⚠️ Visionen nævner DNS-filtrering, men det er **ikke bygget**:

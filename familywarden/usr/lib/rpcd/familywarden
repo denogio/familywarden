@@ -1047,7 +1047,11 @@ ubus_pact() {
     } > "$FW_PACT.new"
     mv "$FW_PACT.new" "$FW_PACT"
     _clear_allow "$captain"
-    logger -t familywarden "Ulysses: $captain bound to the mast ($type${until:+ until $until})"
+    if [ "$type" = "until" ]; then
+        logger -t familywarden "Ulysses: $captain bound to the mast until $(date -d "@$until" 2>/dev/null || echo "$until")"
+    else
+        logger -t familywarden "Ulysses: $captain bound to the mast (ongoing, window $wday $wstart-$wstop)"
+    fi
 
     compile_and_apply >/dev/null || { echo '{"error":"compile failed"}'; return 1; }
     json_init

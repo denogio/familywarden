@@ -43,6 +43,18 @@ test/e2e/                         # Playwright-tests mod QEMU
 ./scripts/deploy.sh root@router   # kopiér kildefiler direkte til en router
 ```
 
+### Testrouter i QEMU (uden root)
+
+```sh
+./scripts/qemu-dev.sh start --fresh   # frisk OpenWrt 25.12 (KVM)
+./scripts/qemu-dev.sh deploy          # byg + installér + testprofiler (Dennis = kaptajn)
+./scripts/qemu-dev.sh time "21:29"    # sæt routerens ur, fx lige før en blokering
+./scripts/qemu-dev.sh console         # seriel konsol (virker også under lockdown)
+```
+
+LuCI på http://localhost:8080 (root / ulysses), sail-siden på http://localhost:7700.
+Din maskine er LAN-klient (192.168.1.2), så en Ulysses-lockdown rammer den som enhver anden enhed.
+
 CI kører test → build → apk-smoke-test på hver push. Et tag `vX.Y.Z`, der matcher
 `PKG_VERSION` i `familywarden/Makefile`, udgiver en GitHub-release med apk'erne.
 
