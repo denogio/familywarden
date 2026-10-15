@@ -110,7 +110,12 @@ og kun den kan lave en **pagt** (`ubus call familywarden pact`). Al state ligger
   **Tilføj en case her, når du ændrer regelgenereringen.**
 - ✅ `scripts/test-apk.sh`: installerer byggede apk'er i container; tjekker filer, postinst/prerm, at config overlever reinstall.
 - ⚠️ shellcheck giver kun støj-advarsler (SC1091 OpenWrt-includes, SC3043 `local` i ash)
-- ✅ **Playwright e2e** (`test/e2e/`, mod QEMU på 192.168.1.1): sider loader, block/allow, opret/slet profil, tilføj enhed, opret schedule, policy bevares ved save. Sidste kørsel: bestået.
+- ✅ **Playwright e2e** (`test/e2e/`, 16 tests): `scripts/test-e2e.sh [apk-dir]` kører dem mod LuCI i en
+  OpenWrt-container (`scripts/e2e-container-setup.sh`, inkl. stub for procd's `system`-objekt); kører
+  også i CI. Mod QEMU-routeren: `FW_BASE_URL=http://localhost:8080 FW_PASSWORD=ulysses npx playwright test`.
+  `ulysses.spec.js` laver en rigtig pagt og kører kun med `FW_E2E_ALLOW_PACT=1` (sat af test-e2e.sh).
+  LuCI-detaljer: Save & Apply er en dropdown (`li`), vent på "Configuration changes applied", og
+  `E()` udfolder kun ét niveau af lister.
 - ✅ **QEMU (rigtig OpenWrt 25.12 med procd)** via `scripts/qemu-dev.sh` (user-mode-net, ingen root;
   `start --fresh`, `deploy`, `time "21:29"`, `console`, `run`, `reboot`). Verificeret 2026-10-15:
   procd-trigger (~2 s), lockdown slår selv til kl. 21:30 (LuCI og SSH lukket, 7700 åben), release via
@@ -118,7 +123,7 @@ og kun den kan lave en **pagt** (`ubus call familywarden pact`). Al state ligger
   OpenWrt-særtræk: den første `reload_config` efter installation fyrer ikke for en config, der ikke
   fandtes ved boot (LuCI-views kalder selv `reload`, så det er dækket).
 - Images i `images/` (git-ignoreret: base-image, overlay `qemu-dev.qcow2`, `run/`). `npm install` i
-  `test/e2e/` før e2e-kørsel (Playwright-specs peger stadig på 192.168.1.1 fra den gamle tap-opsætning).
+  `test/e2e/` før e2e-kørsel (plus `npx playwright install chromium`).
 
 ### DNS-filtrering — IKKE IMPLEMENTERET (kun UI-stub)
 ⚠️ Visionen nævner DNS-filtrering, men det er **ikke bygget**:
@@ -130,7 +135,8 @@ og kun den kan lave en **pagt** (`ubus call familywarden pact`). Al state ligger
 
 ### CI / release
 - `.github/workflows/ci.yml`: push/PR → `test-syntax` + `test-integration` → SDK-build
-  (`openwrt/sdk:x86-64-25.12.4`) → `test-apk` → apk'er som artifact.
+  (`openwrt/sdk:x86-64-25.12.4`) → `test-apk` → apk'er som artifact → e2e (Playwright mod LuCI
+  i container, på CI's egne apk'er). Release kræver grøn build + e2e.
 - Release: bump `PKG_VERSION`, commit, `git tag vX.Y.Z && git push --tags`. Tagget skal matche
   `familywarden/Makefile`, ellers fejler release-jobbet. luci-appen versioneres separat.
 - `dist/` er git-ignoreret (lokale builds). Apk'er udgives kun som GitHub releases (fra v0.7.3).
