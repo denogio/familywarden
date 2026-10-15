@@ -3,7 +3,7 @@
     "description": "Parental control access for Home Assistant",
     "read": {
       "ubus": {
-        "familywarden": ["list", "status", "traffic", "version"]
+        "familywarden": ["list", "status", "traffic", "mast", "version"]
       }
     },
     "write": {

@@ -5,7 +5,7 @@ set -e
 
 mkdir -p /var/lock /var/run/ubus /var/etc
 apk update >/dev/null 2>&1 || true
-apk add uhttpd-mod-ucode >/dev/null 2>&1
+apk add uhttpd-mod-ucode qrencode >/dev/null 2>&1
 apk add --allow-untrusted /apk/familywarden-[0-9]*.apk /apk/luci-app-familywarden-[0-9]*.apk >/dev/null
 printf '%s\n%s\n' "$PASSWORD" "$PASSWORD" | passwd root >/dev/null 2>&1
 

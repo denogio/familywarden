@@ -10,6 +10,12 @@ var callReload = rpc.declare({
 	method: 'reload'
 });
 
+var callMast = rpc.declare({
+	object: 'familywarden',
+	method: 'mast',
+	params: [ 'host' ]
+});
+
 var callList = rpc.declare({
 	object: 'familywarden',
 	method: 'list',
@@ -18,7 +24,7 @@ var callList = rpc.declare({
 
 return view.extend({
 	load: function() {
-		return Promise.all([ callList(), uci.load('familywarden') ]);
+		return Promise.all([ callList(), uci.load('familywarden'), callMast(window.location.hostname) ]);
 	},
 
 	render: function(data) {
@@ -83,6 +89,26 @@ return view.extend({
 		o.placeholder = '24';
 		o.default = '24';
 		o.readonly = bound;
+
+		// Ulysses Mast: pair the captain's phone by scanning this QR in the app
+		var mast = data[2] || {};
+		o = s.option(form.DummyValue, '_mast', '📱 ' + _('Ulysses Mast'),
+			_('The Mast app on your phone blocks hotspot and tethering while you are bound. Open Mast, tap "Scan pairing code" and scan this code. The phone must be on this network.'));
+		o.renderWidget = function() {
+			var synced = mast.last_sync > 0
+				? _('Last sync: %s (%s)').format(new Date(mast.last_sync * 1000).toLocaleString(), mast.device || '?')
+				: _('No phone has synced yet');
+			var qr = E('div', { 'style': 'width:220px;height:220px;background:#fff;padding:8px;border-radius:8px' });
+			if (mast.qr_svg)
+				qr.innerHTML = mast.qr_svg.replace(/width="[^"]*" height="[^"]*"/, 'width="100%" height="100%"');
+			else
+				qr = E('code', { 'style': 'word-break:break-all' }, mast.pair_uri || _('Pairing code unavailable'));
+			return E('div', {}, [
+				qr,
+				E('div', { 'style': 'margin-top:8px' }, _('Key fingerprint: %s').format(mast.fingerprint || '?')),
+				E('div', {}, synced)
+			]);
+		};
 
 		// Return the form.Map directly so LuCI renders it with native page
 		// chrome (title + tab bar) like every other config page.

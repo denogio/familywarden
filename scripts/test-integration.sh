@@ -422,6 +422,53 @@ sed -i "s/^until=.*/until=$(( $(date +%s) - 1 ))/" /etc/familywarden/pact
 assert_json "free after the pact" "$(call status '{"profile":"kid"}')" '@.captain' "false"
 
 echo ""
+echo "=== Ulysses Mast: signed sync for the phone ==="
+MAST=/src/familywarden/www-familywarden/cgi-bin/mast
+call pact "{\"until\":0,\"window_day\":\"$tomorrow\",\"window_start\":\"10:00\",\"window_stop\":\"11:00\"}" >/dev/null
+uci set familywarden.kid_school.stop='23:59'
+uci commit familywarden
+"$BIN" reload >/dev/null
+REQUEST_METHOD=GET QUERY_STRING="device=pixel-10" sh "$MAST" | sed '1,/^$/d' > /tmp/mast.out
+sig=$(sed -n 1p /tmp/mast.out)
+sed 1d /tmp/mast.out | tr -d '\n' > /tmp/mast.payload
+printf 'untrusted comment: test\n%s\n' "$sig" > /tmp/mast.sig
+printf 'untrusted comment: test\n%s\n' "$(call mast | jsonfilter -e '@.pubkey')" > /tmp/mast.pub
+usign -V -q -m /tmp/mast.payload -p /tmp/mast.pub -x /tmp/mast.sig && pass "payload signature verifies" || fail "signature does not verify"
+payload=$(cat /tmp/mast.payload)
+assert_json "payload: pact active" "$payload" '@.pact.active' "true"
+assert_json "payload: captain" "$payload" '@.captain' "kid"
+assert_json "payload: rules from the frozen snapshot" "$payload" '@.rules.windows[0].stop' "20:00"
+assert_json "payload: policy" "$payload" '@.rules.policy' "scheduled"
+st=$(echo "$payload" | jsonfilter -e '@.server_time')
+[ "$st" -ge $(( $(date +%s) - 5 )) ] && pass "payload: server_time is now" || fail "server_time=$st"
+sed 's/"captain": "kid"/"captain": "xyz"/' /tmp/mast.payload > /tmp/mast.forged
+usign -V -q -m /tmp/mast.forged -p /tmp/mast.pub -x /tmp/mast.sig && fail "forged payload verified" || pass "forged payload rejected"
+out=$(call mast)
+assert_json "LuCI: last device" "$out" '@.device' "pixel-10"
+seen=$(echo "$out" | jsonfilter -e '@.last_sync')
+[ "$seen" -ge $(( $(date +%s) - 5 )) ] && pass "LuCI: last sync recorded" || fail "last_sync=$seen"
+[ -n "$(echo "$out" | jsonfilter -e '@.fingerprint')" ] && pass "LuCI: key fingerprint" || fail "no fingerprint"
+REQUEST_METHOD=GET QUERY_STRING='device=../../etc/x' sh "$MAST" >/dev/null
+assert_json "bad device id not recorded" "$(call mast)" '@.device' "pixel-10"
+assert_json "captain status shows the phone's last sync" "$(call status '{"profile":"kid"}')" '@.mast_last_sync' "$seen"
+
+apk update >/dev/null 2>&1; apk add qrencode >/dev/null 2>&1
+out=$(call mast '{"host":"192.168.1.1"}')
+uri=$(echo "$out" | jsonfilter -e '@.pair_uri')
+echo "$uri" | grep -q '^ulyssesmast://pair?host=192.168.1.1&key=RW' && pass "pairing URI with host and key" || fail "pair_uri=$uri"
+echo "${uri#*key=}" | grep -q '[+/=]' && fail "key not URL-encoded: $uri" || pass "key URL-encoded"
+echo "$out" | jsonfilter -e '@.qr_svg' | grep -q '<svg' && pass "pairing QR (SVG)" || fail "no qr_svg (qrencode installed?)"
+[ -z "$(call mast '{"host":"evil\"; rm -rf /"}' | jsonfilter -e '@.pair_uri')" ] && pass "bad host rejected" || fail "bad host accepted"
+rm -rf /var/run/familywarden
+"$BIN" reload >/dev/null
+assert_json "same key after reboot" "$(call mast)" '@.fingerprint' "$(echo "$out" | jsonfilter -e '@.fingerprint')"
+echo $(( $(date +%s) - 1 )) > /etc/familywarden/release
+"$BIN" tick
+payload=$(REQUEST_METHOD=GET sh "$MAST" | sed '1,/^$/d' | sed 1d)
+assert_json "payload after release: no pact" "$payload" '@.pact.active' "false"
+assert_json "payload after release: captain still known" "$payload" '@.captain' "kid"
+
+echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All integration checks passed!"
 else

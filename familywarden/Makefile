@@ -18,7 +18,7 @@ define Package/familywarden
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=OpenWrt Parental Control Daemon
-  DEPENDS:=+firewall4 +nftables +rpcd +uhttpd
+  DEPENDS:=+firewall4 +nftables +rpcd +uhttpd +qrencode
   URL:=https://github.com/denogio/familywarden
   PKGARCH:=all
 endef
@@ -50,6 +50,7 @@ define Package/familywarden/install
 	$(INSTALL_DIR) $(1)/www-familywarden/cgi-bin
 	$(INSTALL_DATA) ./www-familywarden/index.html $(1)/www-familywarden/index.html
 	$(INSTALL_BIN) ./www-familywarden/cgi-bin/sail $(1)/www-familywarden/cgi-bin/sail
+	$(INSTALL_BIN) ./www-familywarden/cgi-bin/mast $(1)/www-familywarden/cgi-bin/mast
 
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DATA) ./usr/share/rpcd/acl.d/familywarden.json $(1)/usr/share/rpcd/acl.d/familywarden.json

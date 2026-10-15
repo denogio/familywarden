@@ -1,0 +1,16 @@
+#!/bin/sh
+# Ulysses Mast sync endpoint (uhttpd instance on port 7700, reachable during a
+# lockdown). GET /cgi-bin/mast?device=<id>
+# Reply: line 1 = usign signature (base64), rest = payload JSON byte for byte.
+
+#      GET /cgi-bin/mast?pubkey   (pairing: the router's public key + fingerprint)
+
+dev=$(echo "$QUERY_STRING" | sed -n 's/^.*device=\([A-Za-z0-9-]*\).*$/\1/p')
+
+echo "Content-Type: text/plain"
+echo "Cache-Control: no-store"
+echo ""
+case "$QUERY_STRING" in
+    pubkey*) /usr/libexec/rpcd/familywarden mast-pubkey ;;
+    *) /usr/libexec/rpcd/familywarden mast "$dev" ;;
+esac

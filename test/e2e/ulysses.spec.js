@@ -44,6 +44,14 @@ test('default policy "block" lists devices that are in no profile', async ({ pag
   await expect(page.locator('.fw-notices')).not.toContainText('new-laptop');
 });
 
+test('settings show the Ulysses Mast pairing QR', async ({ page }) => {
+  await page.goto(`${FW_URL}/settings`);
+  const mast = page.locator('[data-name="_mast"]');
+  await expect(mast.locator('svg')).toBeVisible();
+  await expect(mast).toContainText(/Key fingerprint: [0-9a-f]{16}/);
+  await expect(mast).toContainText('No phone has synced yet');
+});
+
 test('only the captain gets the pact button', async ({ page }) => {
   await page.goto(FW_URL);
   await expect(card(page, 'Dennis').locator('button:has-text("Make a pact")')).toBeVisible();

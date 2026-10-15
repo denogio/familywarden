@@ -52,6 +52,33 @@ Repo: https://github.com/denogio/familywarden — releases bygges af CI (se "CI 
 ✅ **`scripts/deploy.sh`** - kopiér kildefiler (backend + LuCI) direkte til en router, samme stier som Makefiles
 ✅ **CI/CD** - GitHub Actions: test → build → apk-smoke-test, release ved tag
 
+### Ulysses Mast (Android, `android/`)
+Device Owner-app til kaptajnens telefon. Spærrer hotspot og tethering (`DISALLOW_CONFIG_TETHERING`;
+Android stopper selv kørende tethering, jf. AOSP `UserRestrictionActionListener`) mens kaptajnen er
+bundet og blokeret. Guide: `docs/ulysses-mast.md`.
+- **Router:** `cgi-bin/mast` på 7700. Svaret er linje 1 = usign-signatur, resten = payload-JSON byte
+  for byte (`mast_payload`: pagt og kaptajnens effektive regler). Nøgle i `/etc/familywarden/mast.{key,pub}`.
+  `?pubkey` bruges til manuel parring. `ubus mast {host}` giver pubkey, fingeraftryk, sidste sync og
+  pairing-URI plus QR-SVG (`qrencode`, dependency). Kaptajnens status har `mast_last_sync`.
+- **App** (Kotlin, `me.hojgaard.ulysses.mast`, minSdk 30): `Policy` er ren logik med samme semantik
+  som routeren og bruger cachen til næste sync (ingen staleness-regel, besluttet med Dennis).
+  `Usign` er BouncyCastle Ed25519. `Sync` afviser signaturfejl og svar ældre end sidste `server_time`.
+  `Mast.enforce`: tethering, og i release-builds også `DISALLOW_DEBUGGING_FEATURES`, når blokeret;
+  ur og tidszone låst, mens parret. Exact alarm ved næste ændring plus WorkManager hvert 15. min.
+  QR-parring med Google Code Scanner (`ulyssesmast://pair?host=…&key=…`, også som deep link).
+  "Remove Mast" kræver en frisk sync uden pagt.
+- **Debug-build** (`src/debug`): `DebugReceiver` (pair/sync via `am broadcast`) og beholder adb.
+  Findes ikke i release.
+- **Build:** i Docker (`ghcr.io/cirruslabs/android-sdk:35`; lokal Java 27 er for ny til AGP) eller CI.
+  Gradle-wrapper og distribution er verificeret mod Gradles checksums.
+- **Signering:** `~/.config/familywarden/mast-release.jks` plus GitHub-secrets `MAST_KEYSTORE_B64`/
+  `MAST_KEYSTORE_PASSWORD`. Device Owner-appen kan KUN opdateres med samme nøgle.
+- **Verificeret på Android 15 (emulator):** Device Owner via adb af sideloadet APK; restriktion
+  følger pagt, frigørelse og ny pagt; overlever tvangsstop og genstart uden router; `pm clear`
+  (SecurityException) og afinstallation (`DELETE_FAILED_DEVICE_POLICY_MANAGER`) afvises.
+  `dpm set-device-owner` afvises lige efter boot, indtil `hasIncompatibleAccountsTask` er færdig
+  (scriptet prøver igen).
+
 ### Globale indstillinger
 - `settings.enabled='0'`: samme chains og set, men ingen regler; status rapporterer `allowed`.
 - `settings.default_policy='block'`: sidste regel i `familywarden_forward` dropper trafik, der kommer
@@ -108,7 +135,8 @@ og kun den kan lave en **pagt** (`ubus call familywarden pact`). Al state ligger
   `openwrt/rootfs`-container. Dækker scheduled (dag + overnat), block, allow, disabled, block_router,
   block/allow/reset/ticket via `call`, ticket-GC, idempotent reload, afvisning af ugyldigt include.
   **Tilføj en case her, når du ændrer regelgenereringen.**
-- ✅ `scripts/test-apk.sh`: installerer byggede apk'er i container; tjekker filer, postinst/prerm, at config overlever reinstall.
+- ✅ `scripts/test-apk.sh`: installerer byggede apk'er i container (med deps fra feeds); tjekker filer, postinst/prerm, at config overlever reinstall.
+- ✅ **Ulysses Mast:** 26 unit-tests (`android/`) og `scripts/test-mast-emulator.sh` (Android 15-emulator, KVM, SDK i docker-volume `mast-sdk`).
 - ⚠️ shellcheck giver kun støj-advarsler (SC1091 OpenWrt-includes, SC3043 `local` i ash)
 - ✅ **Playwright e2e** (`test/e2e/`, 16 tests): `scripts/test-e2e.sh [apk-dir]` kører dem mod LuCI i en
   OpenWrt-container (`scripts/e2e-container-setup.sh`, inkl. stub for procd's `system`-objekt); kører

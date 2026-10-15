@@ -78,6 +78,8 @@ return baseclass.extend({
 			lines.push('🕊 ' + _('The window is open: changes to this profile apply now.'));
 		if (p.release_at > 0)
 			lines.push('⛵ ' + _('Sailing home: free at %s').format(fmtTime(p.release_at)));
+		if (p.mast_last_sync > 0)
+			lines.push('📱 ' + _('Mast synced %s').format(fmtTime(p.mast_last_sync)));
 		return E('div', { 'class': 'fw-ulysses' }, lines.map(function(l) { return E('div', {}, l); }));
 	},
 

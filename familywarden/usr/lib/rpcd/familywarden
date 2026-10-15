@@ -43,6 +43,12 @@ FW_SAIL_PORT=7700
 # Effective config: UCI with the captain replaced by the pact snapshot.
 # Everything that enforces or reports reads this (fw_load).
 FW_EFFECTIVE_DIR="/var/run/familywarden"
+# Ulysses Mast (Android device-owner app on the captain's phone): signs what it
+# fetches with this usign (Ed25519) key, so the phone can't be fed a fake "no
+# pact". Generated on first use, persistent.
+FW_MAST_KEY="$FW_PERSIST/mast.key"
+FW_MAST_PUB="$FW_PERSIST/mast.pub"
+FW_MAST_SEEN="/tmp/familywarden.mast"
 
 # ---- Helpers ----
 
@@ -938,6 +944,7 @@ json_add_bound() {
         json_add_string "pact_window" "$(pact_get window_day) $(pact_get window_start)-$(pact_get window_stop)"
         json_add_boolean "pact_in_window" "$in_window"
         json_add_int "release_at" "$(release_at)"
+        json_add_int "mast_last_sync" "$(mast_last_sync)"
     fi
 }
 
@@ -1143,6 +1150,128 @@ ubus_pact() {
     json_dump
 }
 
+# ---- Ulysses Mast (phone app) ----
+#
+# The phone polls http://<router>:7700/cgi-bin/mast. The reply is two parts:
+# line 1 = usign signature (base64), rest = the payload JSON, byte for byte.
+# The app evaluates the captain's rules itself, so it keeps working from its
+# cache when it can't reach the router (e.g. at work).
+
+mast_keys() {
+    [ -s "$FW_MAST_KEY" ] && [ -s "$FW_MAST_PUB" ] && return 0
+    mkdir -p "$FW_PERSIST"
+    chmod 700 "$FW_PERSIST"
+    usign -G -s "$FW_MAST_KEY" -p "$FW_MAST_PUB" -c "familywarden ulysses mast" >/dev/null 2>&1
+}
+
+# Public key (base64 line of the usign .pub) and its fingerprint
+mast_pubkey() {
+    mast_keys
+    sed -n 2p "$FW_MAST_PUB"
+}
+
+mast_fingerprint() {
+    mast_keys
+    usign -F -p "$FW_MAST_PUB" 2>/dev/null
+}
+
+_mast_window() {
+    local s="$1" sp days start stop
+    config_get sp "$s" profile ""
+    [ "$sp" = "$_mast_captain" ] || return
+    config_get days "$s" days ""
+    config_get start "$s" start ""
+    config_get stop "$s" stop ""
+    [ -n "$days" ] && [ -n "$start" ] && [ -n "$stop" ] || return
+    json_add_object
+    json_add_string "days" "$days"
+    json_add_string "start" "$start"
+    json_add_string "stop" "$stop"
+    json_close_object
+}
+
+# What the phone needs: is there a pact, and the captain's enforced rules
+# (from the effective config, i.e. the frozen snapshot during a pact)
+mast_payload() {
+    local captain="" active=0 enabled policy
+    fw_load
+    if pact_active; then
+        active=1
+        captain=$(pact_get captain)
+    else
+        config_get captain settings ulysses_profile ""
+    fi
+    json_init
+    json_add_int "v" 1
+    json_add_int "server_time" "$(date +%s)"
+    json_add_string "captain" "$captain"
+    json_add_object "pact"
+    json_add_boolean "active" "$active"
+    json_add_string "type" "$(pact_get type)"
+    json_add_int "until" "$(pact_get until)"
+    json_add_int "release_at" "$(release_at)"
+    json_close_object
+    json_add_object "rules"
+    if [ -n "$captain" ]; then
+        config_get enabled "$captain" enabled "0"
+        config_get policy "$captain" policy "allow"
+        json_add_string "enabled" "$enabled"
+        json_add_string "policy" "$policy"
+        json_add_string "override" "$(state_get "${captain}.override" none)"
+        json_add_array "windows"
+        _mast_captain="$captain"
+        config_foreach _mast_window schedule
+        json_close_array
+    fi
+    json_close_object
+    json_dump
+}
+
+# Signed reply for the CGI. $1 = device id (recorded for LuCI's "last sync").
+cli_mast() {
+    local dev="$1" tmp
+    mast_keys || { echo "error: no usign key" >&2; return 1; }
+    tmp=$(mktemp)
+    mast_payload | tr -d '\n' > "$tmp"
+    usign -S -m "$tmp" -s "$FW_MAST_KEY" -x "$tmp.sig" || { rm -f "$tmp" "$tmp.sig"; return 1; }
+    sed -n 2p "$tmp.sig"
+    cat "$tmp"
+    rm -f "$tmp" "$tmp.sig"
+    case "$dev" in
+        ''|*[!A-Za-z0-9-]*) ;;
+        *) echo "$dev $(date +%s)" > "$FW_MAST_SEEN" ;;
+    esac
+}
+
+mast_last_sync() {
+    local dev seen=0
+    [ -f "$FW_MAST_SEEN" ] && read -r dev seen < "$FW_MAST_SEEN"
+    echo "${seen:-0}"
+}
+
+# For LuCI's pairing view (read-only): router key, when the phone last synced,
+# and a pairing QR for the app. $1 = the host the browser used to reach LuCI,
+# which is also how the phone (on the same LAN) will reach the router.
+ubus_mast() {
+    local host="$1" dev="" seen=0 pub uri
+    [ -f "$FW_MAST_SEEN" ] && read -r dev seen < "$FW_MAST_SEEN"
+    pub=$(mast_pubkey)
+    json_init
+    json_add_string "pubkey" "$pub"
+    json_add_string "fingerprint" "$(mast_fingerprint)"
+    json_add_string "device" "$dev"
+    json_add_int "last_sync" "${seen:-0}"
+    case "$host" in
+        ''|*[!A-Za-z0-9.:-]*) ;;
+        *)
+            uri="ulyssesmast://pair?host=${host}&key=$(echo "$pub" | sed 's/+/%2B/g; s|/|%2F|g; s/=/%3D/g')"
+            json_add_string "pair_uri" "$uri"
+            command -v qrencode >/dev/null && json_add_string "qr_svg" "$(qrencode -t SVG -m 2 -o - "$uri")"
+            ;;
+    esac
+    json_dump
+}
+
 # ---- Sail page backend (CLI only; called by the CGI on $FW_SAIL_PORT) ----
 
 cli_sail_status() {
@@ -1221,6 +1350,7 @@ case "$1" in
   "ticket": { "profile": "string", "minutes": 0 },
   "pact": { "until": 0, "window_day": "string", "window_start": "string", "window_stop": "string" },
   "reload": {},
+  "mast": { "host": "string" },
   "version": {}
 }
 EOF
@@ -1233,6 +1363,14 @@ EOF
         ;;
     sail-cancel)
         cli_sail_cancel
+        ;;
+    mast)
+        cli_mast "$2"
+        ;;
+    mast-pubkey)
+        # line 1 = public key (base64), line 2 = fingerprint
+        mast_pubkey
+        mast_fingerprint
         ;;
     tick)
         cli_tick
@@ -1291,6 +1429,12 @@ EOF
                 ;;
             reload)
                 ubus_reload
+                ;;
+            mast)
+                read -r input
+                json_load "$input"
+                json_get_var host host
+                ubus_mast "$host"
                 ;;
             version)
                 ubus_version

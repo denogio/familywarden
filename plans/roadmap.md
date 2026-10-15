@@ -67,7 +67,8 @@ traffic-knappen.
   og i browser mod LuCI i container. Dér blev LuCI målt uopnåelig under lockdown og 7700 tilgængelig.
 
 Mangler før merge: test på rivendell (procd-trigger, rigtig uhttpd-instans, reboot).
-Mulig udvidelse: blokér ukendte enheder i kaptajnens blokerede perioder.
+Ukendte enheder: løst med `default_policy=block` (frosset under pagten).
+Hotspot på telefonen: **Ulysses Mast** (Android Device Owner-app, `android/`, `docs/ulysses-mast.md`).
 
 <details><summary>Oprindelig plan (historisk)</summary>
 

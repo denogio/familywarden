@@ -81,6 +81,8 @@ til et bestemt tidspunkt eller løbende med et ugentligt ændringsvindue.
 - Mens du er blokeret, er routeren lukket for alle enheder. Kun DNS og sail-siden er åbne.
 - Den eneste vej ud før tid er **sail-siden på port 7700**: router-password, linjen fra
   Josh Garrels' "Ulysses" og derefter en karenstid (standard 24 timer).
+- **Ulysses Mast** (Android-app) spærrer hotspot og tethering på din telefon i samme tidsrum,
+  så mobilt hotspot ikke er en vej udenom. Se [docs/ulysses-mast.md](docs/ulysses-mast.md).
 
 ## Licens
 

@@ -16,7 +16,8 @@ echo "=== FamilyWarden Syntax Tests ==="
 echo ""
 
 SAIL_CGI="${PROJECT_ROOT}/familywarden/www-familywarden/cgi-bin/sail"
-for script in "$RPCD_SCRIPT" "$INIT_SCRIPT" "$SAIL_CGI"; do
+MAST_CGI="${PROJECT_ROOT}/familywarden/www-familywarden/cgi-bin/mast"
+for script in "$RPCD_SCRIPT" "$INIT_SCRIPT" "$SAIL_CGI" "$MAST_CGI"; do
     if [ ! -f "$script" ]; then
         fail "Missing: $script"
         continue
@@ -70,7 +71,7 @@ echo ""
 echo "=== Ubus API Endpoints ==="
 
 # Each method must be both advertised (rpcd "list" JSON) and dispatched ("call").
-ubus_methods=("list" "status" "block" "allow" "reset" "ticket" "pact" "reload" "version")
+ubus_methods=("list" "status" "block" "allow" "reset" "ticket" "pact" "mast" "reload" "version")
 ACL_FILES=("${PROJECT_ROOT}/familywarden/usr/share/rpcd/acl.d/familywarden.json"
            "${PROJECT_ROOT}/luci-app-familywarden/root/usr/share/rpcd/acl.d/luci-app-familywarden.json")
 for method in "${ubus_methods[@]}"; do
@@ -143,7 +144,7 @@ grep -q 'usr/libexec/rpcd/familywarden' "$MAKEFILE" \
     && echo "✓ init.d BIN matches Makefile install path" \
     || fail "init.d BIN does not match Makefile install path"
 
-for f in www-familywarden/index.html www-familywarden/cgi-bin/sail; do
+for f in www-familywarden/index.html www-familywarden/cgi-bin/sail www-familywarden/cgi-bin/mast; do
     grep -q "./$f " "$MAKEFILE" && [ -f "${PROJECT_ROOT}/familywarden/$f" ] \
         && echo "✓ sail page installed: $f" || fail "sail page file not installed: $f"
 done

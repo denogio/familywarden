@@ -23,10 +23,11 @@ FW=$(pick familywarden)
 LUCI=$(pick luci-app-familywarden)
 echo "Testing $(basename "$FW") + $(basename "$LUCI")"
 
-# luci-base is a dependency of the luci app; avoid the network by not
-# resolving deps — we only verify our own packaging here.
-apk add --allow-untrusted --no-network --force-broken-world "$FW" "$LUCI" >/tmp/apk.log 2>&1 \
+# Dependencies (qrencode, ...) come from the OpenWrt feeds
+apk update >/dev/null 2>&1
+apk add --allow-untrusted "$FW" "$LUCI" >/tmp/apk.log 2>&1 \
     && pass "apk install" || { fail "apk install"; cat /tmp/apk.log; }
+[ -x /usr/libexec/rpcd/familywarden ] || { fail "package not actually installed"; cat /tmp/apk.log; }
 
 for f in /usr/libexec/rpcd/familywarden /etc/init.d/familywarden /usr/sbin/familywarden \
          /www-familywarden/cgi-bin/sail; do
@@ -50,12 +51,12 @@ count_includes() { uci show firewall | grep -c "path='/var/etc/familywarden.incl
     && pass "postinst added the sail page on :7700" || fail "uhttpd sail instance missing"
 
 uci set familywarden.marker=profile && uci commit familywarden
-apk fix --allow-untrusted --no-network --reinstall familywarden >/dev/null 2>&1 \
-    || apk add --allow-untrusted --no-network --force-broken-world "$FW" >/dev/null 2>&1
+apk fix --allow-untrusted --reinstall familywarden >/dev/null 2>&1 \
+    || apk add --allow-untrusted "$FW" >/dev/null 2>&1
 [ "$(count_includes)" = "1" ] && pass "reinstall keeps one include" || fail "firewall includes after reinstall: $(count_includes) (want 1)"
 uci -q get familywarden.marker >/dev/null && pass "reinstall keeps user config" || fail "reinstall overwrote /etc/config/familywarden"
 
-apk del --no-network luci-app-familywarden familywarden >/dev/null 2>&1
+apk del luci-app-familywarden familywarden >/dev/null 2>&1
 [ "$(count_includes)" = "0" ] && pass "prerm removed firewall include" || fail "firewall includes after removal: $(count_includes) (want 0)"
 uci -q get uhttpd.familywarden >/dev/null && fail "uhttpd sail instance left after removal" || pass "prerm removed the sail page"
 
