@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2026 Dennis Højgaard
+# Copyright (C) 2026 denogio <dennis@hojgaard.me>
 #
 # This is free software, licensed under the Apache 2.0 License.
 
@@ -12,7 +12,7 @@ LUCI_PKGARCH:=all
 PKG_VERSION:=0.5.0
 PKG_RELEASE:=1
 
-PKG_MAINTAINER:=Dennis Højgaard <github@dehoej.dk>
+PKG_MAINTAINER:=denogio <dennis@hojgaard.me>
 PKG_LICENSE:=Apache-2.0
 
 include ../../luci.mk

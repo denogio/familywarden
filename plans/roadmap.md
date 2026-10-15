@@ -193,4 +193,4 @@ evt. en `uci-defaults`-hjælper.
 - [ ] QEMU i CI (GitHub-runnere har KVM): det eneste, containeren ikke dækker (procd, reboot)
 - [x] `PLAN.md`, `new-thoughts.md` og den gamle kernel-scheduling-plan arkiveret i `plans/archive/`
 - [x] Playwright e2e i CI mod LuCI i en OpenWrt-container (`scripts/test-e2e.sh`)
-- [ ] `PKG_MAINTAINER`/copyright i Makefiles står stadig som "Dennis Højgaard <github@dehoej.dk>"
+- [x] `PKG_MAINTAINER`/copyright: `denogio <dennis@hojgaard.me>`
