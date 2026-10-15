@@ -109,6 +109,7 @@ _now_match_schedule() {
 # on the substring "blocked"). Requires `fw_load` beforehand.
 profile_effective_status() {
     local profile="$1" policy="$2" override="$3"
+    fw_enabled || { echo "allowed"; return; }
     case "$override" in
         allow) echo "allowed"; return ;;
         block) echo "blocked"; return ;;
@@ -337,6 +338,71 @@ fw_load() {
     else
         config_load familywarden
     fi
+}
+
+# ---- Global settings ----
+#
+# settings.enabled='0' turns all enforcement off; settings.default_policy
+# decides what happens to devices that are in no profile. Both are frozen
+# during a Ulysses pact (otherwise switching FamilyWarden off, or letting
+# unknown devices through, would be a way out): enabled counts as '1', and
+# default_policy is the value stored in the pact. Require fw_load.
+
+fw_enabled() {
+    pact_active && return 0
+    local enabled
+    config_get enabled settings enabled "1"
+    [ "$enabled" = "1" ]
+}
+
+fw_default_policy() {
+    local policy=""
+    pact_active && policy=$(pact_get default_policy)
+    [ -n "$policy" ] || config_get policy settings default_policy "allow"
+    echo "$policy"
+}
+
+_collect_all_mac() {
+    _all_macs="$_all_macs, $1"
+}
+
+_collect_profile_macs() {
+    config_list_foreach "$1" device _collect_all_mac
+}
+
+# Devices of the firewall's "lan" zone, one per line. Asks fw4 (via netifd);
+# falls back to the zone's networks' "device" options in UCI when netifd has
+# no answer (early boot, containers).
+lan_devices() {
+    local devs sec net
+    devs=$(fw4 -q zone lan 2>/dev/null)
+    if [ -z "$devs" ]; then
+        sec=$(uci -q show firewall | sed -n "s/^firewall\.\([^.]*\)\.name='lan'$/\1/p" | head -1)
+        for net in $(uci -q get "firewall.$sec.network"); do
+            uci -q get "network.$net.device"
+        done
+    else
+        echo "$devs"
+    fi
+}
+
+# default_policy='block': drop forwarded traffic coming in on the LAN from any
+# MAC that is in no profile (enabled or not), e.g. a new laptop. Only traffic
+# entering on the LAN zone's devices, so replies from the internet (source MAC
+# = the upstream router) are never matched.
+gen_default_policy_rule() {
+    [ "$(fw_default_policy)" = "block" ] || return 0
+    local lan saddr=""
+    lan=$(lan_devices | sed 's/.*/"&"/' | tr '\n' ',' | sed 's/,$//; s/,/, /g')
+    if [ -z "$lan" ]; then
+        logger -t familywarden "default_policy=block: no LAN devices found (fw4 zone lan), not applied"
+        return 0
+    fi
+    _all_macs=""
+    config_foreach _collect_profile_macs profile
+    _all_macs="${_all_macs#, }"
+    [ -n "$_all_macs" ] && saddr="ether saddr != { ${_all_macs} } "
+    echo "        iifname { ${lan} } ${saddr}counter drop comment \"familywarden:default:block\""
 }
 
 # Allow/ticket are refused for the captain during a pact
@@ -621,10 +687,14 @@ generate_include() {
 
     fw_load
 
+    # settings.enabled='0': same chains and set, but no rules in them
+    local on=0
+    fw_enabled && on=1
+
     # Collect active tickets up front so the timeout set can be declared before
     # the chain that references it.
     _ticket_elements=""
-    config_foreach gen_ticket_elements profile
+    [ "$on" = "1" ] && config_foreach gen_ticket_elements profile
 
     # Write fw4-include format. fw4 wraps the include in `table inet fw4 { ... }`
     # context, so we emit only table-level objects (a set + a chain, no outer
@@ -659,14 +729,16 @@ generate_include() {
         echo "    type filter hook input priority 1; policy accept;"
         echo "        ether saddr @familywarden_ticket tcp dport 0-65535 counter accept comment \"familywarden:ticket:input\""
 
-        # Permanent allow overrides restore router access
-        config_foreach gen_input_override_rules profile
+        if [ "$on" = "1" ]; then
+            # Permanent allow overrides restore router access
+            config_foreach gen_input_override_rules profile
 
-        # Block-policy profiles with block_router='1'
-        config_foreach gen_input_profile_block profile
+            # Block-policy profiles with block_router='1'
+            config_foreach gen_input_profile_block profile
 
-        # Scheduled profiles currently outside an allow window, with block_router='1'
-        config_foreach gen_input_profile_scheduled profile
+            # Scheduled profiles currently outside an allow window, with block_router='1'
+            config_foreach gen_input_profile_scheduled profile
+        fi
 
         echo "}"
         echo ""
@@ -681,15 +753,20 @@ generate_include() {
         echo "    type filter hook forward priority 1; policy accept;"
         echo "        ether saddr @familywarden_ticket counter accept comment \"familywarden:ticket\""
 
-        # Permanent override rules (block / non-expiring allow)
-        config_foreach gen_override_rules profile
+        if [ "$on" = "1" ]; then
+            # Permanent override rules (block / non-expiring allow)
+            config_foreach gen_override_rules profile
 
-        # Permanent block-policy profiles
-        config_foreach gen_profile_block profile
+            # Permanent block-policy profiles
+            config_foreach gen_profile_block profile
 
-        # Then scheduled rules
-        _sched_devices=""
-        config_foreach gen_profile_scheduled profile
+            # Then scheduled rules
+            _sched_devices=""
+            config_foreach gen_profile_scheduled profile
+
+            # Last: devices in no profile (default_policy)
+            gen_default_policy_rule
+        fi
 
         echo "}"
     } > "$FW_INCLUDE_NEW"
@@ -993,7 +1070,7 @@ ubus_ticket() {
 # can only be extended; an ongoing pact can only be changed inside its window.
 ubus_pact() {
     local until="${1:-0}" wday="${2:-sun}" wstart="${3:-10:00}" wstop="${4:-11:00}"
-    local captain type now delay name
+    local captain type now delay name default_policy
     now=$(date +%s)
 
     case "$until" in *[!0-9]*) echo '{"error":"until must be an epoch (0 = ongoing)"}'; return 1 ;; esac
@@ -1010,6 +1087,7 @@ ubus_pact() {
     if pact_active; then
         captain=$(pact_get captain)
         delay=$(pact_get delay)
+        default_policy=$(pact_get default_policy)
         if [ "$(pact_get type)" = "until" ] && [ "$type" = "until" ] && [ "$until" -gt "$(pact_get until)" ]; then
             :   # extending is always fine
         elif pact_in_window; then
@@ -1026,6 +1104,7 @@ ubus_pact() {
         config_load familywarden
         config_get captain settings ulysses_profile ""
         config_get delay settings ulysses_delay "24"
+        config_get default_policy settings default_policy "allow"
         [ -n "$captain" ] || { echo '{"error":"no Ulysses profile chosen in settings"}'; return 1; }
         config_get name "$captain" name ""
         [ -n "$name" ] || { echo '{"error":"Ulysses profile not found"}'; return 1; }
@@ -1044,6 +1123,7 @@ ubus_pact() {
         echo "window_start=$wstart"
         echo "window_stop=$wstop"
         echo "delay=$delay"
+        echo "default_policy=$default_policy"
     } > "$FW_PACT.new"
     mv "$FW_PACT.new" "$FW_PACT"
     _clear_allow "$captain"

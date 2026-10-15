@@ -315,8 +315,12 @@ var hostMap = {};
 
 // Build a MAC -> friendly name map from DHCP leases and host hints, so device
 // chips can show a hostname instead of a bare MAC address.
+// MACs with a DHCP lease right now (real LAN clients)
+var leaseMacs = [];
+
 function buildHostMap(leases, hostHints) {
 	var map = {};
+	leaseMacs = (leases || []).map(function(l) { return (l.macaddr || '').toLowerCase(); }).filter(Boolean);
 	(leases || []).forEach(function(l) {
 		if (l.macaddr) {
 			var mac = l.macaddr.toLowerCase();
@@ -554,6 +558,33 @@ function buildScheduleSection(schedules) {
 	]);
 }
 
+// Global notices: FamilyWarden switched off, and (default policy "block")
+// devices with a lease that are in no profile and therefore have no internet.
+// From UCI, so disabled profiles count as assigned, as in the backend.
+function buildNotices(profiles) {
+	var notices = [];
+	var bound = Object.keys(profiles || {}).some(function(id) { return ulysses.isBound(profiles[id]); });
+	if (uci.get('familywarden', 'settings', 'enabled') === '0' && !bound)
+		notices.push(E('div', { 'class': 'alert-message warning' },
+			_('FamilyWarden is switched off in Settings: nothing is enforced.')));
+
+	if (uci.get('familywarden', 'settings', 'default_policy') === 'block') {
+		var assigned = {};
+		uci.sections('familywarden', 'profile').forEach(function(s) {
+			L.toArray(s.device).forEach(function(m) { assigned[m.toLowerCase()] = true; });
+		});
+		var unassigned = leaseMacs.filter(function(m) { return !assigned[m]; });
+		if (unassigned.length)
+			notices.push(E('div', { 'class': 'alert-message notice' }, [
+				_('No internet for devices in no profile (Default Policy: Block): '),
+				unassigned.map(function(m) { return (hostMap[m] ? hostMap[m] + ' ' : '') + '(' + m + ')'; }).join(', '),
+				'. ',
+				E('a', { 'href': L.url('admin/services/familywarden/profiles') }, _('Add them to a profile'))
+			]));
+	}
+	return notices;
+}
+
 function buildContent(profiles, schedsByProfile) {
 	var keys = Object.keys(profiles || {});
 	var allowed = 0, blocked = 0;
@@ -651,6 +682,8 @@ function buildContent(profiles, schedsByProfile) {
 
 	return E('div', { 'class': 'fw-body' }, [
 		E('a', { 'class': 'cbi-button cbi-button-add fw-add-btn', 'href': L.url('admin/services/familywarden/profiles') }, '+ ' + _('Add Profile')),
+		// E() only flattens one level, so the notices get their own wrapper
+		E('div', { 'class': 'fw-notices' }, buildNotices(profiles)),
 		summary,
 		gridEl,
 		E('div', { 'class': 'fw-updated' }, _('Updated') + ' ' + now.toLocaleTimeString())

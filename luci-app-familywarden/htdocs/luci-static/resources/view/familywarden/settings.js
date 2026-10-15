@@ -42,19 +42,23 @@ return view.extend({
 			});
 		};
 
-		s = m.section(form.TypedSection, 'global', _('Global Settings'));
+		s = m.section(form.TypedSection, 'global', _('Global Settings'),
+			bound ? _('A pact is active: these are frozen too, so they can not be used as a way out.') : null);
 		s.anonymous = true;
 		s.addremove = false;
 
-		o = s.option(form.Flag, 'enabled', _('Enable FamilyWarden'));
+		o = s.option(form.Flag, 'enabled', _('Enable FamilyWarden'),
+			_('Off: nothing is enforced - no blocking, no schedules. Profiles and settings are kept.'));
 		o.rmempty = false;
 		o.default = '1';
+		o.readonly = bound;
 
 		o = s.option(form.ListValue, 'default_policy', _('Default Policy'),
-			_('Default action for devices not assigned to any profile'));
+			_('What happens to devices that are in no profile. "Block" means every device needs a profile to get online - put servers, TVs and the like in an "Unrestricted" profile first. New devices get no internet until you add them (the overview lists them).'));
 		o.value('allow', _('Allow Internet'));
 		o.value('block', _('Block Internet'));
 		o.default = 'allow';
+		o.readonly = bound;
 
 		// Ulysses. Frozen for the pact's lifetime (the backend uses the captain
 		// and cooling-off stored with the pact, so edits here would be ignored).

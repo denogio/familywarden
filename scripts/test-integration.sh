@@ -123,6 +123,13 @@ config profile 'guest'
     list device 'aa:bb:cc:00:00:05'
 EOF
 
+# A LAN like a real router's (the rootfs ships no network config)
+touch /etc/config/network
+uci set network.lan=interface
+uci set network.lan.device='br-lan'
+uci set network.lan.proto='static'
+uci commit network
+
 # Same firewall include the package postinst adds
 uci add firewall include >/dev/null
 uci set firewall.@include[-1].fw4_compatible='1'
@@ -230,6 +237,34 @@ uci set familywarden.parent.policy='allow'
 uci commit familywarden
 "$BIN" reload >/dev/null
 
+echo ""
+echo "=== settings: default_policy ==="
+uci set familywarden.settings.default_policy='block'
+uci commit familywarden
+"$BIN" reload >/dev/null
+assert_rule "unknown devices on the LAN dropped" 'iifname "br-lan" ether saddr != \{ .* \} counter .* drop comment "familywarden:default:block"'
+assert_rule "every profile's devices are known (incl. disabled)" 'ether saddr != \{ [^}]*aa:bb:cc:00:00:05[^}]* \} counter .* drop comment "familywarden:default:block"'
+last=$(nft list chain inet fw4 familywarden_forward | grep 'comment' | tail -1)
+echo "$last" | grep -q 'familywarden:default:block' && pass "default drop is the last rule" || fail "default drop not last: $last"
+uci set familywarden.settings.default_policy='allow'
+uci commit familywarden
+"$BIN" reload >/dev/null
+refute_rule "default_policy=allow: no default drop" 'familywarden:default:block'
+
+echo ""
+echo "=== settings: enabled ==="
+uci set familywarden.settings.enabled='0'
+uci commit familywarden
+"$BIN" reload >/dev/null
+refute_rule "disabled: no forward rules" 'familywarden:teen:block'
+refute_rule "disabled: no input rules" 'familywarden:teen:block:input' familywarden_input
+assert_rule "disabled: chains still there" 'hook forward priority filter \+ 1; policy accept'
+assert_json "disabled: status allowed" "$(call status '{"profile":"teen"}')" '@.status' "allowed"
+uci set familywarden.settings.enabled='1'
+uci commit familywarden
+"$BIN" reload >/dev/null
+assert_rule "enabled again: rules back" 'familywarden:teen:block'
+
 # ---- Ulysses ----
 DAYS="sun mon tue wed thu fri sat"
 day_name() { echo $DAYS | cut -d' ' -f$(( ($1 % 7) + 1 )); }
@@ -242,6 +277,7 @@ echo "=== Ulysses: pact needs a captain ==="
 assert_json "no captain → refused" "$(call pact '{"until":0}')" '@.error' "no Ulysses profile chosen in settings"
 uci set familywarden.settings.ulysses_profile='kid'
 uci set familywarden.settings.ulysses_delay='2'
+uci set familywarden.settings.default_policy='block'
 uci commit familywarden
 "$BIN" reload >/dev/null
 
@@ -280,6 +316,14 @@ assert_rule "schedule edit ignored" 'aa:bb:cc:00:00:01 meta hour >= "07:00" meta
 refute_rule "new stop time not applied" '"23:59"'
 assert_rule "removed device still enforced" 'aa:bb:cc:00:00:02 .* drop comment "familywarden:kid:scheduled"'
 assert_json "captain can't be swapped" "$(call status '{"profile":"kid"}')" '@.captain' "true"
+uci set familywarden.settings.enabled='0'
+uci set familywarden.settings.default_policy='allow'
+uci commit familywarden
+"$BIN" reload >/dev/null
+assert_rule "can't switch FamilyWarden off during a pact" 'familywarden:kid:scheduled'
+assert_rule "can't let unknown devices through during a pact" 'familywarden:default:block'
+uci set familywarden.settings.enabled='1'
+uci commit familywarden
 
 echo ""
 echo "=== Ulysses: captain's MACs can't escape via other profiles ==="

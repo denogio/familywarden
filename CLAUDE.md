@@ -52,6 +52,14 @@ Repo: https://github.com/denogio/familywarden — releases bygges af CI (se "CI 
 ✅ **`scripts/deploy.sh`** - kopiér kildefiler (backend + LuCI) direkte til en router, samme stier som Makefiles
 ✅ **CI/CD** - GitHub Actions: test → build → apk-smoke-test, release ved tag
 
+### Globale indstillinger
+- `settings.enabled='0'`: samme chains og set, men ingen regler; status rapporterer `allowed`.
+- `settings.default_policy='block'`: sidste regel i `familywarden_forward` dropper trafik, der kommer
+  ind på LAN-zonens enheder (`lan_devices`: `fw4 -q zone lan`, fallback til UCI) fra MAC'er, der
+  ikke er i nogen profil (heller ikke deaktiverede). Kun LAN-ingress, så svar fra WAN aldrig rammes.
+  Oversigten lister enheder med DHCP-lease, der ikke er i nogen profil.
+- Begge er frosset under en Ulysses-pagt: `enabled` tæller som 1, og `default_policy` gemmes i pagten.
+
 ### Ulysses (kaptajnens pagt)
 Designet sammen med Dennis 2026-10-14/15. Én profil er **kaptajn** (`settings.ulysses_profile`),
 og kun den kan lave en **pagt** (`ubus call familywarden pact`). Al state ligger i `/etc/familywarden/`
@@ -90,7 +98,6 @@ og kun den kan lave en **pagt** (`ubus call familywarden pact`). Al state ligger
   (reset-knap ved boot).
 
 ### Kendte huller
-- ⚠️ **Global "Enable FamilyWarden"/"Default Policy"** i Settings læses ikke af backenden (død knap).
 - ⚠️ **Traffic per profil**: `overview.js` kalder ubus-metoden `traffic` (nlbwmon), men rpcd-pluginet har ingen `traffic`-metode. Modalen lukker bare stille ved fejl.
 - ⚠️ **Ingen i18n**: de gamle Lua-filer (controller + `familywarden.da.lua`) er fjernet, og der findes ingen `.po`-filer.
 - ⚠️ **Knowledge graph er forældet** (analyseret ved `66c2701`, før block_router og kernel-scheduling). Kør `/understand` igen.
