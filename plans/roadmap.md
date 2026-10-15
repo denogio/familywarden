@@ -56,7 +56,7 @@ traffic-knappen.
 
 ## Fase 1 — Ulysses-pagt ✅ (0.8.0, branch `feature/ulysses`)
 
-**Endeligt design (besluttet 2026-10-15)**, erstatter PLAN.md § 14. Se CLAUDE.md "Ulysses":
+**Endeligt design (besluttet 2026-10-15)**, erstatter `plans/archive/PLAN.md` § 14. Se CLAUDE.md "Ulysses":
 - Én **kaptajn** (Ulysses-profil). Pagter kun for den: `until` (kan forlænges) eller `ongoing`
   med et ugentligt ændringsvindue (søndag 10–11). Ændringer i vinduet gælder med det samme.
 - Under pagten er kaptajnens profil frosset, og hans MAC'er kan ikke slippe ud via andre profiler.
@@ -72,7 +72,7 @@ Mulig udvidelse: blokér ukendte enheder i kaptajnens blokerede perioder.
 <details><summary>Oprindelig plan (historisk)</summary>
 
 
-Fuldt designet i `PLAN.md` § 14 (besluttet med dig: hele profilen fryses, eneste
+Fuldt designet i `plans/archive/PLAN.md` § 14 (besluttet med dig: hele profilen fryses, eneste
 escape er root over SSH, og pagten skal overleve reboot). Planen følges med disse
 justeringer til den nuværende arkitektur:
 
@@ -189,9 +189,8 @@ evt. en `uci-defaults`-hjælper.
 ## Løbende / teknisk gæld
 
 - [ ] Kør `/understand` igen — knowledge-graphen er fra `66c2701`
-- [ ] QEMU i CI (GitHub-runnere har KVM): procd-trigger, reboot-persistens, Playwright.
-      Det er det eneste, containeren ikke kan dække (PLAN.md § 15 Lag 1, punkt 2, 5 og 9)
-- [ ] `PLAN.md` og `new-thoughts.md` er historiske — arkivér dem til `plans/archive/`
-- [ ] LuCI i OpenWrt-container (ubusd + rpcd + uhttpd, stub for `system`) virker til UI-test —
-      kan blive et Playwright-job i CI uden QEMU
+- [x] QEMU-testrouter lokalt (`scripts/qemu-dev.sh`): procd-trigger, reboot, tidsspring
+- [ ] QEMU i CI (GitHub-runnere har KVM): det eneste, containeren ikke dækker (procd, reboot)
+- [x] `PLAN.md`, `new-thoughts.md` og den gamle kernel-scheduling-plan arkiveret i `plans/archive/`
+- [x] Playwright e2e i CI mod LuCI i en OpenWrt-container (`scripts/test-e2e.sh`)
 - [ ] `PKG_MAINTAINER`/copyright i Makefiles står stadig som "Dennis Højgaard <github@dehoej.dk>"

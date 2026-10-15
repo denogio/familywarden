@@ -3,6 +3,8 @@ const { defineConfig, devices } = require('@playwright/test');
 module.exports = defineConfig({
   testDir: '.',
   fullyParallel: false,
+  // One router, shared state: never run files in parallel
+  workers: 1,
   timeout: 30000,
   expect: { timeout: 10000 },
   retries: 0,
@@ -20,5 +22,5 @@ module.exports = defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: undefined, // QEMU is already running
+  webServer: undefined, // scripts/test-e2e.sh (container) or scripts/qemu-dev.sh
 });

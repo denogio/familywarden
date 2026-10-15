@@ -1,12 +1,15 @@
 const { test, expect } = require('@playwright/test');
 
-const BASE_URL = 'http://192.168.1.1';
+// scripts/test-e2e.sh sets these for its container; defaults = the QEMU router
+// from scripts/qemu-dev.sh
+const BASE_URL = process.env.FW_BASE_URL || 'http://localhost:8080';
+const PASSWORD = process.env.FW_PASSWORD ?? 'ulysses';
 const FW_URL = `${BASE_URL}/cgi-bin/luci/admin/services/familywarden`;
 
 async function loginAsRoot(page) {
   await page.goto(`${BASE_URL}/cgi-bin/luci/admin/login`);
   await page.fill('input[name="luci_username"]', 'root');
-  await page.fill('input[name="luci_password"]', '');
+  await page.fill('input[name="luci_password"]', PASSWORD);
   await page.click('button:has-text("Log in")');
   await page.waitForLoadState('networkidle', { timeout: 15000 });
 }

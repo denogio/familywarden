@@ -133,7 +133,7 @@ og kun den kan lave en **pagt** (`ubus call familywarden pact`). Al state ligger
   (`openwrt/sdk:x86-64-25.12.4`) → `test-apk` → apk'er som artifact.
 - Release: bump `PKG_VERSION`, commit, `git tag vX.Y.Z && git push --tags`. Tagget skal matche
   `familywarden/Makefile`, ellers fejler release-jobbet. luci-appen versioneres separat.
-- `dist/` indeholder historiske apk'er; nye builds hører hjemme i GitHub releases.
+- `dist/` er git-ignoreret (lokale builds). Apk'er udgives kun som GitHub releases (fra v0.7.3).
 
 ### Næste skridt
 Se **`plans/roadmap.md`**: ~~Ulysses~~ (0.8.0), traffic, i18n, Home Assistant, DNS-filtrering.
@@ -161,7 +161,7 @@ familywarden/
 │   └── usr/share/rpcd/acl.d/
 ├── luci-app-familywarden/     # LuCI frontend (JS views i htdocs/)
 ├── test/e2e/                  # Playwright mod QEMU
-├── dist/                      # Byggede apk'er
+├── dist/                      # Lokale builds (git-ignoreret)
 └── hass-openwrt-familywarden # Home Assistant HACS integration (senere)
 ```
 

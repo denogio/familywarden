@@ -162,7 +162,8 @@ effective_override() {
 # GC expired ticket overrides. Called at start of compile_and_apply.
 # Returns 1 if any state was changed (caller should recompile).
 gc_expired_tickets() {
-    local now=$(date +%s)
+    local now
+    now=$(date +%s)
     local changed=0
     local key expires_epoch
 
