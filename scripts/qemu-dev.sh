@@ -152,8 +152,8 @@ config schedule
 	option start '06:00'
 	option stop '21:30'
 
-config profile 'josva'
-	option name 'Josva'
+config profile 'alex'
+	option name 'Alex'
 	option enabled '1'
 	option policy 'allow'
 	list device 'aa:bb:cc:00:00:02'

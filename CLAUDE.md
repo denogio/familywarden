@@ -1,5 +1,12 @@
 # familywarden — OpenWrt Parental Control Plugin
 
+## Language and privacy
+
+Use English for replies and all new or edited documentation, comments, and UI text.
+Use only fictional children's names (e.g. Alex) in fixtures, examples, UI placeholders,
+documentation, and screenshots. Never copy children's real names or device names
+from a running router into the repository or public artifacts.
+
 ## Documentation sources (context7)
 
 Brug disse library-IDs direkte (spring resolve-library-id over):

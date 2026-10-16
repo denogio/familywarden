@@ -46,7 +46,7 @@ The 100–300ms cost of `fw4 reload` is acceptable. Parental control is not late
 ```json
 {
   "overrides": {
-    "josva": {
+    "alex": {
       "mode": "block",
       "expires": null
     },
@@ -100,19 +100,19 @@ chain familywarden_forward {
 # Override: explicit block — unconditional, evaluated first
 add rule inet fw4 familywarden_forward \
     ether saddr 00:11:22:33:44:55 \
-    counter drop comment "familywarden:josva:block"
+    counter drop comment "familywarden:alex:block"
 
 # Scheduled block — weekday evenings (20:00–24:00)
 add rule inet fw4 familywarden_forward \
     ether saddr 00:11:22:33:44:55 \
     meta hour >= 20 meta day { 1, 2, 3, 4, 5 } \
-    counter drop comment "familywarden:josva:scheduled"
+    counter drop comment "familywarden:alex:scheduled"
 
 # Scheduled block — weekday nights (00:00–06:00)
 add rule inet fw4 familywarden_forward \
     ether saddr 00:11:22:33:44:55 \
     meta hour < 6 meta day { 1, 2, 3, 4, 5 } \
-    counter drop comment "familywarden:josva:scheduled"
+    counter drop comment "familywarden:alex:scheduled"
 ```
 
 fw4's built-in `forward` chain jumps to `familywarden_forward` via a rule injected through the firewall include registration (see below). This is OpenWrt-native: hook into fw4's chain, don't override it.
@@ -268,14 +268,14 @@ ping 1.1.1.1  # from managed device
 nft list chain inet fw4 familywarden_forward | grep counter
 
 # 5. Test override — verify fw4 reload (not direct nft)
-ubus call familywarden block '{"profile":"josva"}'
-nft list chain inet fw4 familywarden_forward | grep josva:block
+ubus call familywarden block '{"profile":"alex"}'
+nft list chain inet fw4 familywarden_forward | grep alex:block
 
 # 6. Test ticket + lazy GC
-ubus call familywarden ticket '{"profile":"josva","minutes":1}'
+ubus call familywarden ticket '{"profile":"alex","minutes":1}'
 # Wait ~70s, then trigger any reload:
 ubus call familywarden status '{}'
-nft list chain inet fw4 familywarden_forward | grep josva  # should be gone
+nft list chain inet fw4 familywarden_forward | grep alex  # should be gone
 
 # 7. Test overnight schedule correctness
 # Set Mon–Fri 22:00–07:00 schedule

@@ -37,7 +37,7 @@ test('default policy "block" lists devices that are in no profile', async ({ pag
   await saveSettings(page, 'default_policy', 'block');
   await page.goto(FW_URL);
   await expect(page.locator('.fw-notices')).toContainText('new-laptop (de:ad:be:ef:00:99)');
-  await expect(page.locator('.fw-notices')).not.toContainText('josva-pc');
+  await expect(page.locator('.fw-notices')).not.toContainText('alex-pc');
   await saveSettings(page, 'default_policy', 'allow');
   await page.goto(FW_URL);
   await expect(page.locator('.fw-card').first()).toBeVisible();
@@ -55,7 +55,7 @@ test('settings show the Ulysses Mast pairing QR', async ({ page }) => {
 test('only the captain gets the pact button', async ({ page }) => {
   await page.goto(FW_URL);
   await expect(card(page, 'Dennis').locator('button:has-text("Make a pact")')).toBeVisible();
-  await expect(card(page, 'Josva').locator('button:has-text("pact")')).toHaveCount(0);
+  await expect(card(page, 'Alex').locator('button:has-text("pact")')).toHaveCount(0);
 });
 
 test('making an ongoing pact binds the captain', async ({ page }) => {
@@ -78,7 +78,7 @@ test("the captain's profile is frozen", async ({ page }) => {
 });
 
 test('other profiles stay editable during the pact', async ({ page }) => {
-  await page.goto(`${FW_URL}/profiles?name=josva`);
+  await page.goto(`${FW_URL}/profiles?name=alex`);
   await expect(page.locator('[data-name="policy"] select')).toBeEnabled();
   await expect(page.locator('button:has-text("Delete Profile")')).toBeVisible();
 });

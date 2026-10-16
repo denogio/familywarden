@@ -62,11 +62,11 @@ CI kører test → build → apk-smoke-test på hver push. Et tag `vX.Y.Z`, der 
 
 ```sh
 ubus call familywarden list
-ubus call familywarden status '{"profile":"josva"}'
-ubus call familywarden block  '{"profile":"josva"}'
-ubus call familywarden allow  '{"profile":"josva"}'
-ubus call familywarden reset  '{"profile":"josva"}'
-ubus call familywarden ticket '{"profile":"josva","minutes":30}'
+ubus call familywarden status '{"profile":"alex"}'
+ubus call familywarden block  '{"profile":"alex"}'
+ubus call familywarden allow  '{"profile":"alex"}'
+ubus call familywarden reset  '{"profile":"alex"}'
+ubus call familywarden ticket '{"profile":"alex","minutes":30}'
 ubus call familywarden pact   '{"until":0,"window_day":"sun","window_start":"10:00","window_stop":"11:00"}'
 ubus call familywarden reload
 ubus call familywarden version

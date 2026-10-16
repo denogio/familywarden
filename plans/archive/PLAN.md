@@ -111,20 +111,20 @@ These are minor — frontend already uses correct modern JS view pattern (form.M
 - [ ] Validate syntax: `nft -c -f /var/etc/familywarden.include`
 - [ ] Apply: `fw4 reload`
 - [ ] Check kernel rules: `nft list chain inet fw4 familywarden_forward`
-- [ ] Test override: `ubus call familywarden block '{"profile":"josva"}'`
-- [ ] Verify override rule in chain: `nft list chain inet fw4 familywarden_forward | grep josva:override:block`
-- [ ] Test reset: `ubus call familywarden reset '{"profile":"josva"}'`
+- [ ] Test override: `ubus call familywarden block '{"profile":"alex"}'`
+- [ ] Verify override rule in chain: `nft list chain inet fw4 familywarden_forward | grep alex:override:block`
+- [ ] Test reset: `ubus call familywarden reset '{"profile":"alex"}'`
 - [ ] Test ticket + lazy GC:
   ```sh
-  ubus call familywarden ticket '{"profile":"josva","minutes":1}'
+  ubus call familywarden ticket '{"profile":"alex","minutes":1}'
   # Wait ~70s
-  ubus call familywarden status '{"profile":"josva"}'
-  nft list chain inet fw4 familywarden_forward | grep josva  # should be gone
+  ubus call familywarden status '{"profile":"alex"}'
+  nft list chain inet fw4 familywarden_forward | grep alex  # should be gone
   ```
 - [ ] Test overnight schedule: set Mon–Fri 22:00–07:00, verify morning rule has day set `{2,3,4,5,6}`
 - [ ] Test concurrent access (locking):
   ```sh
-  ubus call familywarden block '{"profile":"josva"}' &
+  ubus call familywarden block '{"profile":"alex"}' &
   ubus call familywarden reload &
   wait  # no errors
   ```

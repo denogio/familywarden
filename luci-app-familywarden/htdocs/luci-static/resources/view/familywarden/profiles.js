@@ -171,7 +171,7 @@ function showAddProfileModal() {
 	var nameInput = E('input', {
 		'type': 'text',
 		'class': 'cbi-input-text',
-		'placeholder': _('e.g. Josva'),
+		'placeholder': _('e.g. Alex'),
 		'style': 'width:100%;margin-top:8px'
 	});
 

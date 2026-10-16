@@ -30,7 +30,7 @@ uci commit network
 now=$(date +%s)
 cat > /tmp/dhcp.leases <<EOF
 $((now + 3600)) aa:bb:cc:00:00:01 192.168.1.101 dennis-phone *
-$((now + 3600)) aa:bb:cc:00:00:02 192.168.1.102 josva-pc *
+$((now + 3600)) aa:bb:cc:00:00:02 192.168.1.102 alex-pc *
 $((now + 3600)) de:ad:be:ef:00:99 192.168.1.150 new-laptop *
 EOF
 
@@ -56,8 +56,8 @@ config schedule
 	option start '00:00'
 	option stop '23:59'
 
-config profile 'josva'
-	option name 'Josva'
+config profile 'alex'
+	option name 'Alex'
 	option enabled '1'
 	option policy 'allow'
 	list device 'aa:bb:cc:00:00:02'

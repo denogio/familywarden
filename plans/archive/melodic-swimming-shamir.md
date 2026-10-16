@@ -60,7 +60,7 @@ Transform from pass-through wrapper to generator. The `reload` method must:
 
 **nftables rule structure for a scheduled profile:**
 ```
-# For profile "josva" with schedule Mon-Fri 20:00-06:00 (overnight):
+# For profile "alex" with schedule Mon-Fri 20:00-06:00 (overnight):
 table inet fw4 {
     chain familywarden_forward {
         type filter hook forward priority 0; policy accept;
@@ -68,12 +68,12 @@ table inet fw4 {
         # Scheduled block (weekday evenings + night)
         ether saddr 00:11:22:33:44:55 ether daddr 00:11:22:33:44:55 \
             meta hour >= 20 meta day {1,2,3,4,5} \
-            counter drop comment "familywarden:josva:scheduled"
+            counter drop comment "familywarden:alex:scheduled"
 
         # Or for daytime schedule 07:00-20:00:
         ether saddr 00:11:22:33:44:55 ether daddr 00:11:22:33:44:55 \
             meta hour >= 7 meta hour < 20 meta day {1,2,3,4,5} \
-            counter drop comment "familywarden:josva:scheduled"
+            counter drop comment "familywarden:alex:scheduled"
     }
 }
 ```
@@ -114,8 +114,8 @@ This makes fw4 automatically include our generated rules on every `fw4 reload`.
 
 Overrides (block/allow/ticket) are stored in RAM only:
 ```
-josva.override=block
-josva.override_expires=
+alex.override=block
+alex.override_expires=
 levi.override=allow
 levi.override_expires=1751234567
 ```
@@ -172,9 +172,9 @@ meta hour >= 7 meta hour < 20 meta day {1,2,3,4,5}
    nft list chain inet fw4 familywarden_forward
    ```
 5. **Test schedule enforcement** — set a schedule for current time, verify packets are dropped
-6. **Test override** — `ubus call familywarden block '{"profile":"josva"}'` should insert a higher-priority rule
+6. **Test override** — `ubus call familywarden block '{"profile":"alex"}'` should insert a higher-priority rule
 7. **Test delete profile** — delete via LuCI, verify nftables rules are gone after reload
-8. **Test ticket** — `ubus call familywarden ticket '{"profile":"josva","minutes":30}'`, verify override rule appears
+8. **Test ticket** — `ubus call familywarden ticket '{"profile":"alex","minutes":30}'`, verify override rule appears
 
 ---
 
