@@ -7,6 +7,8 @@ Bluetooth). Et hotspot, der allerede kører, slukkes. Resten af tiden gør appen
 Appen er *Device Owner* på telefonen. Det er Androids egen mekanisme til firmatelefoner,
 og det er den eneste måde, en app kan spærre hotspot på mod ejerens vilje.
 
+![Ulysses Mast: ikke parret, bundet af en pagt, efter frigørelse](images/mast-screens.png)
+
 ## Sådan virker den
 
 - Appen henter pagt og tidsplan fra routeren på `http://<router>:7700/cgi-bin/mast`.

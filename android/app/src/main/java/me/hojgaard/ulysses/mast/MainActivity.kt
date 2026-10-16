@@ -3,10 +3,14 @@ package me.hojgaard.ulysses.mast
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.ConnectivityManager
 import android.os.Bundle
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import android.view.WindowInsets
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -21,6 +25,7 @@ import java.util.Date
 
 /** One screen: status, pairing, sync, and leaving (only without a pact). */
 class MainActivity : Activity() {
+    private lateinit var badge: TextView
     private lateinit var status: TextView
     private lateinit var scanButton: Button
     private lateinit var pairButton: Button
@@ -28,8 +33,14 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        status = TextView(this).apply { textSize = 16f }
+        val dp = resources.displayMetrics.density
+        val pad = (16 * dp).toInt()
+        badge = TextView(this).apply {
+            textSize = 20f
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(pad, pad, pad, pad)
+        }
+        status = TextView(this).apply { textSize = 15f; setLineSpacing(4 * dp, 1f) }
         scanButton = Button(this).apply {
             text = getString(R.string.scan)
             setOnClickListener { scan() }
@@ -43,17 +54,30 @@ class MainActivity : Activity() {
             text = getString(R.string.release)
             setOnClickListener { release() }
         }
+        val gap = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = pad }
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(pad, pad, pad, pad)
-            addView(TextView(context).apply { text = getString(R.string.title); textSize = 24f })
-            addView(status, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = pad })
-            addView(syncButton)
+            addView(TextView(context).apply {
+                text = getString(R.string.title)
+                textSize = 26f
+                setTypeface(typeface, Typeface.BOLD)
+            })
+            addView(badge, LinearLayout.LayoutParams(gap))
+            addView(status, LinearLayout.LayoutParams(gap))
+            addView(syncButton, LinearLayout.LayoutParams(gap))
             addView(scanButton)
             addView(pairButton)
             addView(releaseButton)
         }
-        setContentView(ScrollView(this).apply { addView(column) })
+        // Edge-to-edge (Android 15+): keep content clear of the status and navigation bars
+        val scroll = ScrollView(this).apply { addView(column) }
+        scroll.setOnApplyWindowInsetsListener { v, insets ->
+            val bars = insets.getInsets(WindowInsets.Type.systemBars())
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
+        setContentView(scroll)
         handlePairingLink(intent)
     }
 
@@ -130,14 +154,20 @@ class MainActivity : Activity() {
         } else {
             lines += getString(R.string.not_paired)
         }
-        lines += ""
-        lines += if (decision.block) getString(R.string.hotspot_blocked) else getString(R.string.hotspot_allowed)
         status.text = lines.joinToString("\n")
+        badge.text = getString(if (decision.block) R.string.hotspot_blocked else R.string.hotspot_allowed)
+        badge.setTextColor(Color.WHITE)
+        badge.background = GradientDrawable().apply {
+            cornerRadius = 16 * resources.displayMetrics.density
+            setColor(if (decision.block) Color.parseColor("#B3261E") else Color.parseColor("#2E7D32"))
+        }
         pairButton.text = getString(R.string.pair_manual)
         // Re-pairing could point the app at a router without a pact
         val bound = state != null && Policy.pactActive(state, System.currentTimeMillis() / 1000)
         pairButton.isEnabled = !bound
         scanButton.isEnabled = !bound
+        // The cache can be out of date, so tapping still double-checks with the router
+        releaseButton.isEnabled = !bound
     }
 
     private fun pair() {
