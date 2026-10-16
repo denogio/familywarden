@@ -1,5 +1,8 @@
 # Plan: FamilyWarden — Fully Declarative nftables Architecture
 
+> Historical design notes, not current setup instructions. Some examples and API
+> assumptions were superseded. See `../../CLAUDE.md` for the current architecture.
+
 ## Core Philosophy
 
 **One truth. One pipeline. One reconciliation model.**
@@ -50,7 +53,7 @@ The 100–300ms cost of `fw4 reload` is acceptable. Parental control is not late
       "mode": "block",
       "expires": null
     },
-    "levi": {
+    "taylor": {
       "mode": "allow",
       "expires": 1751234567
     }

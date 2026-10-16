@@ -1,197 +1,200 @@
-# FamilyWarden — Roadmap for de resterende features
+# FamilyWarden — Roadmap for remaining features
 
-*Oprettet 2026-10-14, udgangspunkt `v0.7.3` (backend) / `0.4.0` (LuCI).*
+*Created 2026-10-14, starting from backend `v0.7.3` / LuCI `0.4.0`.*
 
-Rækkefølgen er valgt sådan, at hver fase bygger på den forrige, og at API'et er
-stabilt, før Home Assistant begynder at afhænge af det.
+The sequence lets each phase build on the previous one and stabilizes the API before
+Home Assistant starts depending on it. Versions below are planned targets unless marked complete.
 
-| # | Feature | Størrelse | Afhænger af | Version |
-|---|---------|-----------|-------------|---------|
-| 1 | ~~Ulysses-pagt (selvbindende lås)~~ ✅ | M | — | backend 0.8.0, luci 0.5.0 |
-| 2 | Traffic per profil (nlbwmon) | S | — | backend 0.9.0, luci 0.6.0 |
-| 3 | Dansk oversættelse (i18n) | S | 1+2 (strenge er faste) | luci 0.6.x + `luci-i18n-familywarden-da` |
-| 4 | Home Assistant (HACS) | L | 2 (`pact_until` i API) | eget repo, 0.1.0 |
-| 5 | DNS-filtrering | M–L | — | backend 1.0.0 |
+| # | Feature | Size | Dependencies | Version |
+|---|---------|------|--------------|---------|
+| 1 | ~~Ulysses pact (self-binding lock)~~ ✅ | M | — | backend 0.8.0, LuCI 0.5.0 |
+| 2 | Per-profile traffic (nlbwmon) | S | — | backend 0.9.0, LuCI 0.6.0 |
+| 3 | Danish translation (i18n) | S | 1+2 (stable strings) | LuCI 0.6.x + `luci-i18n-familywarden-da` |
+| 4 | Home Assistant (HACS) | L | 2 (pact information in API) | Separate repository, 0.1.0 |
+| 5 | DNS filtering | M–L | — | backend 1.0.0 |
 
-## Arbejdsregler (alle faser)
+## Working rules (all phases)
 
-- **Definition of done = adfærds-bevis.** Hver ny backend-adfærd får en case i
-  `scripts/test-integration.sh` (rigtig fw4/nftables i OpenWrt-container), *før* fasen
-  er færdig. Rettelser i regelgenereringen starter med en test, der fejler.
-- Hver ubus-metode skal annonceres i `list`, dispatches i `call`, stå i begge ACL-filer
-  og svare med **ét** JSON-objekt (`test-syntax.sh` og `test-integration.sh` håndhæver det).
-- Versionsbump i Makefile → merge → `git tag vX.Y.Z` → CI udgiver release.
-- Én feature-branch og én PR per fase; CI skal være grøn før merge.
+- **Definition of done = behavioral evidence.** Every new backend behavior needs a case
+  in `scripts/test-integration.sh` (real fw4/nftables in an OpenWrt container) before
+  completion. Rule-generation fixes start with a failing test.
+- Every ubus method must be advertised in `list`, dispatched in `call`, included in both
+  ACL files, and return **one** JSON object. Syntax/integration tests enforce this.
+- Makefile version bump → merge → `git tag vX.Y.Z` → CI publishes the release.
+- One feature branch and PR per phase; CI must pass before merging.
 
 ---
 
-## Fase 2 — Traffic per profil
+## Phase 2 — Per-profile traffic
 
-**Status:** frontenden findes allerede (`showTrafficModal` i `overview.js`, kalder
-`traffic` og forventer `{available, daily, day, week, month}` eller
-`{available, period, period_start}`). Backend-metoden mangler.
+**Status:** the frontend already exists (`showTrafficModal` in `overview.js`, calling
+`traffic` and expecting `{available, daily, day, week, month}` or
+`{available, period, period_start}`). The backend method is missing.
 
 **Design**
-- `ubus_traffic <profile>`: hvis `nlbw` mangler → `{"available":false}`.
-- Ellers `nlbw -c json -g mac` → summér rx+tx for profilens MAC'er.
-- nlbwmon tæller per *periode* (typisk måned), ikke per dag. Derfor:
-  - Standard: `{available:true, daily:false, period:<bytes>, period_start:<dato>}`
-    ud fra den aktive database.
-  - Dag/uge kræver flere databaser (`nlbw -c json -t YYYY-MM-DD`) — kun hvis
-    nlbwmon er sat op med daglige intervaller (`option commit_interval`/`database_interval`).
-    Afgør i fasen om det er værd at understøtte, eller om UI'et kun viser "denne periode".
-- `nlbwmon` bliver en *valgfri* afhængighed (står ikke i `DEPENDS`).
+- `ubus_traffic <profile>`: if `nlbw` is missing, return `{"available":false}`.
+- Otherwise run `nlbw -c json -g mac` and sum rx+tx for the profile's MACs.
+- nlbwmon counts per *period* (usually a month), not per day:
+  - Default: `{available:true, daily:false, period:<bytes>, period_start:<date>}`
+    from the active database.
+  - Day/week totals need multiple databases (`nlbw -c json -t YYYY-MM-DD`), and only
+    work if nlbwmon is configured for daily intervals (`option commit_interval`/
+    `database_interval`). Decide whether this is worth supporting or whether the UI
+    should display only "this period".
+- `nlbwmon` remains an *optional* dependency, not listed in `DEPENDS`.
 
-**Opgaver**
-- [ ] `ubus_traffic` + `list`-skema + `call`-dispatch + ACL (read)
-- [ ] Integrationstest: uden `nlbw` → `available:false`; med en fake `nlbw` på PATH,
-      der returnerer kendt JSON → korrekt sum for en profil med to MAC'er
-- [ ] Verificér formatet fra `nlbw -c json` på rivendell, før parseren skrives
-- [ ] Playwright: modalen viser tal eller "unavailable"-teksten (ikke stille lukning)
+**Tasks**
+- [ ] `ubus_traffic`, `list` schema, `call` dispatch, and read ACL
+- [ ] Integration test: no `nlbw` → `available:false`; fake `nlbw` on PATH returning
+      known JSON → correct total for a profile with two MACs
+- [ ] Verify actual `nlbw -c json` output on rivendell before writing the parser
+- [ ] Playwright: modal displays totals or "unavailable", rather than silently closing
 
-**Beslutning til dig:** byg den (anbefalet; det er lille, og UI'et findes) eller fjern
-traffic-knappen.
-
----
-
-## Fase 1 — Ulysses-pagt ✅ (0.8.0, branch `feature/ulysses`)
-
-**Endeligt design (besluttet 2026-10-15)**, erstatter `plans/archive/PLAN.md` § 14. Se CLAUDE.md "Ulysses":
-- Én **kaptajn** (Ulysses-profil). Pagter kun for den: `until` (kan forlænges) eller `ongoing`
-  med et ugentligt ændringsvindue (søndag 10–11). Ændringer i vinduet gælder med det samme.
-- Under pagten er kaptajnens profil frosset, og hans MAC'er kan ikke slippe ud via andre profiler.
-- Mens kaptajnen er blokeret, er routeren lukket for alle (TCP) undtagen DNS og port 7700.
-- Eneste udvej: sail-siden på 7700 (root-password + sanglinje) og derefter en konfigurerbar
-  karenstid (standard 24 t, frosset ved oprettelse).
-- Testet: 89 integrations-checks (heraf ~50 for Ulysses inkl. CGI med rigtigt password-tjek), apk-test,
-  og i browser mod LuCI i container. Dér blev LuCI målt uopnåelig under lockdown og 7700 tilgængelig.
-
-Mangler før merge: test på rivendell (procd-trigger, rigtig uhttpd-instans, reboot).
-Ukendte enheder: løst med `default_policy=block` (frosset under pagten).
-Hotspot på telefonen: **Ulysses Mast** (Android Device Owner-app, `android/`, `docs/ulysses-mast.md`).
-
-<details><summary>Oprindelig plan (historisk)</summary>
-
-
-Fuldt designet i `plans/archive/PLAN.md` § 14 (besluttet med dig: hele profilen fryses, eneste
-escape er root over SSH, og pagten skal overleve reboot). Planen følges med disse
-justeringer til den nuværende arkitektur:
-
-- State i `/etc/familywarden.pacts` (persistent, mode 600), format `profile=expiry_epoch`.
-- **Håndhævelse i kernen, ikke kun i UI:** under en pagt emitteres hverken
-  allow-overrides eller ticket-elementer for profilen, så en lækket ubus-adgang ikke
-  kan åbne den. Blokerede `block/allow/reset/ticket` svarer
-  `{"error":"locked by Ulysses pact","locked_until":<epoch>}`.
-- Pagter udløber, når `compile_and_apply` kører og GC'er dem. Men en *blok*-pagt skal
-  slippe af sig selv på klokkeslættet, også uden en reload. Løsning: oversæt
-  pagtens udløb til en kerne-evalueret regel (`meta time < "<ISO-tid>"`), så kernen
-  selv slipper den, ligesom med schedules. Afklares/verificeres i containeren først.
-- `ubus_pact` må kun **forlænge**, aldrig forkorte. Der er ingen `unpact`.
-
-**Opgaver**
-- [ ] Backend: `pact_*`-helpers, `gc_expired_pacts`, `ubus_pact`, afvisning i
-      overrides, `pact_until` i `list`/`status`
-- [ ] Regelgenerering: ingen allow/ticket for pacted profil; tidsbegrænset drop
-- [ ] ACL: `pact` (write) i begge ACL-filer
-- [ ] UI: "Bind til masten"-knap med klokkeslæt-vælger og advarsel; frosset profil
-      med lås-banner og nedtælling
-- [ ] Integrationstest: pagt → overrides afvises; ingen accept-regler; pagtfil overlever
-      `/etc/init.d/familywarden restart`; forkortelse afvises; udløbet pagt GC'es
-- [ ] QEMU: reboot-test (procd + rigtig boot kan ikke testes i containeren)
-
-**Beslutning til dig:** er designet fra juni stadig det, du vil have?
+**Decision needed:** implement it (recommended: small, with an existing UI) or remove
+its traffic button.
 
 ---
+
+## Phase 1 — Ulysses pact ✅ (0.8.0)
+
+**Final design (2026-10-15), merged in PR #1 and tagged v0.8.0 on 2026-10-16.**
+Supersedes `plans/archive/PLAN.md` §14. See CLAUDE.md "Ulysses":
+- One **captain** (Ulysses profile). Only that profile can make a pact: extend-only
+  `until`, or `ongoing` with a weekly amendment window (Sunday 10–11 by default).
+  Edits within the window apply immediately.
+- The captain's profile is frozen during the pact, and its MACs cannot escape through
+  another profile.
+- While the captain is blocked, TCP access to the router is restricted for everyone,
+  with exceptions for DNS and port 7700.
+- Supported early exit: sail page on 7700 (root password + lyric completion), followed
+  by a configurable waiting period (default 24 hours, frozen at creation).
+- Initial verification covered 89 integration checks (~50 Ulysses-specific, including
+  CGI with real password checks), package smoke tests, and browser tests against LuCI
+  in a container. LuCI was unreachable during lockdown while 7700 remained accessible.
+  The suite has since grown; see CLAUDE.md for current test coverage.
+
+Still pending: deployment/testing on rivendell (procd trigger, real uhttpd instance, reboot).
+Unknown devices: handled with `default_policy=block`, frozen during the pact.
+Phone hotspot: **Ulysses Mast** (Android Device Owner app, `android/`, `docs/ulysses-mast.md`).
+QEMU procd/reboot and Android emulator tests are complete; physical-phone testing is pending.
+
+<details><summary>Original plan (historical)</summary>
+
+Designed in `plans/archive/PLAN.md` §14: freeze the whole profile, allow only root SSH
+as an escape hatch, and preserve pacts across reboot. The original plan proposed these
+adaptations to the declarative architecture; this is not the implemented API:
+
+- State in `/etc/familywarden.pacts` (persistent, mode 600), `profile=expiry_epoch`.
+- **Kernel enforcement, not just UI:** omit allow overrides and ticket elements for a
+  bound profile so leaked ubus access cannot unlock it. Rejected block/allow/reset/ticket
+  calls return `{"error":"locked by Ulysses pact","locked_until":<epoch>}`.
+- Garbage-collect expired pacts in `compile_and_apply`. A blocking pact must also release
+  at its end without reload: encode expiry as a kernel-evaluated
+  `meta time < "<ISO-time>"` rule, like schedules. Verify in a container first.
+- `ubus_pact` can only **extend**, never shorten. There is no `unpact`.
+
+**Tasks**
+- [ ] Backend helpers, `gc_expired_pacts`, `ubus_pact`, override rejection,
+      and `pact_until` in `list`/`status`
+- [ ] Rule generation: no allow/ticket for bound profiles; time-limited drops
+- [ ] Write ACL for `pact` in both ACL files
+- [ ] "Bind to the mast" UI with time picker, warning, frozen profile, lock banner/countdown
+- [ ] Integration: reject overrides and shortening, omit accepts, preserve pact file across
+      `/etc/init.d/familywarden restart`, collect expired pacts
+- [ ] QEMU reboot test (real procd/boot cannot be tested in the container)
+
+**Original question:** is the June design still desired?
 
 </details>
 
 ---
 
-## Fase 3 — Dansk oversættelse
+## Phase 3 — Danish translation
 
-De gamle Lua-oversættelser forsvandt med Lua-frontenden. Moderne LuCI bruger `.po`-filer.
+The old Lua translations disappeared with the Lua frontend. Modern LuCI uses `.po` files.
+Documentation remains English; this phase concerns optional UI localization.
 
-**Opgaver**
-- [ ] Sørg for at alle synlige strenge i views går gennem `_()` (tjek profiles/overview/info)
-- [ ] `luci-app-familywarden/po/templates/familywarden.pot` (genereres med LuCI's
-      `scripts/i18n-scan.pl`) + `po/da/familywarden.po`
-- [ ] `luci.mk` bygger så automatisk `luci-i18n-familywarden-da` — tilføj den til
-      CI-artifacts, release og `test-apk.sh` (`.lmo` installeres under `/usr/lib/lua/luci/i18n/`)
-- [ ] CI-check: `.po` parser (`msgfmt --check`), og ingen strenge mangler i forhold til `.pot`
+**Tasks**
+- [ ] Ensure visible view strings use `_()` (check profiles/overview/info)
+- [ ] Generate `luci-app-familywarden/po/templates/familywarden.pot` using LuCI's
+      `scripts/i18n-scan.pl`, then add `po/da/familywarden.po`
+- [ ] Let `luci.mk` build `luci-i18n-familywarden-da`; include it in CI artifacts,
+      releases, and `test-apk.sh` (`.lmo` installs under `/usr/lib/lua/luci/i18n/`)
+- [ ] CI: validate `.po` (`msgfmt --check`) and check for missing `.pot` entries
 
 ---
 
-## Fase 4 — Home Assistant (HACS)
+## Phase 4 — Home Assistant (HACS)
 
-**Repo:** eget repo, `denogio/hass-familywarden`. HACS kræver én integration per
-repo med `custom_components/familywarden/` i roden.
+**Repository:** separate `denogio/hass-familywarden`. HACS requires one integration per
+repository, with `custom_components/familywarden/` at its root.
 
-**Transport:** ubus over HTTP (`POST http://<router>/ubus`, JSON-RPC). Login med
-`session.login` og et særskilt rpcd-login (`/etc/config/rpcd`), som kun har ACL'en
-`familywarden` — ikke root. Sessionen fornyes ved udløb.
+**Transport:** ubus over HTTP (`POST http://<router>/ubus`, JSON-RPC). Authenticate with
+`session.login` and a dedicated rpcd login (`/etc/config/rpcd`) with only the
+`familywarden` ACL, not root. Renew expired sessions.
 
-**Entiteter per profil**
-- `switch.<profil>_internet`: on = `allow`, off = `block`. Attributter: policy, override,
+**Proposed entities per profile** (reconcile pact fields with the implemented API):
+- `switch.<profile>_internet`: on = `allow`, off = `block`; attributes: policy, override,
   override_expires, pact_until
-- `sensor.<profil>_status`: allowed/blocked (følger schedule live)
-- `button.<profil>_reset`: tilbage til schedule/policy
-- `sensor.<profil>_traffic` (hvis fase 1 er `available`)
-- Services: `familywarden.ticket` (profil, minutter) og `familywarden.pact`
-- Under en aktiv pagt er switch/button utilgængelige, og attributten viser `locked_until`
+- `sensor.<profile>_status`: allowed/blocked, following live schedules
+- `button.<profile>_reset`: return to schedule/policy
+- `sensor.<profile>_traffic` when traffic data is available
+- Services: `familywarden.ticket` (profile, minutes) and `familywarden.pact`
+- During a pact, switches/buttons are unavailable; expose lock information in attributes
 
-**Teknik:** config flow (host, bruger, password, verify SSL), `DataUpdateCoordinator`
-med polling af `list` hvert 30. sekund og opdatering straks efter hver handling,
-diagnostics. Lovelace-kort er valgfrit; et eksempel-dashboard i YAML er nok i v0.1.
+**Implementation:** config flow (host, username, password, SSL verification),
+`DataUpdateCoordinator` polling `list` every 30 seconds, immediate refresh after
+commands, and diagnostics. A Lovelace card is optional; a YAML dashboard example
+is sufficient for v0.1.
 
-**Test/CI:** `pytest-homeassistant-custom-component` med mocket ubus, `hassfest` +
-HACS-validering i GitHub Actions, release ved tag (HACS læser GitHub-releases).
-Ende-til-ende mod `openwrt/rootfs`-containeren med rpcd, hvis rpcd kan køre dér
-(skal undersøges), ellers mod QEMU.
+**Tests/CI:** `pytest-homeassistant-custom-component` with mocked ubus, `hassfest`,
+HACS validation in GitHub Actions, tagged releases (HACS reads GitHub releases).
+End-to-end against `openwrt/rootfs` with rpcd if supported there; otherwise QEMU.
 
-**Forudsætning i dette repo:** en vejledning (README) i at oprette rpcd-brugeren +
-evt. en `uci-defaults`-hjælper.
+**Prerequisite here:** README instructions for creating the rpcd user, optionally
+with a `uci-defaults` helper.
 
 ---
 
-## Fase 5 — DNS-filtrering
+## Phase 5 — DNS filtering
 
-**Modelvalg (anbefaling: per-klient DNS-redirect i nft).**
+**Model selection (recommendation: per-client nft DNS redirect).**
 
-| Model | + | − |
-|-------|---|---|
-| **nft DNAT per MAC** til filtrerende resolver | Passer til den deklarative arkitektur (endnu en chain i includet), kernen håndhæver, ingen ekstra tjenester | Filtreringen sker hos en ekstern resolver |
-| dnsmasq + nftset | Lokale bloklister | dnsmasq kan ikke differentiere per klient uden flere instanser; tungt |
-| AdGuard Home API | Rige bloklister, per-klient-regler | Kræver AGH på routeren eller i netværket; ekstern afhængighed og API-state |
+| Model | Advantages | Disadvantages |
+|-------|------------|---------------|
+| **nft DNAT per MAC** to a filtering resolver | Fits declarative architecture (another include chain), kernel enforcement, no extra services | External resolver performs filtering |
+| dnsmasq + nftset | Local blocklists | Per-client differentiation needs multiple dnsmasq instances; heavier |
+| AdGuard Home API | Rich blocklists and per-client rules | Requires AGH on router/network; external dependency and API state |
 
-**Design (nft-model)**
-- `option dns_profile` (feltet findes allerede i LuCI) → en resolver:
+**Design (nft model)**
+- Map `option dns_profile` (already in LuCI) to a resolver:
   `family` = Cloudflare 1.1.1.3 / 1.0.0.3 (+ IPv6), `strict` = CleanBrowsing Family,
   `custom` = `option dns_server`.
-- Ny chain `familywarden_dstnat` (hook prerouting, priority dstnat): udp/tcp 53 fra
-  profilens MAC'er → DNAT til resolveren (ip og ip6).
-- Mod omgåelse: drop tcp/udp 853 (DoT) fra profilens MAC'er. dnsmasq svarer NXDOMAIN
-  på `use-application-dns.net`, så Firefox slår DoH fra. Kendt begrænsning: hårdkodet
-  DoH i apps kan ikke stoppes uden en DoH-blokliste (evt. senere som nft-set).
-- Ticket/override påvirker *ikke* DNS-filteret (filteret er en grundindstilling, ikke
-  en straf). Bekræft med dig.
+- New `familywarden_dstnat` chain (prerouting hook, dstnat priority): UDP/TCP 53 from
+  profile MACs → resolver DNAT (IPv4 and IPv6).
+- Bypass mitigation: drop TCP/UDP 853 (DoT) from those MACs. dnsmasq answers NXDOMAIN
+  for `use-application-dns.net` to disable automatic Firefox DoH. Hard-coded app DoH
+  cannot be stopped without a DoH blocklist (potentially an nft set later).
+- Tickets/overrides do *not* change DNS filtering: it is a baseline setting, not
+  a punishment. Confirm this behavior before implementing.
 
-**Opgaver**
-- [ ] Generator for `familywarden_dstnat` + oprydning før `fw4 reload`
-- [ ] UI: `dns_profile` bliver en dropdown + `dns_server`-felt ved `custom`
-- [ ] Integrationstest: DNAT-regler per MAC for ip og ip6, 853-drop, ingen regler
-      uden `dns_profile`, gyldigt include
-- [ ] Runtime-test på rivendell: `nslookup` af en voksenside fra en profil-enhed
-      → blokeret svar
+**Tasks**
+- [ ] Generate `familywarden_dstnat` and clean up before `fw4 reload`
+- [ ] UI: `dns_profile` dropdown, plus `dns_server` for `custom`
+- [ ] Integration: per-MAC IPv4/IPv6 DNAT, port-853 drops, no rules without
+      `dns_profile`, valid include
+- [ ] Runtime on rivendell: `nslookup` of an adult site from a profile device returns
+      a blocked response
 
-**Beslutning til dig:** modelvalg, og om ticket skal slå DNS-filteret fra.
+**Decision needed:** choose a model and whether a ticket should disable DNS filtering.
 
 ---
 
-## Løbende / teknisk gæld
+## Ongoing work / technical debt
 
-- [ ] Kør `/understand` igen — knowledge-graphen er fra `66c2701`
-- [x] QEMU-testrouter lokalt (`scripts/qemu-dev.sh`): procd-trigger, reboot, tidsspring
-- [ ] QEMU i CI (GitHub-runnere har KVM): det eneste, containeren ikke dækker (procd, reboot)
-- [x] `PLAN.md`, `new-thoughts.md` og den gamle kernel-scheduling-plan arkiveret i `plans/archive/`
-- [x] Playwright e2e i CI mod LuCI i en OpenWrt-container (`scripts/test-e2e.sh`)
+- [ ] Regenerate the knowledge graph with `/understand`; current analysis is from `66c2701`
+- [x] Local QEMU test router (`scripts/qemu-dev.sh`): procd trigger, reboot, clock jumps
+- [ ] QEMU in CI (GitHub runners have KVM): cover procd/reboot, which containers cannot
+- [x] Archive `PLAN.md`, `new-thoughts.md`, and the original kernel-scheduling plan in `plans/archive/`
+- [x] Playwright e2e in CI against LuCI in an OpenWrt container (`scripts/test-e2e.sh`)
 - [x] `PKG_MAINTAINER`/copyright: `denogio <dennis@hojgaard.me>`

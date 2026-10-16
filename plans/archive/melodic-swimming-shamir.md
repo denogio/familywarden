@@ -1,5 +1,8 @@
 # Plan: Align FamilyWarden with nftables Kernel-Level Scheduling
 
+> Historical design notes, not current setup instructions. Some examples and API
+> assumptions were superseded. See `../../CLAUDE.md` for the current architecture.
+
 ## Context
 
 The current architecture uses a cron-driven daemon that polls every minute to evaluate schedules in user-space. This is fragile:
@@ -116,8 +119,8 @@ Overrides (block/allow/ticket) are stored in RAM only:
 ```
 alex.override=block
 alex.override_expires=
-levi.override=allow
-levi.override_expires=1751234567
+taylor.override=allow
+taylor.override_expires=1751234567
 ```
 
 On `reload`, the rpcd backend reads this file and generates override rules with higher priority than scheduled rules.

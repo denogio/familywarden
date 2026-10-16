@@ -2,61 +2,61 @@
 
 [![CI](https://github.com/denogio/familywarden/actions/workflows/ci.yml/badge.svg)](https://github.com/denogio/familywarden/actions/workflows/ci.yml)
 
-Profilbaseret parental control til OpenWrt: tidsplaner, internet-blokering per enhed
-og tidsbegrænsede "tickets" — eksponeret via ubus, så LuCI og Home Assistant kan styre det.
+Profile-based parental control for OpenWrt: schedules, per-device internet blocking,
+and time-limited "tickets" — exposed through ubus for LuCI, Home Assistant, and other clients.
 
-Tidsplaner og tickets håndhæves af kernen (nftables `meta hour`/`meta day` og et
-timeout-set), så der kører ingen daemon eller cron på routeren.
+Schedules and tickets are enforced by the kernel (nftables `meta hour`/`meta day` and a
+timeout set), without a polling daemon or cron job for schedule evaluation.
 
 ## Installation
 
-Hent de to `.apk`-filer fra seneste [release](https://github.com/denogio/familywarden/releases)
-(OpenWrt 25.12+, arkitekturuafhængige):
+Download both `.apk` files from the latest [release](https://github.com/denogio/familywarden/releases)
+(OpenWrt 25.12+, architecture-independent):
 
 ```sh
 apk add --allow-untrusted ./familywarden-*.apk ./luci-app-familywarden-*.apk
 ```
 
-Herefter: **Services → FamilyWarden** i LuCI.
+Then open **Services → FamilyWarden** in LuCI.
 
-## Struktur
+## Structure
 
 ```
-familywarden/                     # Backend-pakke
-├── usr/lib/rpcd/familywarden     # ubus API + nft include-compiler (→ /usr/libexec/rpcd)
-├── etc/init.d/familywarden       # procd: regenerér ved boot + UCI-ændring
-├── etc/config/familywarden       # UCI-konfiguration
+familywarden/                     # Backend package
+├── usr/lib/rpcd/familywarden     # ubus API + nft include compiler (→ /usr/libexec/rpcd)
+├── etc/init.d/familywarden       # procd: regenerate at boot and after UCI changes
+├── etc/config/familywarden       # UCI configuration
 └── usr/share/rpcd/acl.d/         # ACL
 
-luci-app-familywarden/            # LuCI-frontend (JS views)
-scripts/                          # build, test, deploy
-test/e2e/                         # Playwright-tests mod QEMU
+luci-app-familywarden/            # LuCI frontend (JS views)
+scripts/                          # Build, test, and deployment tools
+test/e2e/                         # Playwright tests against LuCI
 ```
 
-## Udvikling
+## Development
 
 ```sh
-./scripts/test-syntax.sh          # statiske checks
-./scripts/test-integration.sh     # rigtig fw4 + nftables i OpenWrt-container (docker)
-./scripts/build-apk-docker.sh     # byg apk'er med OpenWrt SDK → dist/
-./scripts/test-apk.sh             # installér/afinstallér de byggede apk'er i container
-./scripts/deploy.sh root@router   # kopiér kildefiler direkte til en router
+./scripts/test-syntax.sh          # Static checks
+./scripts/test-integration.sh     # Real fw4 + nftables in an OpenWrt container (Docker)
+./scripts/build-apk-docker.sh     # Build apk packages with the OpenWrt SDK → dist/
+./scripts/test-apk.sh             # Install/uninstall built packages in a container
+./scripts/deploy.sh root@router   # Copy source files directly to a router
 ```
 
-### Testrouter i QEMU (uden root)
+### QEMU test router (no root required)
 
 ```sh
-./scripts/qemu-dev.sh start --fresh   # frisk OpenWrt 25.12 (KVM)
-./scripts/qemu-dev.sh deploy          # byg + installér + testprofiler (Dennis = kaptajn)
-./scripts/qemu-dev.sh time "21:29"    # sæt routerens ur, fx lige før en blokering
-./scripts/qemu-dev.sh console         # seriel konsol (virker også under lockdown)
+./scripts/qemu-dev.sh start --fresh   # Fresh OpenWrt 25.12 instance (KVM)
+./scripts/qemu-dev.sh deploy          # Build, install, and create test profiles (Dennis = captain)
+./scripts/qemu-dev.sh time "21:29"    # Set router time, e.g. just before blocking starts
+./scripts/qemu-dev.sh console         # Serial console (also works during lockdown)
 ```
 
-LuCI på http://localhost:8080 (root / ulysses), sail-siden på http://localhost:7700.
-Din maskine er LAN-klient (192.168.1.2), så en Ulysses-lockdown rammer den som enhver anden enhed.
+LuCI: http://localhost:8080 (root / ulysses). Sail page: http://localhost:7700.
+Your machine is a LAN client (192.168.1.2), so Ulysses lockdown affects it like any other device.
 
-CI kører test → build → apk-smoke-test på hver push. Et tag `vX.Y.Z`, der matcher
-`PKG_VERSION` i `familywarden/Makefile`, udgiver en GitHub-release med apk'erne.
+CI runs tests → build → package smoke tests on each push. A `vX.Y.Z` tag matching
+`PKG_VERSION` in `familywarden/Makefile` publishes a GitHub release with the packages.
 
 ## API
 
@@ -72,18 +72,18 @@ ubus call familywarden reload
 ubus call familywarden version
 ```
 
-## Ulysses — bind dig selv til masten
+## Ulysses — bind yourself to the mast
 
-Vælg din egen profil som *Ulysses-profil* (kaptajn) under Settings, og lav en **pagt**:
-til et bestemt tidspunkt eller løbende med et ugentligt ændringsvindue.
+Select your own profile as the *Ulysses profile* (captain) in Settings, then make a **pact**:
+until a specific time, or ongoing with a weekly amendment window.
 
-- Så længe pagten varer, er din profil frosset: ingen ændringer, ingen Allow og ingen tickets.
-- Mens du er blokeret, er routeren lukket for alle enheder. Kun DNS og sail-siden er åbne.
-- Den eneste vej ud før tid er **sail-siden på port 7700**: router-password, linjen fra
-  Josh Garrels' "Ulysses" og derefter en karenstid (standard 24 timer).
-- **Ulysses Mast** (Android-app) spærrer hotspot og tethering på din telefon i samme tidsrum,
-  så mobilt hotspot ikke er en vej udenom. Se [docs/ulysses-mast.md](docs/ulysses-mast.md).
+- While the pact is active, your profile is frozen: no edits, Allow actions, or tickets outside the amendment window.
+- While you are blocked, TCP access to the router is restricted for all devices, with exceptions for DNS and the sail page.
+- The supported early exit is the **sail page on port 7700**: router password, a line from
+  Josh Garrels' "Ulysses", then a waiting period (24 hours by default).
+- **Ulysses Mast** (Android app) blocks hotspot and tethering on your phone during the same periods,
+  closing the mobile-hotspot loophole. See [docs/ulysses-mast.md](docs/ulysses-mast.md).
 
-## Licens
+## License
 
 Apache 2.0

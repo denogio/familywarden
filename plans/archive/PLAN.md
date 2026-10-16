@@ -1,5 +1,8 @@
 # FamilyWarden v0.5 — Implementation Plan
 
+> Archived implementation history. Status labels and test counts below describe
+> their original milestones, not the current release. See `../../CLAUDE.md`.
+
 ## Architecture Decision
 
 **Fully declarative nftables.** Every state change flows through one pipeline:
@@ -147,13 +150,13 @@ These are minor — frontend already uses correct modern JS view pattern (form.M
 
 ### 13. UI E2E Testing (Playwright)
 
-Eftersom LuCI's JavaScript-framework er tæt koblet til backend (ubus/uci), er det meget svært at mocke i simple unit tests (som Jest). Den bedste og mest pålidelige måde at teste LuCI UI på er end-to-end (E2E) mod QEMU.
+LuCI's JavaScript framework is tightly coupled to its ubus/UCI backend, making it difficult to mock in simple unit tests such as Jest. End-to-end tests against QEMU provide the most reliable UI verification.
 
-- [ ] Opret en `test/e2e` mappe med et basalt Playwright setup (`npm init playwright@latest`).
-- [ ] Skriv en test der logger ind i LuCI på QEMU instansen (`http://localhost:8080`).
-- [ ] Skriv en test der navigerer til FamilyWarden Oversigt og bekræfter at profiler vises.
-- [ ] Skriv en test der opretter en ny profil og verificerer at den dukker op.
-- [ ] Skriv en test der tester "Block" / "Allow" knapperne og verificerer statusændringen.
+- [ ] Create `test/e2e` with a basic Playwright setup (`npm init playwright@latest`).
+- [ ] Test login to LuCI in QEMU (`http://localhost:8080`).
+- [ ] Navigate to FamilyWarden Overview and verify profiles are displayed.
+- [ ] Create a profile and verify it appears.
+- [ ] Test the "Block" / "Allow" buttons and verify status changes.
 
 ---
 
@@ -204,222 +207,240 @@ Claude Code: Please tick off these checkboxes `[x]` as you complete each major s
     - Nested `config_foreach` closure bug ($profile not visible in nested callbacks) → fixed with `_cur_profile` global
     - `compile_and_apply` return code not caught → added error handling to all ubus handlers
 - [x] 12. Full APK install test
-  - APK'er installeret korrekt via `apk add`
-  - postinst hook kørte (type='nftables', ingen name option)
-  - include fil genereret med alle regler
-  - `ubus reload`, `block`, `reset`, `ticket`, `status` alle virker
-  - kernel regler verificeret med `nft list`
+  - Packages installed correctly using `apk add`
+  - postinst hook ran (type='nftables', no name option)
+  - Include file generated with all rules
+  - `ubus reload`, `block`, `reset`, `ticket`, and `status` all work
+  - Kernel rules verified using `nft list`
 - [x] 13. UI E2E Testing (Playwright) — **ALL 6 TESTS PASS**
-  Login, overview, block/allow, profiles page, settings page alle verificeret
-  Kør: `cd test/e2e && npx playwright test`
+  Login, overview, block/allow, profiles, and settings pages verified.
+  Run: `cd test/e2e && npx playwright test`
 
 ---
 
-## 14b. Robusthed / self-healing firewall — FÆRDIG (0.5.7, 2026-06-07)
+## 14b. Robustness / self-healing firewall — DONE (0.5.7, 2026-06-07)
 
-Opdaget da rivendell (produktion) sad fast med tom `familywarden_forward` chain
-og manglende include-fil. Tre fixes:
+Discovered when rivendell (production) was stuck with an empty
+`familywarden_forward` chain and a missing include file. Three fixes:
 
-- [x] **`policy='block'` gav ingen regel.** Kun `scheduled` + override genererede
-      regler. Tilføjet `gen_profile_block` → en profil sat permanent til "Blocked"
-      dropper nu alle dens devices (override-regler ligger først, så allow-override vinder).
-- [x] **Validerings-wedge.** `nft -c` validerede inde i den levende `inet fw4`-tabel,
-      så en gammel chain (anden hook/priority) fik validering til at fejle for evigt.
-      Nu valideres i en **throwaway-tabel** (`fw_familywarden_validate`) — isoleret
-      parse-tjek der ikke kan blokeres af live state.
-- [x] **Apply-wedge.** `fw4 reload` fejler "chain already exists with different
-      declaration" når live-chainens priority afviger fra include, og dropper så
-      vores include. Nu **slettes chainen før `fw4 reload`** → genskabes rent hver gang.
+- [x] **`policy='block'` produced no rule.** Only scheduled profiles and overrides
+      generated rules. Added `gen_profile_block`: a permanently "Blocked" profile
+      now drops all its devices. Override rules come first, so allow overrides win.
+- [x] **Validation deadlock.** `nft -c` validated inside the live `inet fw4` table,
+      so an old chain with another hook/priority could cause permanent failure.
+      Now validation uses a **disposable table** (`fw_familywarden_validate`):
+      an isolated parse check that live state cannot obstruct.
+- [x] **Apply deadlock.** `fw4 reload` fails with "chain already exists with different
+      declaration" when the live chain's priority differs from the include, then
+      omits our include. Now the **chain is deleted before `fw4 reload`**, allowing
+      a clean recreation every time.
 
-Verificeret på QEMU: injicér stale priority-0 chain + regel, kør KUN
-`ubus call familywarden reload` → selv-healer til priority filter+1, stale-regel væk.
-Rivendell: tom chain + manglende include fuldt gendannet af ét reload.
+QEMU verification: inject a stale priority-0 chain and rule, run only
+`ubus call familywarden reload` → priority filter+1 restored, stale rule removed.
+On rivendell, one reload fully restored the empty chain and missing include.
 
-> Migrations-note: gamle installationer kan have firewall-include registreret
-> gammel-stil (`name='familywarden'`, uden `type='nftables'`/`fw4_compatible='1'`).
-> postinst tilføjer kun hvis ingen findes — tjek for dubletter ved opgradering:
-> `uci show firewall | grep familywarden.include` skal give præcis én entry m. type=nftables.
-
----
-
-## 14c. Schedule-semantik: allow-vindue — FÆRDIG (0.5.9, 2026-06-07)
-
-Bug: schedules droppede *inde i* vinduet (blok-vindue), men spec/UI siger
-"blocks by default and only allows access during the time windows" = allow-vindue.
-En profil med 07:00–18:45 var derfor fri om aftenen i stedet for blokeret.
-
-- [x] Omskrevet til **accept-vindue + default drop pr. enhed**: for hver enhed
-      accept-regler for hvert allow-vindue, derefter en afsluttende `drop`.
-      Inde i vindue → accept (terminerer); ellers falder ned til drop.
-      Flere/overlappende vinduer OR'er sammen (ingen merge). Override-accepts
-      ligger før i chainen, så midlertidig allow stadig vinder.
-- [x] Overnight (start>stop): accept `>=start` på dagen + accept `<stop` på næste
-      dag (day_shift). Profil uden vinduer = blokeret 24/7.
-- [x] ~14 regler/enhed/uge → ~2. Verificeret QEMU (daytime/overnight/override-orden)
-      + rivendell.
-
-> Bemærk semantik: vinduet er ALLOW-perioden. 07:00–21:45 = fri i dagtimerne,
-> blokeret 21:45–07:00. Vil man blokeres om aftenen, sættes sluttid tidligere.
+> Migration note: old installations may register the include using the old format
+> (`name='familywarden'`, without `type='nftables'`/`fw4_compatible='1'`).
+> postinst adds an include only if none exists. Check for duplicates on upgrade:
+> `uci show firewall | grep familywarden.include` should return exactly one entry
+> with type=nftables.
 
 ---
 
-## 14d. Version-info + pålidelig config-reload — FÆRDIG (0.6.4 / 0.3.7, 2026-06-07)
+## 14c. Schedule semantics: allow windows — DONE (0.5.9, 2026-06-07)
 
-- [x] **Pålidelig reload** (0.6.1): to bugs gjorde at UCI-ændringer aldrig nåede
-      firewallen uden manuelt reload (brugeren måtte hand-edite include):
-  - `$BIN reload` var no-op (manglede top-level `reload)` i dispatch) → boot +
-    procd-trigger gjorde intet. Fixet med `reload)` → `ubus_reload`.
-  - procd holder kun reload-trigger aktiv mens servicen har en KØRENDE instans;
-    `start_service` åbnede ingen. Tilføjet idle-instans (`sleep` + respawn) så
-    `procd_add_reload_trigger` rent faktisk fyrer.
-- [x] **Version-fane** (0.6.4 / 0.3.7): ny ubus-metode `version` (read-ACL i begge
-      acl.d-filer) returnerer `{backend, frontend}` via `apk -v list -I`. Settings-
-      siden viser et Info-kort med begge versioner (fejler blødt → "unknown").
-- [x] Verificeret QEMU 10-punkts checkliste + rivendell; version vises rent.
+Bug: schedules dropped traffic *inside* the window (a block window), while the
+specification/UI says "blocks by default and only allows access during the time windows".
+A profile with 07:00–18:45 was therefore allowed in the evening instead of blocked.
 
----
+- [x] Rewritten as **accept windows + default drop per device**: accept rules for
+      each allow window, then a final drop. Inside a window → accept (terminates);
+      otherwise fall through to drop. Multiple/overlapping windows combine as OR
+      without merging. Override accepts are earlier in the chain, so temporary
+      allowance still wins.
+- [x] Overnight (start>stop): accept `>=start` on the selected day and `<stop`
+      on the next day (day_shift). No windows means blocked 24/7.
+- [x] Reduced ~14 rules/device/week to ~2. Verified on QEMU
+      (daytime/overnight/override order) and rivendell.
 
-## 15. Test-strategi — PLANLAGT (ikke bygget endnu)
-
-**Princip:** "Definition of done" = **adfærds-bevis**, ikke struktur. Alt det kaos
-vi har set (validerings-wedge, fw4-drop, no-op reload, inaktiv trigger, inverteret
-schedule) ville være fanget af Lag 1. Tre lag, prioriteret:
-
-### Lag 1 — QEMU end-to-end adfærdstest  ← anti-kaos-gaten
-Fil: `scripts/test-behavior.sh` (committet). Antager QEMU kører; installerer den
-byggede apk, sætter en kendt config (1 scheduled profil + device + vindue), kører
-assertions med PASS/FAIL og exit≠0 ved fejl, rydder op til sidst.
-Checklist (hver = assert):
-1. boot/start → `/var/etc/familywarden.include` findes
-2. kørende procd-instans (`ubus call service list`)
-3. scheduled profil → accept-regel for vinduet + trailing default-drop
-4. allow-vindue: drop *udenfor* vinduet (accept dækker kun vinduet)
-5. **UI-apply propagerer**: `uci set stop=UNIK; uci commit; reload_config; sleep`
-   → include afspejler UNIK uden manuelt reload (beviser trigger)
-6. override block→`override:block` drop; allow→`override:allow` accept før sched-drop;
-   reset→ingen override
-7. ticket N min → `override:allow` + expiry sat
-8. self-heal: injicér stale priority-0 chain+regel; `ubus reload`
-   → priority filter+1 genskabt, stale væk
-9. reboot-persistens: `/etc/init.d/familywarden restart` → include+chain genskabt
-10. `ubus call familywarden version` → ren backend/frontend (ingen hale-tekst)
-
-### Lag 2 — Host logik-unit-test (hurtig, ingen router)
-Fil: `test/unit/schedule_test.sh` (kører med `sh` på host, busybox-kompatibelt).
-Tester ren matematik/regel-generering isoleret: `time_to_minutes`, `day_to_num`,
-`day_shift`, og accept-regel-output for: dagtimevindue, overnight-split, flere
-vinduer, start==stop, tomme dage. Asserter eksakte regel-strenge. ~1s.
-
-### Lag 3 — Playwright (udvid eksisterende `test/e2e/familywarden.spec.js`)
-Tilføj: version-Info-boks viser to versionsstrenge; schedule-edit + Save & Apply
-afspejles. Mindst kritisk; UI-regression.
-
-### Kør / CI
-- `sh test/unit/schedule_test.sh`        (host, altid)
-- `sh scripts/test-behavior.sh`          (kræver kørende QEMU)
-- `cd test/e2e && npx playwright test`   (kræver QEMU)
-- evt. `scripts/test-all.sh` der kører unit altid + behavior/playwright hvis QEMU svarer
-
-### Reglen
-Intet PLAN.md-punkt markeres `[x]` før den relevante **Lag 1**-assertion passerer.
-Lag 1 er gaten.
-
-### Byggerækkefølge (besluttet: planlæg først)
-1. Lag 1 (`scripts/test-behavior.sh`)  2. Lag 2 (host-unit)  3. Lag 3 (Playwright)
+> Semantics: the window is the ALLOW period. 07:00–21:45 means allowed during
+> daytime and blocked 21:45–07:00. Set an earlier stop time to block earlier.
 
 ---
 
-## 16. UI-polish + schedule/policy save-bug — FÆRDIG (2026-06-10, luci 0.3.17)
+## 14d. Version info + reliable config reload — DONE (0.6.4 / 0.3.7, 2026-06-07)
 
-Kun frontend (`luci-app-familywarden`). Backend røres ikke.
-
-### A. Bug: policy nulstilles ved samtidig schedule-tilføjelse — FIXET
-Sætter man policy → "Scheduled" OG tilføjer en schedule i samme ombæring → Save &
-Apply, endte man med schedulen men policy tilbage på "Unrestricted".
-- **Årsag:** Schedule-GridSection-modalens `map.save()` re-renderede map'et og
-  efterlod en stale policy-widget. Patch-forsøg (onchange-staging, parse-override)
-  fejlede → **frisk design**: schedules redigeres inline i en `form.TableSection`
-  (ingen modal → ingen re-render → bug-klassen strukturelt umulig).
-- [x] **Fix:** Inline TableSection m. custom `handleAdd` (`map.save(null, true)`,
-  ikke prototype-handleAdd som double-adder). `rmempty=true` overalt.
-- [x] **Days-widget:** dropdown var et "UI-misfoster" og ui.Select-checkboxenes
-  `getValue()` returnerede null (days tabt ved gem). Nu 7 rene inline checkboxes
-  (`input[data-day]` i `div.fw-days`) med egen `renderWidget` + `formvalue` —
-  round-trip verificeret på disk (`days='mon' 'tue'`).
-- [x] **Rollback-bug i create/delete-profil:** `uci.apply()` resolver FØR den
-  detachede confirm-poll (setTimeout 1s) kører; redirect afbrød confirm →
-  routeren rullede committet tilbage ~10s senere (forklarede al flakiness:
-  profil "oprettet"/"slettet" og så genopstået). Fix: eksplicit
-  `uci.callConfirm()` i kæden før redirect, også i catch-grenen.
-- [x] **Verifikation:** Playwright-tests "policy stays Scheduled…" (asserter
-  policy OG days-persistens efter reload) + hærdet delete-test (dialog-accept i
-  beforeEach, unikt offernavn, waitForURL-prædikat uden `?name=`). 10/10 grønne
-  mod installeret 0.3.17 på QEMU; deployet rivendell.
-
-### B. Settings native rendering (`settings.js`) — FÆRDIG
-- [x] Custom wrapper fjernet → `m.render()` direkte (native side-chrome).
-- [x] `'require uci'` tilføjet.
-
-### C. Af-customisér farver (profil + settings; Overview uændret) — FÆRDIG
-- [x] Action-knapper → native `cbi-button-positive/negative/neutral/action`.
-- [x] Status-dot via tema-variabler (`--success/--error/--warn-color`).
-- [x] `.fw-tab-add` → `--primary-color-high`.
-
-### Out of scope (bevidst)
-Overview-dashboardets card-design/farver; profil-skifter → native faner; in-page
-faner i profil-editor; backend-ændringer.
+- [x] **Reliable reload** (0.6.1): two bugs prevented UCI changes reaching the
+      firewall without manual reload; the user had to edit the include directly:
+  - `$BIN reload` was a no-op (missing top-level `reload)` dispatch), so boot
+    and procd triggers did nothing. Fixed with `reload)` → `ubus_reload`.
+  - procd keeps reload triggers active only while a service has a RUNNING instance.
+    `start_service` opened none. Added an idle `sleep` instance with respawn so
+    `procd_add_reload_trigger` actually fires.
+- [x] **Version tab** (0.6.4 / 0.3.7): new `version` ubus method (read ACL in
+      both acl.d files) returns `{backend, frontend}` using `apk -v list -I`.
+      Settings displays an Info card with both versions (graceful fallback: "unknown").
+- [x] Verified using a ten-point QEMU checklist and on rivendell; clean version output.
 
 ---
 
-## 14. Ulysses-pagt (self-binding lock) — ERSTATTET
+## 15. Test strategy — PLANNED (not yet implemented at the time)
 
-> Implementeret i 0.8.0 med et ændret design (stående lås med 24 t karenstid + ad hoc-pagt). Se `plans/roadmap.md` Fase 1 og CLAUDE.md "Ulysses". Teksten nedenfor er historisk.
+**Principle:** "Definition of done" means **behavioral evidence**, not structure.
+All observed failures (validation deadlock, fw4 omitting includes, no-op reload,
+inactive trigger, inverted schedules) would have been caught by Layer 1.
+Three prioritized layers:
 
-### Baggrund
-En forælder (med ADHD) vil **binde sig selv til masten** (Ulysses/Odysseus): fx
-"internet slukket 23:00–06:00, og jeg kan IKKE tale mig selv fra det i øjeblikket".
-En beslutning truffet nu, der fjerner det fremtidige jegs mulighed for at overrule.
+### Layer 1 — QEMU end-to-end behavior test ← regression gate
 
-Besluttet med bruger:
-- **Hele profilen fryses**: hverken override (block/allow/ticket/reset) eller
-  redigering i UI mens pagten er aktiv.
-- **Escape hatch = kun root via SSH**: UI/ubus nægter at bryde pagten før udløb.
-- **Skal overleve reboot** (kritisk) — ellers er escape bare at genstarte routeren.
+File: `scripts/test-behavior.sh` (recorded as committed in this historical plan).
+Assumes QEMU is running; installs the built package, sets a known configuration
+(one scheduled profile/device/window), runs PASS/FAIL assertions, exits nonzero on
+failure, and cleans up afterward.
 
-### Kernebeslutning: persistent state
-Pagter ligger i `/etc/familywarden.pacts` (mode 600, root), format `profile=expiry_epoch`.
-IKKE i `/tmp/familywarden.state` (ryddes ved reboot). Denne fil ER root-escape-hatchen:
+Checklist (each item is an assertion):
+1. Boot/start → `/var/etc/familywarden.include` exists
+2. Running procd instance (`ubus call service list`)
+3. Scheduled profile → window accept rule + trailing default drop
+4. Allow window: drop *outside* the window; accept covers only the window
+5. **UI apply propagates:** `uci set stop=UNIK; uci commit; reload_config; sleep`
+   → include reflects UNIK without manual reload (proves the trigger)
+6. Override block → `override:block` drop; allow → `override:allow` accept before
+   schedule drop; reset → no override
+7. Ticket N minutes → `override:allow` with expiry
+8. Self-heal: inject stale priority-0 chain/rule, `ubus reload`
+   → priority filter+1 restored and stale state removed
+9. Restart persistence: `/etc/init.d/familywarden restart` recreates include/chain
+10. `ubus call familywarden version` returns clean backend/frontend, without trailing text
+
+### Layer 2 — Host logic unit tests (fast, no router)
+
+File: `test/unit/schedule_test.sh` (host `sh`, BusyBox-compatible).
+Isolated tests of math/rule generation: `time_to_minutes`, `day_to_num`,
+`day_shift`, and exact accept-rule strings for daytime, overnight splits,
+multiple windows, start==stop, and empty days. About one second.
+
+### Layer 3 — Playwright (extend `test/e2e/familywarden.spec.js`)
+
+Add checks for two version strings in the Info box, and persistence after schedule
+editing and Save & Apply. Lower priority: UI regression coverage.
+
+### Running / CI
+- `sh test/unit/schedule_test.sh` (host, always)
+- `sh scripts/test-behavior.sh` (requires running QEMU)
+- `cd test/e2e && npx playwright test` (requires QEMU)
+- Optionally `scripts/test-all.sh`: always run unit tests; behavior/Playwright if QEMU responds
+
+### Rule
+
+Do not mark a PLAN.md item `[x]` until its relevant **Layer 1** assertion passes.
+Layer 1 is the gate.
+
+### Build order (decision: plan first)
+
+1. Layer 1 (`scripts/test-behavior.sh`), 2. Layer 2 (host unit tests), 3. Layer 3 (Playwright).
+
+---
+
+## 16. UI polish + schedule/policy save bug — DONE (2026-06-10, LuCI 0.3.17)
+
+Frontend only (`luci-app-familywarden`); no backend changes.
+
+### A. Bug: policy resets when adding a schedule at the same time — FIXED
+
+Changing policy to "Scheduled" AND adding a schedule before Save & Apply saved the
+schedule but reverted the policy to "Unrestricted".
+
+- **Cause:** the schedule GridSection modal's `map.save()` re-rendered the map,
+  leaving a stale policy widget. Attempts to patch onchange staging and parse
+  overrides failed. **Redesign:** edit schedules inline using `form.TableSection`.
+  No modal → no re-render → this class of bug is structurally avoided.
+- [x] **Fix:** inline TableSection with custom `handleAdd` (`map.save(null, true)`,
+  not the prototype handleAdd that adds twice). `rmempty=true` throughout.
+- [x] **Days widget:** the dropdown was awkward and ui.Select checkbox
+  `getValue()` returned null, losing days on save. Replaced with seven inline
+  checkboxes (`input[data-day]` in `div.fw-days`), custom `renderWidget` and
+  `formvalue`. Round trip verified on disk (`days='mon' 'tue'`).
+- [x] **Profile create/delete rollback:** `uci.apply()` resolves BEFORE the
+  detached confirm poll (setTimeout 1 s). Redirect interrupted confirmation,
+  causing rollback about ten seconds later. This explained profiles seemingly
+  created/deleted and then reverting. Fix: explicit `uci.callConfirm()` in the
+  chain before redirect, including the catch branch.
+- [x] **Verification:** Playwright "policy stays Scheduled…" checks both policy
+  and day persistence after reload. Hardened delete test: accept dialogs in
+  beforeEach, unique victim name, waitForURL predicate excluding `?name=`.
+  10/10 passed against installed 0.3.17 in QEMU; deployed to rivendell.
+
+### B. Native Settings rendering (`settings.js`) — DONE
+- [x] Removed custom wrapper; call `m.render()` directly for native page chrome.
+- [x] Added `'require uci'`.
+
+### C. Use native colors (profiles + settings; Overview unchanged) — DONE
+- [x] Action buttons use native `cbi-button-positive/negative/neutral/action`.
+- [x] Status dots use theme variables (`--success/--error/--warn-color`).
+- [x] `.fw-tab-add` uses `--primary-color-high`.
+
+### Deliberately out of scope
+
+Overview card design/colors, replacing the profile switcher with native tabs,
+in-page tabs in the profile editor, and backend changes.
+
+---
+
+## 14. Ulysses pact (self-binding lock) — SUPERSEDED
+
+> Implemented in 0.8.0 with a different design. See `plans/roadmap.md` Phase 1
+> and CLAUDE.md "Ulysses". The following is historical, not the implemented API.
+
+### Background
+
+A parent with ADHD wants to **bind themselves to the mast** (Ulysses/Odysseus):
+"Internet off 23:00–06:00, and I CANNOT talk myself out of it in the moment."
+A decision made now removes the future self's ability to override it.
+
+Agreed with the user:
+- **Freeze the entire profile:** no overrides (block/allow/ticket/reset) or UI edits
+  while the pact is active.
+- **Escape hatch: root over SSH only.** UI/ubus refuse early release.
+- **Must survive reboot** (critical), otherwise restarting the router is an escape.
+
+### Core decision: persistent state
+
+Pacts live in `/etc/familywarden.pacts` (mode 600, root), `profile=expiry_epoch`,
+NOT `/tmp/familywarden.state`, which is cleared on reboot. This file IS the
+root escape hatch:
 `sed -i '/^dennis=/d' /etc/familywarden.pacts && /etc/init.d/familywarden reload`.
 
 ### TODO
 - [ ] Backend `familywarden/usr/lib/rpcd/familywarden`:
-  - [ ] pact-helpers: `pact_get/pact_set/pact_del/pact_active` (læser `$FW_PACTS`)
-  - [ ] `gc_expired_pacts()` (kopi af `gc_expired_tickets`-mønster), kald i `compile_and_apply`
-  - [ ] `ubus_pact <profile> <minutes>`: expiry = now+min*60; kun forlæng aldrig forkort;
-        ryd allow-override; persist; recompile. **Ingen `unpact`-metode** (det er pointen).
-  - [ ] Håndhævelse: `ubus_block/allow/reset/ticket` afviser hvis `pact_active` →
+  - [ ] Helpers `pact_get/pact_set/pact_del/pact_active` (read `$FW_PACTS`)
+  - [ ] `gc_expired_pacts()`, patterned after `gc_expired_tickets`, called by `compile_and_apply`
+  - [ ] `ubus_pact <profile> <minutes>`: expiry = now+min*60; extend only, never shorten;
+        clear allow override, persist, recompile. **No `unpact` method** (that is the point).
+  - [ ] Reject `ubus_block/allow/reset/ticket` when `pact_active`:
         `{"error":"locked by Ulysses pact","locked_until":<epoch>}`
-  - [ ] `gen_override_rules`: spring allow-override over for pacted profil
-  - [ ] Eksponér `"pact_until":<epoch|0>` i `ubus_list_profile` + `ubus_status`
-  - [ ] Dispatch: `pact` i `list)`-skema + `pact)`-case i `call)`
-- [ ] ACL: tilføj `pact` til write i `familywarden/.../acl.d/familywarden.json`
-      og `luci-app-familywarden/.../acl.d/luci-app-familywarden.json`
+  - [ ] `gen_override_rules`: skip allow override for bound profiles
+  - [ ] Expose `"pact_until":<epoch|0>` in `ubus_list_profile` and `ubus_status`
+  - [ ] Dispatch: `pact` in `list)` schema and `pact)` case in `call)`
+- [ ] Add `pact` write permission in both
+      `familywarden/.../acl.d/familywarden.json` and
+      `luci-app-familywarden/.../acl.d/luci-app-familywarden.json`
 - [ ] Frontend (`profiles.js` + `overview.js`):
-  - [ ] `callPact` rpc.declare + "🔒 Bind til masten"-knap m. klokkeslæt-vælger
-        (beregn minutter til næste forekomst), bekræftelses-advarsel
-  - [ ] Når `pact_until` i fremtiden: read-only frysning, skjul Delete/override-knapper,
-        lås-banner m. live nedtælling (genbrug `override_expires`-nedtælling)
-- [ ] i18n: danske strenge for nye labels/advarsler
-- [ ] Version-bump + `bash scripts/build-apk-docker.sh` + deploy QEMU
+  - [ ] `callPact` rpc.declare, "🔒 Bind to the mast" button with time picker
+        (minutes until the next occurrence), confirmation warning
+  - [ ] Future `pact_until`: read-only profile, hide Delete/override controls,
+        lock banner with live countdown (reuse `override_expires` countdown)
+- [ ] i18n: Danish translations for new labels/warnings
+- [ ] Version bump, `bash scripts/build-apk-docker.sh`, deploy to QEMU
 
-### Verifikation (QEMU)
+### Verification (QEMU)
 1. `ubus call familywarden pact '{"profile":"dennis","minutes":1}'` → ok
-2. `allow/block/ticket/reset` på dennis → `error: locked ... locked_until`
-3. `status` → `pact_until` i fremtiden; nft: scheduled/block-regler står, ingen allow-regel
-4. **Reboot QEMU** → pagt stadig aktiv (beviser `/etc`-persistens)
-5. Vent til udløb → `reload` → gc rydder pagt; overrides virker igen
-6. Root-escape: slet linje i `/etc/familywarden.pacts` + reload → pagt væk straks
-7. Playwright: kort pagt → lås-banner + disablede kontroller; allow afvises; efter udløb retur
+2. `allow/block/ticket/reset` for dennis → `error: locked ... locked_until`
+3. `status` → future `pact_until`; nft scheduled/block rules remain, no allow rule
+4. **Reboot QEMU** → pact still active (proves persistence in `/etc`)
+5. Wait for expiry → `reload` → GC removes pact; overrides work again
+6. Root escape: delete line in `/etc/familywarden.pacts` + reload → immediate release
+7. Playwright: short pact → lock banner/disabled controls; allow rejected; normal after expiry
 
-> Note (server-side scope): config-redigerings-frysning håndhæves på UI-niveau.
-> Hård revert af UCI-edits er bevidst ude af scope — root-SSH er den aftalte escape.
+> Server-side scope: profile edit freezing is enforced in the UI.
+> Hard reversion of UCI edits is deliberately out of scope: root SSH is the agreed escape.
