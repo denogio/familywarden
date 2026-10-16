@@ -1,30 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Mast</string>
-    <string name="title">⚓ Ulysses Mast</string>
-    <string name="device_owner_yes">Device owner: yes</string>
-    <string name="device_owner_no">Device owner: NO — run: adb shell dpm set-device-owner me.hojgaard.ulysses.mast/.MastAdminReceiver</string>
-    <string name="not_paired">Not paired with a FamilyWarden router.</string>
-    <string name="paired_with">Router: %1$s (key %2$s)</string>
-    <string name="last_sync">Last sync: %1$s</string>
-    <string name="never_synced">Never synced</string>
-    <string name="last_error">Last sync attempt: %1$s</string>
-    <string name="captain">Captain: %1$s</string>
-    <string name="no_pact">No pact</string>
-    <string name="pact_ongoing">Bound by an ongoing pact</string>
-    <string name="pact_until">Bound until %1$s</string>
-    <string name="release_at">Sailing home: free at %1$s</string>
-    <string name="hotspot_blocked">🔒 Hotspot and tethering are blocked now</string>
-    <string name="hotspot_allowed">Hotspot and tethering are allowed now</string>
-    <string name="sync_now">Sync now</string>
-    <string name="pair">Pair with router</string>
-    <string name="scan">Scan pairing code</string>
-    <string name="pair_manual">Pair manually (enter address)</string>
     <string name="pair_locked">Not possible while bound by a pact.</string>
-    <string name="pair_host">Router address (on the home network)</string>
-    <string name="pair_failed">Could not reach the router: %1$s</string>
-    <string name="pair_confirm">Router key fingerprint:\n\n%1$s\n\nCheck that it matches the one shown in LuCI (FamilyWarden → Settings → Ulysses → Ulysses Mast).</string>
-    <string name="release">Remove Mast</string>
-    <string name="release_refused">Not possible: the router reports a pact (or could not be reached). Mast can only be removed when there is no pact.</string>
-    <string name="release_confirm">Lift all restrictions and stop being device owner? You can uninstall Mast afterwards.</string>
+    <string name="pair_failed">Pairing failed: %1$s</string>
 </resources>

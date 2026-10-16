@@ -103,6 +103,31 @@ class PolicyTest {
         assertNull(Policy.nextChange(null, now))
     }
 
+    @Test fun nextBlockChangeSkipsMidnightAndUnrelatedDays() {
+        assertEquals(at(13, "06:00"), Policy.nextBlockChange(state(), at(12, "22:00")))
+        val weekly = state(windows = listOf(window("sun", "10:00", "11:00")))
+        assertEquals(at(18, "10:00"), Policy.nextBlockChange(weekly, at(12, "22:00")))
+    }
+
+    @Test fun nextBlockChangeSkipsOverlappingAllowWindows() {
+        val s = state(windows = listOf(window("mon", "06:00", "12:00"), window("mon", "10:00", "21:30")))
+        assertEquals(at(12, "21:30"), Policy.nextBlockChange(s, at(12, "08:00")))
+    }
+
+    @Test fun nextBlockChangeDoesNotInventAnUnlockTime() {
+        assertNull(Policy.nextBlockChange(state(policy = "block"), at(12, "22:00")))
+        assertNull(Policy.nextBlockChange(state(pact = false), at(12, "22:00")))
+        assertNull(Policy.nextBlockChange(null, at(12, "22:00")))
+    }
+
+    @Test fun nextBlockChangeUsesPactExpiryOnlyIfBlockChanges() {
+        val now = at(12, "20:00")
+        val until = now.plusMinutes(10).toEpochSecond()
+        assertNull(Policy.nextBlockChange(state(type = "until", until = until), now))
+        assertEquals(now.plusMinutes(10), Policy.nextBlockChange(state(type = "until", until = until, policy = "block"), now))
+        assertEquals(now.plusMinutes(10), Policy.nextBlockChange(state(policy = "block", releaseAt = until), now))
+    }
+
     @Test fun parseDaysIgnoresJunk() =
         assertEquals(3, Policy.parseDays(" mon  TUE xyz sun ").size)
 }

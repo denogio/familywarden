@@ -9,6 +9,14 @@ og det er den eneste måde, en app kan spærre hotspot på mod ejerens vilje.
 
 ![Ulysses Mast: ikke parret, bundet af en pagt, efter frigørelse](images/mast-screens.png)
 
+## Brugerflade
+
+Appen bruger Jetpack Compose og Material 3 med lyst/mørkt tema, serif-overskrifter og
+et nattehavskort ved spærring. Status, pagt, sync og routerdetaljer kommer fra den
+samme signerede cache som håndhævelsen. Under en pagt skjules parring og fjernelse.
+Nedtællingen til næste spærring/åbning viser en faktisk ændring, ikke blot næste
+alarm-evaluering. Skærmen opdateres også ved lokalt udløb uden en ny sync.
+
 ## Sådan virker den
 
 - Appen henter pagt og tidsplan fra routeren på `http://<router>:7700/cgi-bin/mast`.
@@ -34,10 +42,12 @@ Du skal bruge en computer med `adb` og telefonen med USB-fejlfinding slået til
 
 Android tillader kun at udnævne en Device Owner, når der ikke er konti på telefonen.
 
-**Dine data forsvinder ikke.** At fjerne en konto er ikke det samme som at nulstille
-telefonen. Billeder, filer, apps og SMS bliver liggende. Det, der er synkroniseret med
-kontoen (kontakter, kalender, Gmail), forsvinder fra telefonen, men ligger stadig i
-skyen og kommer tilbage, når du logger ind igen.
+**Tag backup først.** At fjerne en konto er ikke en fabriksnulstilling, men hvad der
+fjernes lokalt afhænger af app og kontotype. Synkroniserede data kan normalt hentes
+igen; usynkroniserede data og data i slettede profiler kan gå tabt. Kontrollér derfor
+backup, genoprettelseskoder og kontosynkronisering, før du fjerner noget. Enrollment på
+en fysisk telefon er ikke verificeret; Android-version, producent og eksisterende
+profiler kan betyde, at en fabriksnulstilling er nødvendig.
 
 Tjek det her, før du går i gang:
 
@@ -105,8 +115,13 @@ GitHub-secrets (`MAST_KEYSTORE_B64`) og lokalt i `~/.config/familywarden/mast-re
 
 ## Test
 
-- `android/`: `./gradlew testDebugUnitTest` (Policy, usign, parring)
+- `android/`: `./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease`.
+  36 unit-tests dækker Policy, usign, parring og UI-mapping.
 - `scripts/test-mast-emulator.sh <router-apk-dir>`: Android 15-emulator med debug-APK'en som
-  Device Owner mod en FamilyWarden-router i Docker. Testen dækker pagt, frigørelse, ny pagt,
-  genstart uden router, og at `pm clear` og afinstallation afvises. I CI kører den via
-  *workflow_dispatch* med `mast_emulator`.
+  Device Owner mod en FamilyWarden-router i Docker. Testen dækker rigtig parringsbekræftelse,
+  Compose i lyst/mørkt tema og 200 % tekst, pagt, frigørelse, ny pagt, genstart uden router,
+  og at `pm clear` og afinstallation afvises. En fjernelsesdialog åbnet før en ny pagt
+  må ikke kunne fjerne appen bagefter. I CI kører testen via *workflow_dispatch* med
+  `mast_emulator`. Sæt `MAST_SCREENSHOT_DIR=/tmp/mast-ui` for skærmbilleder.
+- Release-buildet minificeres med R8 og ressource-shrinking (ca. 4,1 MB APK lokalt).
+  Emulatorens runtime-tests bruger debug-buildet; fysisk hotspot/Pixel-adfærd er endnu ikke testet.

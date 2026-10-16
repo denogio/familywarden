@@ -1,84 +1,69 @@
 package me.hojgaard.ulysses.mast
 
-import android.app.Activity
-import android.app.AlertDialog
 import android.content.Intent
-import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.net.ConnectivityManager
 import android.os.Bundle
-import android.view.ViewGroup.LayoutParams.MATCH_PARENT
-import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-import android.view.WindowInsets
-import android.widget.Button
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import me.hojgaard.ulysses.mast.ui.*
+import me.hojgaard.ulysses.mast.ui.theme.MastTheme
 import java.net.Inet4Address
-import java.text.DateFormat
-import java.util.Date
+import java.time.ZonedDateTime
 
-/** One screen: status, pairing, sync, and leaving (only without a pact). */
-class MainActivity : Activity() {
-    private lateinit var badge: TextView
-    private lateinit var status: TextView
-    private lateinit var scanButton: Button
-    private lateinit var pairButton: Button
-    private lateinit var releaseButton: Button
+/** Compose renders state; pairing, signed sync and device-owner actions stay here. */
+class MainActivity : ComponentActivity() {
+    private var ui by mutableStateOf(MastUiState(System.currentTimeMillis(), SetupState.NotPaired))
+    private var dialog: MastDialog? = null
+    private var pendingPairing: Sync.PairingInfo? = null
+    private var busy = false
+
+    private val actions = MastActions(
+        onSync = { refresh() },
+        onCheckDeviceOwner = { render() },
+        onScanPairingCode = { scan() },
+        onPairManually = {
+            if (!bound()) {
+                dialog = MastDialog.ManualAddress(Store(this).host ?: defaultGateway() ?: "192.168.1.1")
+                render()
+            }
+        },
+        onSubmitAddress = { host -> fetchPairing(host) },
+        onConfirmPairing = { pendingPairing?.let { store(it) } },
+        onRemove = { release(confirm = false) },
+        onConfirmRemove = { release(confirm = true) },
+        onDismissDialog = { dialog = null; pendingPairing = null; render() },
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val dp = resources.displayMetrics.density
-        val pad = (16 * dp).toInt()
-        badge = TextView(this).apply {
-            textSize = 20f
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(pad, pad, pad, pad)
-        }
-        status = TextView(this).apply { textSize = 15f; setLineSpacing(4 * dp, 1f) }
-        scanButton = Button(this).apply {
-            text = getString(R.string.scan)
-            setOnClickListener { scan() }
-        }
-        pairButton = Button(this).apply { setOnClickListener { pair() } }
-        val syncButton = Button(this).apply {
-            text = getString(R.string.sync_now)
-            setOnClickListener { background({ Mast.refresh(this@MainActivity, sync = true) }) { render() } }
-        }
-        releaseButton = Button(this).apply {
-            text = getString(R.string.release)
-            setOnClickListener { release() }
-        }
-        val gap = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = pad }
-        val column = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad, pad, pad)
-            addView(TextView(context).apply {
-                text = getString(R.string.title)
-                textSize = 26f
-                setTypeface(typeface, Typeface.BOLD)
-            })
-            addView(badge, LinearLayout.LayoutParams(gap))
-            addView(status, LinearLayout.LayoutParams(gap))
-            addView(syncButton, LinearLayout.LayoutParams(gap))
-            addView(scanButton)
-            addView(pairButton)
-            addView(releaseButton)
-        }
-        // Edge-to-edge (Android 15+): keep content clear of the status and navigation bars
-        val scroll = ScrollView(this).apply { addView(column) }
-        scroll.setOnApplyWindowInsetsListener { v, insets ->
-            val bars = insets.getInsets(WindowInsets.Type.systemBars())
-            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            insets
-        }
-        setContentView(scroll)
+        enableEdgeToEdge()
+        render()
+        setContent { MastTheme { MastScreen(ui, actions) } }
         handlePairingLink(intent)
+        // Re-read the cache after worker/alarm updates, and expire finite pacts locally.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                while (true) {
+                    render()
+                    delay(1_000)
+                }
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -86,143 +71,133 @@ class MainActivity : Activity() {
         handlePairingLink(intent)
     }
 
-    private fun handlePairingLink(intent: Intent?) {
-        val uri = intent?.data?.toString() ?: return
-        if (uri.startsWith("ulyssesmast:")) confirmPairing(uri)
+    override fun onResume() {
+        super.onResume()
+        render()
+        refresh()
     }
 
+    private fun handlePairingLink(intent: Intent?) {
+        intent?.data?.toString()?.takeIf { it.startsWith("ulyssesmast:") }?.let(::confirmPairing)
+    }
+
+    private fun bound(): Boolean = Store(this).state?.let {
+        Policy.pactActive(it, System.currentTimeMillis() / 1000)
+    } ?: false
+
     private fun scan() {
+        if (bound() || busy) return
         val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
         GmsBarcodeScanning.getClient(this, options).startScan()
-            .addOnSuccessListener { code -> code.rawValue?.let { confirmPairing(it) } }
+            .addOnSuccessListener { code -> code.rawValue?.let(::confirmPairing) }
             .addOnFailureListener { e -> message(getString(R.string.pair_failed, e.message)) }
     }
 
-    /** The QR comes from LuCI (logged in), so its key is trusted; still show what is pinned. */
     private fun confirmPairing(uri: String) {
-        if (!pairButton.isEnabled) return message(getString(R.string.pair_locked))
+        if (bound()) return message(getString(R.string.pair_locked))
         val info = try {
             Sync.parsePairingUri(uri)
         } catch (e: Exception) {
             return message(getString(R.string.pair_failed, e.message))
         }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.pair)
-            .setMessage(getString(R.string.pair_confirm, "${info.host}\n${info.fingerprint}"))
-            .setPositiveButton(android.R.string.ok) { _, _ -> store(info) }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        showPairing(info)
+    }
+
+    private fun showPairing(info: Sync.PairingInfo) {
+        if (bound()) return
+        pendingPairing = info
+        dialog = MastDialog.ConfirmPairing(info.host, info.fingerprint)
+        render()
+    }
+
+    private fun fetchPairing(host: String) {
+        if (bound() || busy) return
+        background({ Sync.fetchPairingInfo(host) }) { result ->
+            result.fold(::showPairing) {
+                dialog = MastDialog.ManualAddress(host, it.message)
+                render()
+            }
+        }
     }
 
     private fun store(info: Sync.PairingInfo) {
-        val store = Store(this)
-        store.unpair()
-        store.host = info.host
-        store.publicKey = info.publicKey
-        background({ Mast.refresh(this, sync = true) }) { render() }
+        if (busy) return
+        dialog = null
+        pendingPairing = null
+        background({
+            // A background sync may have bound us while the confirmation sheet was open.
+            synchronized(Mast) {
+                check(!bound()) { getString(R.string.pair_locked) }
+                Store(this).apply {
+                    unpair()
+                    host = info.host
+                    publicKey = info.publicKey
+                }
+                Mast.refresh(this, sync = true)
+            }
+        }) { result -> result.exceptionOrNull()?.let { message(it.message.orEmpty()) } }
     }
 
-    private fun message(text: String) {
-        AlertDialog.Builder(this).setMessage(text).setPositiveButton(android.R.string.ok, null).show()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        background({ Mast.refresh(this, sync = true) }) { render() }
+    private fun refresh() {
+        if (busy) return
+        background({ Mast.refresh(this, sync = true) }) { result ->
+            result.exceptionOrNull()?.let { message(it.message.orEmpty()) }
+        }
     }
 
     private fun render() {
         val store = Store(this)
         val state = store.state
-        val decision = Mast.decide(this)
-        val fmt = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
-        val lines = mutableListOf<String>()
-        lines += if (Mast.isDeviceOwner(this)) getString(R.string.device_owner_yes) else getString(R.string.device_owner_no)
-        if (store.paired) {
-            lines += getString(R.string.paired_with, store.host, Usign.parsePublicKey(store.publicKey!!).fingerprint)
-            lines += if (store.lastSync > 0) getString(R.string.last_sync, fmt.format(Date(store.lastSync * 1000))) else getString(R.string.never_synced)
-            store.lastError?.let { lines += getString(R.string.last_error, it) }
-            if (state != null && state.captain.isNotEmpty()) {
-                lines += getString(R.string.captain, state.captain)
-                lines += when {
-                    !Policy.pactActive(state, System.currentTimeMillis() / 1000) -> getString(R.string.no_pact)
-                    state.pactType == "ongoing" -> getString(R.string.pact_ongoing)
-                    else -> getString(R.string.pact_until, fmt.format(Date(state.pactUntil * 1000)))
-                }
-                if (state.releaseAt > 0) lines += getString(R.string.release_at, fmt.format(Date(state.releaseAt * 1000)))
-            }
-        } else {
-            lines += getString(R.string.not_paired)
-        }
-        status.text = lines.joinToString("\n")
-        badge.text = getString(if (decision.block) R.string.hotspot_blocked else R.string.hotspot_allowed)
-        badge.setTextColor(Color.WHITE)
-        badge.background = GradientDrawable().apply {
-            cornerRadius = 16 * resources.displayMetrics.density
-            setColor(if (decision.block) Color.parseColor("#B3261E") else Color.parseColor("#2E7D32"))
-        }
-        pairButton.text = getString(R.string.pair_manual)
-        // Re-pairing could point the app at a router without a pact
-        val bound = state != null && Policy.pactActive(state, System.currentTimeMillis() / 1000)
-        pairButton.isEnabled = !bound
-        scanButton.isEnabled = !bound
-        // The cache can be out of date, so tapping still double-checks with the router
-        releaseButton.isEnabled = !bound
+        val now = ZonedDateTime.now()
+        ui = mapMastUiState(
+            nowMillis = now.toInstant().toEpochMilli(),
+            isDeviceOwner = Mast.isDeviceOwner(this),
+            routerHost = store.host,
+            fingerprint = store.publicKey?.let { Usign.parsePublicKey(it).fingerprint },
+            mastState = state,
+            decision = Policy.decide(state, now),
+            nextChangeEpoch = Policy.nextBlockChange(state, now)?.toEpochSecond(),
+            lastSyncEpoch = store.lastSync,
+            lastError = store.lastError,
+            isSyncing = busy,
+            dialog = dialog,
+        )
     }
 
-    private fun pair() {
-        val input = EditText(this).apply { setText(Store(this@MainActivity).host ?: defaultGateway() ?: "192.168.1.1") }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.pair)
-            .setMessage(R.string.pair_host)
-            .setView(input)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                val host = input.text.toString().trim()
-                var info: Sync.PairingInfo? = null
-                var error: String? = null
-                background({ info = runCatching { Sync.fetchPairingInfo(host) }.onFailure { error = it.message }.getOrNull() }) {
-                    val i = info
-                    if (i == null) {
-                        AlertDialog.Builder(this).setMessage(getString(R.string.pair_failed, error)).setPositiveButton(android.R.string.ok, null).show()
-                        return@background
-                    }
-                    AlertDialog.Builder(this)
-                        .setTitle(R.string.pair)
-                        .setMessage(getString(R.string.pair_confirm, i.fingerprint))
-                        .setPositiveButton(android.R.string.ok) { _, _ -> store(i) }
-                        .setNegativeButton(android.R.string.cancel, null)
-                        .show()
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    /** Leaving needs a fresh sync that confirms there is no pact — the cache isn't enough. */
-    private fun release() {
-        var allowed = false
+    /** Both opening AND confirming removal require a fresh, signed no-pact response. */
+    private fun release(confirm: Boolean) {
+        if (busy) return
+        dialog = null
         background({
-            val store = Store(this)
-            val fresh = !store.paired || Sync.fetch(store).let { r ->
-                if (r is Sync.Result.Ok) {
-                    store.payload = r.payload
-                    store.lastSync = System.currentTimeMillis() / 1000
-                    true
-                } else false
+            synchronized(Mast) {
+                val store = Store(this)
+                val fresh = !store.paired || when (val result = Sync.fetch(store)) {
+                    is Sync.Result.Ok -> {
+                        store.payload = result.payload
+                        store.lastSync = System.currentTimeMillis() / 1000
+                        store.lastError = null
+                        true
+                    }
+                    is Sync.Result.Failed -> {
+                        store.lastError = result.reason
+                        false
+                    }
+                }
+                val allowed = fresh && Mast.canRelease(this)
+                if (allowed && confirm) Mast.release(this)
+                else Mast.refresh(this, sync = false)
+                allowed
             }
-            allowed = fresh && Mast.canRelease(this)
-        }) {
-            if (!allowed) {
-                AlertDialog.Builder(this).setMessage(R.string.release_refused).setPositiveButton(android.R.string.ok, null).show()
-                return@background
+        }) { result ->
+            dialog = when {
+                result.getOrDefault(false) && confirm -> null
+                result.getOrDefault(false) -> MastDialog.ConfirmRemove
+                else -> MastDialog.RemoveRefused
             }
-            AlertDialog.Builder(this)
-                .setMessage(R.string.release_confirm)
-                .setPositiveButton(android.R.string.ok) { _, _ -> Mast.release(this); render() }
-                .setNegativeButton(android.R.string.cancel, null)
-                .show()
         }
     }
+
+    private fun message(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 
     private fun defaultGateway(): String? {
         val cm = getSystemService(ConnectivityManager::class.java)
@@ -230,10 +205,14 @@ class MainActivity : Activity() {
         return lp.routes.firstOrNull { it.isDefaultRoute && it.gateway is Inet4Address }?.gateway?.hostAddress
     }
 
-    private fun background(work: () -> Unit, then: () -> Unit) {
-        Thread {
-            work()
-            runOnUiThread { if (!isFinishing) then() }
-        }.start()
+    private fun <T> background(work: () -> T, then: (Result<T>) -> Unit) {
+        busy = true
+        render()
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching(work) }
+            busy = false
+            then(result)
+            render()
+        }
     }
 }

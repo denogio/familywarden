@@ -87,7 +87,19 @@ object Policy {
      * restriction on time (window bounds, pact end, release).
      */
     fun nextChange(state: MastState?, now: ZonedDateTime): ZonedDateTime? {
-        if (state == null) return null
+        return changeCandidates(state, now).filter { it.isAfter(now) }.minOrNull()
+    }
+
+    /** UI countdown: skip evaluation boundaries that do not actually flip hotspot. */
+    fun nextBlockChange(state: MastState?, now: ZonedDateTime): ZonedDateTime? {
+        val blocked = decide(state, now).block
+        return changeCandidates(state, now)
+            .filter { it.isAfter(now) && decide(state, it).block != blocked }
+            .minOrNull()
+    }
+
+    private fun changeCandidates(state: MastState?, now: ZonedDateTime): List<ZonedDateTime> {
+        if (state == null) return emptyList()
         val zone = now.zone
         val candidates = mutableListOf<ZonedDateTime>()
         val today = now.toLocalDate()
@@ -102,7 +114,7 @@ object Policy {
         listOf(state.pactUntil, state.releaseAt)
             .filter { it > 0 }
             .forEach { candidates += Instant.ofEpochSecond(it).atZone(zone) }
-        return candidates.filter { it.isAfter(now) }.minOrNull()
+        return candidates
     }
 
     private fun at(date: LocalDate, time: LocalTime, zone: ZoneId) = ZonedDateTime.of(date, time, zone)

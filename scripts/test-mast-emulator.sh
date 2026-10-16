@@ -93,6 +93,35 @@ restrictions() { $ADB shell dumpsys user | tr -d '\r'; }
 has() { restrictions | grep -A30 "UserInfo{0:" | grep -q "$1"; }
 broadcast() { $ADB shell am broadcast -n me.hojgaard.ulysses.mast/.DebugReceiver -a "$@" >/dev/null; sleep 4; }
 
+# Smoke-test the actual Compose activity too, not just the background restriction.
+# Optional screenshots: MAST_SCREENSHOT_DIR=/tmp/mast-ui ./scripts/test-mast-emulator.sh ...
+ui() {
+    $ADB shell input keyevent KEYCODE_WAKEUP
+    $ADB shell wm dismiss-keyguard
+    $ADB shell am start -n me.hojgaard.ulysses.mast/.MainActivity >/dev/null
+    sleep 8
+    $ADB shell uiautomator dump /sdcard/mast-ui.xml >/dev/null
+    UI=$($ADB shell cat /sdcard/mast-ui.xml | tr -d '\r')
+    echo "$UI" | grep -q 'package="me.hojgaard.ulysses.mast"' && pass "Compose activity renders ($1)" || fail "activity failed ($1)"
+    if [ -n "${MAST_SCREENSHOT_DIR:-}" ]; then
+        mkdir -p "$MAST_SCREENSHOT_DIR"
+        $ADB exec-out screencap -p > "$MAST_SCREENSHOT_DIR/$1.png"
+    fi
+}
+ui_has() { echo "$UI" | grep -q "text=\"$1\"" && pass "UI: $1" || fail "UI missing: $1"; }
+tap_text() {
+    local coords
+    coords=$(printf '%s' "$UI" | python3 -c '
+import sys, re, xml.etree.ElementTree as ET
+root = ET.fromstring(sys.stdin.read())
+node = next(n for n in root.iter("node") if n.get("text") == sys.argv[1])
+x1,y1,x2,y2 = map(int, re.findall(r"\d+", node.get("bounds")))
+print((x1+x2)//2, (y1+y2)//2)
+' "$1") || { fail "cannot tap $1"; return 1; }
+    $ADB shell input tap $coords
+    sleep 4
+}
+
 $ADB install -r /mast.apk >/dev/null && pass "APK installed (sideloaded, not from Play)" || fail "install"
 # Android checks for accounts asynchronously after boot (hasIncompatibleAccountsTask);
 # until that has finished, set-device-owner is refused. Retry for a bit.
@@ -103,13 +132,32 @@ for _ in $(seq 1 12); do
 done
 echo "$out" | grep -q "Success" && pass "became device owner" || fail "dpm set-device-owner: $(echo "$out" | head -2)"
 
+$ADB shell settings put system screen_off_timeout 1800000
+ui unpaired
+ui_has 'Pair with your router'
+
 echo ""
 echo "=== Pact active, captain blocked ==="
-# Quoted for the device shell too: the URI contains "&"
-broadcast me.hojgaard.ulysses.mast.DEBUG_PAIR --es uri "'$PAIR_URI'"
+# Exercise the real pairing UI; the key is pinned only after fingerprint confirmation.
+# Quoted for the device shell too: the URI contains "&".
+$ADB shell am start -a android.intent.action.VIEW -d "'$PAIR_URI'" -n me.hojgaard.ulysses.mast/.MainActivity >/dev/null
+ui pairing-confirmation
+ui_has 'Confirm the router'
+tap_text 'It matches, pair'
 $ADB logcat -d -s UlyssesMast:* AndroidRuntime:E | tr -d '\r' | grep -A4 -E "debug:|FATAL" | head -8 | sed 's/^/  log: /'
 echo "  router :7700 from emulator: $($ADB shell "echo | nc -w 3 $ROUTER_IP 7700 >/dev/null 2>&1 && echo open || echo CLOSED" | tr -d '\r')"
 has no_config_tethering && pass "tethering restricted" || fail "no_config_tethering missing"
+ui blocked-light
+ui_has 'Hotspot is locked'
+echo "$UI" | grep -q 'text="Remove Mast"' && fail "removal offered while bound" || pass "UI hides removal while bound"
+$ADB shell cmd uimode night yes
+ui blocked-dark
+ui_has 'Hotspot is locked'
+$ADB shell settings put system font_scale 2.0
+ui blocked-dark-large
+ui_has 'Hotspot is locked'
+$ADB shell settings put system font_scale 1.0
+$ADB shell cmd uimode night no
 has no_config_date_time && pass "clock locked while paired" || fail "no_config_date_time missing"
 docker exec "$ROUTER" sh -c 'cat /tmp/familywarden.mast' | grep -q "^mast-" && pass "router saw the phone sync" || fail "router has no sync record"
 
@@ -125,6 +173,11 @@ echo "=== Released on the sail page ==="
 docker exec "$ROUTER" sh -c 'echo $(( $(date +%s) - 1 )) > /etc/familywarden/release; familywarden tick'
 broadcast me.hojgaard.ulysses.mast.DEBUG_SYNC
 has no_config_tethering && fail "tethering still restricted after release" || pass "tethering allowed again"
+ui released
+ui_has 'Free sailing'
+tap_text 'Remove Mast'
+ui removal-confirmation
+ui_has 'Remove the Mast?'
 has no_config_date_time && pass "clock stays locked while paired" || fail "clock unlocked"
 
 echo ""
@@ -132,6 +185,13 @@ echo "=== A new pact binds again ==="
 docker exec "$ROUTER" sh -c 'echo "{\"until\":0}" | /usr/libexec/rpcd/familywarden call pact >/dev/null'
 broadcast me.hojgaard.ulysses.mast.DEBUG_SYNC
 has no_config_tethering && pass "restricted again" || fail "not restricted after new pact"
+# The removal confirmation was opened before the new pact: confirming it must recheck.
+ui removal-race
+tap_text 'Remove'
+ui removal-refused
+ui_has 'The pact still holds'
+tap_text 'OK'
+has no_config_tethering && pass "old removal dialog cannot bypass a new pact" || fail "removal raced new pact"
 
 echo ""
 echo "=== Router unreachable: the cached pact still binds ==="
@@ -144,6 +204,25 @@ for _ in $(seq 1 120); do
 done
 sleep 15
 has no_config_tethering && pass "still restricted after reboot without the router" || fail "restriction lost after reboot"
+ui offline
+ui_has 'Router out of reach'
+ui_has 'Hotspot is locked'
+
+echo ""
+echo "=== Removal after a fresh signed release ==="
+docker network connect --ip "$ROUTER_IP" "$NET" "$ROUTER"
+docker exec "$ROUTER" sh -c 'echo $(( $(date +%s) - 1 )) > /etc/familywarden/release; familywarden tick'
+broadcast me.hojgaard.ulysses.mast.DEBUG_SYNC
+ui removal-allowed
+ui_has 'Free sailing'
+tap_text 'Remove Mast'
+ui removal-final-confirmation
+tap_text 'Remove'
+ui removed
+ui_has 'One step before setting sail'
+has no_config_tethering && fail "tethering restricted after removal" || pass "removal clears tethering restriction"
+has no_config_date_time && fail "clock restricted after removal" || pass "removal clears clock restriction"
+$ADB shell dpm list-owners | grep -q 'DeviceOwner' && fail "still device owner" || pass "device-owner role released"
 
 echo ""
 [ "$FAILED" -eq 0 ] && echo "All emulator checks passed!" || echo "Some emulator checks FAILED"
