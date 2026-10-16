@@ -6,6 +6,11 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      mast_emulator:
+        description: Run the Ulysses Mast emulator test (KVM, ~10 min)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -52,10 +57,110 @@ jobs:
           path: ${{ runner.temp }}/apk/*.apk
           if-no-files-found: error
 
+  e2e:
+    name: LuCI e2e (Playwright)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: apks
+          path: apk
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: test/e2e/package-lock.json
+
+      - name: Install Playwright
+        working-directory: test/e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run against LuCI in an OpenWrt container
+        env:
+          OPENWRT_IMAGE: openwrt/rootfs:x86-64-${{ env.OPENWRT_VERSION }}
+        run: ./scripts/test-e2e.sh apk
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: e2e-results
+          path: test/e2e/test-results
+
+  mast:
+    name: Ulysses Mast (Android)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Unit tests and APKs
+        working-directory: android
+        env:
+          MAST_KEYSTORE_B64: ${{ secrets.MAST_KEYSTORE_B64 }}
+          MAST_KEYSTORE_PASSWORD: ${{ secrets.MAST_KEYSTORE_PASSWORD }}
+          MAST_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          # Same version as the familywarden package; versionCode always increases
+          MAST_VERSION_NAME=$(sed -n 's/^PKG_VERSION:=//p' ../familywarden/Makefile)
+          export MAST_VERSION_NAME
+          if [ -n "$MAST_KEYSTORE_B64" ]; then
+            echo "$MAST_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/mast.jks"
+            export MAST_KEYSTORE="$RUNNER_TEMP/mast.jks"
+          fi
+          ./gradlew --no-daemon testDebugUnitTest lintDebug assembleRelease assembleDebug
+          mkdir -p "$RUNNER_TEMP/mast"
+          cp app/build/outputs/apk/release/app-release*.apk "$RUNNER_TEMP/mast/ulysses-mast-$MAST_VERSION_NAME.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/mast/ulysses-mast-debug.apk"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mast
+          path: ${{ runner.temp }}/mast/*.apk
+          if-no-files-found: error
+
+  mast-emulator:
+    name: Ulysses Mast on Android (emulator)
+    if: github.event_name == 'workflow_dispatch' && inputs.mast_emulator
+    needs: [build, mast]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: apks
+          path: apk
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: mast
+          path: mast
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Device owner, pairing and the tethering restriction on Android 15
+        run: ./scripts/test-mast-emulator.sh apk mast/ulysses-mast-debug.apk
+
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, e2e, mast]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -79,6 +184,11 @@ jobs:
           name: apks
           path: apk
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: mast
+          path: mast
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -94,8 +204,15 @@ jobs:
           \`\`\`sh
           apk add --allow-untrusted ./familywarden-*.apk ./luci-app-familywarden-*.apk
           \`\`\`
+
+          Ulysses Mast (the captain's phone, Android): see docs/ulysses-mast.md
+
+          \`\`\`sh
+          adb install ulysses-mast-*.apk
+          adb shell dpm set-device-owner me.hojgaard.ulysses.mast/.MastAdminReceiver
+          \`\`\`
           EOF
-          gh release create "${GITHUB_REF_NAME}" apk/*.apk \
+          gh release create "${GITHUB_REF_NAME}" apk/*.apk mast/ulysses-mast-${{ steps.ver.outputs.fw }}.apk \
             --title "FamilyWarden ${GITHUB_REF_NAME}" \
             --notes-file notes.md \
             --generate-notes \

@@ -1,0 +1,1 @@
+{ "v": 1, "server_time": 1792000000, "captain": "dennis", "pact": { "active": true, "type": "ongoing", "until": 0, "release_at": 0 }, "rules": { "enabled": "1", "policy": "scheduled", "override": "none", "windows": [ { "days": "mon tue wed thu fri sat sun", "start": "06:00", "stop": "21:30" } ] } }

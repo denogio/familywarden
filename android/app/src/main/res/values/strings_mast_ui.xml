@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App bar -->
+    <string name="mast_title">Ulysses Mast</string>
+
+    <!-- Actions -->
+    <string name="action_sync">Sync now</string>
+    <string name="action_syncing">Syncing…</string>
+    <string name="action_try_again">Try again</string>
+    <string name="action_check_again">Check again</string>
+    <string name="action_scan">Scan pairing code</string>
+    <string name="action_pair_manually">Enter address manually</string>
+    <string name="action_pair_other">Pair with another router</string>
+    <string name="action_pair_confirm">It matches, pair</string>
+    <string name="action_remove">Remove Mast</string>
+    <string name="action_remove_confirm">Remove</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_continue">Continue</string>
+    <string name="action_ok">OK</string>
+    <string name="action_copy_command">Copy command</string>
+    <string name="copied">Copied</string>
+
+    <!-- 1. Not device owner -->
+    <string name="setup_title">One step before setting sail</string>
+    <string name="setup_body">To switch off hotspot and tethering, the Mast must be this phone\'s device owner. Setup needs Android device-owner provisioning, usually via adb on a phone without accounts or extra profiles. Back up important data first.</string>
+    <string name="setup_overline">Set up once</string>
+    <string name="setup_step_1">Turn on USB debugging in Developer options.</string>
+    <string name="setup_step_2">Read the setup guide before removing accounts or profiles. Unsynced and profile-local data may be lost.</string>
+    <string name="setup_step_3">Connect the phone and run:</string>
+    <string name="setup_command" translatable="false">adb shell dpm set-device-owner me.hojgaard.ulysses.mast/.MastAdminReceiver</string>
+
+    <!-- 2. Not paired -->
+    <string name="pair_title">Pair with your router</string>
+    <string name="pair_body">The Mast takes its orders from FamilyWarden on your router. Open the pairing code there and scan it with this phone.</string>
+    <string name="pair_path_familywarden" translatable="false">FamilyWarden</string>
+    <string name="pair_path_settings">Settings</string>
+    <string name="pair_path_ulysses" translatable="false">Ulysses</string>
+    <string name="pair_path_description">FamilyWarden, then Settings, then Ulysses</string>
+    <string name="pair_unpaired_status">Hotspot is allowed. Nothing is enforced until you pair.</string>
+
+    <!-- Manual pairing -->
+    <string name="pair_manual_title">Router address</string>
+    <string name="pair_manual_body">Enter the address shown in FamilyWarden › Settings › Ulysses.</string>
+    <string name="pair_manual_label">Address and port</string>
+    <string name="pair_manual_placeholder" translatable="false">192.168.1.1:7700</string>
+
+    <!-- 3. Pairing confirmation -->
+    <string name="pair_confirm_title">Confirm the router</string>
+    <string name="pair_confirm_address">Router address</string>
+    <string name="pair_confirm_fingerprint">Key fingerprint</string>
+    <string name="pair_confirm_hint">Check that it matches the fingerprint in LuCI under FamilyWarden › Settings › Ulysses. If it differs, do not pair.</string>
+
+    <!-- 4-7. Status -->
+    <string name="status_free_title">Free sailing</string>
+    <string name="status_free_body">No pact is active. Hotspot and tethering are allowed.</string>
+    <string name="status_no_captain_title">No captain aboard</string>
+    <string name="status_no_captain_body">The router has no captain set for Ulysses, so nothing is enforced. Hotspot and tethering are allowed.</string>
+    <string name="status_allowed_title">Hotspot is allowed</string>
+    <string name="status_allowed_body">Your pact currently allows hotspot and tethering.</string>
+    <!-- %1$s = "today at 21:30", %2$s = "3 h 12 min" -->
+    <string name="status_locks_at">Locks %1$s, in %2$s</string>
+    <string name="status_locked_title">Hotspot is locked</string>
+    <!-- %1$s = "tomorrow at 06:00" -->
+    <string name="status_locked_until">Hotspot and tethering stay off until %1$s.</string>
+    <string name="status_locked_no_end">Hotspot and tethering stay off for now.</string>
+    <!-- %1$s = "8 h 24 min" -->
+    <string name="status_opens_in">Opens in %1$s</string>
+    <string name="status_sailing_home_overline">Sailing home</string>
+    <!-- %1$s = "today at 22:15" -->
+    <string name="status_sailing_home_title">Free %1$s</string>
+    <string name="status_sailing_home_locked">You asked the router to release you. Until then the pact follows its schedule. Hotspot and tethering are locked right now.</string>
+    <string name="status_sailing_home_allowed">You asked the router to release you. Until then the pact holds as usual. Hotspot is allowed right now.</string>
+    <string name="status_countdown_left">left</string>
+    <string name="status_countdown_description">%1$s left</string>
+
+    <!-- Pact card -->
+    <string name="pact_overline">The pact</string>
+    <string name="pact_ongoing">Bound by an ongoing pact</string>
+    <!-- %1$s = "Tue 3 Nov" -->
+    <string name="pact_until">Bound until %1$s</string>
+    <string name="pact_chosen_by">Chosen by %1$s.</string>
+    <!-- %2$s = "06:00–21:30, every day" -->
+    <string name="pact_chosen_by_with_rules">Chosen by %1$s. Hotspot is allowed %2$s.</string>
+    <string name="pact_rules">Hotspot is allowed %1$s.</string>
+    <string name="pact_release_requested">Release requested.</string>
+    <string name="pact_locked_note">Pairing and removal open again when no pact is active.</string>
+
+    <!-- 8. Sync problems -->
+    <string name="sync_unreachable_title">Router out of reach</string>
+    <!-- %1$s = "today at 05:36" -->
+    <string name="sync_unreachable_body">Normal when you are away from home. The pact from the last sync, %1$s, still applies.</string>
+    <string name="sync_unreachable_body_never">Normal when you are away from home. Sync again once you are on the home network.</string>
+    <string name="sync_bad_signature_title">Reply could not be verified</string>
+    <!-- %1$s = grouped fingerprint -->
+    <string name="sync_bad_signature_body">The router\'s answer was not signed with the paired key %1$s. The Mast ignored it and keeps the last trusted state.</string>
+    <string name="sync_bad_signature_advice">This is not normal. If the router was reset or reinstalled, check its key in LuCI.</string>
+    <string name="sync_failed_title">Sync did not complete</string>
+    <!-- %1$s = raw lastError, e.g. "stale reply" -->
+    <string name="sync_failed_body">Sync reported: %1$s. The last known state still applies.</string>
+
+    <!-- 9. Remove -->
+    <string name="remove_refused_title">The pact still holds</string>
+    <string name="remove_refused_body">Mast cannot confirm that the pact for %1$s has ended. The router may be unreachable or still report an active pact. Try syncing again.</string>
+    <string name="remove_refused_body_no_captain">Mast cannot confirm that no pact is active. The router may be unreachable or still report an active pact. Try syncing again.</string>
+    <string name="remove_confirm_title">Remove the Mast?</string>
+    <string name="remove_confirm_body">Removing gives up device owner rights, so hotspot can no longer be locked. If paired, Mast checks with the router again before removing. Binding yourself again later needs the adb setup once more.</string>
+
+    <!-- Details -->
+    <string name="details_title">Details</string>
+    <string name="details_captain">Captain</string>
+    <string name="details_router">Router</string>
+    <string name="details_key">Key</string>
+    <string name="details_last_sync">Last sync</string>
+    <string name="details_last_trusted_sync">Last trusted sync</string>
+    <string name="details_device_owner">Device owner</string>
+    <string name="details_not_paired">Not paired</string>
+    <string name="details_never">Never</string>
+    <string name="details_yes">Yes</string>
+    <string name="details_no">No</string>
+
+    <!-- Time -->
+    <string name="when_today">today at %1$s</string>
+    <string name="when_tomorrow">tomorrow at %1$s</string>
+    <string name="when_yesterday">yesterday at %1$s</string>
+    <!-- %1$s = "Tue 3 Nov", %2$s = "06:00" -->
+    <string name="when_date">%1$s at %2$s</string>
+    <string name="duration_minutes">%1$d min</string>
+    <string name="duration_hours_minutes">%1$d h %2$d min</string>
+    <string name="duration_days_hours">%1$d d %2$d h</string>
+</resources>

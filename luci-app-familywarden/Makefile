@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2026 Dennis Højgaard
+# Copyright (C) 2026 denogio <dennis@hojgaard.me>
 #
 # This is free software, licensed under the Apache 2.0 License.
 
@@ -9,10 +9,10 @@ LUCI_TITLE:=LuCI support for FamilyWarden Parental Control
 LUCI_DEPENDS:=+familywarden +luci-base
 LUCI_PKGARCH:=all
 
-PKG_VERSION:=0.4.0
+PKG_VERSION:=0.5.0
 PKG_RELEASE:=1
 
-PKG_MAINTAINER:=Dennis Højgaard <github@dehoej.dk>
+PKG_MAINTAINER:=denogio <dennis@hojgaard.me>
 PKG_LICENSE:=Apache-2.0
 
 include ../../luci.mk
@@ -25,6 +25,9 @@ define Package/luci-app-familywarden/install
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/familywarden/settings.js $(1)/www/luci-static/resources/view/familywarden/settings.js
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/familywarden/info.js $(1)/www/luci-static/resources/view/familywarden/info.js
 	$(SED) 's/@@VERSION@@/$(PKG_VERSION)-r$(PKG_RELEASE)/' $(1)/www/luci-static/resources/view/familywarden/info.js
+
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/familywarden
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/ulysses.js $(1)/www/luci-static/resources/familywarden/ulysses.js
 
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/luci-app-familywarden.json $(1)/usr/share/luci/menu.d/luci-app-familywarden.json

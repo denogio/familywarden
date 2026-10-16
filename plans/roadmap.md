@@ -7,8 +7,8 @@ stabilt, før Home Assistant begynder at afhænge af det.
 
 | # | Feature | Størrelse | Afhænger af | Version |
 |---|---------|-----------|-------------|---------|
-| 1 | Traffic per profil (nlbwmon) | S | — | backend 0.8.0, luci 0.5.0 |
-| 2 | Ulysses-pagt (selvbindende lås) | M | — | backend 0.9.0, luci 0.6.0 |
+| 1 | ~~Ulysses-pagt (selvbindende lås)~~ ✅ | M | — | backend 0.8.0, luci 0.5.0 |
+| 2 | Traffic per profil (nlbwmon) | S | — | backend 0.9.0, luci 0.6.0 |
 | 3 | Dansk oversættelse (i18n) | S | 1+2 (strenge er faste) | luci 0.6.x + `luci-i18n-familywarden-da` |
 | 4 | Home Assistant (HACS) | L | 2 (`pact_until` i API) | eget repo, 0.1.0 |
 | 5 | DNS-filtrering | M–L | — | backend 1.0.0 |
@@ -25,7 +25,7 @@ stabilt, før Home Assistant begynder at afhænge af det.
 
 ---
 
-## Fase 1 — Traffic per profil
+## Fase 2 — Traffic per profil
 
 **Status:** frontenden findes allerede (`showTrafficModal` i `overview.js`, kalder
 `traffic` og forventer `{available, daily, day, week, month}` eller
@@ -54,9 +54,26 @@ traffic-knappen.
 
 ---
 
-## Fase 2 — Ulysses-pagt
+## Fase 1 — Ulysses-pagt ✅ (0.8.0, branch `feature/ulysses`)
 
-Fuldt designet i `PLAN.md` § 14 (besluttet med dig: hele profilen fryses, eneste
+**Endeligt design (besluttet 2026-10-15)**, erstatter `plans/archive/PLAN.md` § 14. Se CLAUDE.md "Ulysses":
+- Én **kaptajn** (Ulysses-profil). Pagter kun for den: `until` (kan forlænges) eller `ongoing`
+  med et ugentligt ændringsvindue (søndag 10–11). Ændringer i vinduet gælder med det samme.
+- Under pagten er kaptajnens profil frosset, og hans MAC'er kan ikke slippe ud via andre profiler.
+- Mens kaptajnen er blokeret, er routeren lukket for alle (TCP) undtagen DNS og port 7700.
+- Eneste udvej: sail-siden på 7700 (root-password + sanglinje) og derefter en konfigurerbar
+  karenstid (standard 24 t, frosset ved oprettelse).
+- Testet: 89 integrations-checks (heraf ~50 for Ulysses inkl. CGI med rigtigt password-tjek), apk-test,
+  og i browser mod LuCI i container. Dér blev LuCI målt uopnåelig under lockdown og 7700 tilgængelig.
+
+Mangler før merge: test på rivendell (procd-trigger, rigtig uhttpd-instans, reboot).
+Ukendte enheder: løst med `default_policy=block` (frosset under pagten).
+Hotspot på telefonen: **Ulysses Mast** (Android Device Owner-app, `android/`, `docs/ulysses-mast.md`).
+
+<details><summary>Oprindelig plan (historisk)</summary>
+
+
+Fuldt designet i `plans/archive/PLAN.md` § 14 (besluttet med dig: hele profilen fryses, eneste
 escape er root over SSH, og pagten skal overleve reboot). Planen følges med disse
 justeringer til den nuværende arkitektur:
 
@@ -83,6 +100,10 @@ justeringer til den nuværende arkitektur:
 - [ ] QEMU: reboot-test (procd + rigtig boot kan ikke testes i containeren)
 
 **Beslutning til dig:** er designet fra juni stadig det, du vil have?
+
+---
+
+</details>
 
 ---
 
@@ -169,7 +190,8 @@ evt. en `uci-defaults`-hjælper.
 ## Løbende / teknisk gæld
 
 - [ ] Kør `/understand` igen — knowledge-graphen er fra `66c2701`
-- [ ] QEMU i CI (GitHub-runnere har KVM): procd-trigger, reboot-persistens, Playwright.
-      Det er det eneste, containeren ikke kan dække (PLAN.md § 15 Lag 1, punkt 2, 5 og 9)
-- [ ] `PLAN.md` og `new-thoughts.md` er historiske — arkivér dem til `plans/archive/`
-- [ ] `PKG_MAINTAINER`/copyright i Makefiles står stadig som "Dennis Højgaard <github@dehoej.dk>"
+- [x] QEMU-testrouter lokalt (`scripts/qemu-dev.sh`): procd-trigger, reboot, tidsspring
+- [ ] QEMU i CI (GitHub-runnere har KVM): det eneste, containeren ikke dækker (procd, reboot)
+- [x] `PLAN.md`, `new-thoughts.md` og den gamle kernel-scheduling-plan arkiveret i `plans/archive/`
+- [x] Playwright e2e i CI mod LuCI i en OpenWrt-container (`scripts/test-e2e.sh`)
+- [x] `PKG_MAINTAINER`/copyright: `denogio <dennis@hojgaard.me>`

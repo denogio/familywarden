@@ -15,7 +15,9 @@ fail() { echo "❌ $1"; FAILED=1; }
 echo "=== FamilyWarden Syntax Tests ==="
 echo ""
 
-for script in "$RPCD_SCRIPT" "$INIT_SCRIPT"; do
+SAIL_CGI="${PROJECT_ROOT}/familywarden/www-familywarden/cgi-bin/sail"
+MAST_CGI="${PROJECT_ROOT}/familywarden/www-familywarden/cgi-bin/mast"
+for script in "$RPCD_SCRIPT" "$INIT_SCRIPT" "$SAIL_CGI" "$MAST_CGI"; do
     if [ ! -f "$script" ]; then
         fail "Missing: $script"
         continue
@@ -44,6 +46,9 @@ required_functions=(
     "gc_expired_tickets"
     "_sched_accept_rules"
     "gen_input_profile_scheduled"
+    "ulysses_sync"
+    "gen_lockdown_rules"
+    "gc_pact"
     "ubus_list"
     "ubus_status"
     "ubus_block"
@@ -66,7 +71,9 @@ echo ""
 echo "=== Ubus API Endpoints ==="
 
 # Each method must be both advertised (rpcd "list" JSON) and dispatched ("call").
-ubus_methods=("list" "status" "block" "allow" "reset" "ticket" "reload" "version")
+ubus_methods=("list" "status" "block" "allow" "reset" "ticket" "pact" "mast" "reload" "version")
+ACL_FILES=("${PROJECT_ROOT}/familywarden/usr/share/rpcd/acl.d/familywarden.json"
+           "${PROJECT_ROOT}/luci-app-familywarden/root/usr/share/rpcd/acl.d/luci-app-familywarden.json")
 for method in "${ubus_methods[@]}"; do
     if ! grep -q "^  \"$method\":" "$RPCD_SCRIPT"; then
         fail "Not advertised in list: $method"
@@ -75,12 +82,24 @@ for method in "${ubus_methods[@]}"; do
     else
         echo "✓ Endpoint: $method"
     fi
+    for acl in "${ACL_FILES[@]}"; do
+        grep -q "\"$method\"" "$acl" || fail "$method missing from ACL $(basename "$acl")"
+    done
 done
+
+# Releasing a Ulysses pact must only be possible via the sail page (CGI on
+# port 7700 calling the CLI), never as a ubus method LuCI or HA could call
+if grep -qE 'sail-(request|cancel)' "${ACL_FILES[@]}" \
+    || sed -n '/^    call)$/,/^esac$/p' "$RPCD_SCRIPT" | grep -q 'sail-'; then
+    fail "sail-* is exposed via ubus/ACL - release must stay on the sail page"
+else
+    echo "✓ release only via the sail page"
+fi
 
 echo ""
 echo "=== nftables chain/set consistency ==="
 
-for name in familywarden_forward familywarden_input familywarden_ticket; do
+for name in familywarden_forward familywarden_input familywarden_lockdown familywarden_ticket; do
     # Must be declared in the include and deleted before fw4 reload
     if grep -qE "echo \"(chain|set) $name \{" "$RPCD_SCRIPT" \
         && grep -qE "nft delete (chain|set) inet fw4 $name" "$RPCD_SCRIPT"; then
@@ -93,7 +112,8 @@ done
 echo ""
 echo "=== LuCI views + JSON ==="
 
-for f in "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/*.js; do
+for f in "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/*.js \
+         "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/familywarden/*.js; do
     # LuCI views use a top-level `return`, so parse them as a function body
     if ! command -v node &> /dev/null; then
         echo "node not found - skipping JS parse"; break
@@ -108,10 +128,12 @@ for f in "${PROJECT_ROOT}"/familywarden/usr/share/rpcd/acl.d/*.json \
         && echo "✓ Valid JSON: $(basename "$(dirname "$f")")/$(basename "$f")" || fail "Invalid JSON: $f"
 done
 
-# Every view the Makefile installs must exist, and vice versa
-for f in "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/*.js; do
-    grep -q "view/familywarden/$(basename "$f") " "${PROJECT_ROOT}/luci-app-familywarden/Makefile" \
-        || fail "View not installed by luci Makefile: $(basename "$f")"
+# Every view/module in the source tree must be installed by the luci Makefile
+for f in "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/*.js \
+         "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/familywarden/*.js; do
+    rel="${f#*/htdocs/luci-static/resources/}"
+    grep -q "resources/$rel " "${PROJECT_ROOT}/luci-app-familywarden/Makefile" \
+        || fail "Not installed by luci Makefile: $rel"
 done
 
 echo ""
@@ -121,6 +143,13 @@ grep -q 'usr/libexec/rpcd/familywarden' "$MAKEFILE" \
     && grep -q 'BIN="/usr/libexec/rpcd/familywarden"' "$INIT_SCRIPT" \
     && echo "✓ init.d BIN matches Makefile install path" \
     || fail "init.d BIN does not match Makefile install path"
+
+for f in www-familywarden/index.html www-familywarden/cgi-bin/sail www-familywarden/cgi-bin/mast; do
+    grep -q "./$f " "$MAKEFILE" && [ -f "${PROJECT_ROOT}/familywarden/$f" ] \
+        && echo "✓ sail page installed: $f" || fail "sail page file not installed: $f"
+done
+grep -q "listen_http='0.0.0.0:7700'" "$MAKEFILE" && grep -q '^FW_SAIL_PORT=7700$' "$RPCD_SCRIPT" \
+    && echo "✓ sail port matches (uhttpd ↔ lockdown)" || fail "sail port mismatch between Makefile and rpcd plugin"
 
 grep -q "/var/etc/familywarden.include" "$MAKEFILE" \
     && grep -q 'FW_INCLUDE="/var/etc/familywarden.include"' "$RPCD_SCRIPT" \

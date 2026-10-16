@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sailing home</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+         background: radial-gradient(ellipse at top, #1b2a3a, #070b10); color: #d8e1ea;
+         font: 16px/1.5 Georgia, serif; }
+  main { width: min(440px, 92vw); padding: 32px; border: 1px solid #2c3e50; border-radius: 10px;
+         background: rgba(10, 18, 27, .85); }
+  h1 { margin: 0 0 4px; font-weight: normal; letter-spacing: .04em; }
+  .sub { margin: 0 0 24px; color: #8aa0b4; font-style: italic; }
+  .state { margin: 0 0 20px; padding: 12px 14px; border-left: 3px solid #c9a227; background: rgba(201, 162, 39, .08); }
+  label { display: block; margin: 14px 0 4px; color: #8aa0b4; font-size: 14px; }
+  input { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid #2c3e50; border-radius: 6px;
+          background: #0d1621; color: #d8e1ea; font: inherit; }
+  button { margin-top: 20px; width: 100%; padding: 10px; border: 0; border-radius: 6px; cursor: pointer;
+           background: #c9a227; color: #10161d; font: inherit; font-weight: bold; }
+  button.secondary { background: transparent; color: #8aa0b4; border: 1px solid #2c3e50; }
+  .msg { margin-top: 16px; min-height: 1.5em; color: #e0a96d; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>⚓ Sailing home</h1>
+  <p class="sub">Sirens call your name, they say they'll ease your pain.</p>
+  <div class="state" id="state">Reading the stars…</div>
+
+  <form id="release" class="hidden">
+    <label for="pw">Router password</label>
+    <input id="pw" type="password" autocomplete="current-password" required>
+    <label for="answer">“By the light of moon I will …”</label>
+    <input id="answer" type="text" autocomplete="off" required>
+    <button type="submit">Untie me from the mast</button>
+  </form>
+
+  <form id="cancel" class="hidden">
+    <label for="pw2">Router password</label>
+    <input id="pw2" type="password" autocomplete="current-password" required>
+    <button type="submit" class="secondary">Stay bound — cancel</button>
+  </form>
+
+  <div class="msg" id="msg"></div>
+</main>
+<script>
+  var $ = function(id) { return document.getElementById(id); };
+
+  function when(epoch) {
+    return new Date(epoch * 1000).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function hours(sec) {
+    var h = Math.round(sec / 360) / 10;
+    return h + (h === 1 ? ' hour' : ' hours');
+  }
+
+  function render(s) {
+    $('release').classList.add('hidden');
+    $('cancel').classList.add('hidden');
+    if (!s.pact) {
+      $('state').textContent = 'No pact. You are free to sail.';
+      return;
+    }
+    var bound = s.type === 'ongoing'
+      ? s.captain + ' is bound by an ongoing pact (window: ' + s.window + ').'
+      : s.captain + ' is bound until ' + when(s.pact_until) + '.';
+    if (s.release_at > 0) {
+      $('state').textContent = bound + ' Sailing home — free at ' + when(s.release_at) + '.';
+      $('cancel').classList.remove('hidden');
+    } else {
+      $('state').textContent = bound + ' Untying takes ' + hours(s.delay) + '.';
+      $('release').classList.remove('hidden');
+    }
+  }
+
+  function load() {
+    return fetch('/cgi-bin/sail', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(render)
+      .catch(function() { $('state').textContent = 'The sea is silent (could not reach the router).'; });
+  }
+
+  function post(body, form) {
+    var btn = form.querySelector('button');
+    btn.disabled = true;
+    $('msg').textContent = '';
+    return fetch('/cgi-bin/sail', { method: 'POST', body: JSON.stringify(body) })
+      .then(function(r) { return r.json(); })
+      .then(function(res) {
+        if (res.error) $('msg').textContent = res.error;
+        else { form.reset(); render(res); }
+      })
+      .catch(function() { $('msg').textContent = 'The message was lost at sea. Try again.'; })
+      .then(function() { btn.disabled = false; });
+  }
+
+  $('release').addEventListener('submit', function(ev) {
+    ev.preventDefault();
+    post({ action: 'release', password: $('pw').value, answer: $('answer').value }, this);
+  });
+  $('cancel').addEventListener('submit', function(ev) {
+    ev.preventDefault();
+    post({ action: 'cancel', password: $('pw2').value }, this);
+  });
+
+  load();
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@
 'require rpc';
 'require poll';
 'require ui';
+'require familywarden.ulysses as ulysses';
 
 var callStatus = rpc.declare({
 	object: 'familywarden',
@@ -74,7 +75,8 @@ function injectStyles() {
 			border-color:var(--border-color-medium,#dee2e6);border-bottom-color:var(--background-color-high,white);font-weight:600}\
 		.fw-tab-add{color:var(--primary-color-high,#0069d9);font-weight:500}\
 		.fw-tab-add:hover{background:var(--background-color-high,#f8f9fa)}\
-		.fw-status-bar{display:flex;align-items:center;gap:16px;padding:16px;\
+		.fw-ulysses{flex-basis:100%;font-size:13px;opacity:.85}\
+		.fw-status-bar{display:flex;flex-wrap:wrap;align-items:center;gap:16px;padding:16px;\
 			background:var(--background-color-high,#f8f9fa);border:1px solid var(--border-color-medium,#dee2e6);\
 			border-radius:8px;margin-bottom:20px;flex-wrap:wrap}\
 		.fw-status-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;background:var(--border-color-medium,#ccc)}\
@@ -104,38 +106,59 @@ function refreshStatus() {
 	if (!selectedProfile || !statusNode) return Promise.resolve();
 	return callStatus(selectedProfile).then(function(data) {
 		if (!data || !data.status) return;
+		fillStatus(statusNode, data);
+	});
+}
 
-		var hasOverride = data.override && data.override !== 'none';
-		var isBlocked = data.status.indexOf('blocked') >= 0;
-		var dotClass = hasOverride ? 'override' : (isBlocked ? 'blocked' : 'allowed');
+// Pact button, only on the captain's profile: make a pact, extend an "until"
+// pact, or amend an ongoing one inside its window
+function pactButtonLabel(id, p) {
+	if (id !== ulysses.captainId()) return null;
+	if (!ulysses.isBound(p)) return '⚓ ' + _('Make a pact');
+	if (p.pact_type === 'until') return '⚓ ' + _('Extend pact');
+	if (p.pact_in_window) return '⚓ ' + _('Amend pact');
+	return null;
+}
 
-		var label = hasOverride
-			? (_('Override: ') + (data.override === 'block' ? _('Blocked') : _('Allowed')))
-			: (isBlocked ? _('Blocked') : _('Allowed'));
-		if (data.blocked_since)
-			label += ' — ' + _('since') + ' ' + new Date(data.blocked_since).toLocaleTimeString();
-		if (hasOverride && data.override_expires) {
-			var remaining = Math.max(0, Math.round((data.override_expires - Date.now()/1000) / 60));
-			if (remaining > 0)
-				label += ' — ' + remaining + ' min ' + _('remaining');
-		}
+// Status dot + label + action buttons. Allow/ticket are hidden for the captain
+// during a pact (the backend refuses them).
+function fillStatus(node, data) {
+	var hasOverride = data.override && data.override !== 'none';
+	var isBlocked = data.status && data.status.indexOf('blocked') >= 0;
+	var dotClass = hasOverride ? 'override' : (isBlocked ? 'blocked' : 'allowed');
 
-		var btns = [];
-		if (hasOverride) {
-			btns.push(E('button', { 'class': 'cbi-button cbi-button-neutral', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callReset); }) }, _('Reset')));
-		} else if (isBlocked) {
+	var label = hasOverride
+		? (_('Override: ') + (data.override === 'block' ? _('Blocked') : _('Allowed')))
+		: (isBlocked ? _('Blocked') : _('Allowed'));
+	if (hasOverride && data.override_expires) {
+		var remaining = Math.max(0, Math.round((data.override_expires - Date.now()/1000) / 60));
+		if (remaining > 0)
+			label += ' — ' + remaining + ' min ' + _('remaining');
+	}
+
+	var btns = [];
+	if (hasOverride) {
+		btns.push(E('button', { 'class': 'cbi-button cbi-button-neutral', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callReset); }) }, _('Reset')));
+	} else if (isBlocked) {
+		if (!ulysses.isBound(data)) {
 			btns.push(E('button', { 'class': 'cbi-button cbi-button-positive', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callAllow); }) }, _('Allow')));
 			btns.push(E('button', { 'class': 'cbi-button cbi-button-action', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, function(p) { return callTicket(p, 30); }); }) }, '+30 ' + _('min')));
-		} else {
-			btns.push(E('button', { 'class': 'cbi-button cbi-button-negative', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callBlock); }) }, _('Block')));
 		}
+	} else {
+		btns.push(E('button', { 'class': 'cbi-button cbi-button-negative', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callBlock); }) }, _('Block')));
+	}
+	var pactLabel = pactButtonLabel(selectedProfile, data);
+	if (pactLabel)
+		btns.push(E('button', { 'class': 'cbi-button cbi-button-neutral', 'click': L.ui.createHandlerFn(this, function(ev) {
+			return doAction(ev, function() { return ulysses.showPactModal(data.name, data); });
+		}) }, pactLabel));
 
-		// Rebuild status bar content
-		while (statusNode.firstChild) statusNode.removeChild(statusNode.firstChild);
-		statusNode.appendChild(E('span', { 'class': 'fw-status-dot ' + dotClass }));
-		statusNode.appendChild(E('span', { 'class': 'fw-status-text' }, label));
-		btns.forEach(function(b) { statusNode.appendChild(b); });
-	});
+	while (node.firstChild) node.removeChild(node.firstChild);
+	node.appendChild(E('span', { 'class': 'fw-status-dot ' + dotClass }));
+	node.appendChild(E('span', { 'class': 'fw-status-text' }, label));
+	btns.forEach(function(b) { node.appendChild(b); });
+	var uNote = ulysses.note(data);
+	if (uNote) node.appendChild(uNote);
 }
 
 function doAction(ev, fn) {
@@ -148,7 +171,7 @@ function showAddProfileModal() {
 	var nameInput = E('input', {
 		'type': 'text',
 		'class': 'cbi-input-text',
-		'placeholder': _('e.g. Josva'),
+		'placeholder': _('e.g. Alex'),
 		'style': 'width:100%;margin-top:8px'
 	});
 
@@ -229,38 +252,20 @@ function buildTabs(allProfiles, activeId) {
 }
 
 function buildStatusBar(status) {
-	var hasOverride = status.override && status.override !== 'none';
-	var isBlocked = status.status && status.status.indexOf('blocked') >= 0;
-	var dotClass = hasOverride ? 'override' : (isBlocked ? 'blocked' : 'allowed');
-	var label = hasOverride
-		? (_('Override: ') + (status.override === 'block' ? _('Blocked') : _('Allowed')))
-		: (isBlocked ? _('Blocked') : _('Allowed'));
-
-	if (hasOverride && status.override_expires) {
-		var remaining = Math.max(0, Math.round((status.override_expires - Date.now()/1000) / 60));
-		if (remaining > 0)
-			label += ' — ' + remaining + ' min ' + _('remaining');
-	}
-
-	var btns = [];
-	if (hasOverride) {
-		btns.push(E('button', { 'class': 'cbi-button cbi-button-neutral', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callReset); }) }, _('Reset')));
-	} else if (isBlocked) {
-		btns.push(E('button', { 'class': 'cbi-button cbi-button-positive', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callAllow); }) }, _('Allow')));
-		btns.push(E('button', { 'class': 'cbi-button cbi-button-action', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, function(p) { return callTicket(p, 30); }); }) }, '+30 ' + _('min')));
-	} else {
-		btns.push(E('button', { 'class': 'cbi-button cbi-button-negative', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callBlock); }) }, _('Block')));
-	}
-
-	statusNode = E('div', { 'class': 'fw-status-bar' }, [
-		E('span', { 'class': 'fw-status-dot ' + dotClass }),
-		E('span', { 'class': 'fw-status-text' }, label)
-	].concat(btns));
-
+	statusNode = E('div', { 'class': 'fw-status-bar' });
+	fillStatus(statusNode, status);
 	return statusNode;
 }
 
+// Set by render: the captain's profile is frozen by a pact
+var frozenView = false;
+
 return view.extend({
+	// No Save/Apply/Reset for a frozen profile
+	addFooter: function() {
+		return frozenView ? E([]) : this.super('addFooter', arguments);
+	},
+
 	load: function() {
 		return Promise.all([
 			callList(),
@@ -337,6 +342,14 @@ return view.extend({
 			});
 		};
 
+		// The captain's profile is frozen for the pact's lifetime, except in
+		// its weekly window (the backend ignores edits anyway): every widget
+		// read-only, no add/delete, no Save buttons
+		var frozen = ulysses.isFrozen(status);
+		frozenView = frozen;
+		if (frozen)
+			m.readonly = true;
+
 		var s = m.section(form.NamedSection, selectedProfile, 'profile', _('Profile Settings'));
 		s.addremove = false;
 
@@ -360,10 +373,12 @@ return view.extend({
 		blockRouterOption.rmempty = true;
 		blockRouterOption.default = '0';
 
+
 		var deviceOption = s.option(form.DynamicList, 'device', _('Devices'),
 			_('Select known devices or enter MAC addresses manually.'));
 		deviceOption.datatype = 'macaddr';
 		deviceOption.rmempty = true;
+		deviceOption.readonly = frozen;
 		var macs = Object.keys(knownDevices).sort(function(a, b) {
 			return knownDevices[a].localeCompare(knownDevices[b]);
 		});
@@ -373,6 +388,7 @@ return view.extend({
 
 		var dnsOption = s.option(form.Value, 'dns_profile', _('DNS Filtering'));
 		dnsOption.rmempty = true;
+		dnsOption.readonly = frozen;
 		dnsOption.optional = true;
 		dnsOption.description = _('Optional: AdGuard Home / DNS filter group name.');
 
@@ -384,7 +400,7 @@ return view.extend({
 		var pid = selectedProfile;
 		var ss = m.section(form.TableSection, 'schedule', _('Schedules'),
 			_('Internet is off by default in this mode. Add the time windows when access is allowed; any time outside every window is blocked.'));
-		ss.addremove = true;
+		ss.addremove = !frozen;
 		ss.anonymous = true;
 		ss.addbtntitle = _('Add schedule');
 
@@ -430,6 +446,7 @@ return view.extend({
 					E('input', {
 						'type': 'checkbox',
 						'data-day': d,
+						'disabled': frozen ? '' : null,
 						'checked': (selected.indexOf(d) > -1) ? '' : null
 					}),
 					dayLabels[d]
@@ -527,7 +544,7 @@ return view.extend({
 				tabs,
 				statusBar,
 				formEl,
-				deleteSection
+				ulysses.isFrozen(status) ? '' : deleteSection
 			]);
 		});
 	}

@@ -20,7 +20,8 @@ echo "=== FamilyWarden deploy → $HOST ==="
 ssh $SSH_OPTS "$HOST" "uname -a" >/dev/null || { echo "❌ Cannot connect to $HOST"; exit 1; }
 
 ssh $SSH_OPTS "$HOST" "mkdir -p /etc/init.d /usr/libexec/rpcd /usr/share/rpcd/acl.d \
-    /www/luci-static/resources/view/familywarden /usr/share/luci/menu.d"
+    /www/luci-static/resources/view/familywarden /www/luci-static/resources/familywarden \
+    /usr/share/luci/menu.d /usr/sbin"
 
 echo "Backend..."
 ssh_put familywarden/etc/init.d/familywarden /etc/init.d/familywarden
@@ -33,6 +34,8 @@ echo "LuCI..."
 for f in "$VIEWS"/*.js; do
     ssh_put "$f" "/www/luci-static/resources/view/familywarden/$(basename "$f")"
 done
+ssh_put luci-app-familywarden/htdocs/luci-static/resources/familywarden/ulysses.js \
+    /www/luci-static/resources/familywarden/ulysses.js
 ssh_put luci-app-familywarden/root/usr/share/luci/menu.d/luci-app-familywarden.json \
     /usr/share/luci/menu.d/luci-app-familywarden.json
 ssh_put luci-app-familywarden/root/usr/share/rpcd/acl.d/luci-app-familywarden.json \
@@ -42,6 +45,7 @@ echo "Activating..."
 # Mirrors the familywarden package postinst (firewall include) + luci cache flush
 ssh $SSH_OPTS "$HOST" "
     chmod +x /etc/init.d/familywarden /usr/libexec/rpcd/familywarden
+    ln -sf ../libexec/rpcd/familywarden /usr/sbin/familywarden
     sed -i 's/@@VERSION@@/$VERSION/' /www/luci-static/resources/view/familywarden/info.js
     if ! uci show firewall | grep -q \"path='/var/etc/familywarden.include'\"; then
         uci add firewall include >/dev/null

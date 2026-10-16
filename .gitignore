@@ -1,10 +1,8 @@
-/openwrt-*.img
-/openwrt-*-initramfs
-/*.qcow2
-/qemu.sh
-
-# QEMU test images
+# QEMU test router (scripts/qemu-dev.sh): base image, overlay, run dir
 /images/
+
+# Built apks (scripts/build-apk-docker.sh); releases live on GitHub
+/dist/
 
 # e2e test deps + output
 node_modules/

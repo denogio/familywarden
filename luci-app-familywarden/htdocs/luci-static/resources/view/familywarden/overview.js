@@ -4,6 +4,7 @@
 'require rpc';
 'require uci';
 'require poll';
+'require familywarden.ulysses as ulysses';
 
 var callList = rpc.declare({
 	object: 'familywarden',
@@ -178,6 +179,7 @@ function injectStyles() {
 		.fw-dev-mac{font-size:11px;font-family:monospace;color:var(--text-color-medium,#888);flex-shrink:0;\
 			padding:1px 7px;border-radius:3px;border:1px solid var(--border-color-low,#e0e0e0)}\
 		.fw-no-devs{font-size:12px;color:var(--text-color-medium,#999);font-style:italic;margin-top:4px}\
+		.fw-ulysses{padding:7px 11px;border-radius:6px;margin-top:9px;font-size:13px;background:rgba(127,127,127,.12)}\
 		.fw-ovr{display:flex;align-items:center;gap:7px;padding:7px 11px;border-radius:6px;margin-top:9px;font-size:13px;font-weight:500}\
 		.fw-ovr.blk{background:rgba(198,40,40,.10);color:var(--error-color-high,#ff6b6b)}\
 		.fw-ovr.allw{background:rgba(46,125,50,.10);color:var(--success-color-high,#5e9eff)}\
@@ -313,8 +315,12 @@ var hostMap = {};
 
 // Build a MAC -> friendly name map from DHCP leases and host hints, so device
 // chips can show a hostname instead of a bare MAC address.
+// MACs with a DHCP lease right now (real LAN clients)
+var leaseMacs = [];
+
 function buildHostMap(leases, hostHints) {
 	var map = {};
+	leaseMacs = (leases || []).map(function(l) { return (l.macaddr || '').toLowerCase(); }).filter(Boolean);
 	(leases || []).forEach(function(l) {
 		if (l.macaddr) {
 			var mac = l.macaddr.toLowerCase();
@@ -343,18 +349,22 @@ function deviceRow(mac) {
 	]);
 }
 
+// Schedules as enforced, from the backend's list reply. Not from UCI: for a
+// Ulysses-locked profile UCI may hold an edit that only takes effect in 24 h.
+function schedulesOf(profiles) {
+	var out = {};
+	Object.keys(profiles || {}).forEach(function(id) {
+		out[id] = Array.isArray(profiles[id].schedules) ? profiles[id].schedules : [];
+	});
+	return out;
+}
+
 function refreshDashboard() {
 	return Promise.all([callList(), uci.load('familywarden'), callDHCPLeases(), callHostHints()]).then(function(results) {
 		if (!dashboardNode) return;
 		var profiles = results[0];
 		hostMap = buildHostMap(results[2], results[3]);
-		scheduleData = {};
-		uci.sections('familywarden', 'schedule', function(s) {
-			var prof = s.profile;
-			if (!prof) return;
-			if (!scheduleData[prof]) scheduleData[prof] = [];
-			scheduleData[prof].push({ days: s.days, start: s.start, stop: s.stop });
-		});
+		scheduleData = schedulesOf(profiles);
 
 		// Instead of replacing .fw-body (which restarts CSS animations), update
 		// individual cards in place. If card structure changes, rebuild just the grid.
@@ -409,7 +419,6 @@ function refreshDashboard() {
 			var p = profiles[id];
 			if (!p) return;
 
-			var isBlocked = p.status && p.status.indexOf('blocked') >= 0;
 			var hasOverride = p.override && p.override !== 'none';
 
 			// Update badge + traffic
@@ -444,6 +453,8 @@ function refreshDashboard() {
 						body.appendChild(E('div', { 'class': 'fw-ovr ' + (p.override === 'block' ? 'blk' : 'allw') },
 							E('span', {}, remaining + ' ' + _('min remaining'))));
 				}
+				var uNote = ulysses.note(p);
+				if (uNote) body.appendChild(uNote);
 				// Re-add schedule section (was lost when body was cleared)
 				var pScheds = scheduleData[id] || [];
 				if (p.policy === 'scheduled' && pScheds.length > 0)
@@ -453,22 +464,48 @@ function refreshDashboard() {
 			// Update foot buttons
 			var foot = card.querySelector('.fw-card-foot');
 			if (foot) {
-				var btns = [];
-				if (hasOverride) {
-					btns.push(makeBtn('cbi-button-reset', _('Reset'), function() { return callReset(id); }));
-				} else if (isBlocked) {
-					btns.push(makeBtn('cbi-button-positive', _('Allow'), function() { return callAllow(id); }));
-					[5, 10, 30].forEach(function(mins) {
-						btns.push(makeBtn('cbi-button-action', '+' + mins, function() { return callTicket(id, mins); }));
-					});
-				} else {
-					btns.push(makeBtn('cbi-button-negative', _('Block'), function() { return callBlock(id); }));
-				}
 				foot.innerHTML = '';
-				btns.forEach(function(b) { foot.appendChild(b); });
+				cardButtons(id, p).forEach(function(b) { foot.appendChild(b); });
 			}
 		});
 	});
+}
+
+// Pact button, only on the captain's profile: make a pact, extend an "until"
+// pact, or amend an ongoing one inside its window
+function pactButtonLabel(id, p) {
+	if (id !== ulysses.captainId()) return null;
+	if (!ulysses.isBound(p)) return '⚓ ' + _('Make a pact');
+	if (p.pact_type === 'until') return '⚓ ' + _('Extend pact');
+	if (p.pact_in_window) return '⚓ ' + _('Amend pact');
+	return null;
+}
+
+// Action buttons for a profile card. Allow/tickets are hidden for the captain
+// during a pact (the backend refuses them anyway); Block and Reset stay, since
+// they only ever tighten back towards the pact.
+function cardButtons(id, p) {
+	var isBlocked = p.status && p.status.indexOf('blocked') >= 0;
+	var hasOverride = p.override && p.override !== 'none';
+	var btns = [];
+	if (hasOverride) {
+		btns.push(makeBtn('cbi-button-reset', _('Reset'), function() { return callReset(id); }));
+	} else if (isBlocked) {
+		if (!ulysses.isBound(p)) {
+			btns.push(makeBtn('cbi-button-positive', _('Allow'), function() { return callAllow(id); }));
+			[5, 10, 30].forEach(function(mins) {
+				btns.push(makeBtn('cbi-button-action', '+' + mins, function() { return callTicket(id, mins); }));
+			});
+		}
+	} else {
+		btns.push(makeBtn('cbi-button-negative', _('Block'), function() { return callBlock(id); }));
+	}
+	var pactLabel = pactButtonLabel(id, p);
+	if (pactLabel)
+		btns.push(makeBtn('cbi-button-neutral', pactLabel, function() {
+			return ulysses.showPactModal(p.name, p);
+		}));
+	return btns;
 }
 
 function makeBtn(cls, label, fn) {
@@ -521,6 +558,33 @@ function buildScheduleSection(schedules) {
 	]);
 }
 
+// Global notices: FamilyWarden switched off, and (default policy "block")
+// devices with a lease that are in no profile and therefore have no internet.
+// From UCI, so disabled profiles count as assigned, as in the backend.
+function buildNotices(profiles) {
+	var notices = [];
+	var bound = Object.keys(profiles || {}).some(function(id) { return ulysses.isBound(profiles[id]); });
+	if (uci.get('familywarden', 'settings', 'enabled') === '0' && !bound)
+		notices.push(E('div', { 'class': 'alert-message warning' },
+			_('FamilyWarden is switched off in Settings: nothing is enforced.')));
+
+	if (uci.get('familywarden', 'settings', 'default_policy') === 'block') {
+		var assigned = {};
+		uci.sections('familywarden', 'profile').forEach(function(s) {
+			L.toArray(s.device).forEach(function(m) { assigned[m.toLowerCase()] = true; });
+		});
+		var unassigned = leaseMacs.filter(function(m) { return !assigned[m]; });
+		if (unassigned.length)
+			notices.push(E('div', { 'class': 'alert-message notice' }, [
+				_('No internet for devices in no profile (Default Policy: Block): '),
+				unassigned.map(function(m) { return (hostMap[m] ? hostMap[m] + ' ' : '') + '(' + m + ')'; }).join(', '),
+				'. ',
+				E('a', { 'href': L.url('admin/services/familywarden/profiles') }, _('Add them to a profile'))
+			]));
+	}
+	return notices;
+}
+
 function buildContent(profiles, schedsByProfile) {
 	var keys = Object.keys(profiles || {});
 	var allowed = 0, blocked = 0;
@@ -561,7 +625,6 @@ function buildContent(profiles, schedsByProfile) {
 
 	keys.forEach(function(id) {
 		var p = profiles[id];
-		var isBlocked = p.status && p.status.indexOf('blocked') >= 0;
 		var hasOverride = p.override && p.override !== 'none';
 		var profileUrl = L.url('admin/services/familywarden/profiles') + '?name=' + encodeURIComponent(id);
 
@@ -585,18 +648,7 @@ function buildContent(profiles, schedsByProfile) {
 			? buildScheduleSection(profileSchedules)
 			: null;
 
-		// Action buttons
-		var footBtns = [];
-		if (hasOverride) {
-			footBtns.push(makeBtn('cbi-button-reset', _('Reset'), function() { return callReset(id); }));
-		} else if (isBlocked) {
-			footBtns.push(makeBtn('cbi-button-positive', _('Allow'), function() { return callAllow(id); }));
-			[5, 10, 30].forEach(function(mins) {
-				footBtns.push(makeBtn('cbi-button-action', '+' + mins, function() { return callTicket(id, mins); }));
-			});
-		} else {
-			footBtns.push(makeBtn('cbi-button-negative', _('Block'), function() { return callBlock(id); }));
-		}
+		var footBtns = cardButtons(id, p);
 
 		// Build card body content
 		var bodyContent = [];
@@ -607,6 +659,8 @@ function buildContent(profiles, schedsByProfile) {
 			bodyContent.push(E('div', { 'class': 'fw-no-devs' }, _('No devices')));
 		}
 		if (overrideBar) bodyContent.push(overrideBar);
+		var uNote = ulysses.note(p);
+		if (uNote) bodyContent.push(uNote);
 		if (schedSection) bodyContent.push(schedSection);
 
 		cards.push(E('div', { 'class': 'fw-card' }, [
@@ -628,6 +682,8 @@ function buildContent(profiles, schedsByProfile) {
 
 	return E('div', { 'class': 'fw-body' }, [
 		E('a', { 'class': 'cbi-button cbi-button-add fw-add-btn', 'href': L.url('admin/services/familywarden/profiles') }, '+ ' + _('Add Profile')),
+		// E() only flattens one level, so the notices get their own wrapper
+		E('div', { 'class': 'fw-notices' }, buildNotices(profiles)),
 		summary,
 		gridEl,
 		E('div', { 'class': 'fw-updated' }, _('Updated') + ' ' + now.toLocaleTimeString())
@@ -643,13 +699,7 @@ return view.extend({
 		injectStyles();
 		var profiles = data[0];
 		hostMap = buildHostMap(data[2], data[3]);
-		scheduleData = {};
-		uci.sections('familywarden', 'schedule', function(s) {
-			var prof = s.profile;
-			if (!prof) return;
-			if (!scheduleData[prof]) scheduleData[prof] = [];
-			scheduleData[prof].push({ days: s.days, start: s.start, stop: s.stop });
-		});
+		scheduleData = schedulesOf(profiles);
 
 		// Use a CBI form.Map container so we inherit the native LuCI theme
 		// styling (title bar, margins, card-like background) without having
