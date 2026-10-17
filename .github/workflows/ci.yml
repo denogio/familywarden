@@ -209,7 +209,7 @@ jobs:
 
           \`\`\`sh
           adb install ulysses-mast-*.apk
-          adb shell dpm set-device-owner me.hojgaard.ulysses.mast/.MastAdminReceiver
+          adb shell dpm set-device-owner io.github.denogio.familywarden/.AdminReceiver
           \`\`\`
           EOF
           gh release create "${GITHUB_REF_NAME}" apk/*.apk mast/ulysses-mast-${{ steps.ver.outputs.fw }}.apk \

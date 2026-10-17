@@ -1249,11 +1249,23 @@ mast_last_sync() {
     echo "${seen:-0}"
 }
 
-# For LuCI's pairing view (read-only): router key, when the phone last synced,
-# and a pairing QR for the app. $1 = the host the browser used to reach LuCI,
-# which is also how the phone (on the same LAN) will reach the router.
+# Discover a numeric LAN control endpoint without depending on DNS. Do not change UCI.
+mast_lan_address() {
+    local address
+    address=$(ubus call network.interface.lan status 2>/dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null)
+    [ -n "$address" ] || address=$(uci -q get network.lan.ipaddr | awk '{print $1}' | cut -d/ -f1)
+    printf '%s\n' "$address" | awk -F. '
+        NF == 4 {
+            for (i = 1; i <= 4; i++) if ($i !~ /^[0-9]+$/ || $i > 255) exit
+            if ($1 == 0 || $1 == 127 || $1 >= 224) exit
+            print
+        }'
+}
+
+# Keep the browser hostname for display/backward compatibility, but include a numeric
+# address for new apps: a filtered resolver may not know names such as router.lan.
 ubus_mast() {
-    local host="$1" dev="" seen=0 pub uri
+    local host="$1" dev="" seen=0 pub uri address=""
     [ -f "$FW_MAST_SEEN" ] && read -r dev seen < "$FW_MAST_SEEN"
     pub=$(mast_pubkey)
     json_init
@@ -1265,6 +1277,11 @@ ubus_mast() {
         ''|*[!A-Za-z0-9.:-]*) ;;
         *)
             uri="ulyssesmast://pair?host=${host}&key=$(echo "$pub" | sed 's/+/%2B/g; s|/|%2F|g; s/=/%3D/g')"
+            case "$host" in *[A-Za-z]*) address=$(mast_lan_address) ;; esac
+            if [ -n "$address" ]; then
+                uri="${uri}&address=${address}"
+                json_add_string "router_address" "$address"
+            fi
             json_add_string "pair_uri" "$uri"
             command -v qrencode >/dev/null && json_add_string "qr_svg" "$(qrencode -t SVG -m 2 -o - "$uri")"
             ;;

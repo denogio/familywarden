@@ -1,7 +1,9 @@
 #!/bin/bash
 # Ulysses Mast on real Android: an emulator (KVM) with the debug APK as device
-# owner, paired with a throwaway FamilyWarden router container. Checks that the
-# tethering restriction follows the pact, and that Android protects the app.
+# owner, paired with a throwaway FamilyWarden router container. Checks legacy
+# rejection, DNS-independent pairing, scoped pact enforcement and Android protection.
+# A deliberately insecure LAB-ONLY CGI supplies prototype v2 device policy; this
+# does not validate or implement production enrollment/admin authentication.
 #
 #   ./scripts/test-mast-emulator.sh <router-apk-dir> [mast-debug.apk]
 #
@@ -38,7 +40,8 @@ docker network create "$NET" >/dev/null
 
 echo "=== Router with an ongoing pact (captain always blocked) ==="
 docker run -d --name "$ROUTER" --network "$NET" --cap-add NET_ADMIN \
-    -v "$APK_DIR:/apk:ro" openwrt/rootfs:x86-64-25.12.4 sleep infinity >/dev/null
+    -v "$APK_DIR:/apk:ro" -v "$REPO/test/android:/fixtures:ro" \
+    openwrt/rootfs:x86-64-25.12.4 sleep infinity >/dev/null
 docker exec "$ROUTER" sh -c '
     mkdir -p /var/lock /var/run /var/etc
     apk update >/dev/null 2>&1
@@ -46,10 +49,10 @@ docker exec "$ROUTER" sh -c '
     cat > /etc/config/familywarden <<EOF
 config global settings
 	option enabled 1
-	option ulysses_profile dennis
+	option ulysses_profile alex
 	option ulysses_delay 1
-config profile dennis
-	option name Dennis
+config profile alex
+	option name Alex
 	option enabled 1
 	option policy block
 	list device aa:bb:cc:00:00:01
@@ -64,7 +67,8 @@ EOF
 '
 ROUTER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$ROUTER")
 KEY=$(docker exec "$ROUTER" familywarden mast-pubkey | head -1 | sed 's/+/%2B/g; s|/|%2F|g; s/=/%3D/g')
-PAIR_URI="ulyssesmast://pair?host=$ROUTER_IP:7700&key=$KEY"
+# router.invalid cannot resolve: successful pairing must use the numeric address.
+PAIR_URI="familywarden://pair?host=router.invalid&address=$ROUTER_IP:7700&key=$KEY"
 echo "router at $ROUTER_IP"
 
 echo "=== Emulator (Android 15) ==="
@@ -91,24 +95,25 @@ pass "emulator booted ($($ADB shell getprop ro.build.version.release | tr -d '\r
 
 restrictions() { $ADB shell dumpsys user | tr -d '\r'; }
 has() { restrictions | grep -A30 "UserInfo{0:" | grep -q "$1"; }
-broadcast() { $ADB shell am broadcast -n me.hojgaard.ulysses.mast/.DebugReceiver -a "$@" >/dev/null; sleep 4; }
+broadcast() { $ADB shell am broadcast -n io.github.denogio.familywarden/.DebugReceiver -a "$@" >/dev/null; sleep 4; }
 
 # Smoke-test the actual Compose activity too, not just the background restriction.
 # Optional screenshots: MAST_SCREENSHOT_DIR=/tmp/mast-ui ./scripts/test-mast-emulator.sh ...
 ui() {
     $ADB shell input keyevent KEYCODE_WAKEUP
     $ADB shell wm dismiss-keyguard
-    $ADB shell am start -n me.hojgaard.ulysses.mast/.MainActivity >/dev/null
+    $ADB shell am start -n io.github.denogio.familywarden/.MainActivity >/dev/null
     sleep 8
     $ADB shell uiautomator dump /sdcard/mast-ui.xml >/dev/null
     UI=$($ADB shell cat /sdcard/mast-ui.xml | tr -d '\r')
-    echo "$UI" | grep -q 'package="me.hojgaard.ulysses.mast"' && pass "Compose activity renders ($1)" || fail "activity failed ($1)"
+    echo "$UI" | grep -q 'package="io.github.denogio.familywarden"' && pass "Compose activity renders ($1)" || fail "activity failed ($1)"
     if [ -n "${MAST_SCREENSHOT_DIR:-}" ]; then
         mkdir -p "$MAST_SCREENSHOT_DIR"
         $ADB exec-out screencap -p > "$MAST_SCREENSHOT_DIR/$1.png"
+        printf '%s\n' "$UI" > "$MAST_SCREENSHOT_DIR/$1.xml"
     fi
 }
-ui_has() { echo "$UI" | grep -q "text=\"$1\"" && pass "UI: $1" || fail "UI missing: $1"; }
+ui_has() { scroll_to_text "$1" && pass "UI: $1" || fail "UI missing: $1"; }
 tap_text() {
     local coords
     coords=$(printf '%s' "$UI" | python3 -c '
@@ -122,11 +127,46 @@ print((x1+x2)//2, (y1+y2)//2)
     sleep 4
 }
 
+tap_switch() {
+    local coords
+    coords=$(printf '%s' "$UI" | python3 -c '
+import sys,re,xml.etree.ElementTree as ET
+node=next(n for n in ET.fromstring(sys.stdin.read()).iter("node") if n.get("checkable")=="true")
+x1,y1,x2,y2=map(int,re.findall(r"\d+",node.get("bounds")))
+print((x1+x2)//2,(y1+y2)//2)
+')
+    $ADB shell input tap $coords
+    sleep 3
+}
+scroll_to_text() {
+    local text="$1"
+    echo "$UI" | grep -q "text=\"$text\"" && return 0
+    # Begin at the top even if a previous check scrolled the same destination.
+    for _ in $(seq 1 3); do $ADB shell input swipe 540 700 540 1900 200; done
+    $ADB shell uiautomator dump /sdcard/mast-ui.xml >/dev/null
+    UI=$($ADB shell cat /sdcard/mast-ui.xml | tr -d '\r')
+    for _ in $(seq 1 6); do
+        echo "$UI" | grep -q "text=\"$text\"" && return 0
+        $ADB shell input swipe 540 1800 540 700 500
+        sleep 1
+        $ADB shell uiautomator dump /sdcard/mast-ui.xml >/dev/null
+        UI=$($ADB shell cat /sdcard/mast-ui.xml | tr -d '\r')
+    done
+    fail "cannot scroll to $text"
+    return 1
+}
+open_removal() {
+    tap_text 'Settings'
+    ui removal-settings
+    scroll_to_text 'Remove FamilyWarden'
+    tap_text 'Remove FamilyWarden'
+}
+
 $ADB install -r /mast.apk >/dev/null && pass "APK installed (sideloaded, not from Play)" || fail "install"
 # Android checks for accounts asynchronously after boot (hasIncompatibleAccountsTask);
 # until that has finished, set-device-owner is refused. Retry for a bit.
 for _ in $(seq 1 12); do
-    out=$($ADB shell dpm set-device-owner me.hojgaard.ulysses.mast/.MastAdminReceiver 2>&1 | tr -d '\r')
+    out=$($ADB shell dpm set-device-owner io.github.denogio.familywarden/.AdminReceiver 2>&1 | tr -d '\r')
     echo "$out" | grep -q "Success" && break
     sleep 5
 done
@@ -137,19 +177,27 @@ ui unpaired
 ui_has 'Pair with your router'
 
 echo ""
-echo "=== Pact active, captain blocked ==="
+echo "=== Legacy global policy cannot authorize this phone ==="
 # Exercise the real pairing UI; the key is pinned only after fingerprint confirmation.
 # Quoted for the device shell too: the URI contains "&".
-$ADB shell am start -a android.intent.action.VIEW -d "'$PAIR_URI'" -n me.hojgaard.ulysses.mast/.MainActivity >/dev/null
+$ADB shell am start -a android.intent.action.VIEW -d "'$PAIR_URI'" -n io.github.denogio.familywarden/.MainActivity >/dev/null
 ui pairing-confirmation
 ui_has 'Confirm the router'
 tap_text 'It matches, pair'
 $ADB logcat -d -s UlyssesMast:* AndroidRuntime:E | tr -d '\r' | grep -A4 -E "debug:|FATAL" | head -8 | sed 's/^/  log: /'
 echo "  router :7700 from emulator: $($ADB shell "echo | nc -w 3 $ROUTER_IP 7700 >/dev/null 2>&1 && echo open || echo CLOSED" | tr -d '\r')"
-has no_config_tethering && pass "tethering restricted" || fail "no_config_tethering missing"
+ui legacy-unsupported
+ui_has 'Router setup needs an update'
+has no_config_tethering && fail "global captain policy applied to unassociated phone" || pass "global policy cannot restrict unrelated phone"
+
+# Switch ONLY this disposable router to the insecure policy fixture. The shipping
+# daemon remains v1; successful fixture tests are not production v2 support.
+docker exec "$ROUTER" sh -c 'touch /tmp/familywarden-android-lab; cp /fixtures/device-policy.cgi /www-familywarden/cgi-bin/mast; chmod 755 /www-familywarden/cgi-bin/mast'
+broadcast io.github.denogio.familywarden.DEBUG_SYNC
+has no_config_tethering && pass "scoped pact restricts tethering" || fail "no_config_tethering missing"
 ui blocked-light
 ui_has 'Hotspot is locked'
-echo "$UI" | grep -q 'text="Remove Mast"' && fail "removal offered while bound" || pass "UI hides removal while bound"
+echo "$UI" | grep -q 'text="Remove FamilyWarden"' && fail "removal offered on overview while bound" || pass "overview has no removal shortcut"
 $ADB shell cmd uimode night yes
 ui blocked-dark
 ui_has 'Hotspot is locked'
@@ -159,38 +207,81 @@ ui_has 'Hotspot is locked'
 $ADB shell settings put system font_scale 1.0
 $ADB shell cmd uimode night no
 has no_config_date_time && pass "clock locked while paired" || fail "no_config_date_time missing"
-docker exec "$ROUTER" sh -c 'cat /tmp/familywarden.mast' | grep -q "^mast-" && pass "router saw the phone sync" || fail "router has no sync record"
+docker exec "$ROUTER" sh -c 'cat /tmp/familywarden.mast' | grep -q "^fw-" && pass "router saw the phone sync" || fail "router has no sync record"
 
-out=$($ADB shell pm clear me.hojgaard.ulysses.mast 2>&1 | tr -d '\r')
+# Navigate real destinations; DNS must remain explicitly unconfigured, not green.
+ui navigation-overview
+tap_text 'DNS'
+ui dns-details
+ui_has 'Finish setting up DNS protection'
+tap_text 'Ulysses'
+ui ulysses-details
+ui_has 'Bound by an ongoing pact'
+ui_has 'No allowed windows today'
+tap_text 'Overview'
+ui navigation-return
+
+# Native per-app locales: real Danish resources and 200% layout, no mock screen.
+$ADB shell cmd locale set-app-locales io.github.denogio.familywarden --user 0 --locales da
+sleep 5
+ui danish
+ui_has 'Gør DNS klar'
+ui_has 'Hotspot er låst'
+$ADB shell settings put system font_scale 2.0
+ui danish-large
+ui_has 'Hotspot er låst'
+$ADB shell settings put system font_scale 1.0
+$ADB shell cmd locale set-app-locales io.github.denogio.familywarden --user 0 --locales en
+sleep 5
+ui english-restored
+ui_has 'Hotspot is locked'
+
+out=$($ADB shell pm clear io.github.denogio.familywarden 2>&1 | tr -d '\r')
 echo "$out" | grep -qi "protected\|SecurityException\|Failed" && pass "pm clear refused ($out)" || fail "pm clear allowed: $out"
-out=$($ADB uninstall me.hojgaard.ulysses.mast 2>&1 | tr -d '\r')
+out=$($ADB uninstall io.github.denogio.familywarden 2>&1 | tr -d '\r')
 echo "$out" | grep -qi "DELETE_FAILED\|Failure" && pass "uninstall refused ($out)" || fail "uninstall allowed: $out"
-out=$($ADB shell am force-stop me.hojgaard.ulysses.mast 2>&1; $ADB shell pidof me.hojgaard.ulysses.mast)
+out=$($ADB shell am force-stop io.github.denogio.familywarden 2>&1; $ADB shell pidof io.github.denogio.familywarden)
 has no_config_tethering && pass "restriction survives force-stop" || fail "restriction gone after force-stop"
 
 echo ""
 echo "=== Released on the sail page ==="
 docker exec "$ROUTER" sh -c 'echo $(( $(date +%s) - 1 )) > /etc/familywarden/release; familywarden tick'
-broadcast me.hojgaard.ulysses.mast.DEBUG_SYNC
+broadcast io.github.denogio.familywarden.DEBUG_SYNC
 has no_config_tethering && fail "tethering still restricted after release" || pass "tethering allowed again"
 ui released
+# Ulysses was never opted into: it disappears when the forced active pact ends.
+echo "$UI" | grep -q 'text="Free sailing"' && fail "inactive opt-out Ulysses still visible" || pass "opt-out Ulysses hides after pact ends"
+tap_text 'Settings'
+ui features-settings
+tap_text 'Ulysses'
+ui features-sheet
+tap_switch
+ui features-confirmation
+ui_has 'Turn on Ulysses?'
+tap_text 'Continue'
+$ADB shell input keyevent KEYCODE_BACK
+ui features-enabled
+tap_text 'Overview'
+ui released-opted-in
 ui_has 'Free sailing'
-tap_text 'Remove Mast'
+open_removal
 ui removal-confirmation
-ui_has 'Remove the Mast?'
+ui_has 'Remove FamilyWarden?'
 has no_config_date_time && pass "clock stays locked while paired" || fail "clock unlocked"
 
 echo ""
 echo "=== A new pact binds again ==="
 docker exec "$ROUTER" sh -c 'echo "{\"until\":0}" | /usr/libexec/rpcd/familywarden call pact >/dev/null'
-broadcast me.hojgaard.ulysses.mast.DEBUG_SYNC
+broadcast io.github.denogio.familywarden.DEBUG_SYNC
 has no_config_tethering && pass "restricted again" || fail "not restricted after new pact"
 # The removal confirmation was opened before the new pact: confirming it must recheck.
 ui removal-race
 tap_text 'Remove'
 ui removal-refused
-ui_has 'The pact still holds'
+ui_has 'Removal was not authorized'
 tap_text 'OK'
+ui after-refusal
+tap_text 'Overview'
 has no_config_tethering && pass "old removal dialog cannot bypass a new pact" || fail "removal raced new pact"
 
 echo ""
@@ -205,17 +296,18 @@ done
 sleep 15
 has no_config_tethering && pass "still restricted after reboot without the router" || fail "restriction lost after reboot"
 ui offline
-ui_has 'Router out of reach'
 ui_has 'Hotspot is locked'
+scroll_to_text 'Router out of reach; cached policy remains'
+ui_has 'Router out of reach; cached policy remains'
 
 echo ""
 echo "=== Removal after a fresh signed release ==="
 docker network connect --ip "$ROUTER_IP" "$NET" "$ROUTER"
 docker exec "$ROUTER" sh -c 'echo $(( $(date +%s) - 1 )) > /etc/familywarden/release; familywarden tick'
-broadcast me.hojgaard.ulysses.mast.DEBUG_SYNC
+broadcast io.github.denogio.familywarden.DEBUG_SYNC
 ui removal-allowed
 ui_has 'Free sailing'
-tap_text 'Remove Mast'
+open_removal
 ui removal-final-confirmation
 tap_text 'Remove'
 ui removed

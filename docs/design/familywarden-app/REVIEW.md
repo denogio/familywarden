@@ -175,6 +175,29 @@ These do not resolve device scoping, administrator authentication, or action aut
 4. Implement only approved capabilities; no fake statistics, Family tab, or unsigned roles.
 5. Verify Android behavior on a disposable device before migrating the existing Device Owner.
 
+## Local implementation follow-up
+
+The subsequent `feature/familywarden-android` work is tracked in
+[the implementation checkpoint](../../../plans/android-implementation.md). Original
+supplied references and the historical 55-test result above remain unchanged.
+
+| Finding | Local disposition | Still required before rollout |
+|---------|-------------------|-------------------------------|
+| R1–R2 | Guarded DNS headlines; missing policy is distinct from a confirmed v1 incompatibility; neutral failure copy | Real setter/probe integration and physical verification |
+| R3 | Probe snapshots carry DNS policy, network handle and a generation; superseded snapshots are untested | Wire asynchronous probes and network lifecycle invalidation |
+| R4 | Device/profile-scoped v2 consumer; global v1 is diagnostic only; applicable pact overrides feature Off | Authenticated enrollment and server-side binding protections |
+| R5 | Actor roles reflect the approved pilot; final removal re-fetches; fresh authorization uses server time; typed refusal copy separates causes | Real administrator approval/one-use authorization protocol |
+| R6 | Exact signed bytes, pinned key, nonce/device matching, no enrolled downgrade; redirect/size rejection | Authenticate requesting devices; production replay/freshness semantics |
+| R7 | Reused evaluator, local date/zone, half-open intervals, overnight/weekdays/overlap and DST-gap/repeated-hour tests | Compare real router schedules/timezones, including DST |
+| R8 | No account-count readiness inference; native owner check, provisioning/data-loss and migration cautions | Controlled real-device enrollment/migration |
+| R9 | Read-back only; this build does not claim to write/restore Private DNS | Implement/test strict DNS and authorized cleanup; update confirmation copy then |
+| R10 | Complete EN/DA resources, typed category/refusal labels, private diagnostics, native locale and 200% UI checks | Keep localization complete as lifecycle/backend work lands |
+
+The local UI/emulator checks do not turn the deliberately insecure disposable v2
+fixture into a production enrollment service. Startup clock integrity, before-first-
+unlock behavior, same-key address repair, and exact DNS cleanup remain explicit gates.
+No production AdGuard/router or existing Device Owner was changed for this work.
+
 ## Sources
 
 - [Android AccountManager](https://developer.android.com/reference/android/accounts/AccountManager)

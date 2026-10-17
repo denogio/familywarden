@@ -37,6 +37,20 @@ Ulysses PR #1 is merged into `master`; `v0.8.0` is tagged. Release publication d
 on successful CI. Previous published release: v0.7.3.
 Repository: https://github.com/denogio/familywarden — CI builds releases (see "CI / release").
 
+### Android development branch checkpoint
+
+Local work on `feature/familywarden-android` is documented in
+[`plans/android-implementation.md`](plans/android-implementation.md).
+The new application ID is `io.github.denogio.familywarden`; it is **not** an in-place
+update to the installed `me.hojgaard.ulysses.mast` owner. No production migration,
+router/AdGuard deployment, or user-pact change is authorized by local test work.
+The new UI rejects global v1 captain state as device authority. Prototype signed-v2
+parsing and the deliberately insecure disposable-lab CGI do **not** implement secure
+production enrollment. Strict DNS writes/probes and authenticated AGH integration
+remain separate work; do not claim DNS enforcement from a successful UI build.
+Pairing now supports numeric control endpoints so local DNS failure cannot strand
+router sync. Shared AGH `.lan` forwarding has not been changed.
+
 ### Architecture (since 0.5.x)
 - **No polling daemon or cron for schedule evaluation.** Backend logic lives in the rpcd plugin
   `familywarden/usr/lib/rpcd/familywarden` (installed as `/usr/libexec/rpcd/familywarden`).
@@ -83,7 +97,8 @@ has not yet been verified. Guide: `docs/ulysses-mast.md`.
   Keys: `/etc/familywarden/mast.{key,pub}`. `?pubkey` supports manual pairing.
   `ubus mast {host}` provides the public key, fingerprint, last sync, pairing URI,
   and QR SVG (`qrencode` dependency). Captain status includes `mast_last_sync`.
-- **App** (Kotlin, `me.hojgaard.ulysses.mast`, minSdk 30): `Policy` is pure logic matching
+- **App** (Kotlin, production v0.8.0 `me.hojgaard.ulysses.mast`, minSdk 30;
+  new branch `io.github.denogio.familywarden`): `Policy` is pure logic matching
   router semantics. It uses the cache until the next successful sync, with no age-based
   expiry. `Usign` uses BouncyCastle Ed25519. `Sync` rejects signature failures and
   responses older than the last `server_time`.

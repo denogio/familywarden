@@ -205,6 +205,13 @@ question; it is not required for the initial one-phone rollout.
 
 ### Mast implementation requirements (separate from router DNS interception)
 
+- Control-plane reachability must survive missing local DNS records or resolver failure.
+  Confirmed: AGH returns NXDOMAIN for `rivendell.lan`, while router dnsmasq resolves it
+  and the numeric port-7700 endpoint works. Pairing should retain a verified numeric
+  LAN endpoint and pinned key, not rely solely on the browser's hostname. This is not
+  permission for unfiltered DNS fallback or re-pairing during a pact. Fixing AGH's
+  local-zone forwarding remains a separately approved production change.
+
 - Extend the signed router payload with a versioned DNS policy/hostname and update
   `Payload`, `Policy`/`Store`, `Mast`, UI state, and removal handling together.
   Validate hostname and policy fields before accepting them. No credentials in payloads.

@@ -105,6 +105,20 @@ The earlier successful real DoT queries through the public address were LAN-orig
 They validate TLS and DNS service, not independent off-site access or registered
 ClientID policy selection.
 
+## Confirmed local-name failure during app implementation
+
+A later read-only check confirmed that `rivendell.lan` returns `10.77.0.1` from
+router dnsmasq, but NXDOMAIN from AGH at `10.77.0.11`. Direct HTTP to the numeric
+router endpoint on port 7700 succeeds. Strict Private DNS therefore breaks a
+hostname-paired app's sync when that resolver cannot resolve local router names.
+
+The management/control path must not depend solely on the filtered DNS path.
+Retain an explicitly paired numeric LAN endpoint, still verifying the pinned router
+signature and requiring actual LAN/VPN reachability. Do not add an unfiltered system
+DNS fallback. Domain-specific AGH forwarding (`[/lan/]10.77.0.1`) is a possible
+separate fix for local names, not a change applied by this investigation. Keep other
+upstreams intact and verify local-zone forwarding does not create a DNS loop.
+
 ## Required follow-up, not performed
 
 - Coordinate an actual cellular test using a deliberately authorized test identity;

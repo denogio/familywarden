@@ -18,7 +18,7 @@ define Package/familywarden
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=OpenWrt Parental Control Daemon
-  DEPENDS:=+firewall4 +nftables +rpcd +uhttpd +qrencode
+  DEPENDS:=+firewall4 +nftables +rpcd +uhttpd +qrencode +jsonfilter
   URL:=https://github.com/denogio/familywarden
   PKGARCH:=all
 endef

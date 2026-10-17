@@ -459,6 +459,33 @@ echo "$uri" | grep -q '^ulyssesmast://pair?host=192.168.1.1&key=RW' && pass "pai
 echo "${uri#*key=}" | grep -q '[+/=]' && fail "key not URL-encoded: $uri" || pass "key URL-encoded"
 echo "$out" | jsonfilter -e '@.qr_svg' | grep -q '<svg' && pass "pairing QR (SVG)" || fail "no qr_svg (qrencode installed?)"
 [ -z "$(call mast '{"host":"evil\"; rm -rf /"}' | jsonfilter -e '@.pair_uri')" ] && pass "bad host rejected" || fail "bad host accepted"
+
+# A strict external resolver may not know router.lan. Keep a numeric control path
+# in the QR without changing the legacy host/key fields or requiring a DNS lookup.
+uci set network.lan.ipaddr='192.168.50.1/24'
+uci commit network
+numeric=$(call mast '{"host":"router.invalid"}')
+assert_json "hostname pairing includes numeric LAN endpoint" "$numeric" '@.router_address' '192.168.50.1'
+echo "$numeric" | jsonfilter -e '@.pair_uri' | grep -q '&address=192.168.50.1' \
+    && pass "QR carries DNS-independent control address" || fail "QR has no numeric address"
+assert_json "numeric endpoint retains router fingerprint" "$numeric" '@.fingerprint' "$(echo "$out" | jsonfilter -e '@.fingerprint')"
+# Exercise the live-interface JSON branch as well as the configured-address fallback.
+mkdir -p /tmp/fw-test-ubus
+cat > /tmp/fw-test-ubus/ubus <<'EOF'
+#!/bin/sh
+[ "$1 $2 $3" = 'call network.interface.lan status' ] || exit 1
+printf '%s\n' '{"ipv4-address":[{"address":"192.0.2.9","mask":24}]}'
+EOF
+chmod 755 /tmp/fw-test-ubus/ubus
+live=$(PATH="/tmp/fw-test-ubus:$PATH" call mast '{"host":"router.invalid"}')
+assert_json "live LAN address takes precedence over UCI fallback" "$live" '@.router_address' '192.0.2.9'
+rm -rf /tmp/fw-test-ubus
+uci set network.lan.ipaddr='bad.address'
+uci commit network
+[ -z "$(call mast '{"host":"router.invalid"}' | jsonfilter -e '@.router_address')" ] \
+    && pass "invalid configured numeric address not advertised" || fail "bad address accepted"
+uci -q delete network.lan.ipaddr
+uci commit network
 rm -rf /var/run/familywarden
 "$BIN" reload >/dev/null
 assert_json "same key after reboot" "$(call mast)" '@.fingerprint' "$(echo "$out" | jsonfilter -e '@.fingerprint')"
