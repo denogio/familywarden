@@ -158,35 +158,33 @@ with a `uci-defaults` helper.
 
 ## Phase 5 — DNS filtering
 
-**Model selection (recommendation: per-client nft DNS redirect).**
+**Proposed direction: AdGuard Home + FamilyWarden-managed DNS enforcement.**
+Full design and acceptance gates: [DNS filtering plan](dns-filtering.md).
 
-| Model | Advantages | Disadvantages |
-|-------|------------|---------------|
-| **nft DNAT per MAC** to a filtering resolver | Fits declarative architecture (another include chain), kernel enforcement, no extra services | External resolver performs filtering |
-| dnsmasq + nftset | Local blocklists | Per-client differentiation needs multiple dnsmasq instances; heavier |
-| AdGuard Home API | Rich blocklists and per-client rules | Requires AGH on router/network; external dependency and API state |
+The earlier proposal redirected profile DNS to a public filtering resolver. That remains
+the smaller option, but AGH provides local control of filtering settings, exceptions,
+and reporting. FamilyWarden should manage only its namespaced clients and the firewall
+path, not replace AGH's blocklist engine or administration UI.
 
-**Design (nft model)**
-- Map `option dns_profile` (already in LuCI) to a resolver:
-  `family` = Cloudflare 1.1.1.3 / 1.0.0.3 (+ IPv6), `strict` = CleanBrowsing Family,
-  `custom` = `option dns_server`.
-- New `familywarden_dstnat` chain (prerouting hook, dstnat priority): UDP/TCP 53 from
-  profile MACs → resolver DNAT (IPv4 and IPv6).
-- Bypass mitigation: drop TCP/UDP 853 (DoT) from those MACs. dnsmasq answers NXDOMAIN
-  for `use-application-dns.net` to disable automatic Firefox DoH. Hard-coded app DoH
-  cannot be stopped without a DoH blocklist (potentially an nft set later).
-- Tickets/overrides do *not* change DNS filtering: it is a baseline setting, not
-  a punishment. Confirm this behavior before implementing.
+**Decisions needed**
+- AGH host placement (existing server versus resource-tested router installation).
+- Filtering requirements: ads/trackers, parental protection, SafeSearch, or specific services.
+- Client identity with OpenWrt DHCP: AGH MAC identifiers require AGH DHCP, so the initial
+  design needs verified IP mapping plus an explicit IPv6 strategy.
+- Outage policy and whether tickets should ever relax DNS filtering; proposed defaults:
+  no unfiltered fallback for selected clients, and tickets affect internet access only.
 
 **Tasks**
-- [ ] Generate `familywarden_dstnat` and clean up before `fw4 reload`
-- [ ] UI: `dns_profile` dropdown, plus `dns_server` for `custom`
-- [ ] Integration: per-MAC IPv4/IPv6 DNAT, port-853 drops, no rules without
-      `dns_profile`, valid include
-- [ ] Runtime on rivendell: `nslookup` of an adult site from a profile device returns
-      a blocked response
+- [ ] Prove topology and per-client identity using a disposable AGH setup
+- [ ] Pin a tested AGH release/API and implement minimal namespaced reconciliation
+- [ ] Replace the free-text `dns_profile` stub with supported presets and readiness status
+- [ ] Generate LAN-scoped UDP/TCP DNS enforcement through the existing compiler pipeline
+- [ ] Cover source preservation, IPv6, local names, API/resolver outages, and lease reuse
+- [ ] Freeze effective DNS policy during Ulysses pacts; test amendment/ticket behavior
+- [ ] Explicitly authorized one-device rollout with backup and rollback, after the current pact test
 
-**Decision needed:** choose a model and whether a ticket should disable DNS filtering.
+**Limits:** arbitrary per-profile blocklist sets, AGH DHCP migration, full DoH/VPN
+prevention, and off-home Android DNS filtering are outside the first release.
 
 ---
 

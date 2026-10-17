@@ -212,7 +212,9 @@ The vision includes DNS filtering, but there is no implementation:
 - LuCI saves `dns_profile` to UCI, but nothing consumes it.
 - A commented UCI example exists, but no backend logic.
 - Current blocking uses MAC-based nft drops (internet on/off), not DNS.
-- Possible models, not yet selected: AdGuard Home API, dnsmasq nftset, per-client nft DNS redirect.
+- Proposed direction: AdGuard Home client-policy integration plus nft DNS-path enforcement.
+  See `plans/dns-filtering.md`; deployment location, identity/IPv6 strategy, and rollout
+  still require decisions. Do not change the live router during its current pact test.
 
 ### CI / release
 - `.github/workflows/ci.yml`: push/PR → syntax + integration tests → SDK build
