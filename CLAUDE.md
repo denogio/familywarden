@@ -5,6 +5,7 @@
 Use English for replies, all documentation, source comments, and default UI text.
 The Android app must also provide complete Danish localization from its first
 FamilyWarden-branded release; use Android string/plural resources and system/app locale.
+Design mockups are English only; do not duplicate screens for Danish.
 Use only fictional children's names (e.g. Alex) in fixtures, examples, UI placeholders,
 documentation, and screenshots. Never copy children's real names or device names
 from a running router into the repository or public artifacts.
@@ -215,7 +216,7 @@ The vision includes DNS filtering, but there is no implementation:
 - A commented UCI example exists, but no backend logic.
 - Current blocking uses MAC-based nft drops (internet on/off), not DNS.
 - Proposed direction: AdGuard Home client-policy integration plus nft DNS-path enforcement.
-  See `plans/dns-filtering.md`, especially its planning checkpoint and D1–D10 decisions.
+  See `plans/dns-filtering.md`, especially its planning checkpoint and D1–D16 decisions.
   Existing AGH is at `10.77.0.11`; base/wildcard DNS is `secure-dns.hojgaard.me`.
   LAN-hairpin DoT works, but cellular access is unresolved. Split DNS and Mast Private
   DNS/ClientID enforcement are proposals, not applied configuration. D1/D2 are confirmed:
@@ -226,7 +227,9 @@ The vision includes DNS filtering, but there is no implementation:
   mast/sail subsection mark. Planning only. Package change needs Device Owner migration, not an APK
   update in place. Personal DNS names are deployment settings, not project defaults;
   changing the actual DNS domain is still an open question.
-  Resume with D3 filter categories and D5 read-only AGH inventory permission/access;
+  Unresolved questions are deferred until needed, not an instruction to investigate now.
+  Future removal needs authorization as well as no active applicable pact; the exact
+  captain/admin/managed-device matrix is still open. Do not infer non-admin means child;
   never confuse ClientID with authentication or LAN tests with external reachability.
   Do not change the live router during its current pact test.
 

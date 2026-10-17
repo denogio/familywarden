@@ -73,6 +73,11 @@ it did not configure split DNS.
   and source comments remain English. This is required for the Android release, not
   deferred to the separate LuCI translation roadmap phase.
 - DNS filtering is always active while paired, independent of Ulysses pact/schedule state.
+- Removal must be permission-aware, not merely pact-aware. The user wants removal for
+  their authorized self-managed phone after its pact ends, but not unrestricted removal
+  for a managed child/non-authorized device merely because it has no active pact.
+  An active applicable pact remains a removal barrier. The exact captain/admin/managed
+  role matrix is unresolved (D11); do not infer that every non-admin is a child.
 - Keep strict Private DNS: no automatic opportunistic/plaintext/unfiltered fallback.
   Redundant filtered upstreams inside AGH, and possibly a second equivalently configured
   AGH later, may improve availability without relaxing this decision. Port-853 blocking
@@ -121,11 +126,33 @@ it did not configure split DNS.
 | D8 | How should pact freezing, amendment windows, unpairing, and removal affect DNS? | Freeze the effective policy/hostname during the pact; allow normal amendments; restore the previous owned Android DNS setting on removal | Unanswered |
 | D9 | Which AGH settings may FamilyWarden own? | Namespaced clients only; leave global lists/manual clients intact initially | Unanswered |
 | D10 | What is the deployment sequence? | Lab first, then one explicitly approved device after the current pact test | Unanswered |
+| D11 | Which actor may remove/unpair a device? | No active pact is necessary but not sufficient. Agree a matrix for self-managed adult, captain, administrator, and managed device; never equate non-admin with child | Intent clarified; exact matrix deferred |
+| D12 | How does the router authenticate an enrolled phone? | Pinning the router key authenticates the router, not the requesting phone. Agree authorized enrollment and per-device proof of identity before capability/removal endpoints | Deferred |
+| D13 | How strong must Android bypass resistance be? | Decide ADB, alternate users/profiles, VPNs, app-level DoH, and scope of always-on restrictions; current hotspot-time ADB rules do not automatically protect always-on DNS | Deferred |
+| D14 | How is release/removal response freshness proven? | A valid signature or nondecreasing timestamp alone does not prove a response is live. Evaluate request-bound challenge/expiry and replay tests before authorization-sensitive implementation | Deferred |
+| D15 | Which policy changes/exceptions may be immediate? | Decide authority and possible delay for AGH-side changes, manual allow rules, and DNS exceptions; external AGH admin access can bypass local UI freezing | Deferred |
+| D16 | What are the privacy and recovery policies? | Agree query-log retention, diagnostic redaction, certificate/signing-key rotation, router replacement, lost phone, and recovery ownership | Deferred |
 
-Next conversation round: finish D3 (filter categories) and obtain permission/access for
-read-only AGH inventory under D5. D1 and D2 are settled; do not reopen them as unanswered.
-Discuss topology (D6–D7) and remaining lifecycle decisions before implementation.
-Do not present other proposed defaults as user decisions.
+The user explicitly asked to record unresolved questions and revisit them only when
+relevant, not resolve everything now. D1/D2 are settled. Keep the rest as visible gates:
+resolve each question before implementing the behavior it governs. Do not invent a
+role matrix or treat proposed defaults as user decisions. No implementation/deployment
+is authorized by this backlog.
+
+### Deferred-question timing
+
+- Before enrollment/capability/removal implementation: D11, D12, and D14.
+- Before always-on Android enforcement: D13 and DNS restoration details in D8.
+- Before exposing remote DNS/API or changing network configuration: D5–D7 and D16 security/recovery details.
+- Before activating filtering or exceptions: D3, D4, D9, D15, and applicable pact-amendment rules.
+- Before deployment: D10 plus every unresolved gate affecting the enabled features.
+
+For D11 specifically, "can remove after a pact ends" and "a managed device cannot remove
+itself without permission" are both requirements. Whether captain alone grants self-removal,
+whether administrator approval must be performed on another device, and what "without
+Ulysses" means for an adult account are not settled. Default to no new removal entitlement
+until that decision is made. Existing Mast behavior is not automatically the future
+FamilyWarden permission model.
 
 ### Read-only investigation still needed
 
