@@ -167,7 +167,10 @@ and reporting. FamilyWarden should manage only its namespaced clients and the fi
 path, not replace AGH's blocklist engine or administration UI.
 
 **Decisions needed**
-- AGH host placement (existing server versus resource-tested router installation).
+- Reuse the confirmed AGH at `10.77.0.11`; inventory version, access controls, and API.
+- Answer the numbered D1–D10 decisions in the DNS plan; D1–D3 are the next discussion round.
+- Split DNS for `secure-dns.hojgaard.me` and its subdomains is proposed on rivendell;
+  actual LAN bootstrap DNS and cellular DoT reachability still need verification.
 - Filtering requirements: ads/trackers, parental protection, SafeSearch, or specific services.
 - Client identity with OpenWrt DHCP: AGH MAC identifiers require AGH DHCP, so the initial
   design needs verified IP mapping plus an explicit IPv6 strategy.
@@ -181,10 +184,12 @@ path, not replace AGH's blocklist engine or administration UI.
 - [ ] Generate LAN-scoped UDP/TCP DNS enforcement through the existing compiler pipeline
 - [ ] Cover source preservation, IPv6, local names, API/resolver outages, and lease reuse
 - [ ] Freeze effective DNS policy during Ulysses pacts; test amendment/ticket behavior
+- [ ] Plan and implement a separately tested Mast Private DNS/ClientID workstream after decisions
 - [ ] Explicitly authorized one-device rollout with backup and rollback, after the current pact test
 
-**Limits:** arbitrary per-profile blocklist sets, AGH DHCP migration, full DoH/VPN
-prevention, and off-home Android DNS filtering are outside the first release.
+**Limits:** arbitrary per-profile blocklist sets, AGH DHCP migration, and full DoH/VPN
+prevention are outside the first release. Mast Private DNS is a proposed separate
+workstream, not implemented. ClientIDs identify policies; they do not authenticate devices.
 
 ---
 

@@ -213,8 +213,12 @@ The vision includes DNS filtering, but there is no implementation:
 - A commented UCI example exists, but no backend logic.
 - Current blocking uses MAC-based nft drops (internet on/off), not DNS.
 - Proposed direction: AdGuard Home client-policy integration plus nft DNS-path enforcement.
-  See `plans/dns-filtering.md`; deployment location, identity/IPv6 strategy, and rollout
-  still require decisions. Do not change the live router during its current pact test.
+  See `plans/dns-filtering.md`, especially its planning checkpoint and D1–D10 decisions.
+  Existing AGH is at `10.77.0.11`; base/wildcard DNS is `secure-dns.hojgaard.me`.
+  LAN-hairpin DoT works, but cellular access is unresolved. Split DNS and Mast Private
+  DNS/ClientID enforcement are proposals, not applied configuration. Resume with D1–D3;
+  never confuse ClientID with authentication or LAN tests with external reachability.
+  Do not change the live router during its current pact test.
 
 ### CI / release
 - `.github/workflows/ci.yml`: push/PR → syntax + integration tests → SDK build

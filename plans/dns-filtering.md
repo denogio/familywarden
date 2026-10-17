@@ -3,6 +3,123 @@
 Status: proposed, not implemented. No changes to rivendell are authorized by this plan.
 The current pact test must remain untouched. Documentation and default UI text are English.
 
+## Planning checkpoint — read this before continuing
+
+This document is the durable source of DNS planning context. Keep confirmed facts,
+proposals, and unanswered questions separate. A planning answer is not production-change
+authorization. Record answers under the decision IDs below rather than relying on chat history.
+
+### Confirmed environment and observations
+
+| Item | Confirmed finding | Limits / remaining verification |
+|---|---|---|
+| Router | rivendell, OpenWrt 25.12.4, FamilyWarden 0.8.0 / LuCI 0.5.0 | A user-run pact test is in progress; do not alter it |
+| Existing resolver | AdGuard Home already runs at `10.77.0.11` | Version, runtime host/container, API access, and existing policies are not yet inventoried |
+| DNS names | `secure-dns.hojgaard.me` and wildcard subdomains resolve publicly; tested base and `mast-phone.secure-dns.hojgaard.me` | Public address was `87.62.96.86`; use DNS, not a hard-coded public IP |
+| DoT | Both tested hostnames accepted TCP 853, TLS 1.3, and a real `example.org A` query | Tested from the home network through the public address, not from an independent external network |
+| Certificate | Trusted certificate covers `secure-dns.hojgaard.me` AND `*.secure-dns.hojgaard.me` | Automatic renewal and behavior after renewal still need testing |
+| WAN forwarding | Active TCP/UDP 853 DNAT to `10.77.0.11:853` | The phone cannot use it on mobile data yet; root cause is not established |
+| NAT reflection | Wi-Fi connections through the public address are SNATed to `10.77.0.1` | AGH therefore cannot infer the original LAN IP on that path |
+| IPv6 | No AAAA answer for the tested public resolver name; router WAN showed no delegated IPv6 at inspection | This does not establish that all LAN/mobile clients lack IPv6 |
+| Mast | Device Owner app, minSdk 30, already paired using a pinned router signing key | Private DNS enforcement is proposed, not implemented |
+
+No DNS rewrites, DHCP changes, AGH access-list changes, or Mast DNS settings were applied.
+The prior router-upgrade troubleshooting touched only FamilyWarden JS timestamps;
+it did not configure split DNS.
+
+### Proposed architecture, not yet approved in every detail
+
+- Reuse AGH at `10.77.0.11`; do not install a second AGH on rivendell.
+- Keep OpenWrt DHCP. Ordinary LAN devices use stable IP identities mapped from their
+  FamilyWarden MAC membership. Confirm DHCP reservations before changing them.
+- Add a separate Mast workstream: Device Owner sets a **DoT hostname** through
+  `setGlobalPrivateDnsModeSpecifiedHost` and prevents user edits using
+  `DISALLOW_CONFIG_PRIVATE_DNS`. This API does not accept a generic DoH URL.
+- Give each Mast enrollment a stable, non-personal ClientID, for example
+  `mast-<random-id>.secure-dns.hojgaard.me`. AGH derives the ClientID from TLS SNI;
+  NAT changes addresses, not SNI. Verify any TLS proxy preserves the required identity.
+- **ClientID is identification, not authentication.** Anyone able to use a known ID can
+  attempt to select its policy. TLS authenticates the server to Android, not the phone
+  to AGH. Do not claim that a random ID makes a publicly accessible resolver private.
+- Proposed split DNS on rivendell's LAN-only dnsmasq:
+
+  ```uci
+  list address '/secure-dns.hojgaard.me/10.77.0.11'
+  list local '/secure-dns.hojgaard.me/'
+  ```
+
+  These are entries inside the relevant dnsmasq section, not commands to execute now.
+  The suffix covers the base name and all subdomains. `local` prevents unmatched record
+  types, including AAAA without a local IPv6 answer, being forwarded upstream.
+  Do not replace existing address/local lists or unrelated DHCP DNS options.
+
+- Wi-Fi bootstrap DNS must actually reach rivendell for these overrides to apply.
+  Which DNS server DHCP advertises today is still unknown. If clients query AGH directly,
+  an override in dnsmasq alone has no effect.
+- Do NOT add a global private-IP rewrite to the same AGH listener serving remote clients:
+  it could return an unreachable private address off-site. Keep external authoritative
+  answers public, and keep the private override confined to the LAN bootstrap path.
+- Split DNS improves the direct local path; it is not the security boundary. Android
+  caches/bootstrap behavior on network changes must be tested. Identity must remain
+  correct through ClientID even when a connection temporarily uses NAT reflection.
+- Do NOT simply remove reflection SNAT: asymmetric routing can break the connection.
+
+### Remaining decisions (ask the user in small rounds)
+
+| ID | Question | Proposed default / reason | State |
+|---|---|---|---|
+| D1 | Should Mast enforce filtered DNS always, only during a pact, or only during blocked hours? | Always while paired; keep DNS protection separate from hotspot schedules | Unanswered |
+| D2 | If strict Private DNS is unreachable, accept DNS failure or allow fallback? | No automatic unfiltered fallback for selected clients; warn about captive portals and networks blocking 853 | Unanswered |
+| D3 | Which devices/profiles and filters belong in the first release? | Captain's phone first; agree ads/trackers, adult filtering, SafeSearch, and service-specific requirements separately | Unanswered |
+| D4 | Should tickets affect DNS filtering? | No: internet tickets change connectivity only | Unanswered |
+| D5 | How is the external resolver access-controlled? | Inventory AGH allowed/disallowed clients, host firewall, and TLS proxy; choose intentional exposure or managed VPN, never silently remove allowlists | Unanswered |
+| D6 | Can selected LAN devices get stable DHCP reservations, and how should IPv6 be handled? | Reserve IPv4; explicitly test/choose an IPv6 strategy before claiming full coverage | Unanswered |
+| D7 | May FamilyWarden change DHCP-advertised bootstrap DNS to rivendell if necessary? | Only after inspecting current DHCP/DNS and confirming local-name behavior; no whole-network change without approval | Unanswered |
+| D8 | How should pact freezing, amendment windows, unpairing, and removal affect DNS? | Freeze the effective policy/hostname during the pact; allow normal amendments; restore the previous owned Android DNS setting on removal | Unanswered |
+| D9 | Which AGH settings may FamilyWarden own? | Namespaced clients only; leave global lists/manual clients intact initially | Unanswered |
+| D10 | What is the deployment sequence? | Lab first, then one explicitly approved device after the current pact test | Unanswered |
+
+Next conversation round: D1–D3 only. Discuss access/topology (D5–D7) before implementation,
+then remaining lifecycle decisions. Do not present proposed defaults as user decisions.
+
+### Read-only investigation still needed
+
+- Inventory AGH version/hosting, DNS/TLS listeners/proxy, client policies, access lists,
+  and authenticated API route. Do not request passwords in chat or publish query logs.
+- Inspect DHCP option 6, IPv6 RDNSS/DHCPv6, and actual Android bootstrap behavior.
+- Diagnose the mobile-data failure using a coordinated TCP/TLS attempt. Capture only
+  necessary metadata; distinguish no inbound SYN, failed return path, TLS failure,
+  and DNS refusal. Port forwarding alone does not prove external reachability.
+- Verify any AGH access-list ClientID support against the installed version. Even if
+  supported, it remains a bearer identifier, not strong device authentication.
+- Independently test cellular access; do not count the successful LAN hairpin test as
+  an external test.
+
+### Mast implementation requirements (separate from router DNS interception)
+
+- Extend the signed router payload with a versioned DNS policy/hostname and update
+  `Payload`, `Policy`/`Store`, `Mast`, UI state, and removal handling together.
+  Validate hostname and policy fields before accepting them. No credentials in payloads.
+- Preserve the agreed offline model: last verified policy remains until successful sync;
+  no age-based 24/48-hour escalation. Activation timing remains D1, not assumed.
+- Set Private DNS in background work: Android's API performs a blocking resolver
+  validation. Handle return codes, unsupported ownership/user configurations, and network
+  failures explicitly. Never mark enforcement successful just because desired state was saved.
+- Distinguish applied DNS policy, endpoint reachability, and sync freshness in the UI.
+  Preserve prior settings and verify which modes the public Android APIs can restore;
+  do not promise exact restoration until tested. Restore only settings Mast owns,
+  document platform limitations, and do not clear unrelated restrictions.
+- Test whether another browser/app can use its own DoH or VPN. System DNS control does
+  not automatically cover those, and phone Private DNS does not prove hotspot-client DNS
+  enforcement. Do not conflate these with the already implemented hotspot restriction.
+- Test split-DNS bootstrap and DoT across Wi-Fi → cellular → Wi-Fi, reconnect/reboot,
+  cached public/private endpoints, API timeout, port-853 blocking, captive portals,
+  certificate renewal, and resolver outage on real Android hardware.
+- Add emulator tests for policy application/change locking/removal, and real-device
+  acceptance for network switching. A new Mast release/signature-compatible update is
+  required; installing a router package alone cannot add phone-side enforcement.
+
+
 ## Recommendation
 
 Use **AdGuard Home (AGH) for DNS filtering**, with FamilyWarden managing profile-to-client
@@ -21,12 +138,9 @@ for installations that do not enable DNS filtering.
 
 ## Decisions needed before implementation
 
-1. **Where will AGH run?** Prefer an existing always-on server if available, provided the
-   routing path preserves client identity. Otherwise evaluate router-local AGH in a lab.
-   Rivendell's last observed overlay had about 35 MB free. That leaves limited room
-   for AGH, blocklists, and logs. Total/free RAM still needs measuring; the previously
-   observed tmpfs size is not a RAM-capacity measurement. Do not install there before
-   measuring actual resource use with the intended lists.
+1. **AGH placement:** an existing instance is confirmed at `10.77.0.11`. Reuse it.
+   Hosting/version and source-preserving LAN routing still need verification. Router-local
+   installation is no longer the proposed deployment.
 2. **What does filtering mean?** Proposed presets: `off`, `standard` (configured ad/tracker
    lists), and `family` (standard + parental/SafeSearch options). Confirm whether adult
    content, specific services, or particular domains are the main requirement.
@@ -107,8 +221,9 @@ all VPNs, or hard-coded DoH over port 443. State these limits in the UI.
 2. Route both UDP and TCP DNS on port 53 to the approved AGH resolver. Keep control over
    queries addressed to the router and public resolvers, not just DHCP-advertised DNS.
 3. Implement and test the selected IPv6 strategy; no unfiltered secondary DNS server.
-4. Optionally block TCP and UDP 853 for selected clients (common DoT/DoQ traffic).
-   This is mitigation, not complete encrypted-DNS/VPN prevention.
+4. Optionally block unapproved TCP/UDP 853 for selected clients (common DoT/DoQ traffic).
+   Explicitly permit the approved Mast DoT endpoint before those drops; do not break our
+   own managed resolver path. This is not complete encrypted-DNS/VPN prevention.
 5. Keep dnsmasq available for local names/PTR through a domain-specific AGH upstream
    or a tested independent local resolver path. Avoid AGH↔dnsmasq forwarding loops.
 6. If selected DNS must remain reachable during internet blocking, add only a narrow
@@ -180,8 +295,9 @@ report the partial failure; do not enable an unconfigured/bypassable DNS path.
 ## Out of scope for the first release
 
 AGH DHCP migration, arbitrary per-profile blocklist subscriptions, query-log dashboards
-inside LuCI, provider plugins, Mast/Android DNS enforcement away from home, TLS interception,
-and claims of complete DoH/VPN bypass prevention.
+inside LuCI, provider plugins, TLS interception, and claims of complete DoH/VPN bypass
+prevention. Mast Private DNS is now a proposed separate workstream, subject to D1–D10;
+it is no longer categorically excluded, and is not yet implemented.
 
 ## Sources
 
@@ -189,3 +305,6 @@ and claims of complete DoH/VPN bypass prevention.
 - [AGH OpenAPI schema — pin to the tested release before implementation](https://github.com/AdguardTeam/AdGuardHome/blob/master/openapi/openapi.yaml)
 - [OpenWrt AGH deployment and resource considerations](https://openwrt.org/docs/guide-user/services/dns/adguard-home)
 - [OpenWrt optional AGH resolver alongside dnsmasq](https://openwrt.org/docs/guide-user/services/dns/adguard-home-dummy-interface)
+- [dnsmasq domain suffix address/local behavior](https://dnsmasq.org/docs/dnsmasq-man.html)
+- [Android DevicePolicyManager Private DNS API](https://developer.android.com/reference/android/app/admin/DevicePolicyManager#setGlobalPrivateDnsModeSpecifiedHost(android.content.ComponentName,java.lang.String))
+- [Android private-DNS configuration restriction](https://developer.android.com/reference/android/os/UserManager#DISALLOW_CONFIG_PRIVATE_DNS)
