@@ -21,7 +21,7 @@ start_service() {
     # locked profile whose 24 h cooling-off has passed ("$BIN tick" is a no-op
     # otherwise).
     procd_open_instance
-    procd_set_param command /bin/sh -c "while sleep 60; do $BIN tick; done"
+    procd_set_param command /bin/sh -c "while sleep 60; do $BIN tick; $BIN dns-tick; done"
     procd_set_param respawn
     procd_close_instance
 }

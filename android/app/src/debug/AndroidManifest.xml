@@ -6,8 +6,8 @@
             android:name=".DebugReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="me.hojgaard.ulysses.mast.DEBUG_PAIR" />
-                <action android:name="me.hojgaard.ulysses.mast.DEBUG_SYNC" />
+                <action android:name="io.github.denogio.familywarden.DEBUG_PAIR" />
+                <action android:name="io.github.denogio.familywarden.DEBUG_SYNC" />
             </intent-filter>
         </receiver>
     </application>

@@ -9,11 +9,11 @@ plugins {
 val keystorePath: String? = System.getenv("MAST_KEYSTORE")
 
 android {
-    namespace = "me.hojgaard.ulysses.mast"
+    namespace = "io.github.denogio.familywarden"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "me.hojgaard.ulysses.mast"
+        applicationId = "io.github.denogio.familywarden"
         minSdk = 30          // DevicePolicyManager.setAutoTimeEnabled
         targetSdk = 35
         versionCode = (System.getenv("MAST_VERSION_CODE") ?: "1").toInt()

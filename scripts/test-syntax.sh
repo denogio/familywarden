@@ -57,6 +57,10 @@ required_functions=(
     "ubus_ticket"
     "ubus_reload"
     "ubus_version"
+    "cli_mast2"
+    "mast2_payload"
+    "cli_dns_sync"
+    "ubus_devices"
 )
 
 for func in "${required_functions[@]}"; do
@@ -71,7 +75,7 @@ echo ""
 echo "=== Ubus API Endpoints ==="
 
 # Each method must be both advertised (rpcd "list" JSON) and dispatched ("call").
-ubus_methods=("list" "status" "block" "allow" "reset" "ticket" "pact" "mast" "reload" "version")
+ubus_methods=("list" "status" "block" "allow" "reset" "ticket" "pact" "mast" "reload" "version" "devices" "device_approve" "device_reject" "device_update" "device_delete" "device_allow_removal" "dns_status" "dns_sync" "dns_auth" "dns_services")
 ACL_FILES=("${PROJECT_ROOT}/familywarden/usr/share/rpcd/acl.d/familywarden.json"
            "${PROJECT_ROOT}/luci-app-familywarden/root/usr/share/rpcd/acl.d/luci-app-familywarden.json")
 for method in "${ubus_methods[@]}"; do

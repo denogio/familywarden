@@ -203,7 +203,7 @@ echo ""
 echo "=== ubus: ticket (kernel timeout set) ==="
 out=$(call ticket '{"profile":"teen","minutes":5}')
 assert_json "ticket reply ok" "$out" '@.status' "ok"
-if nft list set inet fw4 familywarden_ticket | grep -qE 'aa:bb:cc:00:00:03 timeout 5m'; then
+if nft list set inet fw4 familywarden_ticket | grep -qE 'aa:bb:cc:00:00:03 timeout (5m|4m5[0-9]s)'; then
     pass "ticket element with 5m timeout"
 else
     fail "ticket element missing"
@@ -459,6 +459,33 @@ echo "$uri" | grep -q '^ulyssesmast://pair?host=192.168.1.1&key=RW' && pass "pai
 echo "${uri#*key=}" | grep -q '[+/=]' && fail "key not URL-encoded: $uri" || pass "key URL-encoded"
 echo "$out" | jsonfilter -e '@.qr_svg' | grep -q '<svg' && pass "pairing QR (SVG)" || fail "no qr_svg (qrencode installed?)"
 [ -z "$(call mast '{"host":"evil\"; rm -rf /"}' | jsonfilter -e '@.pair_uri')" ] && pass "bad host rejected" || fail "bad host accepted"
+
+# A strict external resolver may not know router.lan. Keep a numeric control path
+# in the QR without changing the legacy host/key fields or requiring a DNS lookup.
+uci set network.lan.ipaddr='192.168.50.1/24'
+uci commit network
+numeric=$(call mast '{"host":"router.invalid"}')
+assert_json "hostname pairing includes numeric LAN endpoint" "$numeric" '@.router_address' '192.168.50.1'
+echo "$numeric" | jsonfilter -e '@.pair_uri' | grep -q '&address=192.168.50.1' \
+    && pass "QR carries DNS-independent control address" || fail "QR has no numeric address"
+assert_json "numeric endpoint retains router fingerprint" "$numeric" '@.fingerprint' "$(echo "$out" | jsonfilter -e '@.fingerprint')"
+# Exercise the live-interface JSON branch as well as the configured-address fallback.
+mkdir -p /tmp/fw-test-ubus
+cat > /tmp/fw-test-ubus/ubus <<'EOF'
+#!/bin/sh
+[ "$1 $2 $3" = 'call network.interface.lan status' ] || exit 1
+printf '%s\n' '{"ipv4-address":[{"address":"192.0.2.9","mask":24}]}'
+EOF
+chmod 755 /tmp/fw-test-ubus/ubus
+live=$(PATH="/tmp/fw-test-ubus:$PATH" call mast '{"host":"router.invalid"}')
+assert_json "live LAN address takes precedence over UCI fallback" "$live" '@.router_address' '192.0.2.9'
+rm -rf /tmp/fw-test-ubus
+uci set network.lan.ipaddr='bad.address'
+uci commit network
+[ -z "$(call mast '{"host":"router.invalid"}' | jsonfilter -e '@.router_address')" ] \
+    && pass "invalid configured numeric address not advertised" || fail "bad address accepted"
+uci -q delete network.lan.ipaddr
+uci commit network
 rm -rf /var/run/familywarden
 "$BIN" reload >/dev/null
 assert_json "same key after reboot" "$(call mast)" '@.fingerprint' "$(echo "$out" | jsonfilter -e '@.fingerprint')"
@@ -467,6 +494,114 @@ echo $(( $(date +%s) - 1 )) > /etc/familywarden/release
 payload=$(REQUEST_METHOD=GET sh "$MAST" | sed '1,/^$/d' | sed 1d)
 assert_json "payload after release: no pact" "$payload" '@.pact.active' "false"
 assert_json "payload after release: captain still known" "$payload" '@.captain' "kid"
+
+echo ""
+echo "=== FamilyWarden app v2: enrollment, binding and pact freeze ==="
+N1=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+N2=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+enc() { printf '%s' "$1" | sed 's/+/%2B/g; s|/|%2F|g; s/=/%3D/g'; }
+fpr() { sed -n 2p "/tmp/$1.pub" | tr -d '\n' | sha256sum | cut -d' ' -f1; }
+newphone() { usign -G -s "/tmp/$1.key" -p "/tmp/$1.pub" -c phone >/dev/null 2>&1; }
+# Raw CGI reply of a v2 request: $1 phone key, $2 device id, $3 nonce [, $4 nonce actually signed]
+mast2() {
+    printf 'familywarden-sync-v2\n%s\n%s\n' "$2" "${4:-$3}" > /tmp/m2.msg
+    usign -S -m /tmp/m2.msg -s "/tmp/$1.key" -x /tmp/m2.sig
+    REQUEST_METHOD=GET QUERY_STRING="device=$2&nonce=$3&key=$(enc "$(sed -n 2p "/tmp/$1.pub")")&sig=$(enc "$(sed -n 2p /tmp/m2.sig)")&name=Pixel-9" sh "$MAST"
+}
+v2payload() { mast2 "$@" | sed '1,/^$/d' | sed 1d; }
+
+newphone phoneA
+mast2 phoneA fw-a1 "$N1" > /tmp/m2.out
+head -1 /tmp/m2.out | grep -q '^Status: 200' && pass "v2 request accepted" || fail "v2 status: $(head -1 /tmp/m2.out)"
+sed '1,/^$/d' /tmp/m2.out > /tmp/m2.body
+printf 'untrusted comment: test\n%s\n' "$(sed -n 1p /tmp/m2.body)" > /tmp/m2.rsig
+sed 1d /tmp/m2.body > /tmp/m2.payload
+usign -V -q -m /tmp/m2.payload -p /tmp/mast.pub -x /tmp/m2.rsig && pass "v2 reply signed by the router" || fail "v2 reply signature"
+payload=$(cat /tmp/m2.payload)
+assert_json "unknown phone is pending" "$payload" '@.enrollment' "pending"
+assert_json "reply echoes the nonce" "$payload" '@.nonce' "$N1"
+[ -z "$(echo "$payload" | jsonfilter -e '@.binding')" ] && pass "no binding before approval" || fail "pending phone got a binding"
+[ -z "$(echo "$payload" | jsonfilter -e '@.pact')" ] && pass "no pact state before approval" || fail "pending phone got pact state"
+out=$(call devices)
+assert_json "LuCI lists the pending phone" "$out" '@.pending[0].id' "fw-a1"
+assert_json "pending fingerprint matches the phone key" "$out" '@.pending[0].fingerprint' "$(sed -n 2p /tmp/phoneA.pub | tr -d '\n' | sha256sum | cut -d' ' -f1)"
+assert_json "pending phone model" "$out" '@.pending[0].name' "Pixel-9"
+mast2 phoneA fw-a1 "$N1" "$N2" | head -1 | grep -q '^Status: 403' && pass "signature over another nonce refused" || fail "wrong signature accepted"
+REQUEST_METHOD=GET QUERY_STRING="device=fw-a1&nonce=xyz&key=a&sig=b" sh "$MAST" | head -1 | grep -q '^Status: 400' \
+    && pass "malformed v2 request refused" || fail "malformed request not refused"
+assert_json "approval needs a pending phone" "$(call device_approve '{"device":"fw-zz","profile":"kid","administrator":"0"}')" '@.error' "no pending device"
+assert_json "approval needs an existing profile" "$(call device_approve "{\"device\":\"fw-a1\",\"profile\":\"nope\",\"administrator\":\"0\",\"fingerprint\":\"$(fpr phoneA)\"}")" '@.error' "profile not found"
+assert_json "approval refuses an unseen fingerprint" "$(call device_approve '{"device":"fw-a1","profile":"kid","administrator":"1","fingerprint":"0000"}')" '@.error' "pending device changed; refresh and compare fingerprint"
+assert_json "a name can't inject UCI commands" "$(call device_approve "{\"device\":\"fw-a1\",\"profile\":\"kid\",\"administrator\":\"0\",\"fingerprint\":\"$(fpr phoneA)\",\"name\":\"x' \\n set familywarden.settings.enabled=0 #\"}")" '@.status' "ok"
+[ "$(uci -q get familywarden.settings.enabled)" = "1" ] && pass "settings untouched by a crafted name" || fail "UCI injection"
+uci delete familywarden.dev_fw_a1; uci commit familywarden; "$BIN" reload >/dev/null
+v2payload phoneA fw-a1 "$N1" >/dev/null
+assert_json "approve the captain's phone" "$(call device_approve "{\"device\":\"fw-a1\",\"profile\":\"kid\",\"name\":\"Alex phone\",\"administrator\":\"1\",\"fingerprint\":\"$(fpr phoneA)\"}")" '@.status' "ok"
+payload=$(v2payload phoneA fw-a1 "$N2")
+assert_json "approved" "$payload" '@.enrollment' "approved"
+assert_json "binding: device" "$payload" '@.binding.device_id' "fw-a1"
+assert_json "binding: profile" "$payload" '@.binding.profile_id' "kid"
+assert_json "binding: captain" "$payload" '@.binding.captain' "true"
+assert_json "binding: administrator" "$payload" '@.binding.administrator' "true"
+assert_json "administrator may remove its own app" "$payload" '@.binding.can_self_remove' "true"
+assert_json "fresh nonce echoed" "$payload" '@.nonce' "$N2"
+assert_json "captain rules for the captain's phone" "$payload" '@.rules.policy' "scheduled"
+[ -z "$(call devices | jsonfilter -e '@.pending[*].id')" ] && pass "approved phone leaves the pending list" || fail "still pending"
+assert_json "LuCI lists the approved phone" "$(call devices)" '@.devices[0].fingerprint' "$(sed -n 2p /tmp/phoneA.pub | tr -d '\n' | sha256sum | cut -d' ' -f1)"
+
+newphone phoneB
+payload=$(v2payload phoneB fw-a1 "$N1")
+assert_json "same id with another key gets nothing" "$payload" '@.enrollment' "pending"
+[ -z "$(echo "$payload" | jsonfilter -e '@.binding')" ] && pass "no binding for a foreign key" || fail "foreign key got a binding"
+
+v2payload phoneB fw-a1 "$N1" >/dev/null
+assert_json "rejecting a re-keyed request" "$(call device_reject '{"device":"fw-a1"}')" '@.status' "ok"
+assert_json "...keeps the approved phone" "$(v2payload phoneA fw-a1 "$N2")" '@.enrollment' "approved"
+
+newphone phoneC
+v2payload phoneC fw-c1 "$N1" >/dev/null
+call device_approve "{\"device\":\"fw-c1\",\"profile\":\"parent\",\"name\":\"Taylor phone\",\"administrator\":\"0\",\"fingerprint\":\"$(fpr phoneC)\"}" >/dev/null
+payload=$(v2payload phoneC fw-c1 "$N1")
+assert_json "managed phone: not captain" "$payload" '@.binding.captain' "false"
+assert_json "managed phone: no captain rules" "$payload" '@.captain' ""
+assert_json "managed phone: may not remove itself" "$payload" '@.binding.can_self_remove' "false"
+assert_json "administrator allows removal" "$(call device_allow_removal '{"device":"fw-c1"}')" '@.status' "ok"
+assert_json "removal allowed for an hour" "$(v2payload phoneC fw-c1 "$N1")" '@.binding.can_self_remove' "true"
+
+call pact "{\"until\":0,\"window_day\":\"$tomorrow\",\"window_start\":\"10:00\",\"window_stop\":\"11:00\"}" >/dev/null
+payload=$(v2payload phoneA fw-a1 "$N1")
+assert_json "pact applies to the captain's phone" "$payload" '@.pact.active' "true"
+assert_json "managed phone is not bound by the captain's pact" "$(v2payload phoneC fw-c1 "$N1")" '@.pact.active' "false"
+assert_json "captain's phone can't be moved during the pact" "$(call device_update '{"device":"fw-a1","profile":"parent"}')" '@.error' "bound by Ulysses pact"
+assert_json "captain's phone can't be deleted during the pact" "$(call device_delete '{"device":"fw-a1"}')" '@.error' "bound by Ulysses pact"
+assert_json "captain's phone can't be allowed removal during the pact" "$(call device_allow_removal '{"device":"fw-a1"}')" '@.error' "bound by Ulysses pact"
+assert_json "LuCI shows it frozen" "$(call devices)" '@.devices[@.id="fw-a1"].frozen' "true"
+uci delete familywarden.dev_fw_a1
+uci commit familywarden
+"$BIN" reload >/dev/null
+payload=$(v2payload phoneA fw-a1 "$N1")
+assert_json "deleting it in UCI changes nothing (snapshot)" "$payload" '@.binding.captain' "true"
+assert_json "...and the pact still applies" "$payload" '@.pact.active' "true"
+newphone phoneD
+v2payload phoneD fw-d1 "$N1" >/dev/null
+assert_json "a phone can join the captain during the pact" "$(call device_approve "{\"device\":\"fw-d1\",\"profile\":\"kid\",\"administrator\":\"0\",\"fingerprint\":\"$(fpr phoneD)\"}")" '@.status' "ok"
+assert_json "...and is bound at once" "$(v2payload phoneD fw-d1 "$N1")" '@.pact.active' "true"
+
+[ -z "$(v2payload phoneA fw-a1 "$N1" | jsonfilter -e '@.dns')" ] && pass "no DNS without an acknowledged AdGuard sync" || fail "DNS without ack"
+echo "kid alex dns.example.net filter_lists,safe_search youtube" > /etc/familywarden/dns.ack
+payload=$(v2payload phoneA fw-a1 "$N1")
+assert_json "DNS hostname from the acknowledged sync" "$payload" '@.dns.hostname' "alex.dns.example.net"
+assert_json "DNS protections" "$payload" '@.dns.protections[1]' "safe_search"
+assert_json "DNS services" "$payload" '@.dns.services[0]' "youtube"
+[ -z "$(v2payload phoneC fw-c1 "$N1" | jsonfilter -e '@.dns')" ] && pass "other profiles get no DNS" || fail "DNS leaked to another profile"
+rm -f /etc/familywarden/dns.ack
+
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do v2payload phoneB "fw-p$i" "$N1" >/dev/null; done
+[ "$(call devices | jsonfilter -e '@.pending[*].id' | wc -l)" -le 10 ] && pass "pending list bounded" || fail "pending list unbounded"
+echo $(( $(date +%s) - 1 )) > /etc/familywarden/release
+"$BIN" tick
+assert_json "the UCI deletion takes effect once the pact is over" "$(v2payload phoneA fw-a1 "$N1")" '@.enrollment' "pending"
+assert_json "the phone that joined is free again" "$(v2payload phoneD fw-d1 "$N1")" '@.pact.active' "false"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

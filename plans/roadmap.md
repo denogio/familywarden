@@ -13,6 +13,14 @@ Home Assistant starts depending on it. Versions below are planned targets unless
 | 4 | Home Assistant (HACS) | L | 2 (pact information in API) | Separate repository, 0.1.0 |
 | 5 | DNS filtering | M–L | — | backend 1.0.0 |
 
+## Current Android/DNS implementation branch
+
+Local FamilyWarden Android work is on `feature/familywarden-android`; see
+[`android-implementation.md`](android-implementation.md) for implemented behavior,
+prototype-only protocol boundaries, tests, and remaining gates. The production Mast
+app and live router/AdGuard configuration are unchanged. The new app's identity is
+not an in-place Device Owner update; do not deploy or migrate it from UI build success.
+
 ## Working rules (all phases)
 
 - **Definition of done = behavioral evidence.** Every new backend behavior needs a case

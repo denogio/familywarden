@@ -49,6 +49,18 @@ var callReload = rpc.declare({
 	method: 'reload'
 });
 
+var callDnsServices = rpc.declare({
+	object: 'familywarden',
+	method: 'dns_services',
+	expect: { services: [] }
+});
+
+var callDnsStatus = rpc.declare({
+	object: 'familywarden',
+	method: 'dns_status',
+	expect: { '': {} }
+});
+
 var callDHCPLeases = rpc.declare({
 	object: 'luci-rpc',
 	method: 'getDHCPLeases',
@@ -271,7 +283,10 @@ return view.extend({
 			callList(),
 			uci.load('familywarden'),
 			callDHCPLeases(),
-			callHostHints()
+			callHostHints(),
+			// Optional: AdGuard Home may not be configured (or reachable)
+			L.resolveDefault(callDnsServices(), []),
+			L.resolveDefault(callDnsStatus(), {})
 		]);
 	},
 
@@ -279,6 +294,8 @@ return view.extend({
 		var allProfiles = data[0] || {};
 		var leases = data[2] || [];
 		var hostHints = data[3] || {};
+		var dnsServices = data[4] || [];
+		var dnsStatus = data[5] || {};
 
 		injectStyles();
 
@@ -386,11 +403,49 @@ return view.extend({
 			deviceOption.value(mac, knownDevices[mac]);
 		});
 
-		var dnsOption = s.option(form.Value, 'dns_profile', _('DNS Filtering'));
+		// DNS filtering: an AdGuard Home client of its own for this profile.
+		// Phones approved for the profile (Phones page) use strict
+		// DNS-over-TLS to <ClientID>.<DNS domain>; see Settings.
+		var dnsOption = s.option(form.Flag, 'dns', _('Strict DNS on this profile\'s phones'),
+			_('Approved phones of this profile always resolve through AdGuard Home with the protections below, at home and away. There is no unfiltered fallback if the resolver can\'t be reached. Needs the DNS settings under Settings.'));
 		dnsOption.rmempty = true;
-		dnsOption.readonly = frozen;
-		dnsOption.optional = true;
-		dnsOption.description = _('Optional: AdGuard Home / DNS filter group name.');
+		dnsOption.default = '0';
+
+		var protOption = s.option(form.MultiValue, 'dns_protection', _('DNS protections'),
+			_('Settings of this profile\'s AdGuard Home client. "Filter lists" are the lists configured globally in AdGuard Home; AdGuard Home has no separate lists per client.'));
+		protOption.value('filter_lists', _('Filter lists'));
+		protOption.value('safe_browsing', _('Malware and phishing protection'));
+		protOption.value('parental', _('Parental protection (adult sites)'));
+		protOption.value('safe_search', _('SafeSearch (search engines and YouTube)'));
+		protOption.default = 'filter_lists safe_browsing';
+		protOption.depends('dns', '1');
+
+		var svcOption;
+		if (dnsServices.length) {
+			svcOption = s.option(form.MultiValue, 'dns_service', _('Blocked services'),
+				_('Services AdGuard Home blocks for this profile.'));
+			dnsServices.slice().sort(function(a, b) { return a.name.localeCompare(b.name); }).forEach(function(svc) {
+				svcOption.value(svc.id, svc.name);
+			});
+		} else {
+			svcOption = s.option(form.DynamicList, 'dns_service', _('Blocked services'),
+				_('AdGuard Home service IDs (e.g. youtube). The list of services appears here once AdGuard Home is reachable.'));
+			svcOption.datatype = 'and(minlength(1),maxlength(64))';
+		}
+		svcOption.rmempty = true;
+		svcOption.depends('dns', '1');
+
+		var idOption = s.option(form.DummyValue, '_dns_identity', _('DNS identity'));
+		idOption.depends('dns', '1');
+		idOption.cfgvalue = function(section_id) {
+			var synced = (dnsStatus.profiles || {})[section_id];
+			if (synced)
+				return _('%s (active in AdGuard Home)').format(synced.hostname);
+			var id = uci.get('familywarden', section_id, 'dns_client_id');
+			if (dnsStatus.error)
+				return _('Not active: %s').format(dnsStatus.error);
+			return id ? _('ClientID %s, waiting for sync').format(id) : _('Created on the next sync from the profile name, and kept when the profile is renamed.');
+		};
 
 		// --- Schedules for this profile ---
 		// Inline TableSection (NOT GridSection): rows are edited in place with

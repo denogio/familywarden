@@ -3,12 +3,12 @@
     "description": "Parental control access for Home Assistant",
     "read": {
       "ubus": {
-        "familywarden": ["list", "status", "traffic", "mast", "version"]
+        "familywarden": ["list", "status", "traffic", "mast", "version", "devices", "dns_status", "dns_services"]
       }
     },
     "write": {
       "ubus": {
-        "familywarden": ["block", "allow", "reset", "ticket", "pact", "reload"]
+        "familywarden": ["block", "allow", "reset", "ticket", "pact", "reload", "device_approve", "device_reject", "device_update", "device_delete", "device_allow_removal", "dns_sync", "dns_auth"]
       }
     }
   }

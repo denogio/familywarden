@@ -49,6 +49,18 @@ FW_EFFECTIVE_DIR="/var/run/familywarden"
 FW_MAST_KEY="$FW_PERSIST/mast.key"
 FW_MAST_PUB="$FW_PERSIST/mast.pub"
 FW_MAST_SEEN="/tmp/familywarden.mast"
+# FamilyWarden app (v2): phones enroll with their own usign key and wait in
+# RAM until approved in LuCI; approved phones are UCI "device" sections.
+FW_PENDING="/tmp/familywarden.pending"
+FW_SEEN_DIR="/tmp/familywarden.seen"
+FW_PENDING_MAX=10
+# AdGuard Home management (see "DNS: AdGuard Home sync")
+FW_AGH_AUTH="$FW_PERSIST/agh.auth"
+FW_AGH_OWNED="$FW_PERSIST/agh.owned"
+FW_DNS_ACK="$FW_PERSIST/dns.ack"
+FW_DNS_DIRTY="/tmp/familywarden.dns.dirty"
+FW_DNS_STATUS="/tmp/familywarden.dns.status"
+FW_DNS_LOCK="/var/lock/familywarden.dns.lock"
 
 # ---- Helpers ----
 
@@ -213,6 +225,21 @@ _frag_dev() {
     echo "	list device $(_q "$1")"
 }
 
+# An approved phone bound to the profile being snapshotted: frozen with it, so
+# moving or deleting the captain's phone in LuCI is no way out of a pact.
+_frag_phone() {
+    local s="$1" sp o v
+    config_get sp "$s" profile ""
+    [ "$sp" = "$_frag_profile" ] || return
+    config_get v "$s" id ""
+    [ -n "$v" ] || return
+    echo "config device '$s'"
+    for o in id name profile pubkey administrator; do
+        config_get v "$s" "$o" ""
+        [ -n "$v" ] && echo "	option $o $(_q "$v")"
+    done
+}
+
 _frag_sched_line() {
     local s="$1" sp days start stop
     config_get sp "$s" profile ""
@@ -237,6 +264,7 @@ profile_fragment() {
     done
     config_list_foreach "$p" device _frag_dev | sort
     _frag_profile="$p"
+    config_foreach _frag_phone device
     config_foreach _frag_sched_line schedule | sort | while IFS='|' read -r days start stop; do
         n=$((n + 1))
         echo "config schedule '${p}_pact${n}'"
@@ -304,24 +332,33 @@ _clear_allow() {
 # MACs removed from every other profile. Called by compile_and_apply under the
 # exclusive lock; all enforcement and reporting reads it via fw_load.
 ulysses_sync() {
-    local captain="" macs="" name
+    local captain="" macs="" ids="" name
     mkdir -p "$FW_EFFECTIVE_DIR"
     config_load familywarden
 
     if pact_active; then
         captain=$(pact_get captain)
-        if pact_in_window || [ ! -s "$FW_PACT_SNAP" ]; then
+        if [ ! -s "$FW_PACT_SNAP" ]; then
             profile_fragment "$captain" > "$FW_PACT_SNAP"
+        elif pact_in_window; then
+            # Rule amendments must not refresh away a frozen phone association.
+            awk '/^config / { phone = ($2 == "device") } phone' "$FW_PACT_SNAP" > "$FW_PACT_SNAP.phones"
+            profile_fragment "$captain" | awk '/^config / { phone = ($2 == "device") } !phone' > "$FW_PACT_SNAP.new"
+            cat "$FW_PACT_SNAP.phones" >> "$FW_PACT_SNAP.new"
+            mv "$FW_PACT_SNAP.new" "$FW_PACT_SNAP"
+            rm -f "$FW_PACT_SNAP.phones"
         fi
         macs=$(sed -n "s/^	list device '\(.*\)'$/\1/p" "$FW_PACT_SNAP" | tr 'A-F' 'a-f' | tr '\n' ' ')
+        ids=$(sed -n "s/^	option id '\(.*\)'$/\1/p" "$FW_PACT_SNAP" | tr '\n' ' ')
     fi
 
     {
-        uci -q export familywarden | awk -v cap="$captain" -v macs=" $macs " '
+        uci -q export familywarden | awk -v cap="$captain" -v macs=" $macs " -v ids=" $ids " '
             function flush() { if (!drop) printf "%s", blk; blk = ""; drop = 0 }
             function unq(s) { gsub("\047", "", s); return s }
-            /^config / { flush(); prof = ""; if ($2 == "profile") { prof = unq($3); if (cap != "" && prof == cap) drop = 1 } }
+            /^config / { flush(); prof = ""; type = $2; if ($2 == "profile") { prof = unq($3); if (cap != "" && prof == cap) drop = 1 } }
             cap != "" && /^[ \t]*option profile / { if (unq($3) == cap) drop = 1 }
+            cap != "" && type == "device" && /^[ \t]*option id / { if (index(ids, " " unq($3) " ")) drop = 1 }
             cap != "" && prof != "" && /^[ \t]*list device / { if (index(macs, " " tolower(unq($3)) " ")) next }
             { blk = blk $0 "\n" }
             END { flush() }'
@@ -1193,26 +1230,54 @@ _mast_window() {
 # What the phone needs: is there a pact, and the captain's enforced rules
 # (from the effective config, i.e. the frozen snapshot during a pact)
 mast_payload() {
-    local captain="" active=0 enabled policy
+    local captain
     fw_load
-    if pact_active; then
-        active=1
-        captain=$(pact_get captain)
-    else
-        config_get captain settings ulysses_profile ""
-    fi
+    captain=$(_mast_captain_now)
     json_init
     json_add_int "v" 1
     json_add_int "server_time" "$(date +%s)"
     json_add_string "captain" "$captain"
+    _json_pact_rules "$captain"
+    json_dump
+}
+
+# The captain right now: bound by a pact, else the configured one. Needs fw_load.
+_mast_captain_now() {
+    local captain
+    if pact_active; then
+        pact_get captain
+    else
+        config_get captain settings ulysses_profile ""
+        echo "$captain"
+    fi
+}
+
+# Add the "pact" and "rules" objects for a captain ("" = none: an inactive
+# pact and empty rules). Needs fw_load and an open json_init.
+_json_pact_rules() {
+    local captain="$1" active=0 enabled policy
+    [ -n "$captain" ] && pact_active && active=1
     json_add_object "pact"
     json_add_boolean "active" "$active"
-    json_add_string "type" "$(pact_get type)"
-    json_add_int "until" "$(pact_get until)"
-    json_add_int "release_at" "$(release_at)"
+    if [ "$active" = "1" ]; then
+        json_add_string "type" "$(pact_get type)"
+        json_add_int "until" "$(pact_get until)"
+        json_add_int "release_at" "$(release_at)"
+    else
+        json_add_string "type" ""
+        json_add_int "until" 0
+        json_add_int "release_at" 0
+    fi
     json_close_object
     json_add_object "rules"
-    if [ -n "$captain" ]; then
+    if [ -z "$captain" ]; then
+        # Nothing to enforce (no captain, or a phone outside the captain's profile)
+        json_add_string "enabled" "0"
+        json_add_string "policy" "allow"
+        json_add_string "override" "none"
+        json_add_array "windows"
+        json_close_array
+    else
         config_get enabled "$captain" enabled "0"
         config_get policy "$captain" policy "allow"
         json_add_string "enabled" "$enabled"
@@ -1224,7 +1289,6 @@ mast_payload() {
         json_close_array
     fi
     json_close_object
-    json_dump
 }
 
 # Signed reply for the CGI. $1 = device id (recorded for LuCI's "last sync").
@@ -1249,11 +1313,23 @@ mast_last_sync() {
     echo "${seen:-0}"
 }
 
-# For LuCI's pairing view (read-only): router key, when the phone last synced,
-# and a pairing QR for the app. $1 = the host the browser used to reach LuCI,
-# which is also how the phone (on the same LAN) will reach the router.
+# Discover a numeric LAN control endpoint without depending on DNS. Do not change UCI.
+mast_lan_address() {
+    local address
+    address=$(ubus call network.interface.lan status 2>/dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null)
+    [ -n "$address" ] || address=$(uci -q get network.lan.ipaddr | awk '{print $1}' | cut -d/ -f1)
+    printf '%s\n' "$address" | awk -F. '
+        NF == 4 {
+            for (i = 1; i <= 4; i++) if ($i !~ /^[0-9]+$/ || $i > 255) exit
+            if ($1 == 0 || $1 == 127 || $1 >= 224) exit
+            print
+        }'
+}
+
+# Keep the browser hostname for display/backward compatibility, but include a numeric
+# address for new apps: a filtered resolver may not know names such as router.lan.
 ubus_mast() {
-    local host="$1" dev="" seen=0 pub uri
+    local host="$1" dev="" seen=0 pub uri address=""
     [ -f "$FW_MAST_SEEN" ] && read -r dev seen < "$FW_MAST_SEEN"
     pub=$(mast_pubkey)
     json_init
@@ -1265,10 +1341,791 @@ ubus_mast() {
         ''|*[!A-Za-z0-9.:-]*) ;;
         *)
             uri="ulyssesmast://pair?host=${host}&key=$(echo "$pub" | sed 's/+/%2B/g; s|/|%2F|g; s/=/%3D/g')"
+            case "$host" in *[A-Za-z]*) address=$(mast_lan_address) ;; esac
+            if [ -n "$address" ]; then
+                uri="${uri}&address=${address}"
+                json_add_string "router_address" "$address"
+            fi
             json_add_string "pair_uri" "$uri"
             command -v qrencode >/dev/null && json_add_string "qr_svg" "$(qrencode -t SVG -m 2 -o - "$uri")"
             ;;
     esac
+    json_dump
+}
+
+# ---- FamilyWarden app (v2): enrolled phones ----
+#
+#   GET /cgi-bin/mast?device=<id>&nonce=<64 hex>&key=<usign pubkey>&sig=<usign sig>[&name=<model>]
+#
+# The phone signs "familywarden-sync-v2\n<id>\n<nonce>\n" with its own usign
+# (Ed25519) key. Unknown or re-keyed phones wait in RAM ($FW_PENDING) until an
+# administrator compares the key fingerprint in LuCI and approves them
+# (device_approve), which writes a UCI "device" section. Only an approved
+# id+key pair gets a binding and policy. The reply echoes the nonce and is
+# signed with the router's Mast key, so the phone accepts it for exactly the
+# request it made. A device id alone grants nothing.
+
+_valid_device_id() {
+    case "$1" in ''|*[!A-Za-z0-9-]*) return 1 ;; esac
+    [ "${#1}" -le 80 ]
+}
+
+# base64 of an exact length (usign public key = 56, signature = 100)
+_valid_b64() {
+    case "$1" in ''|*[!A-Za-z0-9+/=]*) return 1 ;; esac
+    [ "${#1}" -eq "$2" ]
+}
+
+# UCI section name for a device id
+_dev_section() {
+    echo "dev_$(echo "$1" | tr '-' '_')"
+}
+
+# Full-key SHA-256 for enrollment. usign -F only reports a caller-chosen key ID,
+# so it is not safe for comparing an incoming phone to the administrator's screen.
+_key_fingerprint() {
+    local t
+    t=$(mktemp) || return 1
+    printf 'untrusted comment: phone\n%s\n' "$1" > "$t"
+    if usign -F -p "$t" >/dev/null 2>&1; then
+        printf '%s' "$1" | sha256sum | cut -d' ' -f1
+    fi
+    rm -f "$t"
+}
+
+# $1 key, $2 signature, $3 device id, $4 nonce
+_phone_sig_ok() {
+    local d rc
+    d=$(mktemp -d) || return 1
+    printf 'untrusted comment: phone\n%s\n' "$1" > "$d/pub"
+    printf 'untrusted comment: phone\n%s\n' "$2" > "$d/sig"
+    printf 'familywarden-sync-v2\n%s\n%s\n' "$3" "$4" > "$d/msg"
+    usign -V -q -m "$d/msg" -p "$d/pub" -x "$d/sig" 2>/dev/null
+    rc=$?
+    rm -rf "$d"
+    return $rc
+}
+
+# Sets _dev_sec to the section of an approved device id ("" if none). Needs a
+# loaded config; in the effective config a pact-frozen phone comes from the snapshot.
+_find_dev() {
+    _dev_sec=""
+    _dev_want="$1"
+    config_foreach _find_dev_cb device
+}
+
+_find_dev_cb() {
+    local id
+    config_get id "$1" id ""
+    [ "$id" = "$_dev_want" ] && _dev_sec="$1"
+}
+
+# Device associations remain frozen for the whole pact, including amendment windows.
+# Needs fw_load.
+_dev_frozen() {
+    local p
+    config_get p "$1" profile ""
+    [ -n "$p" ] && [ "$p" = "$(pact_captain)" ]
+}
+
+# Remember an unapproved phone (RAM only, at most $FW_PENDING_MAX, oldest dropped)
+_pending_add() {
+    local f="$FW_PENDING/$1" first
+    mkdir -p "$FW_PENDING"
+    chmod 700 "$FW_PENDING"
+    if [ -f "$f" ]; then
+        first=$(sed -n 3p "$f")
+    else
+        while [ "$(ls "$FW_PENDING" | wc -l)" -ge "$FW_PENDING_MAX" ]; do
+            rm -f "$FW_PENDING/$(ls -tr "$FW_PENDING" | head -1)"
+        done
+    fi
+    printf '%s\n%s\n%s\n%s\n' "$2" "$3" "${first:-$(date +%s)}" "$(date +%s)" > "$f.new"
+    mv "$f.new" "$f"
+}
+
+# v2 payload for one phone. $1 device id, $2 nonce, $3 approved section ("" = pending).
+# Needs fw_load.
+mast2_payload() {
+    local dev="$1" sec="$3" profile="" ptype="" pname admin captain is_cap=0 rem now tz
+    now=$(date +%s)
+    json_init
+    json_add_int "v" 2
+    json_add_int "server_time" "$now"
+    json_add_string "nonce" "$2"
+    json_add_string "device" "$dev"
+    if [ -n "$sec" ]; then
+        config_get profile "$sec" profile ""
+        [ -n "$profile" ] && config_get ptype "$profile" TYPE ""
+    fi
+    if [ "$ptype" != "profile" ]; then
+        # Not approved yet, or its profile is gone: no binding, no policy
+        json_add_string "enrollment" "pending"
+        json_dump
+        return
+    fi
+    json_add_string "enrollment" "approved"
+    tz=$(uci -q get system.@system[0].zonename)
+    case "$tz" in ''|*[!A-Za-z0-9_+/-]*) ;; *) json_add_string "timezone" "$tz" ;; esac
+    config_get pname "$profile" name "$profile"
+    config_get admin "$sec" administrator "0"
+    rem=$(state_get "${sec}.remove_until" 0)
+    case "$rem" in ''|*[!0-9]*) rem=0 ;; esac
+    captain=$(_mast_captain_now)
+    [ -n "$captain" ] && [ "$captain" = "$profile" ] && is_cap=1
+    json_add_object "binding"
+    json_add_string "device_id" "$dev"
+    json_add_string "profile_id" "$profile"
+    json_add_string "profile_name" "$pname"
+    json_add_boolean "captain" "$is_cap"
+    json_add_boolean "administrator" "$([ "$admin" = "1" ] && echo 1 || echo 0)"
+    # Administrators may remove their own app; others only within an
+    # administrator's one-hour approval (device_allow_removal). The phone still
+    # refuses while an applicable pact is active.
+    json_add_boolean "can_self_remove" "$({ [ "$admin" = "1" ] || [ "$rem" -gt "$now" ]; } && echo 1 || echo 0)"
+    json_close_object
+    # Only the captain's phones are bound by the pact
+    if [ "$is_cap" = "1" ]; then
+        json_add_string "captain" "$captain"
+        _json_pact_rules "$captain"
+    else
+        json_add_string "captain" ""
+        _json_pact_rules ""
+    fi
+    _json_dns "$profile"
+    json_dump
+}
+
+# Signed v2 reply for the CGI. Exit 2 = malformed request, 3 = bad phone signature.
+cli_mast2() {
+    local dev="$1" nonce="$2" key="$3" sig="$4" name known sec="" tmp
+    name=$(printf '%s' "$5" | tr -cd 'A-Za-z0-9._-' | cut -c1-40)
+    _valid_device_id "$dev" || return 2
+    case "$nonce" in *[!0-9a-f]*) return 2 ;; esac
+    [ "${#nonce}" -eq 64 ] || return 2
+    _valid_b64 "$key" 56 && _valid_b64 "$sig" 100 || return 2
+    _phone_sig_ok "$key" "$sig" "$dev" "$nonce" || return 3
+    mast_keys || return 1
+    (
+        # Also serializes pending/seen writes against approval and other requests.
+        flock -x 200 || return 1
+        fw_load
+        _find_dev "$dev"
+        if [ -n "$_dev_sec" ]; then
+            config_get known "$_dev_sec" pubkey ""
+            [ "$known" = "$key" ] && sec="$_dev_sec"
+        fi
+        if [ -n "$sec" ]; then
+            rm -f "$FW_PENDING/$dev"
+            mkdir -p "$FW_SEEN_DIR"
+            date +%s > "$FW_SEEN_DIR/$dev"
+        else
+            _pending_add "$dev" "$key" "$name"
+        fi
+        tmp=$(mktemp) || return 1
+        mast2_payload "$dev" "$nonce" "$sec" | tr -d '\n' > "$tmp"
+        usign -S -m "$tmp" -s "$FW_MAST_KEY" -x "$tmp.sig" || { rm -f "$tmp" "$tmp.sig"; return 1; }
+        sed -n 2p "$tmp.sig"
+        cat "$tmp"
+        rm -f "$tmp" "$tmp.sig"
+    ) 200>"$FW_LOCK"
+}
+
+_json_device() {
+    local s="$1" v now
+    now=$(date +%s)
+    json_add_object ""
+    config_get v "$s" id ""
+    json_add_string "id" "$v"
+    json_add_string "seen" "$(cat "$FW_SEEN_DIR/$v" 2>/dev/null || echo 0)"
+    for v in name profile administrator; do
+        config_get "_v" "$s" "$v" ""
+        json_add_string "$v" "$_v"
+    done
+    config_get v "$s" pubkey ""
+    json_add_string "fingerprint" "$(_key_fingerprint "$v")"
+    v=$(state_get "${s}.remove_until" 0)
+    case "$v" in ''|*[!0-9]*) v=0 ;; esac
+    [ "$v" -gt "$now" ] || v=0
+    json_add_int "remove_until" "$v"
+    json_add_boolean "frozen" "$(_dev_frozen "$s" && echo 1 || echo 0)"
+    json_close_object
+}
+
+# LuCI: approved phones (effective config, so a pact-frozen phone shows as
+# frozen with its snapshot binding) and phones waiting for approval
+ubus_devices() {
+    local f id
+    (
+        flock -s 200 || return 1
+        fw_load
+        json_init
+        json_add_array "devices"
+        config_foreach _json_device device
+        json_close_array
+        json_add_array "pending"
+        for f in "$FW_PENDING"/*; do
+            [ -f "$f" ] || continue
+            id=${f##*/}
+            json_add_object ""
+            json_add_string "id" "$id"
+            json_add_string "fingerprint" "$(_key_fingerprint "$(sed -n 1p "$f")")"
+            json_add_string "name" "$(sed -n 2p "$f")"
+            json_add_int "first_seen" "$(sed -n 3p "$f")"
+            json_add_int "last_seen" "$(sed -n 4p "$f")"
+            json_close_object
+        done
+        json_close_array
+        json_dump
+    ) 200>"$FW_LOCK"
+}
+
+_json_error() {
+    json_init
+    json_add_string "error" "$1"
+    json_dump
+    return 1
+}
+
+# Append an approved phone to a running pact's snapshot (adding a phone to the
+# captain only strengthens the pact). Needs the exclusive lock.
+_snap_add_device() {
+    local sec="$1" id="$2" name="$3" profile="$4" key="$5" admin="$6"
+    pact_active && [ "$profile" = "$(pact_get captain)" ] && [ -s "$FW_PACT_SNAP" ] || return 0
+    {
+        echo "config device '$sec'"
+        echo "	option id $(_q "$id")"
+        [ -n "$name" ] && echo "	option name $(_q "$name")"
+        echo "	option profile $(_q "$profile")"
+        echo "	option pubkey $(_q "$key")"
+        echo "	option administrator $(_q "$admin")"
+    } >> "$FW_PACT_SNAP"
+}
+
+# Shared by approve/update: write a device section unless the phone is frozen
+# by a pact. $1 id, $2 profile, $3 name, $4 administrator, $5 key ("" = keep)
+_dev_write() {
+    local id="$1" profile="$2" name="$3" admin="$4" key="$5" sec ptype old
+    _valid_device_id "$id" || { _json_error "invalid device"; return 1; }
+    case "$admin" in 0|1) ;; *) _json_error "administrator must be 0 or 1"; return 1 ;; esac
+    name=$(printf '%s' "$name" | tr -d '\r\n' | cut -c1-64)
+    case "$profile" in ''|*[!A-Za-z0-9_-]*) _json_error "invalid profile"; return 1 ;; esac
+    [ "${#profile}" -le 64 ] || { _json_error "invalid profile"; return 1; }
+    config_load familywarden
+    config_get ptype "$profile" TYPE ""
+    [ "$ptype" = "profile" ] || { _json_error "profile not found"; return 1; }
+    (
+        flock -x 200 || return 1
+        fw_load
+        _find_dev "$id"
+        if [ -n "$_dev_sec" ] && _dev_frozen "$_dev_sec"; then
+            _json_error "bound by Ulysses pact"
+            return 1
+        fi
+        sec=$(_dev_section "$id")
+        if [ -n "$key" ]; then
+            if [ "$6" != "$(_key_fingerprint "$key")" ] ||
+               [ "$(sed -n 1p "$FW_PENDING/$id" 2>/dev/null)" != "$key" ]; then
+                _json_error "pending device changed; refresh and compare fingerprint"
+                return 1
+            fi
+        fi
+        if [ -z "$key" ]; then
+            key=$(uci -q get "familywarden.$sec.pubkey")
+            [ -n "$key" ] || { _json_error "device not found"; return 1; }
+        fi
+        # Values are arguments, never interpolated as UCI batch commands.
+        uci set "familywarden.$sec=device" &&
+        uci set "familywarden.$sec.id=$id" &&
+        uci set "familywarden.$sec.name=$name" &&
+        uci set "familywarden.$sec.profile=$profile" &&
+        uci set "familywarden.$sec.pubkey=$key" &&
+        uci set "familywarden.$sec.administrator=$admin" &&
+        uci commit familywarden || { _json_error "saving device failed"; return 1; }
+        _snap_add_device "$sec" "$id" "$name" "$profile" "$key" "$admin"
+        rm -f "$FW_PENDING/$id"
+        logger -t familywarden "device $id approved for profile $profile (administrator=$admin)"
+    ) 200>"$FW_LOCK" || return 1
+    compile_and_apply >/dev/null || { _json_error "compile failed"; return 1; }
+    json_init
+    json_add_string "status" "ok"
+    json_dump
+}
+
+# Approve a pending phone, or replace an approved phone's key with the pending one
+ubus_device_approve() {
+    local id="$1" key
+    _valid_device_id "$id" && [ -f "$FW_PENDING/$id" ] || { _json_error "no pending device"; return 1; }
+    key=$(sed -n 1p "$FW_PENDING/$id")
+    _valid_b64 "$key" 56 || { _json_error "invalid key"; return 1; }
+    _dev_write "$id" "$2" "$3" "${4:-0}" "$key" "$5"
+}
+
+ubus_device_update() {
+    local id="$1" profile="$2" name="$3" admin="$4" sec
+    _valid_device_id "$id" || { _json_error "invalid device"; return 1; }
+    sec=$(_dev_section "$id")
+    [ -n "$profile" ] || profile=$(uci -q get "familywarden.$sec.profile")
+    [ -n "$name" ] || name=$(uci -q get "familywarden.$sec.name")
+    [ -n "$admin" ] || admin=$(uci -q get "familywarden.$sec.administrator")
+    _dev_write "$id" "$profile" "$name" "${admin:-0}" ""
+}
+
+# Rejecting a pending key must never delete an approved device with the same ID.
+ubus_device_reject() {
+    _valid_device_id "$1" || { _json_error "invalid device"; return 1; }
+    (
+        flock -x 200 || return 1
+        rm -f "$FW_PENDING/$1"
+        json_init
+        json_add_string "status" "ok"
+        json_dump
+    ) 200>"$FW_LOCK"
+}
+
+# Delete an approved phone (refused while pact-frozen).
+ubus_device_delete() {
+    local id="$1" sec
+    _valid_device_id "$id" || { _json_error "invalid device"; return 1; }
+    rm -f "$FW_PENDING/$id"
+    sec=$(_dev_section "$id")
+    (
+        flock -x 200 || return 1
+        fw_load
+        _find_dev "$id"
+        if [ -n "$_dev_sec" ] && _dev_frozen "$_dev_sec"; then
+            _json_error "bound by Ulysses pact"
+            return 1
+        fi
+        if uci -q get "familywarden.$sec" >/dev/null; then
+            uci delete "familywarden.$sec"
+            uci commit familywarden
+            logger -t familywarden "device $id removed"
+        fi
+        state_set "${sec}.remove_until" ""
+    ) 200>"$FW_LOCK" || return 1
+    compile_and_apply >/dev/null
+    json_init
+    json_add_string "status" "ok"
+    json_dump
+}
+
+# Let one managed phone remove FamilyWarden itself within the next hour
+ubus_device_allow_removal() {
+    local id="$1" until
+    _valid_device_id "$id" || { _json_error "invalid device"; return 1; }
+    (
+        flock -x 200 || return 1
+        fw_load
+        _find_dev "$id"
+        [ -n "$_dev_sec" ] || { _json_error "device not found"; return 1; }
+        if _dev_frozen "$_dev_sec"; then
+            _json_error "bound by Ulysses pact"
+            return 1
+        fi
+        until=$(( $(date +%s) + 3600 ))
+        state_set "${_dev_sec}.remove_until" "$until"
+        logger -t familywarden "device $id may remove FamilyWarden until $until"
+        json_init
+        json_add_string "status" "ok"
+        json_add_int "remove_until" "$until"
+        json_dump
+    ) 200>"$FW_LOCK"
+}
+
+# ---- DNS: AdGuard Home sync ----
+#
+# Profiles with option dns '1' get a persistent AGH client named
+# "familywarden-<clientid>" whose only id is the ClientID; phones then use
+# strict DNS-over-TLS to <clientid>.<settings.dns_domain>. FamilyWarden owns
+# only clients with that name prefix and the ClientIDs it added itself to AGH's
+# allowed_clients ($FW_AGH_OWNED). Every other client, access-list entry and
+# AGH setting is read but never changed. /control/access/set replaces the whole
+# list, so it is re-read just before writing and verified afterwards; an empty
+# allowed list (everyone allowed) is never touched. A profile's DNS reaches the
+# phone's policy only after AGH accepted its client ($FW_DNS_ACK), never from
+# UCI alone. The ClientID is derived from the profile name once, stored as
+# dns_client_id, and never renamed afterwards.
+#
+# Credentials: $FW_AGH_AUTH holds the Basic auth token, base64("user:password")
+# (root only, written by dns_auth). AGH sends no auth challenge on its API, so
+# the header is sent up front.
+
+FW_AGH_PREFIX="familywarden-"
+
+# $1 GET|POST, $2 path below /control/, $3 body file (POST). Body on stdout.
+_agh() {
+    if [ "$1" = "GET" ]; then
+        uclient-fetch -q --no-proxy -T 10 -O - --header="Authorization: Basic $_agh_auth" "$_agh_url/control/$2"
+    else
+        uclient-fetch -q --no-proxy -T 10 -O - --header="Authorization: Basic $_agh_auth" \
+            --header='Content-Type: application/json' --post-file="$3" "$_agh_url/control/$2"
+    fi
+}
+
+# Display name -> DNS-safe ClientID base (a-z, 0-9, -; at most 40 chars)
+_dns_slug() {
+    printf '%s' "$1" | tr 'A-Z' 'a-z' |
+        sed 's/æ/ae/g; s/Æ/ae/g; s/ø/oe/g; s/Ø/oe/g; s/å/aa/g; s/Å/aa/g; s/ä/ae/g; s/Ä/ae/g; s/ö/oe/g; s/Ö/oe/g; s/ü/ue/g; s/Ü/ue/g; s/é/e/g; s/è/e/g' |
+        sed 's/[^a-z0-9]\{1,\}/-/g; s/^-*//; s/-*$//' | cut -c1-40 | sed 's/-*$//'
+}
+
+_valid_client_id() {
+    case "$1" in ''|-*|*-|*[!a-z0-9-]*) return 1 ;; esac
+    [ "${#1}" -le 63 ]
+}
+
+_dns_collect_id() {
+    local v
+    config_get v "$1" dns_client_id ""
+    [ -n "$v" ] && _dns_taken="$_dns_taken $v "
+}
+
+# A ClientID nobody uses yet: not in AGH (clients, access lists) and not
+# stored for another profile. $1 profile id
+_dns_new_id() {
+    local name base id n=1
+    config_get name "$1" name "$1"
+    base=$(_dns_slug "$name")
+    [ -n "$base" ] || base="profile"
+    id="$base"
+    while case "$_dns_taken" in *" $id "*) true ;; *) false ;; esac; do
+        n=$((n + 1))
+        id="$base-$n"
+    done
+    echo "$id"
+}
+
+_dns_prot_cb() { _dns_prot="$_dns_prot $1 "; }
+_dns_svc_cb() { _dns_svc="$_dns_svc $1"; }
+
+# Client fields for AGH (into the open json object). $1 profile, $2 ClientID
+_dns_client_fields() {
+    local p="$1" id="$2" s ss
+    _dns_prot=""
+    _dns_svc=""
+    config_list_foreach "$p" dns_protection _dns_prot_cb
+    config_list_foreach "$p" dns_service _dns_svc_cb
+    has() { case "$_dns_prot" in *" $1 "*) echo 1 ;; *) echo 0 ;; esac; }
+    json_add_string "name" "$FW_AGH_PREFIX$id"
+    json_add_array "ids"
+    json_add_string "" "$id"
+    json_close_array
+    json_add_boolean "use_global_settings" 0
+    json_add_boolean "filtering_enabled" "$(has filter_lists)"
+    json_add_boolean "safebrowsing_enabled" "$(has safe_browsing)"
+    json_add_boolean "parental_enabled" "$(has parental)"
+    ss=$(has safe_search)
+    json_add_object "safe_search"
+    for s in enabled bing duckduckgo ecosia google pixabay yandex youtube; do
+        json_add_boolean "$s" "$ss"
+    done
+    json_close_object
+    json_add_boolean "use_global_blocked_services" 0
+    json_add_array "blocked_services"
+    for s in $_dns_svc; do
+        case "$s" in *[!a-z0-9_]*) ;; *) json_add_string "" "$s" ;; esac
+    done
+    json_close_array
+    json_add_array "upstreams"
+    json_close_array
+    json_add_array "tags"
+    json_close_array
+    json_add_boolean "ignore_querylog" 0
+    json_add_boolean "ignore_statistics" 0
+}
+
+# Ack line for a synced profile: "<profile> <clientid> <domain> <protections> <services>"
+_dns_ack_line() {
+    local p s
+    _dns_prot=""
+    _dns_svc=""
+    config_list_foreach "$1" dns_protection _dns_prot_cb
+    config_list_foreach "$1" dns_service _dns_svc_cb
+    p=""
+    for s in filter_lists safe_browsing parental safe_search; do
+        case "$_dns_prot" in *" $s "*) p="$p,$s" ;; esac
+    done
+    p=${p#,}
+    s=$(echo $_dns_svc | tr ' ' ',')
+    echo "$1 $2 $3 ${p:--} ${s:--}"
+}
+
+# Is $1 a line of the newline-separated list $2?
+_in_list() {
+    printf '%s\n' "$2" | grep -qxF -- "$1"
+}
+
+_dns_profile_cb() {
+    local p="$1" on
+    config_get on "$p" dns "0"
+    [ "$on" = "1" ] && _dns_profiles="$_dns_profiles $p"
+}
+
+_json_dns() {
+    local line x
+    [ -s "$FW_DNS_ACK" ] || return 0
+    line=$(awk -v p="$1" '$1 == p { print; exit }' "$FW_DNS_ACK")
+    [ -n "$line" ] || return 0
+    set -- $line
+    json_add_object "dns"
+    json_add_string "hostname" "$2.$3"
+    json_add_array "protections"
+    for x in $(echo "$4" | tr ',' ' '); do [ "$x" = "-" ] || json_add_string "" "$x"; done
+    json_close_array
+    json_add_array "services"
+    for x in $(echo "$5" | tr ',' ' '); do [ "$x" = "-" ] || json_add_string "" "$x"; done
+    json_close_array
+    json_close_object
+}
+
+_dns_status() {
+    json_init
+    json_add_int "time" "$(date +%s)"
+    json_add_string "error" "$1"
+    json_dump > "$FW_DNS_STATUS"
+    [ -z "$1" ] || logger -t familywarden "DNS sync: $1"
+}
+
+# Bring AGH in line with UCI (live config: DNS is not frozen by a pact).
+# Returns 0 when everything is in sync, 1 otherwise (status in $FW_DNS_STATUS).
+cli_dns_sync() {
+    (
+        flock -x 201 || return 1
+        _dns_sync_locked
+    ) 201>"$FW_DNS_LOCK"
+}
+
+_dns_sync_locked() {
+    local domain url d p id ids name allowed disallowed hosts owned new_allowed new_owned
+    ids=""
+    local ack="" err="" changed=0 x keep="" old
+    rm -f "$FW_DNS_DIRTY"
+    config_load familywarden
+    config_get domain settings dns_domain ""
+    config_get url settings agh_url ""
+    _dns_profiles=""
+    config_foreach _dns_profile_cb profile
+    if [ -z "$domain" ] || [ -z "$url" ]; then
+        rm -f "$FW_DNS_ACK"
+        [ -n "$_dns_profiles" ] && { _dns_status "DNS domain or AdGuard Home URL not set"; return 1; }
+        _dns_status ""
+        return 0
+    fi
+    case "$url" in http://*|https://*) ;; *) _dns_status "AdGuard Home URL must start with http:// or https://"; return 1 ;; esac
+    _agh_url=${url%/}
+    _agh_auth=$(cat "$FW_AGH_AUTH" 2>/dev/null)
+    [ -n "$_agh_auth" ] || { _dns_status "AdGuard Home credentials not set"; return 1; }
+
+    d=$(mktemp -d) || return 1
+    if ! _agh GET clients > "$d/clients" || ! _agh GET access/list > "$d/access"; then
+        rm -rf "$d"
+        _dns_status "AdGuard Home unreachable or credentials rejected"
+        return 1
+    fi
+    allowed=$(jsonfilter -i "$d/access" -e '@.allowed_clients[*]' 2>/dev/null)
+    _dns_taken=" $(jsonfilter -i "$d/clients" -e '@.clients[*].ids[*]' 2>/dev/null | tr '\n' ' ') $(echo "$allowed" | tr '\n' ' ') $(jsonfilter -i "$d/access" -e '@.disallowed_clients[*]' 2>/dev/null | tr '\n' ' ') "
+    config_foreach _dns_collect_id profile
+    owned=$(cat "$FW_AGH_OWNED" 2>/dev/null)
+
+    # 1. Our clients: add or update
+    for p in $_dns_profiles; do
+        config_get id "$p" dns_client_id ""
+        if [ -z "$id" ]; then
+            id=$(_dns_new_id "$p")
+            uci set "familywarden.$p.dns_client_id=$id"
+            uci commit familywarden
+            _dns_taken="$_dns_taken $id "
+            logger -t familywarden "DNS: profile $p gets ClientID $id"
+        fi
+        _valid_client_id "$id" || { err="invalid ClientID for $p"; continue; }
+        keep="$keep$id
+"
+        # On failure below, keep this profile's last acknowledged policy
+        old=$(awk -v p="$p" '$1 == p { print; exit }' "$FW_DNS_ACK" 2>/dev/null)
+        name="$FW_AGH_PREFIX$id"
+        # Someone else's client already claims this id: never take it over
+        if jsonfilter -i "$d/clients" -e "@.clients[@.name!='$name'].ids[*]" 2>/dev/null | grep -qx "$id"; then
+            err="ClientID $id is used by another AdGuard Home client"
+            [ -n "$old" ] && ack="$ack$old
+"
+            continue
+        fi
+        json_init
+        if jsonfilter -i "$d/clients" -e '@.clients[*].name' 2>/dev/null | grep -qx "$name"; then
+            json_add_string "name" "$name"
+            json_add_object "data"
+            _dns_client_fields "$p" "$id"
+            json_close_object
+            json_dump > "$d/body"
+            _agh POST clients/update "$d/body" >/dev/null || { err="updating $name failed"; [ -n "$old" ] && ack="$ack$old
+"; continue; }
+        else
+            _dns_client_fields "$p" "$id"
+            json_dump > "$d/body"
+            _agh POST clients/add "$d/body" >/dev/null || { err="adding $name failed"; [ -n "$old" ] && ack="$ack$old
+"; continue; }
+        fi
+        ids="$ids$id
+"
+        ack="$ack$(_dns_ack_line "$p" "$id" "$domain")
+"
+    done
+
+    # 2. Our clients that no longer belong to a DNS profile
+    for name in $(jsonfilter -i "$d/clients" -e '@.clients[*].name' 2>/dev/null | grep "^$FW_AGH_PREFIX"); do
+        # Still a DNS profile (even if its update failed above): keep it
+        _in_list "${name#$FW_AGH_PREFIX}" "$keep" && continue
+        json_init
+        json_add_string "name" "$name"
+        json_dump > "$d/body"
+        _agh POST clients/delete "$d/body" >/dev/null || err="deleting $name failed"
+    done
+
+    # 3. allowed_clients: add our missing ids, drop ids we own that are no longer used
+    if [ -n "$allowed" ]; then
+        _agh GET access/list > "$d/access" || { rm -rf "$d"; _dns_status "AdGuard Home access list unreadable"; return 1; }
+        allowed=$(jsonfilter -i "$d/access" -e '@.allowed_clients[*]' 2>/dev/null)
+        new_allowed=""
+        new_owned=""
+        for x in $allowed; do
+            if _in_list "$x" "$owned" && ! _in_list "$x" "$keep"; then
+                changed=1
+                continue
+            fi
+            new_allowed="$new_allowed$x
+"
+            _in_list "$x" "$owned" && new_owned="$new_owned$x
+"
+        done
+        for x in $ids; do
+            _in_list "$x" "$allowed" && continue
+            new_allowed="$new_allowed$x
+"
+            new_owned="$new_owned$x
+"
+            changed=1
+        done
+        if [ "$changed" = "1" ]; then
+            json_init
+            json_add_array "allowed_clients"
+            for x in $new_allowed; do json_add_string "" "$x"; done
+            json_close_array
+            json_add_array "disallowed_clients"
+            jsonfilter -i "$d/access" -e '@.disallowed_clients[*]' 2>/dev/null > "$d/dis"
+            while IFS= read -r x; do json_add_string "" "$x"; done < "$d/dis"
+            json_close_array
+            json_add_array "blocked_hosts"
+            jsonfilter -i "$d/access" -e '@.blocked_hosts[*]' 2>/dev/null > "$d/hosts"
+            while IFS= read -r x; do json_add_string "" "$x"; done < "$d/hosts"
+            json_close_array
+            json_dump > "$d/body"
+            if ! _agh POST access/set "$d/body" >/dev/null; then
+                rm -rf "$d"
+                _dns_status "updating AdGuard Home allowed clients failed"
+                return 1
+            fi
+            # Verify: exactly the intended list, the rest untouched
+            _agh GET access/list > "$d/after" || { rm -rf "$d"; _dns_status "access list not readable after update"; return 1; }
+            if [ "$(jsonfilter -i "$d/after" -e '@.allowed_clients[*]' | sort)" != "$(printf '%s' "$new_allowed" | sort)" ] ||
+               [ "$(jsonfilter -i "$d/after" -e '@.disallowed_clients[*]')" != "$(cat "$d/dis")" ] ||
+               [ "$(jsonfilter -i "$d/after" -e '@.blocked_hosts[*]')" != "$(cat "$d/hosts")" ]; then
+                rm -rf "$d"
+                _dns_status "AdGuard Home access list changed unexpectedly; check it manually"
+                return 1
+            fi
+        fi
+        printf '%s' "$new_owned" > "$FW_AGH_OWNED.new"
+        mv "$FW_AGH_OWNED.new" "$FW_AGH_OWNED"
+    fi
+    rm -rf "$d"
+
+    printf '%s' "$ack" > "$FW_DNS_ACK.new"
+    mv "$FW_DNS_ACK.new" "$FW_DNS_ACK"
+    _dns_status "$err"
+    [ -z "$err" ]
+}
+
+# Called every minute by the init script: sync AGH after a config change, and
+# keep retrying (at most every 5 minutes) while it fails.
+cli_dns_tick() {
+    local t=0 now
+    now=$(date +%s)
+    [ -f "$FW_DNS_STATUS" ] && t=$(jsonfilter -i "$FW_DNS_STATUS" -e '@.time' 2>/dev/null)
+    if [ -f "$FW_DNS_DIRTY" ] || { [ -n "$(jsonfilter -i "$FW_DNS_STATUS" -e '@.error' 2>/dev/null)" ] && [ $((now - ${t:-0})) -ge 300 ]; }; then
+        cli_dns_sync >/dev/null 2>&1
+    fi
+}
+
+ubus_dns_status() {
+    local domain
+    config_load familywarden
+    config_get domain settings dns_domain ""
+    json_init
+    json_add_boolean "credentials" "$([ -s "$FW_AGH_AUTH" ] && echo 1 || echo 0)"
+    json_add_int "time" "$(jsonfilter -i "$FW_DNS_STATUS" -e '@.time' 2>/dev/null || echo 0)"
+    json_add_string "error" "$(jsonfilter -i "$FW_DNS_STATUS" -e '@.error' 2>/dev/null)"
+    json_add_boolean "pending" "$([ -f "$FW_DNS_DIRTY" ] && echo 1 || echo 0)"
+    json_add_object "profiles"
+    if [ -s "$FW_DNS_ACK" ]; then
+        while read -r p id dom prot svc; do
+            json_add_object "$p"
+            json_add_string "client_id" "$id"
+            json_add_string "hostname" "$id.$dom"
+            json_add_string "protections" "$prot"
+            json_add_string "services" "$svc"
+            json_close_object
+        done < "$FW_DNS_ACK"
+    fi
+    json_close_object
+    json_dump
+}
+
+ubus_dns_sync() {
+    cli_dns_sync >/dev/null 2>&1
+    ubus_dns_status
+}
+
+# Write-only: LuCI never reads the password back
+ubus_dns_auth() {
+    case "$1$2" in *"
+"*) _json_error "invalid credentials"; return 1 ;; esac
+    case "$1" in ''|*:*) _json_error "invalid username"; return 1 ;; esac
+    [ -n "$2" ] || { _json_error "empty password"; return 1; }
+    mkdir -p "$FW_PERSIST"
+    chmod 700 "$FW_PERSIST"
+    ( umask 077; printf '%s:%s' "$1" "$2" | ucode -l fs -e 'print(b64enc(fs.stdin.read("all")))' > "$FW_AGH_AUTH.new" )
+    [ -s "$FW_AGH_AUTH.new" ] || { rm -f "$FW_AGH_AUTH.new"; _json_error "could not encode credentials"; return 1; }
+    mv "$FW_AGH_AUTH.new" "$FW_AGH_AUTH"
+    touch "$FW_DNS_DIRTY"
+    json_init
+    json_add_string "status" "ok"
+    json_dump
+}
+
+# Blockable services from AGH, for LuCI's service picker
+ubus_dns_services() {
+    local url d id name
+    config_load familywarden
+    config_get url settings agh_url ""
+    _agh_url=${url%/}
+    _agh_auth=$(cat "$FW_AGH_AUTH" 2>/dev/null)
+    [ -n "$_agh_url" ] && [ -n "$_agh_auth" ] || { _json_error "AdGuard Home not configured"; return 1; }
+    d=$(mktemp -d) || return 1
+    _agh GET blocked_services/all > "$d/all" || { rm -rf "$d"; _json_error "AdGuard Home unreachable"; return 1; }
+    jsonfilter -i "$d/all" -e '@.blocked_services[*].id' > "$d/ids" 2>/dev/null
+    jsonfilter -i "$d/all" -e '@.blocked_services[*].name' > "$d/names" 2>/dev/null
+    json_init
+    json_add_array "services"
+    awk 'NR == FNR { id[FNR] = $0; next } { print id[FNR] "\t" $0 }' "$d/ids" "$d/names" > "$d/pairs"
+    while IFS="$(printf '\t')" read -r id name; do
+        json_add_object ""
+        json_add_string "id" "$id"
+        json_add_string "name" "$name"
+        json_close_object
+    done < "$d/pairs"
+    json_close_array
+    rm -rf "$d"
     json_dump
 }
 
@@ -1316,6 +2173,8 @@ cli_tick() {
 }
 
 ubus_reload() {
+    # A config change may concern DNS too: the init script's tick syncs AGH
+    touch "$FW_DNS_DIRTY"
     # compile_and_apply prints the single JSON reply (status or error)
     compile_and_apply
 }
@@ -1351,7 +2210,17 @@ case "$1" in
   "pact": { "until": 0, "window_day": "string", "window_start": "string", "window_stop": "string" },
   "reload": {},
   "mast": { "host": "string" },
-  "version": {}
+  "version": {},
+  "devices": {},
+  "device_approve": { "device": "string", "profile": "string", "name": "string", "administrator": "string", "fingerprint": "string" },
+  "device_reject": { "device": "string" },
+  "device_update": { "device": "string", "profile": "string", "name": "string", "administrator": "string" },
+  "device_delete": { "device": "string" },
+  "device_allow_removal": { "device": "string" },
+  "dns_status": {},
+  "dns_sync": {},
+  "dns_auth": { "username": "string", "password": "string" },
+  "dns_services": {}
 }
 EOF
         ;;
@@ -1366,6 +2235,16 @@ EOF
         ;;
     mast)
         cli_mast "$2"
+        ;;
+    mast2)
+        # $2 device, $3 nonce, $4 phone key, $5 phone signature, $6 model name
+        cli_mast2 "$2" "$3" "$4" "$5" "$6"
+        ;;
+    dns-sync)
+        cli_dns_sync
+        ;;
+    dns-tick)
+        cli_dns_tick
         ;;
     mast-pubkey)
         # line 1 = public key (base64), line 2 = fingerprint
@@ -1438,6 +2317,62 @@ EOF
                 ;;
             version)
                 ubus_version
+                ;;
+            devices)
+                ubus_devices
+                ;;
+            device_approve)
+                read -r input
+                json_load "$input"
+                json_get_var device device
+                json_get_var profile profile
+                json_get_var name name
+                json_get_var administrator administrator
+                json_get_var fingerprint fingerprint
+                ubus_device_approve "$device" "$profile" "$name" "$administrator" "$fingerprint"
+                ;;
+            device_update)
+                read -r input
+                json_load "$input"
+                json_get_var device device
+                json_get_var profile profile
+                json_get_var name name
+                json_get_var administrator administrator
+                ubus_device_update "$device" "$profile" "$name" "$administrator"
+                ;;
+            device_reject)
+                read -r input
+                json_load "$input"
+                json_get_var device device
+                ubus_device_reject "$device"
+                ;;
+            device_delete)
+                read -r input
+                json_load "$input"
+                json_get_var device device
+                ubus_device_delete "$device"
+                ;;
+            device_allow_removal)
+                read -r input
+                json_load "$input"
+                json_get_var device device
+                ubus_device_allow_removal "$device"
+                ;;
+            dns_status)
+                ubus_dns_status
+                ;;
+            dns_sync)
+                ubus_dns_sync
+                ;;
+            dns_auth)
+                read -r input
+                json_load "$input"
+                json_get_var username username
+                json_get_var password password
+                ubus_dns_auth "$username" "$password"
+                ;;
+            dns_services)
+                ubus_dns_services
                 ;;
         esac
         ;;

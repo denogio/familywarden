@@ -12,7 +12,7 @@
     <string name="action_pair_manually">Enter address manually</string>
     <string name="action_pair_other">Pair with another router</string>
     <string name="action_pair_confirm">It matches, pair</string>
-    <string name="action_remove">Remove Mast</string>
+    <string name="action_remove">Remove FamilyWarden</string>
     <string name="action_remove_confirm">Remove</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_continue">Continue</string>
@@ -22,16 +22,16 @@
 
     <!-- 1. Not device owner -->
     <string name="setup_title">One step before setting sail</string>
-    <string name="setup_body">To switch off hotspot and tethering, the Mast must be this phone\'s device owner. Setup needs Android device-owner provisioning, usually via adb on a phone without accounts or extra profiles. Back up important data first.</string>
+    <string name="setup_body">To lock strict DNS settings and manage tethering, FamilyWarden must be this phone\'s Device Owner. Setup needs Android provisioning, usually via adb on a phone without accounts or extra profiles. Back up important data first.</string>
     <string name="setup_overline">Set up once</string>
     <string name="setup_step_1">Turn on USB debugging in Developer options.</string>
     <string name="setup_step_2">Read the setup guide before removing accounts or profiles. Unsynced and profile-local data may be lost.</string>
     <string name="setup_step_3">Connect the phone and run:</string>
-    <string name="setup_command" translatable="false">adb shell dpm set-device-owner me.hojgaard.ulysses.mast/.MastAdminReceiver</string>
+    <string name="setup_command" translatable="false">adb shell dpm set-device-owner io.github.denogio.familywarden/.AdminReceiver</string>
 
     <!-- 2. Not paired -->
     <string name="pair_title">Pair with your router</string>
-    <string name="pair_body">The Mast takes its orders from FamilyWarden on your router. Open the pairing code there and scan it with this phone.</string>
+    <string name="pair_body">Open FamilyWarden\'s pairing code on your router and scan it with this phone. A compatible router must confirm this phone\'s profile before protection can be applied.</string>
     <string name="pair_path_familywarden" translatable="false">FamilyWarden</string>
     <string name="pair_path_settings">Settings</string>
     <string name="pair_path_ulysses" translatable="false">Ulysses</string>
@@ -40,7 +40,7 @@
 
     <!-- Manual pairing -->
     <string name="pair_manual_title">Router address</string>
-    <string name="pair_manual_body">Enter the address shown in FamilyWarden › Settings › Ulysses.</string>
+    <string name="pair_manual_body">Enter the router\'s numeric LAN address, normally with port 7700. A numeric address keeps router sync independent of filtered DNS.</string>
     <string name="pair_manual_label">Address and port</string>
     <string name="pair_manual_placeholder" translatable="false">192.168.1.1:7700</string>
 
@@ -83,7 +83,7 @@
     <string name="pact_chosen_by_with_rules">Chosen by %1$s. Hotspot is allowed %2$s.</string>
     <string name="pact_rules">Hotspot is allowed %1$s.</string>
     <string name="pact_release_requested">Release requested.</string>
-    <string name="pact_locked_note">Pairing and removal open again when no pact is active.</string>
+    <string name="pact_locked_note">While this pact is active, Ulysses cannot be disabled, re-paired, or removed.</string>
 
     <!-- 8. Sync problems -->
     <string name="sync_unreachable_title">Router out of reach</string>
@@ -92,7 +92,7 @@
     <string name="sync_unreachable_body_never">Normal when you are away from home. Sync again once you are on the home network.</string>
     <string name="sync_bad_signature_title">Reply could not be verified</string>
     <!-- %1$s = grouped fingerprint -->
-    <string name="sync_bad_signature_body">The router\'s answer was not signed with the paired key %1$s. The Mast ignored it and keeps the last trusted state.</string>
+    <string name="sync_bad_signature_body">The router\'s answer was not signed with the paired key %1$s. FamilyWarden ignored it and keeps the last trusted state.</string>
     <string name="sync_bad_signature_advice">This is not normal. If the router was reset or reinstalled, check its key in LuCI.</string>
     <string name="sync_failed_title">Sync did not complete</string>
     <!-- %1$s = raw lastError, e.g. "stale reply" -->
@@ -102,7 +102,7 @@
     <string name="remove_refused_title">The pact still holds</string>
     <string name="remove_refused_body">Mast cannot confirm that the pact for %1$s has ended. The router may be unreachable or still report an active pact. Try syncing again.</string>
     <string name="remove_refused_body_no_captain">Mast cannot confirm that no pact is active. The router may be unreachable or still report an active pact. Try syncing again.</string>
-    <string name="remove_confirm_title">Remove the Mast?</string>
+    <string name="remove_confirm_title">Remove FamilyWarden?</string>
     <string name="remove_confirm_body">Removing gives up device owner rights, so hotspot can no longer be locked. If paired, Mast checks with the router again before removing. Binding yourself again later needs the adb setup once more.</string>
 
     <!-- Details -->
