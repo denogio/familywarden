@@ -74,8 +74,21 @@ it did not configure split DNS.
 - First rollout is the user's own phone only. Aggressive practical filtering is requested;
   exact categories, service blocks, and exceptions still need agreement.
 - Rename the Android product to **FamilyWarden**, with a separate **Ulysses** section.
-  Preserve the existing package/update identity and signing key unless migration is
-  explicitly approved. Current source names such as Mast are not renamed during planning.
+  The user also wants a new Android package/application ID now, rather than retaining
+  `me.hojgaard.ulysses.mast`. Proposed new ID: `io.github.denogio.familywarden`
+  (pending exact-name approval), avoiding a personal-domain namespace. Source packages,
+  manifest component names, tests, CI scripts, enrollment instructions, and pairing
+  protocol naming must be inventoried together before implementation.
+- A changed application ID is a different Android app, not an in-place APK update,
+  even with the same signing key. If the old app is enrolled as Device Owner, use its
+  authorized no-pact removal/relinquishment flow before enrolling the new package;
+  provisioning constraints may recur. Never bypass an active pact for migration.
+  Retain the existing release signing key unless a separate key-change decision is made.
+- Public project defaults/docs must not hard-code the user's personal DNS domain.
+  Treat the existing `secure-dns.hojgaard.me` as deployment configuration, supplied via
+  pairing/signed policy. Whether to replace the live DNS domain too is an open user
+  decision; no replacement domain is selected or claimed to be owned.
+  No code, package, enrollment, or DNS records are changed during planning.
 - Plan a polished FamilyWarden logo with comparable quality to the Ulysses Mast design.
   No logo generation, app redesign implementation, or deployment is authorized yet.
 
