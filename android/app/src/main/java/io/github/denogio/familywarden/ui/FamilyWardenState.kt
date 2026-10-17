@@ -10,6 +10,10 @@ data class FamilyWardenState(
     val provisioned: Boolean = false,
     val binding: DeviceBinding? = null,
     val policyUnsupported: Boolean = false,
+    /** Signed reply: the router has not approved this phone (yet). */
+    val awaitingApproval: Boolean = false,
+    /** This phone's key fingerprint, to compare in LuCI when approving. */
+    val phoneFingerprint: String? = null,
     val host: String? = null,
     val fingerprint: String? = null,
     val lastSync: Long = 0,
@@ -31,14 +35,14 @@ data class FamilyWardenState(
 ) {
     val bound: Boolean get() = pact is PactStatus.Bound
     val showUlysses: Boolean get() = bound || (binding?.captain == true && ulyssesEnabled)
-    val canRePair: Boolean get() = canRequestRemoval
+    val canRePair: Boolean get() = canRequestRemoval && (!provisioned || binding?.administrator == true)
     // This exposes an action only. Final removal ALWAYS needs a fresh request-bound response.
-    val canRequestRemoval: Boolean get() = !bound && (!provisioned ||
-        (binding?.administrator == true && binding.selfRemoval))
+    val canRequestRemoval: Boolean get() = !bound && (!provisioned || binding?.selfRemoval == true)
     val currentCheck: ResolverCheck? get() = resolverCheck?.takeIf {
         it.policy == desiredDns && it.networkId == networkId && it.generation == probeGeneration
     }
     val headline: DnsHeadline get() = when {
+        paired && binding == null && awaitingApproval -> DnsHeadline.AwaitingApproval
         paired && binding == null -> if (policyUnsupported) DnsHeadline.RouterUnsupported else DnsHeadline.PolicyMissing
         desiredDns == null -> DnsHeadline.NotConfigured
         !owner -> DnsHeadline.NotApplied
@@ -54,7 +58,7 @@ data class FamilyWardenState(
     }
 }
 
-enum class DnsHeadline { RouterUnsupported, PolicyMissing, NotConfigured, NotApplied, Unlocked, ApplyFailed,
+enum class DnsHeadline { AwaitingApproval, RouterUnsupported, PolicyMissing, NotConfigured, NotApplied, Unlocked, ApplyFailed,
     Testing, CertificateError, Unavailable, DnsError, AppliedAndTested, AppliedUntested }
 enum class ProbeResult { TESTING, ANSWERED, UNAVAILABLE, CERTIFICATE, DNS_ERROR }
 enum class RemovalRefusal { ActivePact, MissingAuthority, Unreachable, Unsupported, Unverified, NotCompleted }
@@ -65,7 +69,7 @@ fun removalRefusal(state: MastState?, syncError: String?): RemovalRefusal = when
     syncError == "unsupported device policy" -> RemovalRefusal.Unsupported
     syncError != null || state == null || state.wireVersion != 2 -> RemovalRefusal.Unverified
     Policy.pactActive(state, state.serverTime) -> RemovalRefusal.ActivePact
-    state.binding?.administrator != true || !state.binding.selfRemoval -> RemovalRefusal.MissingAuthority
+    state.binding?.selfRemoval != true -> RemovalRefusal.MissingAuthority
     else -> RemovalRefusal.NotCompleted
 }
 data class ResolverCheck(val policy: DnsPolicy, val networkId: Long, val testedAt: Long,

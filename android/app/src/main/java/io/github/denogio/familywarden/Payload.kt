@@ -6,10 +6,29 @@ import java.time.ZoneId
 
 /** v1 is readable for diagnostics only; v2 is explicitly scoped and request-bound. */
 object Payload {
+    /** Epoch seconds through the year 9999: rejects milliseconds and overflowing alarms. */
+    private const val MAX_EPOCH = 253402300799L
+
     fun parse(json: String): MastState {
         val o = JSONObject(json)
         val version = o.optInt("v")
         require(version == 1 || version == 2) { "unsupported payload version" }
+        val nonce = if (version == 2) o.getString("nonce").also {
+            require(it.matches(Regex("[0-9a-f]{64}"))) { "invalid response nonce" }
+        } else null
+        val device = if (version == 2) o.getString("device").also {
+            require(it.matches(Regex("[A-Za-z0-9-]{1,80}"))) { "invalid device ID" }
+        } else null
+        if (version == 2) when (o.getString("enrollment")) {
+            // Signed "not approved (yet)": nothing about pacts, roles or DNS
+            "pending" -> return MastState(
+                o.getLong("server_time").also { require(it in 0..MAX_EPOCH) { "invalid epoch" } },
+                "", false, "", 0, 0, Rules(false, "allow", "none", emptyList()),
+                requestNonce = nonce, wireVersion = 2, device = device, pending = true,
+            )
+            "approved" -> Unit
+            else -> throw IllegalArgumentException("unknown enrollment state")
+        }
         val binding = if (version == 2) o.getJSONObject("binding").let { b ->
             DeviceBinding(
                 b.getString("device_id"), b.getString("profile_id"), b.getString("profile_name"),
@@ -18,6 +37,7 @@ object Payload {
                 require(it.deviceId.matches(Regex("[A-Za-z0-9-]{1,80}"))) { "invalid device ID" }
                 require(it.profileId.matches(Regex("[A-Za-z0-9_-]{1,64}"))) { "invalid profile ID" }
                 require(it.profileName.length in 1..128) { "invalid profile name" }
+                require(it.deviceId == device) { "binding for another device" }
             }
         } else null
         val dnsObject = if (version == 2 && o.has("dns") && !o.isNull("dns")) o.getJSONObject("dns") else null
@@ -26,14 +46,16 @@ object Payload {
             require(names.length() <= Protection.entries.size) { "too many DNS protections" }
             val hostname = d.getString("hostname")
             require(validHostname(hostname)) { "invalid DNS hostname" }
+            val services = d.optJSONArray("services")
+            require((services?.length() ?: 0) <= 500) { "too many blocked services" }
             DnsPolicy(hostname.lowercase(), (0 until names.length()).map {
                 Protection.valueOf(names.getString(it).uppercase())
-            }.toSet())
+            }.toSet(), (0 until (services?.length() ?: 0)).map { i ->
+                services!!.getString(i).also { require(it.matches(Regex("[a-z0-9_]{1,64}"))) { "invalid service" } }
+            })
         }
-        val nonce = if (version == 2) o.getString("nonce").also {
-            require(it.matches(Regex("[0-9a-f]{64}"))) { "invalid response nonce" }
-        } else null
-        val zone = if (version == 2) o.getString("timezone").also { ZoneId.of(it) } else null
+        // Optional: routers without a valid IANA zone name leave it out (phone zone is used)
+        val zone = if (version == 2) o.optString("timezone").takeIf { it.isNotEmpty() }?.also { ZoneId.of(it) } else null
         val pact = if (version == 2) o.getJSONObject("pact") else o.optJSONObject("pact") ?: JSONObject()
         val r = if (version == 2) o.getJSONObject("rules") else o.optJSONObject("rules") ?: JSONObject()
         val windows = if (version == 2) r.getJSONArray("windows") else r.optJSONArray("windows")
@@ -69,10 +91,11 @@ object Payload {
                 },
             ),
             binding = binding, dns = dns, requestNonce = nonce, wireVersion = version, timeZone = zone,
+            device = device,
         )
         // Bounded epoch seconds (through year 9999), not milliseconds/overflowing alarm times.
         require(listOf(state.serverTime, state.pactUntil, state.releaseAt).all {
-            it in 0..253402300799L
+            it in 0..MAX_EPOCH
         }) { "invalid epoch" }
         if (version == 2) {
             require(r.getString("enabled") in setOf("0", "1")) { "invalid enabled flag" }

@@ -11,7 +11,7 @@ data class DeviceBinding(
 )
 
 /** Policy IDs are typed/localized in the app; never render server-supplied HTML. */
-data class DnsPolicy(val hostname: String, val protections: Set<Protection>) {
+data class DnsPolicy(val hostname: String, val protections: Set<Protection>, val services: List<String> = emptyList()) {
     init { require(validHostname(hostname)) { "invalid DNS hostname" } }
 }
 
@@ -28,11 +28,11 @@ fun validHostname(hostname: String): Boolean =
 
 /** No v1/global captain state may silently become this phone's authorization. */
 fun MastState.appliesTo(deviceId: String): Boolean =
-    wireVersion == 2 && binding?.deviceId == deviceId
+    wireVersion == 2 && !pending && binding?.deviceId == deviceId
 
 /** Explicit signed authority plus no active applicable pact; "no pact" alone is not permission. */
 fun MastState.canSelfRemove(deviceId: String, nowEpoch: Long): Boolean =
-    appliesTo(deviceId) && binding?.administrator == true && binding.selfRemoval &&
+    appliesTo(deviceId) && binding?.selfRemoval == true &&
         !Policy.pactActive(this, nowEpoch)
 
 /** For a newly verified request-bound reply, use the server clock, not a fast phone clock. */

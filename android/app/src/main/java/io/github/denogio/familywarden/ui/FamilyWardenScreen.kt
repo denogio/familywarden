@@ -23,6 +23,9 @@ import io.github.denogio.familywarden.R
 import io.github.denogio.familywarden.BuildConfig
 import io.github.denogio.familywarden.ui.components.*
 import io.github.denogio.familywarden.ui.theme.MastSpacing
+import io.github.denogio.familywarden.ui.theme.MonoLarge
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import java.time.Instant
 import java.time.ZoneId
 
@@ -139,7 +142,20 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions) {
 
 @Composable
 private fun DnsHero(s: FamilyWardenState) {
+    if (s.headline == DnsHeadline.AwaitingApproval) {
+        HeroCard {
+            HeroBadge(Icons.Outlined.HourglassEmpty, MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface)
+            HeroTitle(stringResource(R.string.fw_awaiting_title))
+            HeroBody(stringResource(R.string.fw_awaiting_body))
+            Text(groupFingerprint(s.phoneFingerprint.orEmpty()), style = MonoLarge,
+                modifier = Modifier.padding(top = 12.dp).semantics {
+                    contentDescription = spokenFingerprint(s.phoneFingerprint.orEmpty())
+                })
+        }
+        return
+    }
     val (title, body) = when (s.headline) {
+        DnsHeadline.AwaitingApproval -> error("handled above")
         DnsHeadline.RouterUnsupported -> R.string.fw_router_unsupported_title to R.string.fw_router_unsupported_body
         DnsHeadline.PolicyMissing -> R.string.fw_policy_unavailable_title to R.string.fw_policy_unavailable_body
         DnsHeadline.NotConfigured -> R.string.fw_dns_missing_title to R.string.fw_dns_missing_body
@@ -192,6 +208,7 @@ private fun Facts(s: FamilyWardenState) {
         s.syncing -> stringResource(R.string.action_syncing)
         s.syncError == "router unreachable" -> stringResource(R.string.fw_router_offline)
         s.syncError == "bad signature" -> stringResource(R.string.fw_sync_bad_signature)
+        s.syncError == "device not approved" -> stringResource(R.string.fw_sync_not_approved)
         s.syncError != null -> stringResource(R.string.fw_sync_failed)
         s.lastSync > 0 -> formatWhenCapitalized(s.lastSync * 1000, s.nowMillis)
         else -> stringResource(R.string.details_never)
@@ -278,6 +295,8 @@ private fun SettingsContent(s: FamilyWardenState, actions: FamilyWardenActions, 
         DetailItem(stringResource(R.string.details_key), groupFingerprint(s.fingerprint.orEmpty()), mono = true,
             spoken = spokenFingerprint(s.fingerprint.orEmpty())),
         DetailItem(stringResource(R.string.fw_profile), s.binding?.profileName ?: stringResource(R.string.fw_profile_unknown)),
+        DetailItem(stringResource(R.string.fw_phone_key), groupFingerprint(s.phoneFingerprint.orEmpty()), mono = true,
+            spoken = spokenFingerprint(s.phoneFingerprint.orEmpty())),
         DetailItem(stringResource(R.string.details_device_owner), stringResource(if (s.owner) R.string.details_yes else R.string.details_no)),
     ))
     s.binding?.let { b -> SectionCard {

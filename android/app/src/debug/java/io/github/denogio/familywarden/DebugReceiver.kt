@@ -20,7 +20,7 @@ class DebugReceiver : BroadcastReceiver() {
                     synchronized(Mast) {
                         val store = Store(context)
                         check(Mast.isDeviceOwner(context) && !store.provisioned) { "use the verified UI for an enrolled device" }
-                        val reply = Sync.fetch(address, info.publicKey, store.deviceId)
+                        val reply = Sync.fetch(address, info.publicKey, store.deviceId, store.phoneKey, "Emulator")
                         check(reply is Sync.Result.Ok) { "unverified pairing reply" }
                         store.pairVerified(address, info.publicKey, reply)
                     }

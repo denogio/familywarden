@@ -24,6 +24,10 @@ data class MastState(
     val requestNonce: String? = null,
     val wireVersion: Int = 1,
     val timeZone: String? = null,
+    /** v2: the device id the router answered for. */
+    val device: String? = null,
+    /** v2: not approved (yet): no binding, no policy. */
+    val pending: Boolean = false,
 )
 
 data class Rules(

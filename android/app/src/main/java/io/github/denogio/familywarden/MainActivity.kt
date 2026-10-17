@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -33,6 +34,15 @@ class MainActivity : ComponentActivity() {
     private var dialog: MastDialog? = null
     private var pendingPairing: Sync.PairingInfo? = null
     private var busy = false
+    // A resolver test only describes the network (and policy) it ran on. Every
+    // default-network change starts a new generation, so an old result reads as
+    // "not tested" even after returning to the same network.
+    private var resolverCheck: ResolverCheck? = null
+    @Volatile private var generation = 0L
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) { generation++; runOnUiThread { render() } }
+        override fun onLost(network: Network) { generation++; runOnUiThread { render() } }
+    }
 
     private val actions = FamilyWardenActions(
         sync = { refresh() }, scan = { scan() },
@@ -56,7 +66,7 @@ class MainActivity : ComponentActivity() {
             }
             render()
         },
-        testResolver = { message(R.string.fw_unsupported_action) },
+        testResolver = { testResolver() },
         openSail = {
             Store(this).host?.let { host ->
                 runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("${Sync.base(host)}/cgi-bin/sail"))) }
@@ -71,11 +81,33 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         render()
         setContent { MastTheme { FamilyWardenScreen(ui, actions) } }
+        getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(networkCallback)
         handlePairingLink(intent)
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 while (true) { render(); delay(1_000) }
             }
+        }
+    }
+
+    override fun onDestroy() {
+        getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(networkCallback)
+        super.onDestroy()
+    }
+
+    /** One DoT query to the applied resolver, bound to the current network and policy. */
+    private fun testResolver() {
+        val policy = Store(this).effectiveState?.dns ?: return
+        val cm = getSystemService(ConnectivityManager::class.java)
+        val network = cm.activeNetwork ?: return
+        val gen = generation
+        val started = ResolverCheck(policy, network.networkHandle, System.currentTimeMillis(), ProbeResult.TESTING, gen)
+        resolverCheck = started
+        render()
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) { DotProbe.probe(network, policy.hostname) }
+            if (resolverCheck === started) resolverCheck = started.copy(testedAt = System.currentTimeMillis(), result = result)
+            render()
         }
     }
 
@@ -93,7 +125,8 @@ class MainActivity : ComponentActivity() {
     private fun canPair(): Boolean {
         val store = Store(this)
         return Mast.isDeviceOwner(this) && (!store.provisioned ||
-            store.effectiveState?.canSelfRemove(store.deviceId, System.currentTimeMillis() / 1000) == true)
+            (store.effectiveState?.binding?.administrator == true &&
+                store.effectiveState?.canSelfRemove(store.deviceId, System.currentTimeMillis() / 1000) == true))
     }
 
     private fun scan() {
@@ -135,8 +168,8 @@ class MainActivity : ComponentActivity() {
             synchronized(Mast) {
                 check(canPair())
                 val store = Store(this)
-                val result = Sync.fetch(endpoint, info.publicKey, store.deviceId,
-                    requireDevicePolicy = store.provisioned)
+                val result = Sync.fetch(endpoint, info.publicKey, store.deviceId, store.phoneKey,
+                    android.os.Build.MODEL.orEmpty(), requireDevicePolicy = store.provisioned)
                 check(result is Sync.Result.Ok)
                 // A new pact or revoked authority must invalidate an already-open pairing sheet.
                 if (store.provisioned) check(Mast.checkRelease(this))
@@ -170,6 +203,11 @@ class MainActivity : ComponentActivity() {
             nowMillis = now.toInstant().toEpochMilli(), owner = Mast.isDeviceOwner(this),
             paired = store.paired, provisioned = store.provisioned, binding = state?.binding,
             policyUnsupported = raw?.wireVersion == 1,
+            awaitingApproval = store.awaitingApproval,
+            phoneFingerprint = store.phoneKey.fingerprint,
+            resolverCheck = resolverCheck, probeGeneration = generation,
+            canTestResolver = Mast.isDeviceOwner(this) && state?.dns != null &&
+                applied.hostname == state.dns.hostname && applied.locked,
             host = store.host, fingerprint = mapped.details.fingerprint,
             lastSync = store.lastSync, syncError = store.lastError, syncing = busy,
             ulyssesEnabled = store.ulyssesEnabled, pact = (mapped.setup as? SetupState.Paired)?.status,
@@ -203,7 +241,8 @@ class MainActivity : ComponentActivity() {
         // Deliberately omit names, ClientIDs, addresses, keys, and payload contents.
         val report = """FamilyWarden ${BuildConfig.VERSION_NAME}
             |owner=${Mast.isDeviceOwner(this)} paired=${store.paired} provisioned=${store.provisioned}
-            |devicePolicy=${store.effectiveState != null} dnsPolicy=${store.effectiveState?.dns != null}
+            |devicePolicy=${store.effectiveState != null} awaitingApproval=${store.awaitingApproval} dnsPolicy=${store.effectiveState?.dns != null}
+            |dnsApplyError=${store.dnsError ?: "none"} dnsOwned=${store.dnsOwned}
             |dnsMatches=${applied.hostname != null && applied.hostname == store.effectiveState?.dns?.hostname} dnsLocked=${applied.locked}
             |sync=${store.lastError ?: "ok"} lastSync=${store.lastSync}
         """.trimMargin()

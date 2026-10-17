@@ -8,6 +8,7 @@ class DevicePolicyTest {
     private val nonce = "a".repeat(64)
     private fun payload(): JSONObject = JSONObject("""{
       "v":2,"server_time":1800000000,"nonce":"$nonce","timezone":"Europe/Copenhagen",
+      "device":"fw-example","enrollment":"approved",
       "binding":{"device_id":"fw-example","profile_id":"captain","profile_name":"Alex",
         "captain":true,"administrator":true,"can_self_remove":true},
       "captain":"captain","pact":{"active":false,"type":"","until":0,"release_at":0},
@@ -15,6 +16,22 @@ class DevicePolicyTest {
       "dns":{"hostname":"alex.dns.example.net","protections":["filter_lists","safe_search"]}
     }""")
     private fun parsed(o: JSONObject = payload()) = Payload.parse(o.toString())
+
+    @Test fun pendingReplyIsBoundToRequestButNeverGrantsPolicyOrRemoval() {
+        val o = JSONObject().put("v", 2).put("server_time", 1800000000)
+            .put("device", "fw-example").put("nonce", nonce).put("enrollment", "pending")
+        val state = parsed(o)
+        assertTrue(state.pending)
+        assertTrue(Sync.responseMatches(state, "fw-example", nonce))
+        assertFalse(Sync.responseMatches(state, "fw-other", nonce))
+        assertFalse(Sync.responseMatches(state, "fw-example", "b".repeat(64)))
+        assertNull(state.binding)
+        assertNull(state.dns)
+        assertFalse(state.canSelfRemove("fw-example", state.serverTime))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsBindingForDifferentResponseDevice() { parsed(payload().put("device", "fw-other")) }
 
     @Test fun parsesScopedPolicyAndRoles() {
         val s = parsed()
@@ -41,7 +58,8 @@ class DevicePolicyTest {
         val s = parsed()
         assertTrue(s.canSelfRemove("fw-example", 1800000000))
         assertFalse(s.canSelfRemove("other", 1800000000))
-        assertFalse(s.copy(binding = s.binding!!.copy(administrator = false)).canSelfRemove("fw-example", 1800000000))
+        assertFalse(s.copy(binding = s.binding!!.copy(administrator = false, selfRemoval = false)).canSelfRemove("fw-example", 1800000000))
+        assertTrue(s.copy(binding = s.binding!!.copy(administrator = false, selfRemoval = true)).canSelfRemove("fw-example", 1800000000))
         assertFalse(s.copy(binding = s.binding!!.copy(selfRemoval = false)).canSelfRemove("fw-example", 1800000000))
         assertFalse(s.copy(pactActive = true, pactType = "ongoing").canSelfRemove("fw-example", 1800000000))
     }

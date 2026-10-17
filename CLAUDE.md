@@ -44,12 +44,12 @@ Local work on `feature/familywarden-android` is documented in
 The new application ID is `io.github.denogio.familywarden`; it is **not** an in-place
 update to the installed `me.hojgaard.ulysses.mast` owner. No production migration,
 router/AdGuard deployment, or user-pact change is authorized by local test work.
-The new UI rejects global v1 captain state as device authority. Prototype signed-v2
-parsing and the deliberately insecure disposable-lab CGI do **not** implement secure
-production enrollment. Strict DNS writes/probes and authenticated AGH integration
-remain separate work; do not claim DNS enforcement from a successful UI build.
-Pairing now supports numeric control endpoints so local DNS failure cannot strand
-router sync. Shared AGH `.lan` forwarding has not been changed.
+Backend 0.9.0 / LuCI 0.6.0 on the branch add phone enrollment (own key, fingerprint
+approval under LuCI › Phones), device-bound signed policy, pact-frozen phone bindings,
+1-hour managed removal approval, and AdGuard Home sync of only FamilyWarden-owned
+clients/ClientIDs. The app applies and locks strict Private DNS. Tests: test-integration,
+test-agh (throwaway AGH), emulator, Playwright. The emulator suite takes ~15 min: run it
+once per larger change, not after every edit. Remaining gates: plans/android-implementation.md.
 
 ### Architecture (since 0.5.x)
 - **No polling daemon or cron for schedule evaluation.** Backend logic lives in the rpcd plugin

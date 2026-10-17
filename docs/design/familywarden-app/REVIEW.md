@@ -193,8 +193,8 @@ supplied references and the historical 55-test result above remain unchanged.
 | R9 | Read-back only; this build does not claim to write/restore Private DNS | Implement/test strict DNS and authorized cleanup; update confirmation copy then |
 | R10 | Complete EN/DA resources, typed category/refusal labels, private diagnostics, native locale and 200% UI checks | Keep localization complete as lifecycle/backend work lands |
 
-The local UI/emulator checks do not turn the deliberately insecure disposable v2
-fixture into a production enrollment service. Startup clock integrity, before-first-
+Later (backend 0.9.0): R5/R6 enrollment and R9 DNS writes/restoration are implemented;
+see the implementation checkpoint. Startup clock integrity, before-first-
 unlock behavior, same-key address repair, and exact DNS cleanup remain explicit gates.
 No production AdGuard/router or existing Device Owner was changed for this work.
 

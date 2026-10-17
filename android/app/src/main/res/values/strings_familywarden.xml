@@ -13,7 +13,7 @@
     <string name="fw_dns_unlocked">DNS settings are not locked</string>
     <string name="fw_dns_unlocked_body">The selected provider matches, but protection against editing has not been verified.</string>
     <string name="fw_dns_failed">Android did not apply DNS protection</string>
-    <string name="fw_dns_failed_body">The strict DNS setting could not be verified. The last working configuration is not intentionally replaced by an unfiltered fallback.</string>
+    <string name="fw_dns_failed_body">Android only accepts a DNS-over-TLS resolver it can reach right now, and it could not. Until it can, the phone keeps its earlier DNS setting, so filtering may not apply. FamilyWarden keeps trying and never chooses an unfiltered fallback itself.</string>
     <string name="fw_dns_testing">Testing the resolver</string>
     <string name="fw_dns_testing_body">Checking for a DNS answer over a verified TLS connection.</string>
     <string name="fw_dns_certificate">DNS certificate could not be verified</string>
@@ -74,7 +74,7 @@
     <string name="fw_remove_unverified">A fresh response for this phone could not be verified. The last trusted policy remains; check the router connection and paired key.</string>
     <string name="fw_remove_incomplete">Removal was not completed. Check the current device-owner state and try again when authorized.</string>
     <string name="fw_setup_incomplete">This installation is not provisioned yet. Removing it relinquishes Device Owner rights; future enrollment may require account/profile changes or a reset.</string>
-    <string name="fw_remove_confirm_body">FamilyWarden will check authorization again, clear its own restrictions, and give up Device Owner rights. This development build has not changed Private DNS settings. Enrollment later may require account/profile changes or a reset.</string>
+    <string name="fw_remove_confirm_body">FamilyWarden will check authorization again, set Private DNS back to Automatic, clear its own restrictions, and give up Device Owner rights. Android can\'t restore an earlier \"Off\" setting exactly. Enrollment later may require account/profile changes or a reset.</string>
     <string name="fw_unsupported_action">This requires a verified device-specific policy from a compatible router.</string>
     <string name="fw_error_pairing">Pairing could not be completed. Check the address, connectivity, and key fingerprint.</string>
     <string name="fw_no_pact">No active pact</string>
@@ -82,6 +82,10 @@
     <string name="fw_version">Version %1$s</string>
     <string name="fw_dns_not_configured">Not configured</string>
     <string name="fw_permission_needed">Device Owner is required</string>
-    <string name="fw_probe_unavailable">Resolver testing is not available in this development build.</string>
+    <string name="fw_probe_unavailable">The connection can be tested once Android has applied and locked the DNS setting.</string>
+    <string name="fw_awaiting_title">Waiting for approval</string>
+    <string name="fw_awaiting_body">Ask the administrator to approve this phone in LuCI under FamilyWarden › Phones. The fingerprint there must match this one:</string>
+    <string name="fw_sync_not_approved">The router no longer approves this phone; last policy kept</string>
+    <string name="fw_phone_key">This phone\'s key</string>
     <string name="fw_migration_note">If another Device Owner, including the older Mast app, already manages this phone, stop here. Do not remove it, delete accounts, or reset the phone without an approved migration.</string>
 </resources>

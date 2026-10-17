@@ -167,6 +167,38 @@ resolve each question before implementing the behavior it governs. Do not invent
 role matrix or treat proposed defaults as user decisions. No implementation/deployment
 is authorized by this backlog.
 
+### Decisions approved 2026-10-17 (enrollment, removal, freeze, DNS restoration)
+
+- **D12 enrollment:** the phone generates its own signing key and shows a fingerprint.
+  It appears as *pending* in LuCI; the administrator compares the fingerprint and assigns
+  profile plus roles (captain via profile, administrator, self-removal). A device ID alone
+  grants nothing; only LuCI-approved phones with a matching key receive policy.
+- **D11/D14 managed removal:** LuCI offers "Allow removal" for one specific device,
+  valid for **1 hour** and only when no applicable pact is active. The approved
+  administrator phone keeps no-pact self-removal. The removal decision is made from a
+  fresh response bound to the phone's request nonce.
+- **Freeze:** while a pact is active, devices bound to the captain profile cannot be
+  moved to another profile or deleted.
+- **D8 restoration:** on authorized removal the app sets Android Private DNS to
+  *Automatic* (opportunistic); Android cannot restore an exact former "Off".
+- **D2 recovery accepted for the pilot:** no automatic emergency path when the resolver
+  is unreachable (captive portal, outage). A VPN configured by hostname has the same
+  dependency and is not a recovery path. Acceptable because the pilot is the user's own phone.
+- **D9/#34:** the user prefers resolving authenticated AGH management access now rather
+  than manual pilot clients. Approved: the router reaches the AGH API over **plain HTTP
+  on the LAN** (`10.77.0.11:83`, Basic auth). Approved (option A): FamilyWarden may add
+  and remove **only its own ClientIDs** in AGH's global `allowed_clients`; every other
+  entry (and `disallowed_clients`/`blocked_hosts`) is preserved, re-read before writing,
+  and verified afterwards. `/control/access/set` replaces the whole list, hence the guard.
+  Credential: AGH v0.107.79 supports several users in the YAML `users:` list (not via
+  the web UI; verified in `internal/home/auth.go`) and Basic auth on the API. Every user
+  is a full administrator. **Done 2026-10-17 (approved):** dedicated `familywarden` user
+  added (two YAML lines; backups kept locally and as `AdGuardHome.yaml.bak-familywarden-*`).
+  API read access verified (200; wrong password 401); DNS and DoT answered after restart.
+  The password exists only in the maintainer's local config (mode 600) until router
+  deployment; it is never committed or shown. New AGH config fingerprint
+  `4f9e09b7d0e9a0436eb9148cbd665ec3f2ead7e3303ae165b14f49cd9ca07789`.
+
 ### Deferred-question timing
 
 - Before enrollment/capability/removal implementation: D11, D12, and D14.

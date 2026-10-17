@@ -1,11 +1,13 @@
 #!/bin/bash
 # Ulysses Mast on real Android: an emulator (KVM) with the debug APK as device
-# owner, paired with a throwaway FamilyWarden router container. Checks legacy
-# rejection, DNS-independent pairing, scoped pact enforcement and Android protection.
-# A deliberately insecure LAB-ONLY CGI supplies prototype v2 device policy; this
-# does not validate or implement production enrollment/admin authentication.
+# owner, paired with a throwaway FamilyWarden router container. Checks
+# DNS-independent pairing, enrollment approval in the router, scoped pact
+# enforcement, DNS failure reporting and restoration, and Android protection.
 #
-#   ./scripts/test-mast-emulator.sh <router-apk-dir> [mast-debug.apk]
+#   ./scripts/test-mast-emulator.sh <router-apk-dir> [familywarden-debug.apk]
+#
+# LEGACY_APK_DIR=<dir with an older familywarden .apk>: start with that router
+# (global v1 replies must not authorize the phone), then upgrade it in place.
 #
 # Needs docker and /dev/kvm. The Android SDK (emulator + system image) lives in
 # the docker volume "mast-sdk" (see the sdkmanager line below).
@@ -40,12 +42,12 @@ docker network create "$NET" >/dev/null
 
 echo "=== Router with an ongoing pact (captain always blocked) ==="
 docker run -d --name "$ROUTER" --network "$NET" --cap-add NET_ADMIN \
-    -v "$APK_DIR:/apk:ro" -v "$REPO/test/android:/fixtures:ro" \
+    -v "$APK_DIR:/apk:ro" -v "${LEGACY_APK_DIR:-$APK_DIR}:/legacy:ro" \
     openwrt/rootfs:x86-64-25.12.4 sleep infinity >/dev/null
-docker exec "$ROUTER" sh -c '
+docker exec -e START=$([ -n "${LEGACY_APK_DIR:-}" ] && echo legacy || echo apk) "$ROUTER" sh -c '
     mkdir -p /var/lock /var/run /var/etc
     apk update >/dev/null 2>&1
-    apk add --allow-untrusted /apk/familywarden-[0-9]*.apk >/dev/null 2>&1 || { echo "router: apk add failed"; exit 1; }
+    apk add --allow-untrusted /$START/familywarden-[0-9]*.apk >/dev/null 2>&1 || { echo "router: apk add failed"; exit 1; }
     cat > /etc/config/familywarden <<EOF
 config global settings
 	option enabled 1
@@ -177,7 +179,7 @@ ui unpaired
 ui_has 'Pair with your router'
 
 echo ""
-echo "=== Legacy global policy cannot authorize this phone ==="
+echo "=== Pairing; the router must approve this phone ==="
 # Exercise the real pairing UI; the key is pinned only after fingerprint confirmation.
 # Quoted for the device shell too: the URI contains "&".
 $ADB shell am start -a android.intent.action.VIEW -d "'$PAIR_URI'" -n io.github.denogio.familywarden/.MainActivity >/dev/null
@@ -186,13 +188,25 @@ ui_has 'Confirm the router'
 tap_text 'It matches, pair'
 $ADB logcat -d -s UlyssesMast:* AndroidRuntime:E | tr -d '\r' | grep -A4 -E "debug:|FATAL" | head -8 | sed 's/^/  log: /'
 echo "  router :7700 from emulator: $($ADB shell "echo | nc -w 3 $ROUTER_IP 7700 >/dev/null 2>&1 && echo open || echo CLOSED" | tr -d '\r')"
-ui legacy-unsupported
-ui_has 'Router setup needs an update'
-has no_config_tethering && fail "global captain policy applied to unassociated phone" || pass "global policy cannot restrict unrelated phone"
-
-# Switch ONLY this disposable router to the insecure policy fixture. The shipping
-# daemon remains v1; successful fixture tests are not production v2 support.
-docker exec "$ROUTER" sh -c 'touch /tmp/familywarden-android-lab; cp /fixtures/device-policy.cgi /www-familywarden/cgi-bin/mast; chmod 755 /www-familywarden/cgi-bin/mast'
+if [ -n "${LEGACY_APK_DIR:-}" ]; then
+    ui legacy-unsupported
+    ui_has 'Router setup needs an update'
+    has no_config_tethering && fail "global captain policy applied to an unassociated phone" || pass "global v1 policy cannot restrict this phone"
+    docker exec "$ROUTER" sh -c 'apk add --allow-untrusted /apk/familywarden-[0-9]*.apk >/dev/null 2>&1 && familywarden reload >/dev/null' \
+        && pass "router upgraded in place" || fail "router upgrade failed"
+    broadcast io.github.denogio.familywarden.DEBUG_SYNC
+fi
+ui awaiting-approval
+ui_has 'Waiting for approval'
+has no_config_tethering && fail "pending phone restricted before approval" || pass "pending phone gets no policy"
+# The administrator compares the fingerprint the app shows with LuCI's
+APP_FP=$(printf '%s' "$UI" | grep -oE '([0-9a-f]{4} ){15}[0-9a-f]{4}' | head -1 | tr -d ' ')
+PENDING=$(docker exec "$ROUTER" sh -c 'echo "{}" | /usr/libexec/rpcd/familywarden call devices')
+DEV_ID=$(echo "$PENDING" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pending"][0]["id"])')
+ROUTER_FP=$(echo "$PENDING" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pending"][0]["fingerprint"])')
+[ -n "$APP_FP" ] && [ "$APP_FP" = "$ROUTER_FP" ] && pass "app and LuCI show the same fingerprint" || fail "fingerprints differ: app=$APP_FP router=$ROUTER_FP"
+out=$(docker exec "$ROUTER" sh -c "echo '{\"device\":\"$DEV_ID\",\"profile\":\"alex\",\"name\":\"Alex phone\",\"administrator\":\"1\",\"fingerprint\":\"$ROUTER_FP\"}' | /usr/libexec/rpcd/familywarden call device_approve")
+echo "$out" | grep -q '"status": "ok"' && pass "administrator approved the phone" || fail "approval: $out"
 broadcast io.github.denogio.familywarden.DEBUG_SYNC
 has no_config_tethering && pass "scoped pact restricts tethering" || fail "no_config_tethering missing"
 ui blocked-light
@@ -207,9 +221,9 @@ ui_has 'Hotspot is locked'
 $ADB shell settings put system font_scale 1.0
 $ADB shell cmd uimode night no
 has no_config_date_time && pass "clock locked while paired" || fail "no_config_date_time missing"
-docker exec "$ROUTER" sh -c 'cat /tmp/familywarden.mast' | grep -q "^fw-" && pass "router saw the phone sync" || fail "router has no sync record"
+docker exec "$ROUTER" sh -c "test -s /tmp/familywarden.seen/$DEV_ID" && pass "router saw the approved phone sync" || fail "router has no sync record"
 
-# Navigate real destinations; DNS must remain explicitly unconfigured, not green.
+# The profile has no DNS yet: explicitly unconfigured, not green.
 ui navigation-overview
 tap_text 'DNS'
 ui dns-details
@@ -221,11 +235,21 @@ ui_has 'No allowed windows today'
 tap_text 'Overview'
 ui navigation-return
 
+# DNS policy the resolver can't serve: Android refuses strict DNS, and the app
+# says so instead of claiming protection. (A reachable DoT resolver with a
+# publicly trusted certificate is a real-device test.)
+docker exec "$ROUTER" sh -c 'echo "alex alex dns.invalid filter_lists -" > /etc/familywarden/dns.ack'
+broadcast io.github.denogio.familywarden.DEBUG_SYNC
+sleep 10
+ui dns-not-served
+ui_has 'Android did not apply DNS protection'
+has disallow_config_private_dns && pass "Private DNS settings locked by policy" || fail "disallow_config_private_dns missing"
+
 # Native per-app locales: real Danish resources and 200% layout, no mock screen.
 $ADB shell cmd locale set-app-locales io.github.denogio.familywarden --user 0 --locales da
 sleep 5
 ui danish
-ui_has 'Gør DNS klar'
+ui_has 'Android anvendte ikke DNS-beskyttelsen'
 ui_has 'Hotspot er låst'
 $ADB shell settings put system font_scale 2.0
 ui danish-large
@@ -314,6 +338,9 @@ ui removed
 ui_has 'One step before setting sail'
 has no_config_tethering && fail "tethering restricted after removal" || pass "removal clears tethering restriction"
 has no_config_date_time && fail "clock restricted after removal" || pass "removal clears clock restriction"
+has disallow_config_private_dns && fail "Private DNS still locked after removal" || pass "removal unlocks Private DNS"
+mode=$($ADB shell settings get global private_dns_mode | tr -d '\r')
+[ "$mode" = "opportunistic" ] && pass "Private DNS back to Automatic" || fail "private_dns_mode=$mode"
 $ADB shell dpm list-owners | grep -q 'DeviceOwner' && fail "still device owner" || pass "device-owner role released"
 
 echo ""

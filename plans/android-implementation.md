@@ -51,73 +51,56 @@ check. The numeric port-7700 endpoint was reachable. Therefore:
   upstream behavior, beyond the approved FamilyWarden-owned client boundary, and needs
   separate explicit production approval.
 
-## Important remaining gates
+## Enrollment, device policy and DNS (backend 0.9.0 / LuCI 0.6.0)
 
-1. **The shipping router endpoint is still v1.** Its global captain response is useful
-   for diagnostics but cannot authorize DNS, captain status, or managed removal on the
-   new app. The new UI explicitly reports the incompatible router setup.
-2. **Prototype v2 parsing is not an enrollment/authentication protocol.** A random
-   device ID and a nonce do not authenticate a phone. Before a production v2 endpoint,
-   implement approved enrollment proof, device/capability authorization, replay/freshness
-   protections, and managed-device administrator approval. Never return privileges just
-   because a caller supplied a profile or device ID. Freeze device/profile association
-   changes that could escape an active captain pact, negotiate protocol compatibility,
-   and only report filtering as applied after acknowledged AGH configuration, not from
-   the requested settings alone.
-3. **Strict DNS writes and resolver probing are not implemented in this checkpoint.**
-   Android settings are read back rather than inferred from receipt of policy; resolver
-   testing is disabled. Finish the strict-DNS/lifecycle work and release/restoration
-   handling before claiming this app provides DNS enforcement. Also test startup clock
-   integrity (including a wrong clock before enrollment): automatic time configuration
-   alone is not proof that the OS clock has already synchronized before the initial
-   hotspot decision. Include before-first-unlock reboot behavior and alarm recovery,
-   not only an emulator reboot followed by unlocking the screen. Do not introduce a
-   24/48-hour stale-cache escalation.
-4. AdGuard integration still needs an authenticated management route, mapping to actual
-   supported client controls, preservation of unrelated configuration, and approved
-   defaults/exceptions. No invented per-client filter-list groups.
-5. Physical-phone cellular DoT, hotspot behavior, and a separately authorized Device
-   Owner migration remain outstanding. A different application ID cannot replace the
-   existing owner in place. Never release/reset the current owner to try this branch.
+Implements the decisions recorded in `plans/dns-filtering.md` (2026-10-17):
+
+- **Enrollment:** the app creates its own usign (Ed25519) key and signs every request
+  (`familywarden-sync-v2\n<id>\n<nonce>\n`). Unknown or re-keyed phones wait in RAM
+  (at most 10) and appear under LuCI › FamilyWarden › Phones with a **SHA-256 of the
+  full key** (usign's 8-byte key ID is caller-chosen, so it is not used for comparison).
+  Approval sends the fingerprint the administrator saw; a changed key is refused.
+  Only an approved id+key pair gets a binding; everything else gets a signed "pending".
+- **Pact freeze:** phones of the captain profile are part of the pact snapshot and can't
+  be moved, deleted or given removal permission until the pact ends (also not in the
+  amendment window). New phones may still join the captain profile.
+- **Removal:** administrator phones may remove the app when no applicable pact is
+  active; other phones need LuCI "Allow removal" (1 hour). Removal re-fetches a fresh
+  signed reply and uses its server time.
+- **AdGuard Home:** profiles with "Strict DNS" get a `familywarden-<ClientID>` client;
+  only those clients and ClientIDs FamilyWarden added to `allowed_clients` are changed
+  (re-read before, verified after; an empty list is never touched). The ClientID comes
+  from the profile name once and is kept on rename. Phones receive DNS only after AGH
+  acknowledged the client. Credentials: write-only via LuCI, root-only on the router.
+- **Android DNS:** strict Private DNS to `<ClientID>.<dns_domain>`, locked with
+  `DISALLOW_CONFIG_PRIVATE_DNS`. Android refuses a resolver it can't reach right now;
+  the app then reports the failure instead of protection. Removal sets Automatic and
+  unlocks. The DoT connection test is bound to network, policy and generation.
+
+## Remaining gates (before rollout)
+
+1. Real device: cellular DoT with the user's AGH (#32), hotspot behavior, Device Owner
+   migration from the old Mast app (#31). Never release/reset the current owner to try this.
+2. Positive DoT test needs a publicly trusted certificate: not possible in the emulator.
+3. Startup clock integrity and before-first-unlock reboot behavior; same-key control
+   address repair when the router's LAN IP changes.
+4. Choose default protections/services per profile (#33). No AGH or router change has
+   been made by this work beyond the approved `familywarden` AGH user.
 
 ## Verification at this checkpoint
 
-- **81 ordinary Android unit tests passed** (the original 36 plus 45 implementation
-  and transport cases). The opt-in archive review suite passes **100 tests**, including
-  its 19 characterization/proposal cases; a subsequent ordinary run contains only 81.
-- Debug and **unsigned** release builds plus `lintDebug` pass. The shrunk release is
-  approximately 4.13 MiB. The release manifest has the new ID/AdminReceiver, native
-  locale configuration, and no debug receiver. No signed release was published.
-- Both resource sets contain all **176** translatable strings. Android 15 native locale
-  switching, English/Danish, dark/light, and 200% text were exercised in the real UI.
-- The isolated emulator suite passes: `router.invalid` pairing through a numeric
-  address, real v1 incompatibility, scoped v2 fixture enforcement, optional/forced
-  Ulysses visibility, protected data/uninstall, stale removal confirmation rejection,
-  offline reboot, and authorized Device Owner release. This is not an AGH/DoT test.
-- **124 backend integration checks passed**, including static/live-address metadata
-  paths. Shell syntax, Markdown links and whitespace checks pass. The OpenWrt package
-  explicitly depends on `jsonfilter`; a fresh SDK package build remains a release gate.
-- Review follow-up also covers DST gaps/repeated hours, bounded epoch seconds (not
-  milliseconds), malformed DNS-object rejection, typed refusal causes,
-  missing-policy vs v1-incompatibility copy, and
-  fresh removal decisions using signed server time.
+- Router: 178 integration checks (real fw4/nftables, enrollment, freeze, removal,
+  crafted names); 49 AdGuard Home checks against a throwaway v0.107.79 container
+  (same image digest as production).
+- Android: unit tests, debug build and lint pass. Emulator (Android 15): 81 checks,
+  starting from a 0.8.0 router that must not authorize the phone, upgraded in place to
+  0.9.0, then pending → fingerprint matches LuCI → approval → pact enforcement → DNS
+  refused by Android and reported → offline reboot → removal restores Private DNS.
+- LuCI Playwright: 17 tests against the 0.6.0 package.
+- The former insecure v2 test fixture has been deleted.
 
-## Isolated tests
-
-- `scripts/test-integration.sh`: real fw4/backend integration, including numeric pairing
-  metadata, unchanged key identity, backward-compatible URI fields, and invalid-address
-  rejection. The container's test UCI changes do not affect any router outside it.
-- Android ordinary unit tests: existing policy/signature tests plus pairing, scoped-policy,
-  independent-state, and weekday/overnight/exclusive-end schedule display tests.
-- `scripts/test-mast-emulator.sh`: disposable Android 15 and router containers only.
-  The initial real v1 response must remain unsupported; the script then explicitly
-  installs `test/android/device-policy.cgi` to exercise prototype v2 behavior.
-- **The test CGI deliberately authorizes arbitrary valid test-device IDs. It is not
-  secure production code**, is not installed by either OpenWrt package, and refuses
-  operation without a disposable-lab sentinel. Passing its tests does not validate
-  enrollment authentication or real AdGuard integration.
-- Screenshots must use fictional fixture names only. Diagnostics omit names, ClientIDs,
-  addresses, keys, and payloads; still review before sharing.
+Screenshots use fictional names only. Diagnostics omit names, ClientIDs, addresses,
+keys and payloads.
 
 Keep this checkpoint and `plans/dns-filtering.md` up to date as the implementation
 advances. Do not interpret local build/test success as deployment authorization.

@@ -22,7 +22,13 @@ private const val TAG = "UlyssesMast"
 
 /** Device-owner receiver. `adb shell dpm set-device-owner io.github.denogio.familywarden/.AdminReceiver` */
 class AdminReceiver : DeviceAdminReceiver() {
-    override fun onEnabled(context: Context, intent: Intent) = Mast.refresh(context, sync = false)
+    override fun onEnabled(context: Context, intent: Intent) {
+        // Off the main thread: applying Private DNS waits on the network
+        val pending = goAsync()
+        Thread {
+            try { Mast.refresh(context, sync = false) } finally { pending.finish() }
+        }.start()
+    }
 }
 
 /** Re-evaluate after boot, app update, and at the exact alarm for the next change. */
@@ -72,7 +78,7 @@ object Mast {
     fun refresh(context: Context, sync: Boolean) {
         val store = Store(context)
         if (sync && store.paired) {
-            when (val r = Sync.fetch(store)) {
+            when (val r = Sync.fetch(store, android.os.Build.MODEL.orEmpty())) {
                 is Sync.Result.Ok -> {
                     accept(store, r)
                 }
@@ -86,6 +92,8 @@ object Mast {
             enforce(context, state != null, decision.block)
             scheduleNext(context, store)
         }
+        // DNS is always on while the verified policy has it, independent of Ulysses
+        if (state != null) PrivateDns.apply(context, store, state.dns)
         schedulePeriodic(context)
         Log.i(TAG, "decision=${decision.reason} block=${decision.block} lastSync=${store.lastSync} error=${store.lastError}")
     }
@@ -155,7 +163,7 @@ object Mast {
     fun checkRelease(context: Context): Boolean {
         val store = Store(context)
         if (!store.provisioned) return true
-        val result = Sync.fetch(store)
+        val result = Sync.fetch(store, android.os.Build.MODEL.orEmpty())
         if (result !is Sync.Result.Ok) {
             store.lastError = (result as Sync.Result.Failed).reason
             return false
@@ -171,6 +179,8 @@ object Mast {
     @Suppress("DEPRECATION")
     fun release(context: Context): Boolean {
         if (!checkRelease(context)) return false
+        // Hand Private DNS back first; if Android refuses, stay owner (nothing half-done)
+        if (!PrivateDns.restore(context, Store(context))) return false
         enforce(context, paired = false, block = false)
         if (isDeviceOwner(context)) dpm(context).clearDeviceOwnerApp(context.packageName)
         Store(context).unpair()

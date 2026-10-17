@@ -58,7 +58,7 @@ class FamilyWardenStateTest {
     }
 
     @Test fun captainOptInIsIndependentOfAdministratorRole() {
-        val s = healthy().copy(binding = binding.copy(administrator = false), ulyssesEnabled = true)
+        val s = healthy().copy(binding = binding.copy(administrator = false, selfRemoval = false), ulyssesEnabled = true)
         assertTrue(s.showUlysses)
         assertFalse(s.canRequestRemoval)
         assertFalse(s.canRePair)
@@ -77,12 +77,18 @@ class FamilyWardenStateTest {
         val state = MastState(1800000000, "captain", false, "", 0, 0,
             Rules(true, "allow", "none", emptyList()), binding = binding, wireVersion = 2)
         assertEquals(RemovalRefusal.ActivePact, removalRefusal(state.copy(pactActive = true, pactType = "ongoing"), null))
-        assertEquals(RemovalRefusal.MissingAuthority, removalRefusal(state.copy(binding = binding.copy(administrator = false)), null))
+        assertEquals(RemovalRefusal.MissingAuthority, removalRefusal(state.copy(binding = binding.copy(administrator = false, selfRemoval = false)), null))
         assertEquals(RemovalRefusal.Unreachable, removalRefusal(state, "router unreachable"))
         assertEquals(RemovalRefusal.Unsupported, removalRefusal(state, "unsupported device policy"))
         assertEquals(RemovalRefusal.Unverified, removalRefusal(state, "bad signature"))
         assertEquals(RemovalRefusal.Unverified, removalRefusal(null, null))
         assertEquals(RemovalRefusal.NotCompleted, removalRefusal(state, null))
+    }
+
+    @Test fun managedExplicitApprovalAllowsRemovalButNotRePairing() {
+        val s = healthy().copy(binding = binding.copy(administrator = false, selfRemoval = true))
+        assertTrue(s.canRequestRemoval)
+        assertFalse(s.canRePair)
     }
 
     @Test fun managedNoPactIsNotRemovalOrRePairPermission() {

@@ -33,6 +33,9 @@ jobs:
           OPENWRT_IMAGE: openwrt/rootfs:x86-64-${{ env.OPENWRT_VERSION }}
         run: ./scripts/test-integration.sh
 
+      - name: AdGuard Home sync (throwaway AdGuard Home container)
+        run: ./scripts/test-agh.sh
+
   build:
     name: Build apks
     needs: test

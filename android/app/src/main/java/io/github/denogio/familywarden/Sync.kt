@@ -47,19 +47,26 @@ object Sync {
      * Fetch, verify and parse. Rejects anything not signed by the pinned key,
      * and replies older than the last accepted one (replayed "no pact").
      */
-    fun fetch(store: Store): Result {
-        return fetch(store.host, store.publicKey, store.deviceId, store.state, store.provisioned)
+    fun fetch(store: Store, model: String = ""): Result {
+        return fetch(store.host, store.publicKey, store.deviceId, store.phoneKey, model, store.state, store.provisioned)
     }
 
-    internal fun fetch(host: String?, key: String?, deviceId: String,
+    /**
+     * The request names this phone and a fresh nonce, signed with the phone's
+     * own key ([PhoneKey]): the router only answers an approved id+key pair with
+     * a binding. [model] is shown to the administrator next to the fingerprint.
+     */
+    internal fun fetch(host: String?, key: String?, deviceId: String, phoneKey: PhoneKey, model: String = "",
         previous: MastState? = null, requireDevicePolicy: Boolean = false): Result {
         if (host == null || key == null) return Result.Failed("not paired")
         val pub = try { Usign.parsePublicKey(key) } catch (_: IllegalArgumentException) {
             return Result.Failed("bad paired key")
         }
         val nonce = newNonce()
+        val requestSignature = phoneKey.sign(requestMessage(deviceId, nonce))
+        val name = model.map { if (it.isLetterOrDigit() && it.code < 128 || it in "._-") it else '-' }.joinToString("").take(40)
         val body = try {
-            get("${base(host)}/cgi-bin/mast?device=$deviceId&nonce=$nonce")
+            get("${base(host)}/cgi-bin/mast?device=$deviceId&nonce=$nonce&key=${enc(phoneKey.publicKey)}&sig=${enc(requestSignature)}&name=$name")
         } catch (e: ReplyRejected) {
             return Result.Failed(e.reason)
         } catch (e: Exception) {
@@ -78,7 +85,9 @@ object Sync {
         if (state.wireVersion == 2 && !responseMatches(state, deviceId, nonce)) {
             return Result.Failed("response mismatch")
         }
-        // Never downgrade an enrolled device to global v1 state after a router rollback.
+        // Never downgrade an enrolled device to global v1 state after a router rollback,
+        // and keep its last policy if the router no longer recognises it.
+        if (requireDevicePolicy && state.wireVersion == 2 && state.pending) return Result.Failed("device not approved")
         if (requireDevicePolicy && !state.appliesTo(deviceId)) return Result.Failed("unsupported device policy")
         if (previous != null && state.serverTime < previous.serverTime) return Result.Failed("stale reply")
         return Result.Ok(payload, state)
@@ -124,8 +133,16 @@ object Sync {
         java.security.SecureRandom().nextBytes(it)
     }.joinToString("") { "%02x".format(it) }
 
+    /** Exactly the request this phone made: its device id and its fresh nonce. */
     internal fun responseMatches(state: MastState, deviceId: String, nonce: String): Boolean =
-        state.appliesTo(deviceId) && state.requestNonce == nonce
+        state.device == deviceId && state.requestNonce == nonce &&
+            (state.pending || state.binding?.deviceId == deviceId)
+
+    /** What the phone signs; the router's cli_mast2 checks exactly these bytes. */
+    internal fun requestMessage(deviceId: String, nonce: String): ByteArray =
+        "familywarden-sync-v2\n$deviceId\n$nonce\n".toByteArray(Charsets.UTF_8)
+
+    private fun enc(b64: String) = b64.replace("+", "%2B").replace("/", "%2F").replace("=", "%3D")
 
     private class ReplyRejected(val reason: String) : Exception(reason)
 

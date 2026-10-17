@@ -36,6 +36,22 @@ class Store(context: Context) {
             prefs.edit().putString("device_id", it).apply()
         }
 
+    /** This phone's signing key: created once, kept across re-pairing. */
+    val phoneKey: PhoneKey
+        get() = synchronized(PhoneKey) {
+            val encoded = prefs.getString("phone_key", null)
+            // A damaged key is a recovery problem, not permission to silently re-key.
+            if (encoded != null) PhoneKey.decode(encoded)
+            else PhoneKey.generate().also {
+                check(prefs.edit().putString("phone_key", it.encode()).commit()) { "key persistence failed" }
+            }
+        }
+
+    /** Android DNS settings are ours to restore on removal (set once we applied them). */
+    var dnsOwned: Boolean
+        get() = prefs.getBoolean("dns_owned", false)
+        set(v) { prefs.edit().putBoolean("dns_owned", v).commit() }
+
     val paired: Boolean get() = host != null && publicKey != null
 
     val state: MastState?
@@ -56,6 +72,9 @@ class Store(context: Context) {
         set(v) = prefs.edit().putString("dns_error", v).apply()
 
     val effectiveState: MastState? get() = state?.takeIf { it.appliesTo(deviceId) }
+
+    /** Signed v2 reply says this phone still waits for an administrator's approval. */
+    val awaitingApproval: Boolean get() = !provisioned && state?.let { it.wireVersion == 2 && it.pending } == true
 
     /** Policy, enrollment latch, and sync metadata are one atomic preference update. */
     internal fun accept(reply: Sync.Result.Ok) {

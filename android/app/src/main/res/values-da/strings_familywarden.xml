@@ -11,7 +11,7 @@
     <string name="fw_dns_unlocked">DNS-indstillingerne er ikke låst</string>
     <string name="fw_dns_unlocked_body">Den valgte udbyder stemmer, men låsen mod ændringer er ikke verificeret.</string>
     <string name="fw_dns_failed">Android anvendte ikke DNS-beskyttelsen</string>
-    <string name="fw_dns_failed_body">Den strenge DNS-indstilling kunne ikke verificeres. Den senest fungerende konfiguration erstattes ikke bevidst af en ufiltreret reserveforbindelse.</string>
+    <string name="fw_dns_failed_body">Android accepterer kun en DNS-over-TLS-resolver, der kan nås lige nu, og det kunne den ikke. Indtil det lykkes, beholder telefonen sin tidligere DNS-indstilling, så filtrering gælder måske ikke. FamilyWarden bliver ved med at prøve og vælger aldrig selv en ufiltreret reserveforbindelse.</string>
     <string name="fw_dns_testing">Tester resolveren</string>
     <string name="fw_dns_testing_body">Kontrollerer, om der kommer et DNS-svar over en verificeret TLS-forbindelse.</string>
     <string name="fw_dns_certificate">DNS-certifikatet kunne ikke verificeres</string>
@@ -72,7 +72,7 @@
     <string name="fw_remove_unverified">Et nyt svar til denne telefon kunne ikke verificeres. Den seneste betroede politik bevares; kontrollér routerforbindelsen og den parrede nøgle.</string>
     <string name="fw_remove_incomplete">Fjernelsen blev ikke fuldført. Kontrollér den aktuelle Device Owner-tilstand, og prøv igen, når det er godkendt.</string>
     <string name="fw_setup_incomplete">Installationen er endnu ikke klargjort. Fjernelse opgiver Device Owner-rettigheder; senere klargøring kan kræve ændring af konti og profiler eller en nulstilling.</string>
-    <string name="fw_remove_confirm_body">FamilyWarden kontrollerer godkendelsen igen, fjerner egne begrænsninger og opgiver Device Owner-rettigheder. Denne udviklingsversion har ikke ændret indstillingerne for Privat DNS. Senere klargøring kan kræve ændring af konti og profiler eller en nulstilling.</string>
+    <string name="fw_remove_confirm_body">FamilyWarden kontrollerer godkendelsen igen, sætter Privat DNS tilbage til Automatisk, fjerner egne begrænsninger og opgiver Device Owner-rettigheder. Android kan ikke genskabe en tidligere \"Fra\"-indstilling præcist. Senere klargøring kan kræve ændring af konti og profiler eller en nulstilling.</string>
     <string name="fw_unsupported_action">Dette kræver en verificeret, enhedsspecifik politik fra en kompatibel router.</string>
     <string name="fw_error_pairing">Parringen kunne ikke fuldføres. Kontrollér adresse, forbindelse og nøglens fingeraftryk.</string>
     <string name="fw_no_pact">Ingen aktiv pagt</string>
@@ -80,6 +80,10 @@
     <string name="fw_version">Version %1$s</string>
     <string name="fw_dns_not_configured">Ikke konfigureret</string>
     <string name="fw_permission_needed">Device Owner er påkrævet</string>
-    <string name="fw_probe_unavailable">Test af resolveren er ikke tilgængelig i denne udviklingsversion.</string>
+    <string name="fw_probe_unavailable">Forbindelsen kan testes, når Android har anvendt og låst DNS-indstillingen.</string>
+    <string name="fw_awaiting_title">Venter på godkendelse</string>
+    <string name="fw_awaiting_body">Bed administratoren om at godkende telefonen i LuCI under FamilyWarden › Telefoner. Fingeraftrykket dér skal stemme med dette:</string>
+    <string name="fw_sync_not_approved">Routeren godkender ikke længere telefonen; seneste politik bevares</string>
+    <string name="fw_phone_key">Telefonens nøgle</string>
     <string name="fw_migration_note">Hvis en anden Device Owner, herunder den gamle Mast-app, allerede administrerer telefonen, skal du stoppe her. Fjern ikke appen, slet ikke konti og nulstil ikke telefonen uden en godkendt migrering.</string>
 </resources>
