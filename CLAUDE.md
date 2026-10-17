@@ -2,7 +2,9 @@
 
 ## Language and privacy
 
-Use English for replies and all documentation, comments, and UI text.
+Use English for replies, all documentation, source comments, and default UI text.
+The Android app must also provide complete Danish localization from its first
+FamilyWarden-branded release; use Android string/plural resources and system/app locale.
 Use only fictional children's names (e.g. Alex) in fixtures, examples, UI placeholders,
 documentation, and screenshots. Never copy children's real names or device names
 from a running router into the repository or public artifacts.

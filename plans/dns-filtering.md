@@ -66,6 +66,12 @@ it did not configure split DNS.
 
 ### Confirmed product decisions
 
+- The Android app must ship with complete **English and Danish** localization.
+  English is the resource fallback; follow Android's system/per-app language selection.
+  Include strings, plurals, accessibility labels, setup, dialogs, and user-facing errors;
+  use locale-aware formatting and test Danish layouts at large text sizes. Documentation
+  and source comments remain English. This is required for the Android release, not
+  deferred to the separate LuCI translation roadmap phase.
 - DNS filtering is always active while paired, independent of Ulysses pact/schedule state.
 - Keep strict Private DNS: no automatic opportunistic/plaintext/unfiltered fallback.
   Redundant filtered upstreams inside AGH, and possibly a second equivalently configured

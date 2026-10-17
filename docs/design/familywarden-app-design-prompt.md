@@ -117,8 +117,16 @@ cannot be enforced on the phone until received.
   notification, and simplified small-size marks.
 - Calm and respectful: chosen protection, not punishment. Red means a genuine problem,
   not merely that a self-chosen pact is holding.
-- English UI text; light/dark themes; edge-to-edge insets; TalkBack semantics; accessible
-  contrast; 200% font scaling; no color-only status indicators.
+- Full English and Danish localization from the first release. English is the fallback;
+  follow Android's system/app language settings rather than designing a custom language
+  mechanism. Keep visible text in Android string resources, including accessibility
+  labels, onboarding, dialogs, feature explanations, and error messages.
+- Use locale-aware dates/times and plural resources. Avoid concatenated translated
+  sentences and text embedded in logos/images. Technical hostnames/identifiers stay intact.
+- Main mockups may be English, but include representative Danish Overview, DNS-error,
+  and Ulysses screens, including one at 200% text. Allow for longer translated labels.
+- Light/dark themes; edge-to-edge insets; TalkBack semantics; accessible contrast;
+  200% font scaling; no color-only status indicators.
 - Use illustrative hostnames such as `phone-id.dns.example.net`, never hard-code a
   developer's personal domain into the design or product defaults.
 
@@ -131,7 +139,8 @@ cannot be enforced on the phone until received.
    certificate error; router offline but DNS healthy; pairing/setup/removal flows.
 3. Component/state specification suitable for stateless Compose UI: separate role,
    feature visibility, policy application, resolver health, router sync, and pact state.
-4. One 200%-font example and a small reusable component/token inventory.
+4. Representative Danish variants, one 200%-font example, and a small reusable
+   component/token inventory. Supply English/Danish UI copy for the designed screens.
 5. Explicitly label example data, future concepts, and backend-dependent actions.
 
 Reuse the existing brand and Ulysses work. Focus on a coherent FamilyWarden product,
