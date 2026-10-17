@@ -1,0 +1,3 @@
+# Preserve bundled design exports byte-for-byte without giant embedded-asset diffs.
+docs/design/familywarden-logo.html -diff
+docs/design/familywarden-app/design.html -diff

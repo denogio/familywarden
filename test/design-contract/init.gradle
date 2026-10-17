@@ -1,0 +1,10 @@
+// Opt-in review source set only. Nothing here is packaged in the Android app.
+// From android/: ./gradlew -I ../test/design-contract/init.gradle testDebugUnitTest
+gradle.beforeProject { p ->
+    p.plugins.withId('com.android.application') {
+        p.android.sourceSets.getByName('test').java.srcDirs(
+            new File(p.rootDir, '../docs/design/familywarden-app'),
+            new File(p.rootDir, '../test/design-contract')
+        )
+    }
+}

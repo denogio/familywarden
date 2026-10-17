@@ -9,18 +9,33 @@ This document is the durable source of DNS planning context. Keep confirmed fact
 proposals, and unanswered questions separate. A planning answer is not production-change
 authorization. Record answers under the decision IDs below rather than relying on chat history.
 
+### Preparation work authorized by the user: steps 1–3
+
+- **Step 1, scope:** approved choices are consolidated below. Exact filtering categories,
+  removal roles, and security decisions remain explicitly deferred, not guessed.
+- **Step 2, investigation:** accessible read-only inventory is complete; see the
+  [sanitized preflight report](dns-preflight-report.md). Real cellular confirmation and
+  authenticated API setup still need user participation/approval. No settings changed.
+- **Step 3, design review:** the [supplied handoff](../docs/design/familywarden-app/README.md)
+  is archived with its [review](../docs/design/familywarden-app/REVIEW.md).
+  19 opt-in review tests plus 36 existing Android tests pass. The original model is
+  not production-ready; review helpers are test-only, not implemented app features.
+- Backend implementation, Android migration/enforcement, and production rollout are
+  **outside this authorization**. Continue only after the next explicit go-ahead and
+  resolution of the gates relevant to that work.
+
 ### Confirmed environment and observations
 
 | Item | Confirmed finding | Limits / remaining verification |
 |---|---|---|
 | Router | rivendell, OpenWrt 25.12.4, FamilyWarden 0.8.0 / LuCI 0.5.0 | A user-run pact test is in progress; do not alter it |
-| Existing resolver | AdGuard Home already runs at `10.77.0.11` | Version, runtime host/container, API access, and existing policies are not yet inventoried |
+| Existing resolver | AGH `v0.107.79` in Docker at `10.77.0.11`; filtering/access settings inventoried read-only | API requires auth; management credentials/ownership not approved. Existing client IDs/names remain private |
 | DNS names | `secure-dns.hojgaard.me` and wildcard subdomains resolve publicly; tested base and `mast-phone.secure-dns.hojgaard.me` | Public address was `87.62.96.86`; use DNS, not a hard-coded public IP |
 | DoT | Both tested hostnames accepted TCP 853, TLS 1.3, and a real `example.org A` query | Tested from the home network through the public address, not from an independent external network |
 | Certificate | Trusted certificate covers `secure-dns.hojgaard.me` AND `*.secure-dns.hojgaard.me` | Automatic renewal and behavior after renewal still need testing |
 | WAN forwarding | Active TCP/UDP 853 DNAT to `10.77.0.11:853` | The phone cannot use it on mobile data yet; root cause is not established |
 | NAT reflection | Wi-Fi connections through the public address are SNATed to `10.77.0.1` | AGH therefore cannot infer the original LAN IP on that path |
-| IPv6 | No AAAA answer for the tested public resolver name; router WAN showed no delegated IPv6 at inspection | This does not establish that all LAN/mobile clients lack IPv6 |
+| IPv6 | No AAAA answer for the tested public resolver name; latest inspection found active global/ULA/link-local router DNS listeners and DHCPv6/RA server mode | Earlier WAN snapshot was incomplete/outdated; actual Android IPv6 bootstrap remains untested |
 | Mast | Device Owner app, minSdk 30, already paired using a pinned router signing key | Private DNS enforcement is proposed, not implemented |
 
 No DNS rewrites, DHCP changes, AGH access-list changes, or Mast DNS settings were applied.
@@ -54,8 +69,10 @@ it did not configure split DNS.
   Do not replace existing address/local lists or unrelated DHCP DNS options.
 
 - Wi-Fi bootstrap DNS must actually reach rivendell for these overrides to apply.
-  Which DNS server DHCP advertises today is still unknown. If clients query AGH directly,
-  an override in dnsmasq alone has no effect.
+  Read-only inventory found no explicit LAN DHCP option 6 or DNS option, with dnsmasq
+  listening on the router. Default router advertisement is expected, but actual Android
+  bootstrap still needs checking. If clients query AGH directly, dnsmasq overrides alone
+  have no effect. See the preflight report for the mixed existing upstreams.
 - Do NOT add a global private-IP rewrite to the same AGH listener serving remote clients:
   it could return an unreachable private address off-site. Keep external authoritative
   answers public, and keep the private override confined to the LAN bootstrap path.
@@ -120,9 +137,9 @@ it did not configure split DNS.
 | D2 | If strict Private DNS is unreachable, accept DNS failure or allow fallback? | Keep strict DNS; no automatic unfiltered fallback. Explain outage/captive-portal consequences | Confirmed |
 | D3 | Which devices/profiles and filters belong in the first release? | User's phone only; aggressive practical filtering. Agree exact categories, SafeSearch, services, and exceptions separately | Scope confirmed; categories open |
 | D4 | Should tickets affect DNS filtering? | No: internet tickets change connectivity only | Unanswered |
-| D5 | How is the external resolver access-controlled? | Inventory AGH allowed/disallowed clients, host firewall, and TLS proxy; choose intentional exposure or managed VPN, never silently remove allowlists | Unanswered |
-| D6 | Can selected LAN devices get stable DHCP reservations, and how should IPv6 be handled? | Reserve IPv4; explicitly test/choose an IPv6 strategy before claiming full coverage | Unanswered |
-| D7 | May FamilyWarden change DHCP-advertised bootstrap DNS to rivendell if necessary? | Only after inspecting current DHCP/DNS and confirming local-name behavior; no whole-network change without approval | Unanswered |
+| D5 | How is the external resolver access-controlled? | Nonempty AGH allowlist confirmed; LAN and specific IDs allowed. Agree intended exposure/authentication; real phone cellular failure still needs correlation | Inventory done; access decision open |
+| D6 | Can selected LAN devices get stable DHCP reservations, and how should IPv6 be handled? | Two reservations already exist; do not reassign them. Active IPv6 found. Reserve future selected devices only with approval and test IPv6 | Inventory done; changes undecided |
+| D7 | May FamilyWarden change DHCP-advertised bootstrap DNS to rivendell if necessary? | No explicit LAN DNS override found; actual Android bootstrap still needs testing. Split DNS is not configured. No whole-network change without approval | Router inspection done; Android test/open approval |
 | D8 | How should pact freezing, amendment windows, unpairing, and removal affect DNS? | Freeze the effective policy/hostname during the pact; allow normal amendments; restore the previous owned Android DNS setting on removal | Unanswered |
 | D9 | Which AGH settings may FamilyWarden own? | Namespaced clients only; leave global lists/manual clients intact initially | Unanswered |
 | D10 | What is the deployment sequence? | Lab first, then one explicitly approved device after the current pact test | Unanswered |
@@ -156,8 +173,10 @@ FamilyWarden permission model.
 
 ### Read-only investigation still needed
 
-- Inventory AGH version/hosting, DNS/TLS listeners/proxy, client policies, access lists,
-  and authenticated API route. Do not request passwords in chat or publish query logs.
+- Completed: AGH version/hosting, published DNS/TLS ports, sanitized global filtering,
+  access-list structure, query-log retention setting (not logs), and router DNS configuration.
+  Remaining: authenticated API route, intended management permissions, full TLS/proxy and
+  renewal audit. Do not request passwords in chat or publish query logs.
 - Inspect DHCP option 6, IPv6 RDNSS/DHCPv6, and actual Android bootstrap behavior.
 - Diagnose the mobile-data failure using a coordinated TCP/TLS attempt. Capture only
   necessary metadata; distinguish no inbound SYN, failed return path, TLS failure,

@@ -227,7 +227,13 @@ The vision includes DNS filtering, but there is no implementation:
   mast/sail subsection mark. Planning only. Package change needs Device Owner migration, not an APK
   update in place. Personal DNS names are deployment settings, not project defaults;
   changing the actual DNS domain is still an open question.
-  Unresolved questions are deferred until needed, not an instruction to investigate now.
+  The user authorized preparation steps 1–3 only (scope, read-only inventory, design review).
+  Read `plans/dns-preflight-report.md` and `docs/design/familywarden-app/REVIEW.md` before
+  continuing. Inventory and design review are complete; 19 opt-in contract-review tests
+  plus 36 existing tests pass. The provided model is a reference, not runtime code.
+  Actual filter values, API administration, removal authorization, and cellular access
+  still have user/verification gates. Do not infer permission for implementation/deployment.
+  Unresolved questions remain deferred until their relevant work; do not decide them silently.
   Future removal needs authorization as well as no active applicable pact; the exact
   captain/admin/managed-device matrix is still open. Do not infer non-admin means child;
   never confuse ClientID with authentication or LAN tests with external reachability.
