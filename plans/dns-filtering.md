@@ -75,8 +75,8 @@ it did not configure split DNS.
   exact categories, service blocks, and exceptions still need agreement.
 - Rename the Android product to **FamilyWarden**, with a separate **Ulysses** section.
   The user also wants a new Android package/application ID now, rather than retaining
-  `me.hojgaard.ulysses.mast`. Proposed new ID: `io.github.denogio.familywarden`
-  (pending exact-name approval), avoiding a personal-domain namespace. Source packages,
+  `me.hojgaard.ulysses.mast`. Approved new ID: `io.github.denogio.familywarden`,
+  avoiding a personal-domain namespace. Source packages,
   manifest component names, tests, CI scripts, enrollment instructions, and pairing
   protocol naming must be inventoried together before implementation.
 - A changed application ID is a different Android app, not an in-place APK update,
@@ -89,8 +89,17 @@ it did not configure split DNS.
   pairing/signed policy. Whether to replace the live DNS domain too is an open user
   decision; no replacement domain is selected or claimed to be owned.
   No code, package, enrollment, or DNS records are changed during planning.
-- Plan a polished FamilyWarden logo with comparable quality to the Ulysses Mast design.
-  No logo generation, app redesign implementation, or deployment is authorized yet.
+- The user supplied the FamilyWarden logo design: a lighthouse with a gold lamp/beams,
+  mist/slate tower, and wave, using the existing night-sea palette. Original self-contained
+  reference (including bundled-font license notices):
+  [FamilyWarden logo design](../docs/design/familywarden-logo.html).
+  It includes light/dark wordmarks, full and simplified small marks, adaptive Android
+  icon variants, a monochrome/themed mark, notification icons, and LuCI examples.
+  FamilyWarden uses the lighthouse; Ulysses retains the mast/sail as a subsection mark.
+  These are design references, not implemented assets or approval to replace LuCI's theme.
+  The illustrated block page does not imply DNS can display a custom page for arbitrary
+  HTTPS sites without certificate errors. No app redesign, deployment, or new logo
+  generation is authorized yet.
 
 ### Remaining decisions (ask the user in small rounds)
 

@@ -219,8 +219,9 @@ The vision includes DNS filtering, but there is no implementation:
   DNS/ClientID enforcement are proposals, not applied configuration. D1/D2 are confirmed:
   always-on strict DNS, no automatic unfiltered fallback. Initial scope: user's phone;
   Android product becomes FamilyWarden with a separate Ulysses section and a planned logo.
-  User wants a new package ID without the personal domain; `io.github.denogio.familywarden`
-  is proposed, not approved/implemented. This needs Device Owner migration, not an APK
+  Approved new package ID: `io.github.denogio.familywarden` (not implemented).
+  Lighthouse logo reference: `docs/design/familywarden-logo.html`; Ulysses retains its
+  mast/sail subsection mark. Planning only. Package change needs Device Owner migration, not an APK
   update in place. Personal DNS names are deployment settings, not project defaults;
   changing the actual DNS domain is still an open question.
   Resume with D3 filter categories and D5 read-only AGH inventory permission/access;
