@@ -216,7 +216,10 @@ The vision includes DNS filtering, but there is no implementation:
   See `plans/dns-filtering.md`, especially its planning checkpoint and D1–D10 decisions.
   Existing AGH is at `10.77.0.11`; base/wildcard DNS is `secure-dns.hojgaard.me`.
   LAN-hairpin DoT works, but cellular access is unresolved. Split DNS and Mast Private
-  DNS/ClientID enforcement are proposals, not applied configuration. Resume with D1–D3;
+  DNS/ClientID enforcement are proposals, not applied configuration. D1/D2 are confirmed:
+  always-on strict DNS, no automatic unfiltered fallback. Initial scope: user's phone;
+  Android product becomes FamilyWarden with a separate Ulysses section and a planned logo.
+  Resume with D3 filter categories and D5 read-only AGH inventory permission/access;
   never confuse ClientID with authentication or LAN tests with external reachability.
   Do not change the live router during its current pact test.
 

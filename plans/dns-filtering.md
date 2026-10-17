@@ -64,13 +64,28 @@ it did not configure split DNS.
   correct through ClientID even when a connection temporarily uses NAT reflection.
 - Do NOT simply remove reflection SNAT: asymmetric routing can break the connection.
 
+### Confirmed product decisions
+
+- DNS filtering is always active while paired, independent of Ulysses pact/schedule state.
+- Keep strict Private DNS: no automatic opportunistic/plaintext/unfiltered fallback.
+  Redundant filtered upstreams inside AGH, and possibly a second equivalently configured
+  AGH later, may improve availability without relaxing this decision. Port-853 blocking
+  and captive portals remain separate problems, not reasons to silently disable policy.
+- First rollout is the user's own phone only. Aggressive practical filtering is requested;
+  exact categories, service blocks, and exceptions still need agreement.
+- Rename the Android product to **FamilyWarden**, with a separate **Ulysses** section.
+  Preserve the existing package/update identity and signing key unless migration is
+  explicitly approved. Current source names such as Mast are not renamed during planning.
+- Plan a polished FamilyWarden logo with comparable quality to the Ulysses Mast design.
+  No logo generation, app redesign implementation, or deployment is authorized yet.
+
 ### Remaining decisions (ask the user in small rounds)
 
 | ID | Question | Proposed default / reason | State |
 |---|---|---|---|
-| D1 | Should Mast enforce filtered DNS always, only during a pact, or only during blocked hours? | Always while paired; keep DNS protection separate from hotspot schedules | Unanswered |
-| D2 | If strict Private DNS is unreachable, accept DNS failure or allow fallback? | No automatic unfiltered fallback for selected clients; warn about captive portals and networks blocking 853 | Unanswered |
-| D3 | Which devices/profiles and filters belong in the first release? | Captain's phone first; agree ads/trackers, adult filtering, SafeSearch, and service-specific requirements separately | Unanswered |
+| D1 | When is phone DNS filtering active? | Always while paired, independent of pact/hotspot schedule | Confirmed |
+| D2 | If strict Private DNS is unreachable, accept DNS failure or allow fallback? | Keep strict DNS; no automatic unfiltered fallback. Explain outage/captive-portal consequences | Confirmed |
+| D3 | Which devices/profiles and filters belong in the first release? | User's phone only; aggressive practical filtering. Agree exact categories, SafeSearch, services, and exceptions separately | Scope confirmed; categories open |
 | D4 | Should tickets affect DNS filtering? | No: internet tickets change connectivity only | Unanswered |
 | D5 | How is the external resolver access-controlled? | Inventory AGH allowed/disallowed clients, host firewall, and TLS proxy; choose intentional exposure or managed VPN, never silently remove allowlists | Unanswered |
 | D6 | Can selected LAN devices get stable DHCP reservations, and how should IPv6 be handled? | Reserve IPv4; explicitly test/choose an IPv6 strategy before claiming full coverage | Unanswered |
@@ -79,8 +94,10 @@ it did not configure split DNS.
 | D9 | Which AGH settings may FamilyWarden own? | Namespaced clients only; leave global lists/manual clients intact initially | Unanswered |
 | D10 | What is the deployment sequence? | Lab first, then one explicitly approved device after the current pact test | Unanswered |
 
-Next conversation round: D1–D3 only. Discuss access/topology (D5–D7) before implementation,
-then remaining lifecycle decisions. Do not present proposed defaults as user decisions.
+Next conversation round: finish D3 (filter categories) and obtain permission/access for
+read-only AGH inventory under D5. D1 and D2 are settled; do not reopen them as unanswered.
+Discuss topology (D6–D7) and remaining lifecycle decisions before implementation.
+Do not present other proposed defaults as user decisions.
 
 ### Read-only investigation still needed
 
@@ -101,7 +118,8 @@ then remaining lifecycle decisions. Do not present proposed defaults as user dec
   `Payload`, `Policy`/`Store`, `Mast`, UI state, and removal handling together.
   Validate hostname and policy fields before accepting them. No credentials in payloads.
 - Preserve the agreed offline model: last verified policy remains until successful sync;
-  no age-based 24/48-hour escalation. Activation timing remains D1, not assumed.
+  no age-based 24/48-hour escalation. Per D1, DNS policy is always active while paired,
+  independently of the current pact or hotspot decision.
 - Set Private DNS in background work: Android's API performs a blocking resolver
   validation. Handle return codes, unsupported ownership/user configurations, and network
   failures explicitly. Never mark enforcement successful just because desired state was saved.
