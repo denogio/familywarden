@@ -234,6 +234,9 @@ The vision includes DNS filtering, but there is no implementation:
   Per-profile filtering must be selectable; map supported AGH controls rather than
   promise arbitrary per-client blocklist groups. Only FamilyWarden-owned AGH clients/
   settings may change; preserve existing clients and global lists.
+  Approved DoT ClientID: generate a unique DNS-safe ID from the profile name at first
+  setup, persist it profile-bound, and never regenerate on display-name edits or sync.
+  ClientID remains identification, not authentication.
   Pilot user is admin + captain. Admin may remove their own app without an applicable
   pact; managed-device removal needs admin approval. Approval/authentication protocol,
   API access, exact filter defaults, and cellular verification still have gates.

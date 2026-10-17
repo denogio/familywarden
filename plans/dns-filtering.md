@@ -50,9 +50,14 @@ it did not configure split DNS.
 - Add a separate Mast workstream: Device Owner sets a **DoT hostname** through
   `setGlobalPrivateDnsModeSpecifiedHost` and prevents user edits using
   `DISALLOW_CONFIG_PRIVATE_DNS`. This API does not accept a generic DoH URL.
-- Give each Mast enrollment a stable, non-personal ClientID, for example
-  `mast-<random-id>.secure-dns.hojgaard.me`. AGH derives the ClientID from TLS SNI;
-  NAT changes addresses, not SNI. Verify any TLS proxy preserves the required identity.
+- Approved ClientID model: derive a DNS-safe unique identifier from the profile's display
+  name when DNS is first configured, persist it, and bind it to that profile. The hostname
+  is `<stored-client-id>.<configured-DoT-domain>`; later display-name edits must NOT
+  regenerate the ID or hostname. Example: `alex.dns.example.net` (fictional data).
+  Normalize invalid DNS characters and handle collisions before first assignment; do not
+  overwrite another managed/manual client's identity. Any future ID rotation is explicit.
+  AGH derives the ClientID from TLS SNI; NAT changes addresses, not SNI. Verify any TLS
+  proxy preserves the required identity.
 - **ClientID is identification, not authentication.** Anyone able to use a known ID can
   attempt to select its policy. TLS authenticates the server to Android, not the phone
   to AGH. Do not claim that a random ID makes a publicly accessible resolver private.
@@ -176,11 +181,12 @@ but the roles remain separate. How approval is authenticated, whether it happens
 another device, and how it is bound to a live removal request remain D12/D14 work.
 Existing Mast behavior is not automatically the future FamilyWarden permission model.
 
-ClientID naming is still under discussion: the user proposed
-`{profile-name}.{adguard-DoT-domain}` instead of a random per-device label. This can be
-used for human-readable profile selection, but remains identification, not authentication.
-Before choosing it, consider a stable DNS-safe profile ID versus a mutable display name,
-privacy of names in DNS/SNI/logs, and whether multiple phones must be revoked separately.
+ClientID naming is approved: use a DNS-safe unique form of the profile name **at the
+moment DNS is first set up**, store it separately, and keep it fixed and profile-bound.
+Display-name changes do not rename the DNS identity. Do not derive it afresh during sync.
+This is profile-level identification, not authentication or an administrator credential.
+Per-device revocation if multiple phones later share one profile remains a future design
+question; it is not required for the initial one-phone rollout.
 
 ### Read-only investigation still needed
 
