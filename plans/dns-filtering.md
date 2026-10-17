@@ -90,17 +90,23 @@ it did not configure split DNS.
   and source comments remain English. This is required for the Android release, not
   deferred to the separate LuCI translation roadmap phase.
 - DNS filtering is always active while paired, independent of Ulysses pact/schedule state.
-- Removal must be permission-aware, not merely pact-aware. The user wants removal for
-  their authorized self-managed phone after its pact ends, but not unrestricted removal
-  for a managed child/non-authorized device merely because it has no active pact.
-  An active applicable pact remains a removal barrier. The exact captain/admin/managed
-  role matrix is unresolved (D11); do not infer that every non-admin is a child.
+- The user approved the pilot identity: their user is **administrator**, and their
+  profile is **captain**. These remain independent roles, not synonyms.
+- Removal: the authorized administrator may remove their own app when no applicable pact
+  is active. Managed devices require administrator approval; lack of a pact does not
+  grant self-removal. An active applicable pact remains a barrier. Approval transport
+  and authentication still need design (D12/D14); non-admin does not imply child.
 - Keep strict Private DNS: no automatic opportunistic/plaintext/unfiltered fallback.
   Redundant filtered upstreams inside AGH, and possibly a second equivalently configured
   AGH later, may improve availability without relaxing this decision. Port-853 blocking
   and captive portals remain separate problems, not reasons to silently disable policy.
-- First rollout is the user's own phone only. Aggressive practical filtering is requested;
-  exact categories, service blocks, and exceptions still need agreement.
+- First rollout is the user's own phone only. Filtering must be selectable per profile,
+  not one mandatory fixed strict preset. Separate supported protection options, SafeSearch,
+  and individual service blocks. Exact available categories/defaults remain to be mapped
+  to real AGH capabilities; do not invent independently selectable blocklist groups.
+- FamilyWarden may modify only its own namespaced AGH clients and owned client settings.
+  Existing clients, global subscription lists, and unrelated settings must remain untouched.
+  New category requirements must respect this ownership boundary or return for approval.
 - Rename the Android product to **FamilyWarden**, with a separate **Ulysses** section.
   The user also wants a new Android package/application ID now, rather than retaining
   `me.hojgaard.ulysses.mast`. Approved new ID: `io.github.denogio.familywarden`,
@@ -135,15 +141,15 @@ it did not configure split DNS.
 |---|---|---|---|
 | D1 | When is phone DNS filtering active? | Always while paired, independent of pact/hotspot schedule | Confirmed |
 | D2 | If strict Private DNS is unreachable, accept DNS failure or allow fallback? | Keep strict DNS; no automatic unfiltered fallback. Explain outage/captive-portal consequences | Confirmed |
-| D3 | Which devices/profiles and filters belong in the first release? | User's phone only; aggressive practical filtering. Agree exact categories, SafeSearch, services, and exceptions separately | Scope confirmed; categories open |
+| D3 | Which devices/profiles and filters belong in the first release? | User's phone only; selectable per-profile protection options rather than a fixed strict package. Map categories/services/defaults to AGH support | Scope and configurability confirmed; capability mapping open |
 | D4 | Should tickets affect DNS filtering? | No: internet tickets change connectivity only | Unanswered |
 | D5 | How is the external resolver access-controlled? | Nonempty AGH allowlist confirmed; LAN and specific IDs allowed. Agree intended exposure/authentication; real phone cellular failure still needs correlation | Inventory done; access decision open |
 | D6 | Can selected LAN devices get stable DHCP reservations, and how should IPv6 be handled? | Two reservations already exist; do not reassign them. Active IPv6 found. Reserve future selected devices only with approval and test IPv6 | Inventory done; changes undecided |
 | D7 | May FamilyWarden change DHCP-advertised bootstrap DNS to rivendell if necessary? | No explicit LAN DNS override found; actual Android bootstrap still needs testing. Split DNS is not configured. No whole-network change without approval | Router inspection done; Android test/open approval |
 | D8 | How should pact freezing, amendment windows, unpairing, and removal affect DNS? | Freeze the effective policy/hostname during the pact; allow normal amendments; restore the previous owned Android DNS setting on removal | Unanswered |
-| D9 | Which AGH settings may FamilyWarden own? | Namespaced clients only; leave global lists/manual clients intact initially | Unanswered |
+| D9 | Which AGH settings may FamilyWarden own? | Only its own namespaced clients and owned client settings; preserve global lists and existing clients | Confirmed |
 | D10 | What is the deployment sequence? | Lab first, then one explicitly approved device after the current pact test | Unanswered |
-| D11 | Which actor may remove/unpair a device? | No active pact is necessary but not sufficient. Agree a matrix for self-managed adult, captain, administrator, and managed device; never equate non-admin with child | Intent clarified; exact matrix deferred |
+| D11 | Which actor may remove/unpair a device? | Pilot user is admin + captain; own-app removal allowed without an applicable pact. Managed-device removal requires admin approval; captain does not itself imply admin | High-level policy confirmed; protocol open |
 | D12 | How does the router authenticate an enrolled phone? | Pinning the router key authenticates the router, not the requesting phone. Agree authorized enrollment and per-device proof of identity before capability/removal endpoints | Deferred |
 | D13 | How strong must Android bypass resistance be? | Decide ADB, alternate users/profiles, VPNs, app-level DoH, and scope of always-on restrictions; current hotspot-time ADB rules do not automatically protect always-on DNS | Deferred |
 | D14 | How is release/removal response freshness proven? | A valid signature or nondecreasing timestamp alone does not prove a response is live. Evaluate request-bound challenge/expiry and replay tests before authorization-sensitive implementation | Deferred |
@@ -164,12 +170,17 @@ is authorized by this backlog.
 - Before activating filtering or exceptions: D3, D4, D9, D15, and applicable pact-amendment rules.
 - Before deployment: D10 plus every unresolved gate affecting the enabled features.
 
-For D11 specifically, "can remove after a pact ends" and "a managed device cannot remove
-itself without permission" are both requirements. Whether captain alone grants self-removal,
-whether administrator approval must be performed on another device, and what "without
-Ulysses" means for an adult account are not settled. Default to no new removal entitlement
-until that decision is made. Existing Mast behavior is not automatically the future
-FamilyWarden permission model.
+D11 now has an approved high-level rule: admin self-removal without an applicable pact;
+managed-device removal needs admin approval. The pilot user is both admin and captain,
+but the roles remain separate. How approval is authenticated, whether it happens on
+another device, and how it is bound to a live removal request remain D12/D14 work.
+Existing Mast behavior is not automatically the future FamilyWarden permission model.
+
+ClientID naming is still under discussion: the user proposed
+`{profile-name}.{adguard-DoT-domain}` instead of a random per-device label. This can be
+used for human-readable profile selection, but remains identification, not authentication.
+Before choosing it, consider a stable DNS-safe profile ID versus a mutable display name,
+privacy of names in DNS/SNI/logs, and whether multiple phones must be revoked separately.
 
 ### Read-only investigation still needed
 
@@ -233,9 +244,10 @@ for installations that do not enable DNS filtering.
 1. **AGH placement:** an existing instance is confirmed at `10.77.0.11`. Reuse it.
    Hosting/version and source-preserving LAN routing still need verification. Router-local
    installation is no longer the proposed deployment.
-2. **What does filtering mean?** Proposed presets: `off`, `standard` (configured ad/tracker
-   lists), and `family` (standard + parental/SafeSearch options). Confirm whether adult
-   content, specific services, or particular domains are the main requirement.
+2. **Selectable filtering:** the user wants to choose protection features/services per
+   profile, not accept one fixed package. Map real AGH client controls first. Presets may
+   be optional shortcuts later; exact defaults and unsupported category requirements
+   remain open. Global subscription lists are not independently selectable per client.
 3. **Outage behavior:** proposed default for selected clients is no unfiltered fallback.
    Keep the last applied policy if the management API is unavailable; if the DNS resolver
    itself is down, selected clients lose DNS rather than silently switching providers.
@@ -292,9 +304,11 @@ all VPNs, or hard-coded DoH over port 443. State these limits in the UI.
 - FamilyWarden manages only clearly namespaced clients, e.g. `familywarden:<section-id>`.
   A managed client can contain all verified device IPs in that profile. Use stable section
   IDs rather than display names, which can contain punctuation or change.
-- Use the existing profile `dns_profile`, with an explicit dropdown for supported presets.
-  Missing/empty/`off` means no FamilyWarden DNS policy. Legacy arbitrary values need a
-  validation/migration warning; do not silently reinterpret them.
+- The existing profile `dns_profile` is a legacy stub, not a finished policy schema.
+  Design explicit supported per-profile controls for the approved configurable UI;
+  presets may be optional shortcuts, not the only choice. Legacy arbitrary values need
+  a validation/migration warning; do not silently reinterpret them. Leaving a profile
+  unmanaged does not guarantee unfiltered DNS if AGH's existing global settings filter it.
 - Store AGH credentials separately in a root-only file, not the LuCI-readable profile UCI,
   status JSON, logs, or pact snapshots. API settings expose readiness, never passwords.
 - A bounded reconciliation operation reads desired state, obtains verified identities,

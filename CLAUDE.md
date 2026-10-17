@@ -231,11 +231,14 @@ The vision includes DNS filtering, but there is no implementation:
   Read `plans/dns-preflight-report.md` and `docs/design/familywarden-app/REVIEW.md` before
   continuing. Inventory and design review are complete; 19 opt-in contract-review tests
   plus 36 existing tests pass. The provided model is a reference, not runtime code.
-  Actual filter values, API administration, removal authorization, and cellular access
-  still have user/verification gates. Do not infer permission for implementation/deployment.
-  Unresolved questions remain deferred until their relevant work; do not decide them silently.
-  Future removal needs authorization as well as no active applicable pact; the exact
-  captain/admin/managed-device matrix is still open. Do not infer non-admin means child;
+  Per-profile filtering must be selectable; map supported AGH controls rather than
+  promise arbitrary per-client blocklist groups. Only FamilyWarden-owned AGH clients/
+  settings may change; preserve existing clients and global lists.
+  Pilot user is admin + captain. Admin may remove their own app without an applicable
+  pact; managed-device removal needs admin approval. Approval/authentication protocol,
+  API access, exact filter defaults, and cellular verification still have gates.
+  Do not infer permission for implementation/deployment. Other questions are deferred
+  until relevant; do not decide them silently. Do not infer non-admin means child;
   never confuse ClientID with authentication or LAN tests with external reachability.
   Do not change the live router during its current pact test.
 
