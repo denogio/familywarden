@@ -69,7 +69,7 @@ class MainActivity : ComponentActivity() {
         testResolver = { testResolver() },
         openSail = {
             Store(this).host?.let { host ->
-                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("${Sync.base(host)}/cgi-bin/sail"))) }
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("${Sync.base(host)}/"))) }
                     .onFailure { message(R.string.fw_router_offline) }
             }
         },

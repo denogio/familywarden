@@ -48,8 +48,8 @@
     <string name="fw_dns_limit">DNS filters domains, not individual page contents. Apps with their own DNS or a VPN may bypass system DNS. Hotspot clients are not covered by this status.</string>
     <string name="fw_always_on">Once applied, DNS protection stays on while paired, independently of Ulysses. No automatic unfiltered fallback.</string>
     <string name="fw_open_ulysses">See the pact</string>
-    <string name="fw_open_sail">Open sail page</string>
-    <string name="fw_sail_note">Requires a route to your router, normally home Wi-Fi or a VPN. Router sync failure does not itself prove the sail page is unavailable.</string>
+    <string name="fw_open_sail">Sail home: end the pact early</string>
+    <string name="fw_sail_note">Opens the router\'s sail page in the browser: the router password and the line from the song, then the waiting period before the pact ends. Needs a route to your router, normally home Wi-Fi or a VPN.</string>
     <string name="fw_schedule_today">Today\'s allowed hotspot windows</string>
     <string name="fw_schedule_none">No allowed windows today</string>
     <string name="fw_timezone">Schedule timezone: %1$s</string>

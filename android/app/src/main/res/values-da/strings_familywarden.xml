@@ -46,8 +46,8 @@
     <string name="fw_dns_limit">DNS filtrerer domæner, ikke indholdet på enkelte sider. Apps med egen DNS eller VPN kan omgå systemets DNS. Hotspot-klienter er ikke dækket af denne status.</string>
     <string name="fw_always_on">Når DNS-beskyttelsen er anvendt, forbliver den aktiv, mens telefonen er parret, uafhængigt af Ulysses. Ingen automatisk ufiltreret reserveforbindelse.</string>
     <string name="fw_open_ulysses">Se pagten</string>
-    <string name="fw_open_sail">Åbn siden for hjemsejlads</string>
-    <string name="fw_sail_note">Kræver forbindelse til routeren, normalt hjemmets Wi-Fi eller VPN. Mislykket synkronisering beviser ikke i sig selv, at siden for hjemsejlads er utilgængelig.</string>
+    <string name="fw_open_sail">Sejl hjem: afslut pagten før tid</string>
+    <string name="fw_sail_note">Åbner routerens sejlside i browseren: routerens adgangskode og linjen fra sangen, derefter ventetiden, før pagten ophører. Kræver forbindelse til routeren, normalt hjemmets Wi-Fi eller VPN.</string>
     <string name="fw_schedule_today">Dagens tilladte hotspot-perioder</string>
     <string name="fw_schedule_none">Ingen tilladte perioder i dag</string>
     <string name="fw_timezone">Tidsplanens tidszone: %1$s</string>
