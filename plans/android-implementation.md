@@ -77,10 +77,26 @@ Implements the decisions recorded in `plans/dns-filtering.md` (2026-10-17):
   the app then reports the failure instead of protection. Removal sets Automatic and
   unlocks. The DoT connection test is bound to network, policy and generation.
 
+## Pilot deployment (2026-10-18, user-authorized, after the pact had expired)
+
+- rivendell upgraded 0.8.0 → backend 0.9.0 / LuCI 0.6.0. Installed code identical to
+  the branch; all profile statuses and UCI/firewall/DHCP fingerprints unchanged.
+  Backup: `~/Backups/familywarden/rivendell-20261018-080111` (includes AdGuard YAML before/after).
+- DNS enabled only for the user's own (captain) profile, with filter lists, Safe
+  Browsing, parental and SafeSearch. AdGuard diff: one new `familywarden-<id>` client and
+  one new `allowed_clients` entry; nothing else changed. A pre-existing user allow rule
+  for `www.google.com` overrides SafeSearch for Google (global and per client); untouched.
+- User's Pixel 10 (Android 17): old Mast removed through its own no-pact removal,
+  accounts removed, signed `0.9.0-pilot` (stable key) set as Device Owner, accounts
+  re-added, paired via QR, fingerprint approved in LuCI as administrator.
+- Verified on the phone: strict Private DNS `<id>.secure-dns.hojgaard.me`, locked; on
+  Wi-Fi **and on cellular only**, normal names resolve and a blocked adult domain does
+  not (strict mode has no fallback, so lookups went through AdGuard over DoT). #32 closed.
+- Ulysses is off in the new app until the user opts in under Settings → Features.
+
 ## Remaining gates (before rollout)
 
-1. Real device: cellular DoT with the user's AGH (#32), hotspot behavior, Device Owner
-   migration from the old Mast app (#31). Never release/reset the current owner to try this.
+1. Real device: hotspot restriction under a new pact, and a reboot without the router.
 2. Positive DoT test needs a publicly trusted certificate: not possible in the emulator.
 3. Startup clock integrity and before-first-unlock reboot behavior; same-key control
    address repair when the router's LAN IP changes.
