@@ -269,14 +269,7 @@ function buildStatusBar(status) {
 	return statusNode;
 }
 
-// Set by render: the captain's profile is frozen by a pact
-var frozenView = false;
-
 return view.extend({
-	// No Save/Apply/Reset for a frozen profile
-	addFooter: function() {
-		return frozenView ? E([]) : this.super('addFooter', arguments);
-	},
 
 	load: function() {
 		return Promise.all([
@@ -360,28 +353,29 @@ return view.extend({
 		};
 
 		// The captain's profile is frozen for the pact's lifetime, except in
-		// its weekly window (the backend ignores edits anyway): every widget
-		// read-only, no add/delete, no Save buttons
+		// its weekly window (the backend ignores edits anyway): read-only, no
+		// schedule add/delete. DNS stays editable: during a pact the backend
+		// applies additions at once and removals only when the pact ends.
 		var frozen = ulysses.isFrozen(status);
-		frozenView = frozen;
-		if (frozen)
-			m.readonly = true;
 
 		var s = m.section(form.NamedSection, selectedProfile, 'profile', _('Profile Settings'));
 		s.addremove = false;
 
 		var nameOption = s.option(form.Value, 'name', _('Name'));
 		nameOption.rmempty = false;
+		nameOption.readonly = frozen;
 
 		var enabledOption = s.option(form.Flag, 'enabled', _('Enabled'));
 		enabledOption.rmempty = false;
 		enabledOption.default = '1';
+		enabledOption.readonly = frozen;
 
 		var policyOption = s.option(form.ListValue, 'policy', _('Access Policy'),
 			_('"Unrestricted" allows all traffic. "Blocked" turns the internet off. "Scheduled" blocks by default and only allows access during the time windows below.'));
 		policyOption.value('allow', _('Unrestricted'));
 		policyOption.value('block', _('Blocked'));
 		policyOption.value('scheduled', _('Scheduled'));
+		policyOption.readonly = frozen;
 
 		var blockRouterOption = s.option(form.Flag, 'block_router',
 			_('Block router access when blocked'),
@@ -389,6 +383,7 @@ return view.extend({
 				'Has no effect while the profile is allowed, and leaves ICMP/UDP/ARP intact so the device still gets a DHCP lease and DNS.'));
 		blockRouterOption.rmempty = true;
 		blockRouterOption.default = '0';
+		blockRouterOption.readonly = frozen;
 
 
 		var deviceOption = s.option(form.DynamicList, 'device', _('Devices'),
@@ -410,6 +405,8 @@ return view.extend({
 			_('Approved phones of this profile always resolve through AdGuard Home with the protections below, at home and away. There is no unfiltered fallback if the resolver can\'t be reached. Needs the DNS settings under Settings.'));
 		dnsOption.rmempty = true;
 		dnsOption.default = '0';
+		if (ulysses.isBound(status))
+			dnsOption.description += ' ' + _('Bound by the pact: DNS can only be tightened. Added protections and services apply now; removing them or switching DNS off waits until the pact ends (or its weekly window).');
 
 		var protOption = s.option(form.MultiValue, 'dns_protection', _('DNS protections'),
 			_('Settings of this profile\'s AdGuard Home client. "Filter lists" are the lists configured globally in AdGuard Home; AdGuard Home has no separate lists per client.'));
@@ -519,6 +516,7 @@ return view.extend({
 		};
 
 		o = ss.option(form.Value, 'start', _('Start'));
+		o.readonly = frozen;
 		o.placeholder = '07:00';
 		o.rmempty = true;
 		o.validate = function(section_id, value) {
@@ -527,6 +525,7 @@ return view.extend({
 		};
 
 		o = ss.option(form.Value, 'stop', _('Stop'));
+		o.readonly = frozen;
 		o.placeholder = '20:00';
 		o.rmempty = true;
 		o.validate = function(section_id, value) {

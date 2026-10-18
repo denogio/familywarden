@@ -64,6 +64,11 @@ Implements the decisions recorded in `plans/dns-filtering.md` (2026-10-17):
 - **Pact freeze:** phones of the captain profile are part of the pact snapshot and can't
   be moved, deleted or given removal permission until the pact ends (also not in the
   amendment window). New phones may still join the captain profile.
+- **DNS under a pact:** the captain's DNS settings (on/off, protections, services,
+  ClientID, DNS domain) are snapshotted when the pact is made. While it lasts, the
+  AdGuard client gets the snapshot **plus** anything added since: tightening applies at
+  once, removals and switching off wait until the pact ends or its weekly window.
+  Clearing the AdGuard Home settings does not drop the phone's policy either.
 - **Removal:** administrator phones may remove the app when no applicable pact is
   active; other phones need LuCI "Allow removal" (1 hour). Removal re-fetches a fresh
   signed reply and uses its server time.

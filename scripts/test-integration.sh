@@ -567,8 +567,13 @@ assert_json "managed phone: no captain rules" "$payload" '@.captain' ""
 assert_json "managed phone: may not remove itself" "$payload" '@.binding.can_self_remove' "false"
 assert_json "administrator allows removal" "$(call device_allow_removal '{"device":"fw-c1"}')" '@.status' "ok"
 assert_json "removal allowed for an hour" "$(v2payload phoneC fw-c1 "$N1")" '@.binding.can_self_remove' "true"
+uci set familywarden.kid.dns='1'
+uci add_list familywarden.kid.dns_protection='safe_search'
+uci commit familywarden
 
 call pact "{\"until\":0,\"window_day\":\"$tomorrow\",\"window_start\":\"10:00\",\"window_stop\":\"11:00\"}" >/dev/null
+grep -qx 'dns=1' /etc/familywarden/pact.dns && grep -qx 'prot=safe_search' /etc/familywarden/pact.dns \
+    && pass "captain's DNS snapshotted with the pact" || fail "pact.dns: $(cat /etc/familywarden/pact.dns)"
 payload=$(v2payload phoneA fw-a1 "$N1")
 assert_json "pact applies to the captain's phone" "$payload" '@.pact.active' "true"
 assert_json "managed phone is not bound by the captain's pact" "$(v2payload phoneC fw-c1 "$N1")" '@.pact.active' "false"
@@ -600,6 +605,8 @@ for i in 1 2 3 4 5 6 7 8 9 10 11 12; do v2payload phoneB "fw-p$i" "$N1" >/dev/nu
 [ "$(call devices | jsonfilter -e '@.pending[*].id' | wc -l)" -le 10 ] && pass "pending list bounded" || fail "pending list unbounded"
 echo $(( $(date +%s) - 1 )) > /etc/familywarden/release
 "$BIN" tick
+[ -f /etc/familywarden/pact.dns ] && fail "DNS snapshot left after the pact" || pass "DNS snapshot removed with the pact"
+[ -f /tmp/familywarden.dns.dirty ] && pass "DNS resynced when the pact ends" || fail "no DNS resync after the pact"
 assert_json "the UCI deletion takes effect once the pact is over" "$(v2payload phoneA fw-a1 "$N1")" '@.enrollment' "pending"
 assert_json "the phone that joined is free again" "$(v2payload phoneD fw-d1 "$N1")" '@.pact.active' "false"
 

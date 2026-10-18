@@ -37,6 +37,9 @@ FW_PERSIST="/etc/familywarden"
 FW_PACT="$FW_PERSIST/pact"
 FW_PACT_SNAP="$FW_PERSIST/pact.snap"
 FW_RELEASE="$FW_PERSIST/release"
+# The captain's DNS settings when the pact was made: during the pact DNS can
+# only be tightened (snapshot + whatever is added since), never loosened.
+FW_PACT_DNS="$FW_PERSIST/pact.dns"
 # The sail page (separate uhttpd instance): the only way out of a pact, and
 # the only router port left open during a lockdown
 FW_SAIL_PORT=7700
@@ -312,13 +315,33 @@ gc_pact() {
     local rel
     rel=$(release_at)
     if [ "$rel" != "0" ] && [ "$(date +%s)" -ge "$rel" ]; then
-        rm -f "$FW_PACT" "$FW_PACT_SNAP" "$FW_RELEASE"
+        rm -f "$FW_PACT" "$FW_PACT_SNAP" "$FW_RELEASE" "$FW_PACT_DNS"
+        touch "$FW_DNS_DIRTY"
         logger -t familywarden "Ulysses: released from the mast (sail page)"
     elif ! pact_active; then
-        rm -f "$FW_PACT" "$FW_PACT_SNAP" "$FW_RELEASE"
+        rm -f "$FW_PACT" "$FW_PACT_SNAP" "$FW_RELEASE" "$FW_PACT_DNS"
+        touch "$FW_DNS_DIRTY"
         logger -t familywarden "Ulysses: pact ended"
     fi
 }
+
+# Snapshot the captain's DNS settings (live UCI must be loaded): "key=value" lines
+pact_dns_snapshot() {
+    local p="$1" v
+    {
+        config_get v "$p" dns "0"
+        echo "dns=$v"
+        config_get v "$p" dns_client_id ""
+        echo "id=$v"
+        config_get v settings dns_domain ""
+        echo "domain=$v"
+        config_list_foreach "$p" dns_protection _pds_prot
+        config_list_foreach "$p" dns_service _pds_svc
+    } > "$FW_PACT_DNS.new"
+    mv "$FW_PACT_DNS.new" "$FW_PACT_DNS"
+}
+_pds_prot() { echo "prot=$1"; }
+_pds_svc() { echo "svc=$1"; }
 
 # Drop allow overrides and tickets: they must not survive into a pact
 _clear_allow() {
@@ -338,9 +361,13 @@ ulysses_sync() {
 
     if pact_active; then
         captain=$(pact_get captain)
+        [ -f "$FW_PACT_DNS" ] || pact_dns_snapshot "$captain"
         if [ ! -s "$FW_PACT_SNAP" ]; then
             profile_fragment "$captain" > "$FW_PACT_SNAP"
         elif pact_in_window; then
+            # The amendment window may loosen DNS too
+            pact_dns_snapshot "$captain"
+            touch "$FW_DNS_DIRTY"
             # Rule amendments must not refresh away a frozen phone association.
             awk '/^config / { phone = ($2 == "device") } phone' "$FW_PACT_SNAP" > "$FW_PACT_SNAP.phones"
             profile_fragment "$captain" | awk '/^config / { phone = ($2 == "device") } !phone' > "$FW_PACT_SNAP.new"
@@ -1158,6 +1185,7 @@ ubus_pact() {
         mkdir -p "$FW_PERSIST"
         chmod 700 "$FW_PERSIST"
         profile_fragment "$captain" > "$FW_PACT_SNAP"
+        pact_dns_snapshot "$captain"
     fi
 
     {
@@ -1796,16 +1824,31 @@ _dns_new_id() {
     echo "$id"
 }
 
-_dns_prot_cb() { _dns_prot="$_dns_prot $1 "; }
-_dns_svc_cb() { _dns_svc="$_dns_svc $1"; }
+_dns_prot_cb() { case "$_dns_prot" in *" $1 "*) ;; *) _dns_prot="$_dns_prot $1 " ;; esac; }
+_dns_svc_cb() { case "$_dns_svc " in *" $1 "*) ;; *) _dns_svc="$_dns_svc $1" ;; esac; }
+
+# A value from the captain's pact DNS snapshot ($1 profile, $2 key), one per
+# line; empty unless $1 is the captain of an active pact. Set by cli_dns_sync.
+_dns_snap() {
+    [ -n "$_dns_cap" ] && [ "$1" = "$_dns_cap" ] && sed -n "s/^$2=//p" "$FW_PACT_DNS" 2>/dev/null
+}
+
+# Effective protections and services: live UCI plus, for a captain bound by a
+# pact, everything in the snapshot (removals wait until the pact ends)
+_dns_lists() {
+    local x
+    _dns_prot=""
+    _dns_svc=""
+    config_list_foreach "$1" dns_protection _dns_prot_cb
+    config_list_foreach "$1" dns_service _dns_svc_cb
+    for x in $(_dns_snap "$1" prot); do _dns_prot_cb "$x"; done
+    for x in $(_dns_snap "$1" svc); do _dns_svc_cb "$x"; done
+}
 
 # Client fields for AGH (into the open json object). $1 profile, $2 ClientID
 _dns_client_fields() {
     local p="$1" id="$2" s ss
-    _dns_prot=""
-    _dns_svc=""
-    config_list_foreach "$p" dns_protection _dns_prot_cb
-    config_list_foreach "$p" dns_service _dns_svc_cb
+    _dns_lists "$p"
     has() { case "$_dns_prot" in *" $1 "*) echo 1 ;; *) echo 0 ;; esac; }
     json_add_string "name" "$FW_AGH_PREFIX$id"
     json_add_array "ids"
@@ -1838,10 +1881,7 @@ _dns_client_fields() {
 # Ack line for a synced profile: "<profile> <clientid> <domain> <protections> <services>"
 _dns_ack_line() {
     local p s
-    _dns_prot=""
-    _dns_svc=""
-    config_list_foreach "$1" dns_protection _dns_prot_cb
-    config_list_foreach "$1" dns_service _dns_svc_cb
+    _dns_lists "$1"
     p=""
     for s in filter_lists safe_browsing parental safe_search; do
         case "$_dns_prot" in *" $s "*) p="$p,$s" ;; esac
@@ -1859,6 +1899,7 @@ _in_list() {
 _dns_profile_cb() {
     local p="$1" on
     config_get on "$p" dns "0"
+    [ "$(_dns_snap "$p" dns)" = "1" ] && on=1
     [ "$on" = "1" ] && _dns_profiles="$_dns_profiles $p"
 }
 
@@ -1904,10 +1945,22 @@ _dns_sync_locked() {
     config_load familywarden
     config_get domain settings dns_domain ""
     config_get url settings agh_url ""
+    # Captain bound by a pact: its DNS and the DNS domain can only be tightened
+    _dns_cap=""
+    if pact_active && [ -s "$FW_PACT_DNS" ]; then
+        _dns_cap=$(pact_get captain)
+        x=$(sed -n 's/^domain=//p' "$FW_PACT_DNS")
+        [ -n "$x" ] && domain="$x"
+    fi
     _dns_profiles=""
     config_foreach _dns_profile_cb profile
+    # Even if its profile section was deleted meanwhile
+    if [ "$(_dns_snap "$_dns_cap" dns)" = "1" ]; then
+        case " $_dns_profiles " in *" $_dns_cap "*) ;; *) _dns_profiles="$_dns_profiles $_dns_cap" ;; esac
+    fi
     if [ -z "$domain" ] || [ -z "$url" ]; then
-        rm -f "$FW_DNS_ACK"
+        # Clearing the settings is no way out of a pact either
+        [ -n "$_dns_cap" ] || rm -f "$FW_DNS_ACK"
         [ -n "$_dns_profiles" ] && { _dns_status "DNS domain or AdGuard Home URL not set"; return 1; }
         _dns_status ""
         return 0
@@ -1931,6 +1984,7 @@ _dns_sync_locked() {
     # 1. Our clients: add or update
     for p in $_dns_profiles; do
         config_get id "$p" dns_client_id ""
+        [ -n "$id" ] || id=$(_dns_snap "$p" id)
         if [ -z "$id" ]; then
             id=$(_dns_new_id "$p")
             uci set "familywarden.$p.dns_client_id=$id"

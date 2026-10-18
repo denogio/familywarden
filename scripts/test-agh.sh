@@ -230,6 +230,43 @@ assert_eq "allowed list stays empty" "$(allowed)" ""
 assert_eq "client still created" "$(client familywarden-aalex-junior .ids[0])" "aalex-junior"
 
 echo ""
+echo "=== Pact: DNS can only be tightened ==="
+# alex is the captain of an ongoing pact (window not now), snapshot taken with
+# filter lists, SafeSearch, parental and youtube (pact.dns format as written by the backend)
+uci set familywarden.settings.ulysses_profile='alex'
+uci commit familywarden
+day=$(date -d "@$(( $(date +%s) + 86400 ))" +%a | tr 'A-Z' 'a-z')
+printf 'captain=alex\ntype=ongoing\nuntil=0\nwindow_day=%s\nwindow_start=00:00\nwindow_stop=00:01\n' "$day" > /etc/familywarden/pact
+printf 'dns=1\nid=aalex-junior\ndomain=dns.example.net\nprot=filter_lists\nprot=safe_search\nprot=parental\nsvc=youtube\n' > /etc/familywarden/pact.dns
+# Try to loosen: switch DNS off, drop protections and the service, change the domain;
+# and tighten: add Safe Browsing and another service
+uci set familywarden.alex.dns='0'
+uci -q delete familywarden.alex.dns_protection
+uci add_list familywarden.alex.dns_protection='safe_browsing'
+uci -q delete familywarden.alex.dns_service
+uci add_list familywarden.alex.dns_service='tiktok'
+uci set familywarden.settings.dns_domain='unfiltered.example.org'
+uci commit familywarden
+"$BIN" dns-sync && pass "sync during the pact" || fail "sync failed: $(cat /tmp/familywarden.dns.status)"
+assert_eq "switching DNS off is ignored" "$(client familywarden-aalex-junior .ids[0])" "aalex-junior"
+assert_eq "removed protection kept: SafeSearch" "$(client familywarden-aalex-junior .safe_search.enabled)" "true"
+assert_eq "removed protection kept: parental" "$(client familywarden-aalex-junior .parental_enabled)" "true"
+assert_eq "added protection applies now" "$(client familywarden-aalex-junior .safebrowsing_enabled)" "true"
+assert_eq "services: kept and added" "$(client familywarden-aalex-junior '.blocked_services[*]' | sort | tr '\n' ' ')" "tiktok youtube "
+assert_eq "DNS domain frozen" "$(call dns_status | jsonfilter -e '@.profiles.alex.hostname')" "aalex-junior.dns.example.net"
+uci set familywarden.settings.agh_url=''
+uci commit familywarden
+"$BIN" dns-sync
+grep -q '^alex ' /etc/familywarden/dns.ack && pass "clearing the AdGuard Home URL doesn't drop the policy" || fail "ack dropped"
+uci set familywarden.settings.agh_url="$URL"
+uci commit familywarden
+rm -f /etc/familywarden/pact /etc/familywarden/pact.dns
+"$BIN" dns-sync
+[ -z "$(client familywarden-aalex-junior .name)" ] && pass "after the pact the loosening applies" || fail "client kept after the pact"
+uci set familywarden.settings.dns_domain='dns.example.net'
+uci commit familywarden
+
+echo ""
 echo "=== LuCI helpers ==="
 call dns_services | jsonfilter -e '@.services[*].id' | grep -qx youtube && pass "service catalogue from AGH" || fail "no services"
 call dns_services | jsonfilter -e "@.services[@.id='youtube'].name" | grep -qx YouTube && pass "service names" || fail "no service names"
