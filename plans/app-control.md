@@ -63,7 +63,7 @@ Per-app time control on Android phones, self-hosted by each household on its own
 | A1 | Go or Rust? | Go | **Decided** |
 | A2 | Notification transport | App-held connection to an ntfy-compatible relay, E2E encrypted; own relay or public | Open |
 | A3 | Children's Google accounts without Family Link | Under 13, Google accounts must be supervised. Options: no Google account (apps installed by a parent / alternative store), or a supervised account whose Family Link limits are unused. Coexistence of a supervised account with our Device Owner is untested | Must be tested first |
-| A4 | Adult self-limit: how to get access when really needed? | The user is administrator, so self-approval is no friction. Options: delay before extra time applies (e.g. 10 min), approval by another person, or a small daily pool | Open |
+| A4 | Adult self-limit: how to get access when really needed? | A small daily pool the user may spend without approval; nothing beyond it during a pact | **Decided** |
 | A5 | Children's phones | Pixel 7 Pro, Android 17 | **Decided** |
 | A6 | Core vs existing shell backend | Core takes identity, policy, DNS and app control; shell stays the OpenWrt firewall adapter until ported | Open |
 | A7 | Request abuse and limits | Rate limit requests per child; approvals expire; optional "auto-deny after N" | Open |
