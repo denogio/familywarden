@@ -62,7 +62,7 @@ Per-app time control on Android phones, self-hosted by each household on its own
 |---|---|---|---|
 | A1 | Go or Rust? | Go | **Decided** |
 | A2 | Notification transport | App-held connection to an ntfy-compatible relay, E2E encrypted; own relay or public | Open |
-| A3 | Children's Google accounts without Family Link | Under 13, Google accounts must be supervised. Options: no Google account (apps installed by a parent / alternative store), or a supervised account whose Family Link limits are unused. Coexistence of a supervised account with our Device Owner is untested | Must be tested first |
+| A3 | Children's Google accounts with our Device Owner | See "Children's Google accounts" below; test option A on the Pixel 7 Pro, fall back to B | Must be tested first |
 | A4 | Adult self-limit: how to get access when really needed? | A small daily pool the user may spend without approval; nothing beyond it during a pact | **Decided** |
 | A5 | Children's phones | Pixel 7 Pro, Android 17 | **Decided** |
 | A6 | Core vs existing shell backend | Core takes identity, policy, DNS and app control; shell stays the OpenWrt firewall adapter until ported | Open |
@@ -110,6 +110,27 @@ Proposed conclusion: **two tiers.**
 Sources: Android Authority on Android 15 restricted settings; Google Play
 AccessibilityService policy; Android developer verification guide (updated 2026-08-18);
 OpenParental README; Flint "Android technical strategy" research.
+
+## Children's Google accounts (research 2026-10-19)
+
+Device Owner itself works on any phone that can be factory-reset. The open question is
+the child's **Google account**: under 13 (also in Denmark) a Google account must be
+supervised by Family Link, and signing it in turns on Family Link supervision, which
+makes itself a device administrator ("Family Link parental admin"). Google documents
+nothing about doing that on a phone with another Device Owner. Reports conflict: a
+child account could not use Family Link on an Intune fully managed device (unresolved);
+on Samsung kiosk devices (Hexnode) Family Link was blocked by Knox policy ("Security
+policy prevents turning on device administrators") and worked once allowlisted. Our
+app does not forbid other device admins, so coexistence is plausible but unproven.
+
+| | Setup | Pros | Cons |
+|---|---|---|---|
+| A | FamilyWarden Device Owner + supervised child account, Family Link limits left off | Play Store, Gmail as usual | Unknown if Google allows it; two systems on the phone |
+| B | FamilyWarden Device Owner, no Google account | Most robust; only our rules | No Play Store with the child's account (parent installs, or Aurora Store); some apps need Google sign-in |
+| C | No Device Owner: light tier + Family Link | No reset | Bypassable (see above) |
+
+Plan: test A on the Pixel 7 Pro (factory reset → Device Owner via adb → sign in the
+supervised account). If it fails, B is the robust default.
 
 ## First gates before any feature code
 
