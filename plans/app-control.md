@@ -69,6 +69,47 @@ Per-app time control on Android phones, self-hosted by each household on its own
 | A7 | Request abuse and limits | Rate limit requests per child; approvals expire; optional "auto-deny after N" | Open |
 | A8 | Usage data and privacy | Keep summaries per app/day on the router only, short retention, no per-site logs | Open |
 | A9 | Device Owner setup for others | QR provisioning on a factory-reset phone instead of adb | Open |
+| A10 | Support a light tier without Device Owner? | Yes, after the strict tier; bypass-evident with parent alerts | Open |
+| A11 | Android developer verification (2027) | Register the package as a verified developer, or rely on limited distribution / ADB | Open |
+
+## Research: what is possible without Device Owner (2026-10-19)
+
+Commercial and open-source blockers without Device Owner (Opal, Qustodio, Kidslox,
+OpenParental, Flint) all compose the same primitives, because Android has no
+"block this app" API for ordinary apps:
+
+| Need | Without Device Owner | With Device Owner |
+|---|---|---|
+| Detect foreground app | AccessibilityService (instant) or UsageStats polling (~1 s) | Same |
+| Block an app | Cover it (accessibility overlay) and send Home; re-triggers continuously | `setPackagesSuspended`: greyed out, can't start |
+| Daily limits, usage overview | UsageStats (user grants Usage access) | Same; owner can avoid the manual grant (to verify) |
+| Websites | Accessibility reading the URL bar (fragile per browser), or a local `VpnService` DNS filter (takes the only VPN slot) | Locked strict Private DNS (built) |
+| Prevent uninstall/disable | Not possible; at most block Settings screens via accessibility and alert the parent | `setUninstallBlocked`, user restrictions |
+| Bypass | Turn off accessibility, revoke Usage access, safe mode, force stop, factory reset, OEM battery killers; Android 17 "Advanced Protection" (opt-in) revokes accessibility for non-accessibility apps | Factory reset only, which can also be restricted |
+
+Consequences:
+
+- Without Device Owner the honest model is **bypass-evident, not bypass-proof**
+  (OpenParental's wording): every disable or "went dark" becomes a parent alert.
+- **Sideloading friction:** since Android 13, sideloaded apps need "Allow restricted
+  settings" before accessibility can be enabled; Android 15 extends this to usage access,
+  device admin and display-over-apps. Each household must do this by hand.
+- **Android developer verification** affects FamilyWarden either way: from 2027 apps on
+  certified devices must be registered by a verified developer (regional start 30 Sep
+  2026 in BR/ID/SG/TH). Options: full registration of `io.github.denogio.familywarden`
+  (identity verification), "limited distribution" (up to 20 devices, no ID check), or
+  users' "advanced flow" for unregistered apps. ADB installs are unchanged, so the
+  current QR/adb Device Owner setup keeps working.
+
+Proposed conclusion: **two tiers.**
+
+- **Strict (Device Owner)** — default for children's phones; already built and proven.
+- **Light (no reset)** — accessibility + usage stats + bypass alerts, for phones that
+  can't be reset, older teens, or adults who want soft limits. Later, after strict works.
+
+Sources: Android Authority on Android 15 restricted settings; Google Play
+AccessibilityService policy; Android developer verification guide (updated 2026-08-18);
+OpenParental README; Flint "Android technical strategy" research.
 
 ## First gates before any feature code
 
