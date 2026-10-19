@@ -25,6 +25,15 @@ Per-app time control on Android phones, self-hosted by each household on its own
    coexistence layer (Family Link has no API to build on).
 4. **Parents approve in the FamilyWarden app** (a parent role on the parent's phone).
 5. **Notifications are FamilyWarden app notifications**, not a separate push app.
+6. **Go** for the core (2026-10-19).
+7. **Device Owner on children's phones where possible** (robust: suspend apps, block
+   uninstall/factory reset/safe boot/new users). A weaker no-reset mode (accessibility
+   service + usage access + device admin, as many commercial apps do) is possible later
+   but bypassable; not first.
+8. **Adult self-limit scope:** social media and browsers, limited to what is necessary:
+   app suspension by schedule and/or daily quota, the same services blocked in DNS
+   (catches web versions and in-app browsers), pact semantics (only tighten).
+9. Test children's phone: **Pixel 7 Pro, Android 17.**
 
 ## Proposed architecture
 
@@ -51,22 +60,24 @@ Per-app time control on Android phones, self-hosted by each household on its own
 
 | ID | Question | Proposal | State |
 |---|---|---|---|
-| A1 | Go or Rust? | Go: simple static cross-builds for OpenWrt targets and FreeBSD, low barrier for contributors. Rust if binary size on small-flash routers matters more | Open |
+| A1 | Go or Rust? | Go | **Decided** |
 | A2 | Notification transport | App-held connection to an ntfy-compatible relay, E2E encrypted; own relay or public | Open |
 | A3 | Children's Google accounts without Family Link | Under 13, Google accounts must be supervised. Options: no Google account (apps installed by a parent / alternative store), or a supervised account whose Family Link limits are unused. Coexistence of a supervised account with our Device Owner is untested | Must be tested first |
-| A4 | Which Switchly features for adults? | User to specify; proposal: app limits with pact semantics (only tighten) | Open |
-| A5 | Children's phones (make/Android version) | Needed for the test gate | Open |
+| A4 | Adult self-limit: how to get access when really needed? | The user is administrator, so self-approval is no friction. Options: delay before extra time applies (e.g. 10 min), approval by another person, or a small daily pool | Open |
+| A5 | Children's phones | Pixel 7 Pro, Android 17 | **Decided** |
 | A6 | Core vs existing shell backend | Core takes identity, policy, DNS and app control; shell stays the OpenWrt firewall adapter until ported | Open |
 | A7 | Request abuse and limits | Rate limit requests per child; approvals expire; optional "auto-deny after N" | Open |
 | A8 | Usage data and privacy | Keep summaries per app/day on the router only, short retention, no per-site logs | Open |
 | A9 | Device Owner setup for others | QR provisioning on a factory-reset phone instead of adb | Open |
 
-## First gate before any code
+## First gates before any feature code
 
-On a spare Android phone, verify: Device Owner via QR provisioning; whether a supervised
-child account (A3) can coexist; that the app can grant itself usage-access as Device
-Owner (or needs one tap); app suspension behavior; and battery cost of an app-held relay
-connection (A2). The results decide A1–A3 and the feature order.
+1. **User's own Pixel 10** (already Device Owner with FamilyWarden, no reset needed):
+   app suspension behavior, whether the app can grant itself usage access as Device
+   Owner (or needs one tap), and battery cost of an app-held relay connection (A2).
+2. **Pixel 7 Pro (child, needs a factory reset):** Device Owner via QR provisioning and
+   whether a supervised child account can coexist with it (A3). If not, the phone is
+   used without a Google account and apps are installed another way.
 
 ## Not in scope for now
 
