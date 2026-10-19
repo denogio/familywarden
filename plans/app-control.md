@@ -27,7 +27,7 @@ Per-app time control on Android phones, self-hosted by each household on its own
 5. **Notifications are FamilyWarden app notifications**, not a separate push app.
 6. **Go** for the core (2026-10-19).
 7. **Device Owner on children's phones where possible** (robust: suspend apps, block
-   uninstall/factory reset/safe boot/new users). A weaker no-reset mode (accessibility
+   uninstall/factory reset/safe boot/new users). A weaker mode without Device Owner (accessibility
    service + usage access + device admin, as many commercial apps do) is possible later
    but bypassable; not first.
 8. **Adult self-limit scope:** social media and browsers, limited to what is necessary:
@@ -68,7 +68,7 @@ Per-app time control on Android phones, self-hosted by each household on its own
 | A6 | Core vs existing shell backend | Core takes identity, policy, DNS and app control; shell stays the OpenWrt firewall adapter until ported | Open |
 | A7 | Request abuse and limits | Rate limit requests per child; approvals expire; optional "auto-deny after N" | Open |
 | A8 | Usage data and privacy | Keep summaries per app/day on the router only, short retention, no per-site logs | Open |
-| A9 | Device Owner setup for others | QR provisioning on a factory-reset phone instead of adb | Open |
+| A9 | Device Owner setup for others | adb after signing out of accounts (no reset); QR provisioning only for new or reset phones | Open |
 | A10 | Support a light tier without Device Owner? | Yes, after the strict tier; bypass-evident with parent alerts | Open |
 | A11 | Android developer verification (2027) | Register the package as a verified developer, or rely on limited distribution / ADB | Open |
 
@@ -107,13 +107,16 @@ Proposed conclusion: **two tiers.**
 - **Light (no reset)** — accessibility + usage stats + bypass alerts, for phones that
   can't be reset, older teens, or adults who want soft limits. Later, after strict works.
 
-Sources: Android Authority on Android 15 restricted settings; Google Play
+Sources: Tabaa "Device Owner explained" (account/app/network/device levels); Android Authority on Android 15 restricted settings; Google Play
 AccessibilityService policy; Android developer verification guide (updated 2026-08-18);
 OpenParental README; Flint "Android technical strategy" research.
 
 ## Children's Google accounts (research 2026-10-19)
 
-Device Owner itself works on any phone that can be factory-reset. The open question is
+Device Owner via adb does **not** need a factory reset: sign out of all accounts, grant
+Device Owner, sign back in; apps and data stay (done this way on the user's Pixel 10;
+also how Tabaa sets up children's and adults' phones). Only QR provisioning on the setup
+wizard needs a reset. The open question is
 the child's **Google account**: under 13 (also in Denmark) a Google account must be
 supervised by Family Link, and signing it in turns on Family Link supervision, which
 makes itself a device administrator ("Family Link parental admin"). Google documents
@@ -127,18 +130,21 @@ app does not forbid other device admins, so coexistence is plausible but unprove
 |---|---|---|---|
 | A | FamilyWarden Device Owner + supervised child account, Family Link limits left off | Play Store, Gmail as usual | Unknown if Google allows it; two systems on the phone |
 | B | FamilyWarden Device Owner, no Google account | Most robust; only our rules | No Play Store with the child's account (parent installs, or Aurora Store); some apps need Google sign-in |
-| C | No Device Owner: light tier + Family Link | No reset | Bypassable (see above) |
+| C | No Device Owner: light tier + Family Link | No account removal | Bypassable (see above) |
 
-Plan: test A on the Pixel 7 Pro (factory reset → Device Owner via adb → sign in the
-supervised account). If it fails, B is the robust default.
+Plan: test A on the Pixel 7 Pro without a reset: remove the supervised account (needs
+the parent's password; turns Family Link off on the phone) and any others → Device Owner
+via adb → sign the supervised account back in. If Family Link can't supervise next to
+our Device Owner, B is the robust default (or remove our app to give the phone back to
+Family Link).
 
 ## First gates before any feature code
 
 1. **User's own Pixel 10** (already Device Owner with FamilyWarden, no reset needed):
    app suspension behavior, whether the app can grant itself usage access as Device
    Owner (or needs one tap), and battery cost of an app-held relay connection (A2).
-2. **Pixel 7 Pro (child, needs a factory reset):** Device Owner via QR provisioning and
-   whether a supervised child account can coexist with it (A3). If not, the phone is
+2. **Pixel 7 Pro (child, no reset needed):** Device Owner via adb and whether a
+   supervised child account can coexist with it (A3). If not, the phone is
    used without a Google account and apps are installed another way.
 
 ## Not in scope for now
