@@ -21,6 +21,12 @@ prototype-only protocol boundaries, tests, and remaining gates. The production M
 app and live router/AdGuard configuration are unchanged. The new app's identity is
 not an in-place Device Owner update; do not deploy or migrate it from UI build success.
 
+## Planned: app control (Family Link / Switchly alternative)
+
+Planning only: [app-control.md](app-control.md). Self-hosted per household, Go or Rust
+core, router adapters (OpenWrt first, OPNsense/pfSense later), parent approval of
+ad hoc app time in the FamilyWarden app. First gate: tests on a spare phone.
+
 ## Working rules (all phases)
 
 - **Definition of done = behavioral evidence.** Every new backend behavior needs a case
