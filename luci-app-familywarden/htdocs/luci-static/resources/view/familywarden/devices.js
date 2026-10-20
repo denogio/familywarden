@@ -4,6 +4,7 @@
 'require uci';
 'require poll';
 'require ui';
+'require familywarden.ui as fwui';
 
 // Phones running the FamilyWarden app. A phone appears under "Waiting for
 // approval" after scanning the pairing code; compare the fingerprint shown in
@@ -51,9 +52,12 @@ function fmtTime(epoch) {
 	return epoch > 0 ? new Date(epoch * 1000).toLocaleString() : _('Never');
 }
 
-// SHA-256 of the phone key, grouped in fours as the app shows it
-function fingerprint(fp) {
-	return E('code', { 'style': 'font-size:110%' }, (fp || '?').replace(/(.{4})(?=.)/g, '$1 '));
+// SHA-256 of the phone key, grouped in fours as the app shows it. The full value
+// stays in the text (and title) so it can be compared and copied, never truncated.
+function fingerprint(fp, large) {
+	var groups = (fp || '?').match(/.{1,4}/g);
+	return E('div', { 'class': 'fw-fp' + (large ? ' is-large' : ''), 'title': fp || '' },
+		groups.map(function(g) { return E('span', {}, g + ' '); }));
 }
 
 function profileName(id) {
@@ -65,6 +69,10 @@ function notify(res, ok) {
 		ui.addNotification(null, E('p', {}, _('Refused: %s').format(res.error)), 'warning');
 	else if (ok)
 		ui.addNotification(null, E('p', {}, ok), 'info');
+}
+
+function consequences(lines) {
+	return E('ul', { 'class': 'fw-consequence' }, lines.map(function(l) { return E('li', {}, l); }));
 }
 
 return view.extend({
@@ -84,9 +92,10 @@ return view.extend({
 		}));
 		var adminInput = E('input', { 'type': 'checkbox', 'checked': dev.administrator === '1' ? '' : null });
 
-		ui.showModal(approve ? _('Approve phone') : _('Edit phone'), [
-			approve ? E('p', {}, _('Only approve a phone you recognise. The fingerprint must match the one shown in the FamilyWarden app on that phone:')) : '',
-			E('p', {}, fingerprint(dev.fingerprint)),
+		ui.showModal(approve ? _('Approve this phone?') : _('Edit phone'), [
+			approve ? E('p', {}, _('On that phone, open FamilyWarden and compare its key fingerprint with this one, group by group. Only approve a phone you can see.')) : '',
+			E('p', { 'class': 'fw-fp-label' }, _('Key fingerprint · SHA-256 · as received by the router')),
+			fingerprint(dev.fingerprint, true),
 			E('div', { 'class': 'cbi-value' }, [
 				E('label', { 'class': 'cbi-value-title' }, _('Name')),
 				E('div', { 'class': 'cbi-value-field' }, nameInput)
@@ -101,12 +110,12 @@ return view.extend({
 				E('label', { 'class': 'cbi-value-title' }, _('Administrator')),
 				E('div', { 'class': 'cbi-value-field' }, [ adminInput,
 					E('div', { 'class': 'cbi-value-description' },
-						_('An administrator\'s phone may remove FamilyWarden itself when no pact applies to it. Other phones need your approval each time.')) ])
+						_('An administrator\'s phone may remove FamilyWarden itself when no pact applies to it. Other phones need your approval each time. It is separate from being the Ulysses captain.')) ])
 			]),
 			E('div', { 'class': 'right' }, [
 				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
 				' ',
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function(ev) {
+				E('button', { 'class': 'cbi-button ' + (approve ? 'fw-btn-allow' : 'cbi-button-positive'), 'click': function(ev) {
 					ev.currentTarget.disabled = true;
 					var name = nameInput.value || nameInput.placeholder;
 					var admin = adminInput.checked ? '1' : '0';
@@ -120,104 +129,113 @@ return view.extend({
 						notify(res);
 						return self.refresh();
 					});
-				} }, approve ? _('Approve') : _('Save'))
+				} }, approve ? _('It matches · Approve') : _('Save'))
 			])
 		]);
 	},
 
-	confirm: function(title, text, label, fn) {
+	confirm: function(title, body, label, fn, alternative) {
 		var self = this;
-		ui.showModal(title, [
-			E('p', {}, text),
+		var run = function(action) {
+			return function(ev) {
+				ev.currentTarget.disabled = true;
+				return action().then(function(res) {
+					ui.hideModal();
+					notify(res);
+					return self.refresh();
+				});
+			};
+		};
+		ui.showModal(title, body.concat([
 			E('div', { 'class': 'right' }, [
 				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				alternative ? [ ' ', E('button', { 'class': 'cbi-button', 'click': run(alternative.fn) }, alternative.label) ] : '',
 				' ',
-				E('button', { 'class': 'cbi-button cbi-button-negative', 'click': function(ev) {
-					ev.currentTarget.disabled = true;
-					return fn().then(function(res) {
-						ui.hideModal();
-						notify(res);
-						return self.refresh();
-					});
-				} }, label)
+				E('button', { 'class': 'cbi-button cbi-button-negative', 'click': run(fn) }, label)
 			])
-		]);
+		]));
+	},
+
+	allowRemoval: function(d) {
+		this.confirm(_('Allow removal for 1 hour?'), [
+			E('p', {}, _('For the next hour, "%s" may remove FamilyWarden through the app\'s own removal flow.').format(d.name || d.id)),
+			consequences([
+				_('Nothing is removed from this router. The phone stays enrolled and keeps its policy until someone completes removal on the phone.'),
+				_('The permission lapses after one hour if it isn\'t used.'),
+				_('Not available while a pact applies to this phone.')
+			])
+		], _('Allow for 1 hour'), function() { return callAllowRemoval(d.id); });
+	},
+
+	removeEnrollment: function(d) {
+		this.confirm(_('Remove enrollment of "%s"?').format(d.name || d.id), [
+			E('p', {}, _('The router stops sending this phone new policy. That is all it does.')),
+			consequences([
+				_('It does not uninstall FamilyWarden from the phone.'),
+				_('It does not erase the protection the phone already has: the phone keeps enforcing its last cached policy until the app is removed there.'),
+				_('Scanning the pairing code again puts it back under "Waiting for approval".')
+			]),
+			E('p', {}, _('To let the phone leave cleanly, allow removal for 1 hour instead.'))
+		], _('Remove enrollment'), function() { return callDelete(d.id); }, {
+			label: _('Allow removal for 1 hour instead'),
+			fn: function() { return callAllowRemoval(d.id); }
+		});
 	},
 
 	renderPending: function(pending) {
 		var self = this;
 		if (!pending.length)
-			return E('p', { 'class': 'cbi-section-descr' },
+			return E('p', { 'class': 'fw-muted' },
 				_('No phone is waiting. Scan the pairing code under Settings with the FamilyWarden app; the phone appears here within a minute.'));
-		return E('table', { 'class': 'table' }, [
-			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, _('Phone')),
-				E('th', { 'class': 'th' }, _('Fingerprint')),
-				E('th', { 'class': 'th' }, _('Last request')),
-				E('th', { 'class': 'th cbi-section-actions' }, '')
-			])
-		].concat(pending.map(function(d) {
-			return E('tr', { 'class': 'tr' }, [
-				E('td', { 'class': 'td' }, d.name || _('Unknown model')),
-				E('td', { 'class': 'td' }, fingerprint(d.fingerprint)),
-				E('td', { 'class': 'td' }, fmtTime(d.last_seen)),
-				E('td', { 'class': 'td cbi-section-actions' }, [
-					E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+		return E('div', { 'class': 'fw-pending-list' }, pending.map(function(d) {
+			return E('div', { 'class': 'fw-pending' }, [
+				E('div', { 'class': 'fw-pending-top' }, [
+					fwui.icon('info'),
+					E('h4', {}, d.name || _('Unknown model')),
+					E('span', { 'class': 'fw-muted' }, _('Asked to enroll %s · no profile yet').format(fmtTime(d.last_seen)))
+				]),
+				E('div', {}, [
+					E('p', { 'class': 'fw-fp-label' }, _('Key fingerprint · SHA-256')),
+					fingerprint(d.fingerprint, true)
+				]),
+				E('div', { 'class': 'fw-rowactions' }, [
+					E('button', { 'class': 'cbi-button fw-btn-allow', 'click': function() {
 						self.showDeviceModal(d, true);
-					} }, _('Approve…')),
-					' ',
-					E('button', { 'class': 'cbi-button cbi-button-negative', 'click': function() {
+					} }, _('Compare and approve…')),
+					E('button', { 'class': 'cbi-button fw-btn-block', 'click': function() {
 						return callReject(d.id).then(function(res) { notify(res); return self.refresh(); });
 					} }, _('Reject'))
 				])
 			]);
-		})));
+		}));
 	},
 
 	renderDevices: function(devices) {
 		var self = this;
 		if (!devices.length)
-			return E('p', { 'class': 'cbi-section-descr' }, _('No phone approved yet.'));
-		return E('table', { 'class': 'table' }, [
-			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, _('Name')),
-				E('th', { 'class': 'th' }, _('Profile')),
-				E('th', { 'class': 'th' }, _('Fingerprint')),
-				E('th', { 'class': 'th' }, _('Last sync')),
-				E('th', { 'class': 'th cbi-section-actions' }, '')
-			])
-		].concat(devices.map(function(d) {
-			var roles = [ profileName(d.profile) ];
-			if (d.administrator === '1')
-				roles.push(_('administrator'));
-			var removal = +d.remove_until > 0
-				? E('div', { 'style': 'font-size:90%' }, _('May remove FamilyWarden until %s').format(fmtTime(d.remove_until)))
-				: '';
-			var actions = d.frozen
-				? E('em', {}, '⚓ ' + _('Bound by the Ulysses pact'))
-				: E('span', {}, [
-					E('button', { 'class': 'cbi-button', 'click': function() { self.showDeviceModal(d, false); } }, _('Edit…')),
-					' ',
-					E('button', { 'class': 'cbi-button', 'click': function() {
-						self.confirm(_('Allow removal'),
-							_('For the next hour, "%s" may remove the FamilyWarden app itself. It still can\'t while a pact applies to it.').format(d.name || d.id),
-							_('Allow for 1 hour'), function() { return callAllowRemoval(d.id); });
-					} }, _('Allow removal…')),
-					' ',
-					E('button', { 'class': 'cbi-button cbi-button-negative', 'click': function() {
-						self.confirm(_('Remove phone'),
-							_('"%s" gets no policy any more. The app on the phone keeps its last policy until it is removed there; scanning the pairing code again puts it back under "Waiting for approval".').format(d.name || d.id),
-							_('Remove'), function() { return callDelete(d.id); });
-					} }, _('Remove…'))
+			return E('p', { 'class': 'fw-muted' }, _('No phone approved yet.'));
+		var heads = [ _('Phone'), _('Profile'), _('Role'), _('Key fingerprint (SHA-256)'), _('Last policy fetch'), _('Actions') ];
+		return E('table', { 'class': 'fw-table' }, [
+			E('thead', {}, E('tr', {}, heads.map(function(h) { return E('th', {}, h); }))),
+			E('tbody', {}, devices.map(function(d) {
+				var actions = d.frozen
+					? E('p', { 'class': 'fw-held' }, [ fwui.icon('mast'), _('Pact-bound: edit, removal and unenrollment wait until the pact ends.') ])
+					: E('div', { 'class': 'fw-rowactions' }, [
+						E('button', { 'class': 'cbi-button', 'click': function() { self.showDeviceModal(d, false); } }, _('Edit…')),
+						E('button', { 'class': 'cbi-button', 'click': function() { self.allowRemoval(d); } }, _('Allow removal…')),
+						E('button', { 'class': 'cbi-button cbi-button-negative', 'click': function() { self.removeEnrollment(d); } }, _('Remove…'))
+					]);
+				return E('tr', {}, [
+					E('td', { 'data-label': heads[0] }, [ E('strong', {}, d.name || d.id),
+						+d.remove_until > 0 ? E('div', { 'class': 'fw-deadline' }, _('May remove FamilyWarden until %s').format(fmtTime(d.remove_until))) : '' ]),
+					E('td', { 'data-label': heads[1] }, profileName(d.profile)),
+					E('td', { 'data-label': heads[2] }, d.administrator === '1' ? _('Administrator') : _('Member')),
+					E('td', { 'data-label': heads[3] }, fingerprint(d.fingerprint)),
+					E('td', { 'data-label': heads[4] }, fmtTime(d.seen)),
+					E('td', { 'data-label': heads[5] }, actions)
 				]);
-			return E('tr', { 'class': 'tr' }, [
-				E('td', { 'class': 'td' }, [ d.name || d.id, removal ]),
-				E('td', { 'class': 'td' }, roles.join(', ')),
-				E('td', { 'class': 'td' }, fingerprint(d.fingerprint)),
-				E('td', { 'class': 'td' }, fmtTime(d.seen)),
-				E('td', { 'class': 'td cbi-section-actions' }, actions)
-			]);
-		})));
+			}))
+		]);
 	},
 
 	refresh: function() {
@@ -230,25 +248,28 @@ return view.extend({
 	},
 
 	renderBody: function(data) {
+		var pending = data.pending || [], devices = data.devices || [];
 		return E('div', { 'id': 'fw-devices' }, [
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Waiting for approval')),
-				this.renderPending(data.pending || [])
+			E('section', { 'class': 'fw-panel' }, [
+				E('h3', {}, _('Waiting for approval (%d)').format(pending.length)),
+				E('p', { 'class': 'fw-muted' }, _('Approve only a phone you can see. Its key must match the one it shows.')),
+				this.renderPending(pending)
 			]),
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Approved phones')),
-				this.renderDevices(data.devices || [])
+			E('section', { 'class': 'fw-panel' }, [
+				E('h3', {}, _('Approved phones (%d)').format(devices.length)),
+				E('p', { 'class': 'fw-muted' }, _('Last policy fetch is when a phone last downloaded its policy from this router. It doesn\'t show that the phone applied it or is reachable now. Phones keep their cached policy, including on mobile data, when they can\'t reach home.')),
+				this.renderDevices(devices)
 			])
 		]);
 	},
 
 	render: function(data) {
 		var self = this;
+		fwui.loadStyles('overview');
+		fwui.loadStyles('pages');
 		poll.add(function() { return self.refresh(); }, 5);
-		return E('div', {}, [
-			E('h2', {}, _('Phones')),
-			E('p', { 'class': 'cbi-map-descr' },
-				_('Phones with the FamilyWarden app. Only phones you approve here get their profile\'s DNS protection, and the Ulysses profile\'s phones its pact. A device id alone grants nothing.')),
+		return E('div', { 'id': 'fw-phones' }, [
+			fwui.header(_('Phones'), _('Approve phones that asked to enroll, and manage the ones that receive policy from this router. A device id alone grants nothing.')),
 			this.renderBody(data[0] || {})
 		]);
 	},

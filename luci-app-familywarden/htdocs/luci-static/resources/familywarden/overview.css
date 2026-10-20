@@ -1,0 +1,198 @@
+/* Overview only. LuCI owns navigation, dialogs, controls and the surrounding theme. */
+/* The native tabs are siblings of #view. :has() keeps this panel page-local
+   without moving LuCI DOM nodes or leaving a theme class behind on navigation. */
+#maincontent:has(:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info)) {
+	box-sizing: border-box;
+	padding: 16px 20px 20px;
+	margin-bottom: 24px;
+	background: #eaf0f6;
+	border: 1px solid #cdd6df;
+	border-radius: 16px;
+}
+:root[data-darkmode="true"] #maincontent:has(:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info)) {
+	background: #14171b;
+	border-color: #2a3b4d;
+}
+#maincontent:has(:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info)) #tabmenu .tabs {
+	--tab-bar-background-color: #eaf0f6;
+	--tab-active-background-color: #fff;
+	--tab-active-border-color: #cdd6df;
+	--tab-active-text-color: #0f1b27;
+	--tab-inactive-background-color: #eaf0f6;
+	--tab-inactive-border-color: #cdd6df;
+	--tab-inactive-text-color: #4a5d70;
+	--tab-inactive-hover-background-color: #fff;
+}
+:root[data-darkmode="true"] #maincontent:has(:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info)) #tabmenu .tabs {
+	--tab-bar-background-color: #14171b;
+	--tab-active-background-color: #14171b;
+	--tab-active-border-color: #323941;
+	--tab-active-text-color: #e6e8eb;
+	--tab-inactive-background-color: #14171b;
+	--tab-inactive-border-color: #323941;
+	--tab-inactive-text-color: #a9b1ba;
+	--tab-inactive-hover-background-color: #1d2127;
+}
+/* Bootstrap does not consume its active-text token on the selected tab. */
+#maincontent:has(:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info)) #tabmenu .tabs > .active {
+	color: var(--tab-active-text-color);
+}
+#maincontent:has(:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info)) :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) { margin-bottom: 0; }
+@media (max-width: 640px) {
+	#maincontent:has(:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info)) { padding: 12px; border-radius: 12px; }
+}
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) {
+	--fw-surface: #fff;
+	--fw-sunk: #f6f8fa;
+	--fw-line: #cdd6df;
+	--fw-ink: #0f1b27;
+	--fw-muted: #4a5d70;
+	--fw-ok: #1f6a64;
+	--fw-ok-soft: #e4f2ef;
+	--fw-ok-line: #9ccfc7;
+	--fw-rest: #3b5266;
+	--fw-rest-soft: #ebf0f5;
+	--fw-rest-line: #b7c3cf;
+	--fw-gold: #7a5d00;
+	--fw-pact-soft: #faf3de;
+	--fw-pact-line: #e6d59e;
+	--fw-fault: #8f2f0c;
+	--fw-fault-soft: #fbeae3;
+	--fw-focus: #7a5d00;
+	container: fw-overview / inline-size;
+	color: var(--fw-ink);
+	font: 14px/1.5 system-ui, sans-serif;
+	margin-bottom: 24px;
+}
+:root[data-darkmode="true"] :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) {
+	--fw-surface: #121c27;
+	--fw-sunk: #0e1620;
+	--fw-line: #2a3b4d;
+	--fw-ink: #d8e1ea;
+	--fw-muted: #b4c4d3;
+	--fw-ok: #7cc7bd;
+	--fw-ok-soft: #16302f;
+	--fw-ok-line: #2e5f59;
+	--fw-rest: #b4c4d3;
+	--fw-rest-soft: #182431;
+	--fw-rest-line: #3a4c5e;
+	--fw-gold: #e0bd4a;
+	--fw-pact-soft: #1b2a3a;
+	--fw-pact-line: #5c5230;
+	--fw-fault: #ffb38a;
+	--fw-fault-soft: #34231e;
+	--fw-focus: #e0bd4a;
+}
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) *, :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) *::before, :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) *::after { box-sizing: border-box; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) :focus-visible { outline: 2px solid var(--fw-focus); outline-offset: 3px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) h2, :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) h3, :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) h4 { color: var(--fw-ink); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) p { font-size: inherit; line-height: inherit; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) a:not(.cbi-button) { color: var(--fw-ink); text-decoration: underline; text-underline-offset: 3px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 20px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-brand { display: flex; align-items: center; gap: 8px; margin: 0 0 3px; font: 16px/24px Georgia, serif; color: var(--fw-muted); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-lighthouse { width: 28px; height: 28px; flex: none; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-tower { fill: var(--fw-ink); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-beam { fill: #c9a227; opacity: .3; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-lamp { fill: var(--fw-gold); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-stripe { fill: #8aa0b4; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-sea { fill: none; stroke: #8aa0b4; stroke-width: 2; stroke-linecap: round; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-title { margin: 0; font: 600 28px/36px Georgia, serif; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-lede { margin: 4px 0 0; max-width: 64ch; color: var(--fw-muted); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; padding: 14px 16px; margin-bottom: 16px; border: 1px solid var(--fw-line); border-radius: 12px; background: var(--fw-surface); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-summary dl { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-summary .fw-fact { display: flex; align-items: center; gap: 8px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) dt { color: var(--fw-muted); font-weight: 400; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) dd { margin: 0; min-width: 0; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-summary dd { font-size: 16px; font-weight: 650; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-updated { font-size: 12px; color: var(--fw-muted); margin-left: auto; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-notices { display: grid; gap: 8px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-notice { margin-bottom: 16px; padding: 14px 16px; border: 1px solid var(--fw-line); border-radius: 10px; background: var(--fw-sunk); overflow-wrap: anywhere; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-notice p { margin: 4px 0 8px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-notice.is-fault { color: var(--fw-fault); background: var(--fw-fault-soft); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-section-head { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin: 8px 0 12px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-section-head h3 { font: 650 18px/24px system-ui, sans-serif; margin: 0; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-section-head p { margin: 0; color: var(--fw-muted); font-size: 13px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr)); align-items: start; gap: 16px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-card { display: flex; flex-direction: column; container: fw-card / inline-size; min-width: 0; border: 1px solid var(--fw-line); border-radius: 14px; background: var(--fw-surface); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-card-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 16px 20px 12px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-card-name { margin: 0; font: 650 19px/26px system-ui, sans-serif; overflow-wrap: anywhere; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-card-policy { color: var(--fw-muted); font-size: 13px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-card-edit { margin-left: auto; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-captain { padding: 1px 8px; border: 1px solid var(--fw-pact-line); border-radius: 999px; background: var(--fw-pact-soft); color: var(--fw-gold); font-size: 12px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-state { display: flex; align-items: flex-start; gap: 12px; margin: 0 20px; padding: 12px 14px; border-radius: 10px; background: var(--fw-rest-soft); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-state > div { min-width: 0; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-state-icon { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--fw-surface); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-pact-heading { display: flex; align-items: flex-start; gap: 8px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-pact-heading .fw-icon { margin-top: 2px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-state-title { font-weight: 650; margin: 0; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-state-titlerow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-tag-override { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border: 1.5px dashed var(--fw-ink); border-radius: 999px; background: var(--fw-surface); color: var(--fw-ink); font-size: 12px; line-height: 18px; font-weight: 600; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-tag-override .fw-icon { width: 14px; height: 14px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-state-reason { color: var(--fw-muted); margin: 2px 0 0; overflow-wrap: anywhere; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-state.is-allowed { background: var(--fw-ok-soft); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .is-allowed .fw-state-icon, :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .is-allowed .fw-state-title { color: var(--fw-ok); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-state.is-unknown, :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info).is-stale .fw-state { border: 1px dashed var(--fw-muted); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-facts { display: grid; gap: 12px; margin: 16px 20px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-fact { display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: 0 16px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-facts dt { font-size: 13px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-devices, :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-schedules { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-devices li, :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-schedules li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 12px; color: var(--fw-ink); line-height: 1.5; overflow-wrap: anywhere; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-schedules li { justify-content: flex-start; gap: 0 8px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-mono { color: var(--fw-muted); font: 12px/20px ui-monospace, monospace; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-hours { font-variant-numeric: tabular-nums; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-ulysses { margin: 0 20px 16px; padding: 14px 16px; background: var(--fw-pact-soft); border: 1px solid var(--fw-pact-line); border-radius: 10px; color: var(--fw-gold); line-height: 1.6; overflow-wrap: anywhere; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-card-foot { margin-top: 0; padding: 12px 20px 16px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; border-top: 1px solid var(--fw-line); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-act-zone { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-act-zone + .fw-act-zone { margin-left: 16px; padding-left: 16px; border-left: 1px solid var(--fw-line); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-act-row { display: flex; flex-wrap: wrap; gap: 6px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-actions-label, :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-held, :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-act-hint { color: var(--fw-muted); font-size: 12px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-actions-label { font-weight: 600; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-act-hint { max-width: 36ch; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-held { flex: 1 1 100%; margin: 0; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .cbi-button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; white-space: normal; word-break: normal; line-height: 1.4; padding: 7px 12px; border-radius: 6px; }
+/* Intent colours apply only to FamilyWarden's native LuCI action buttons. */
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-btn-allow { background: var(--fw-ok-soft); border-color: var(--fw-ok-line); color: var(--fw-ok); font-weight: 600; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-btn-block { background: var(--fw-rest-soft); border-color: var(--fw-rest-line); color: var(--fw-rest); font-weight: 600; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-btn-reset { background: transparent; border: 1.5px solid var(--fw-ink); color: var(--fw-ink); font-weight: 600; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-btn-reset:hover { background: var(--fw-sunk); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-btn-pact { background: var(--fw-pact-soft); border-color: var(--fw-pact-line); color: var(--fw-gold); font-weight: 600; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-btn-grant { background: transparent; border-color: var(--fw-ok-line); color: var(--fw-ok); font-weight: 600; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-btn-revoke { background: transparent; border-color: var(--fw-rest-line); color: var(--fw-rest); font-weight: 600; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-btn-grant:hover { background: var(--fw-ok-soft); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-btn-revoke:hover { background: var(--fw-rest-soft); }
+/* Bootstrap otherwise forces blue hover borders with !important. */
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-btn-allow:hover, :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-btn-block:hover,
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-btn-reset:hover, :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-btn-pact:hover, :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-btn-grant:hover,
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-btn-revoke:hover { border-color: currentColor !important; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-seg { display: inline-flex; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-seg .cbi-button { min-width: 48px; padding: 7px 12px; border-radius: 0; margin-left: -1px; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-seg .cbi-button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-seg .cbi-button:last-child { border-radius: 0 6px 6px 0; }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-empty { padding: 32px; border: 1px dashed var(--fw-muted); border-radius: 14px; background: var(--fw-surface); }
+:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-empty h3 { margin: 0 0 8px; font: 600 22px/28px Georgia, serif; }
+@container fw-card (max-width: 460px) {
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-devices li { flex-direction: column; align-items: flex-start; }
+}
+@container fw-card (max-width: 440px) {
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-act-zone { width: 100%; align-items: stretch; }
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-act-zone + .fw-act-zone { margin-left: 0; padding-left: 0; border-left: 0; padding-top: 12px; border-top: 1px solid var(--fw-line); }
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-act-row > .cbi-button { flex: 1 1 auto; }
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-ticket .fw-seg { display: grid; width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-seg .cbi-button, :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-seg .cbi-button:first-child,
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-seg .cbi-button:last-child { border-radius: 6px; margin-left: 0; }
+}
+@container fw-overview (max-width: 640px) {
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-title { font-size: 24px; line-height: 30px; }
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-head > div, :is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-add-btn { width: 100%; }
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-summary dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-summary .fw-fact { display: block; }
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-updated { margin-left: 0; }
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-card-head { padding: 14px 16px 10px; }
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-state { margin: 0 16px; }
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-facts { margin: 14px 16px; }
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-fact { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-ulysses { margin: 0 16px 14px; }
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .fw-card-foot { padding: 12px 16px 16px; }
+	:is(#fw-dashboard, #fw-profiles, #fw-phones, #fw-settings, #fw-info) .cbi-button { min-height: 44px; }
+}

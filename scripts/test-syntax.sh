@@ -116,6 +116,11 @@ done
 echo ""
 echo "=== LuCI views + JSON ==="
 
+if command -v node &> /dev/null; then
+    (cd "$PROJECT_ROOT" && node --test test/luci-ui.test.cjs > /dev/null 2>&1) \
+        && echo "✓ Shared LuCI UI helpers" || fail "Shared LuCI UI helper tests failed"
+fi
+
 for f in "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/*.js \
          "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/familywarden/*.js; do
     # LuCI views use a top-level `return`, so parse them as a function body

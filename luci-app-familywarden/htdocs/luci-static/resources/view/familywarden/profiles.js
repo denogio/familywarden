@@ -6,6 +6,7 @@
 'require poll';
 'require ui';
 'require familywarden.ulysses as ulysses';
+'require familywarden.ui as fwui';
 
 var callStatus = rpc.declare({
 	object: 'familywarden',
@@ -73,35 +74,6 @@ var callHostHints = rpc.declare({
 	expect: { '': {} }
 });
 
-function injectStyles() {
-	if (document.getElementById('fw-profiles-styles')) return;
-	var css = document.createElement('style');
-	css.id = 'fw-profiles-styles';
-	css.textContent = '\
-		.fw-tabs{display:flex;gap:0;border-bottom:2px solid var(--border-color-medium,#dee2e6);margin-bottom:24px;flex-wrap:wrap}\
-		.fw-tab{padding:10px 20px;cursor:pointer;font-size:14px;font-weight:500;\
-			border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;margin-bottom:-2px;\
-			color:var(--text-color-medium,#6c757d);background:transparent;text-decoration:none;display:block}\
-		.fw-tab:hover{color:var(--text-color-high,#333);background:var(--background-color-high,#f8f9fa)}\
-		.fw-tab.active{color:var(--text-color-high,#333);background:var(--background-color-high,white);\
-			border-color:var(--border-color-medium,#dee2e6);border-bottom-color:var(--background-color-high,white);font-weight:600}\
-		.fw-tab-add{color:var(--primary-color-high,#0069d9);font-weight:500}\
-		.fw-tab-add:hover{background:var(--background-color-high,#f8f9fa)}\
-		.fw-ulysses{flex-basis:100%;font-size:13px;opacity:.85}\
-		.fw-status-bar{display:flex;flex-wrap:wrap;align-items:center;gap:16px;padding:16px;\
-			background:var(--background-color-high,#f8f9fa);border:1px solid var(--border-color-medium,#dee2e6);\
-			border-radius:8px;margin-bottom:20px;flex-wrap:wrap}\
-		.fw-status-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;background:var(--border-color-medium,#ccc)}\
-		.fw-status-dot.allowed{background:var(--success-color-high,#5e9eff)}\
-		.fw-status-dot.blocked{background:var(--error-color-high,#ff6b6b)}\
-		.fw-status-dot.override{background:var(--warn-color-medium,#fbbf24)}\
-		.fw-status-text{font-size:16px;font-weight:600;flex:1;margin-right:auto}\
-		.fw-empty-profile{text-align:center;padding:60px 20px;color:var(--text-color-medium,#6c757d)}\
-		.fw-delete-section{margin-top:24px;padding-top:16px;border-top:1px solid var(--border-color-medium,#dee2e6)}\
-	';
-	document.head.appendChild(css);
-}
-
 var selectedProfile = null;
 var statusNode = null;
 
@@ -126,9 +98,9 @@ function refreshStatus() {
 // pact, or amend an ongoing one inside its window
 function pactButtonLabel(id, p) {
 	if (id !== ulysses.captainId()) return null;
-	if (!ulysses.isBound(p)) return '⚓ ' + _('Make a pact');
-	if (p.pact_type === 'until') return '⚓ ' + _('Extend pact');
-	if (p.pact_in_window) return '⚓ ' + _('Amend pact');
+	if (!ulysses.isBound(p)) return _('Make a pact');
+	if (p.pact_type === 'until') return _('Extend pact');
+	if (p.pact_in_window) return _('Amend pact');
 	return null;
 }
 
@@ -137,11 +109,9 @@ function pactButtonLabel(id, p) {
 function fillStatus(node, data) {
 	var hasOverride = data.override && data.override !== 'none';
 	var isBlocked = data.status && data.status.indexOf('blocked') >= 0;
-	var dotClass = hasOverride ? 'override' : (isBlocked ? 'blocked' : 'allowed');
-
-	var label = hasOverride
-		? (_('Override: ') + (data.override === 'block' ? _('Blocked') : _('Allowed')))
-		: (isBlocked ? _('Blocked') : _('Allowed'));
+	var known = data.status === 'allowed' || data.status === 'blocked';
+	var timed = data.override === 'allow' && +data.override_expires > 0;
+	var label = !known ? _('Status unknown') : isBlocked ? _('Internet blocked') : _('Internet allowed');
 	if (hasOverride && data.override_expires) {
 		var remaining = Math.max(0, Math.round((data.override_expires - Date.now()/1000) / 60));
 		if (remaining > 0)
@@ -149,27 +119,32 @@ function fillStatus(node, data) {
 	}
 
 	var btns = [];
-	if (hasOverride) {
-		btns.push(E('button', { 'class': 'cbi-button cbi-button-neutral', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callReset); }) }, _('Reset')));
+	if (!known) {
+		// An unknown reply must not look allowed or offer stale quick actions.
+	} else if (hasOverride) {
+		btns.push(E('button', { 'type': 'button', 'class': 'cbi-button ' + (timed ? 'fw-btn-revoke' : 'fw-btn-reset'), 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callReset); }) }, timed ? _('Cancel ticket') : _('Reset override')));
 	} else if (isBlocked) {
 		if (!ulysses.isBound(data)) {
-			btns.push(E('button', { 'class': 'cbi-button cbi-button-positive', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callAllow); }) }, _('Allow')));
-			btns.push(E('button', { 'class': 'cbi-button cbi-button-action', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, function(p) { return callTicket(p, 30); }); }) }, '+30 ' + _('min')));
+			btns.push(E('button', { 'type': 'button', 'class': 'cbi-button fw-btn-allow', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callAllow); }) }, _('Allow')));
+			btns.push(E('button', { 'type': 'button', 'class': 'cbi-button fw-btn-grant', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, function(p) { return callTicket(p, 30); }); }) }, '+30 ' + _('min')));
 		}
 	} else {
-		btns.push(E('button', { 'class': 'cbi-button cbi-button-negative', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callBlock); }) }, _('Block')));
+		btns.push(E('button', { 'type': 'button', 'class': 'cbi-button fw-btn-block', 'click': L.ui.createHandlerFn(this, function(ev) { return doAction(ev, callBlock); }) }, _('Block')));
 	}
-	var pactLabel = pactButtonLabel(selectedProfile, data);
+	var pactLabel = known ? pactButtonLabel(selectedProfile, data) : null;
 	if (pactLabel)
-		btns.push(E('button', { 'class': 'cbi-button cbi-button-neutral', 'click': L.ui.createHandlerFn(this, function(ev) {
+		btns.push(E('button', { 'type': 'button', 'class': 'cbi-button fw-btn-pact', 'click': L.ui.createHandlerFn(this, function(ev) {
 			return doAction(ev, function() { return ulysses.showPactModal(data.name, data); });
-		}) }, pactLabel));
+		}) }, [fwui.icon('mast'), pactLabel]));
 
 	while (node.firstChild) node.removeChild(node.firstChild);
-	node.appendChild(E('span', { 'class': 'fw-status-dot ' + dotClass }));
+	node.setAttribute('data-status', known ? data.status : 'unknown');
+	node.appendChild(E('span', { 'class': 'fw-status-icon' }, fwui.icon(!known ? 'info' : !isBlocked ? 'check'
+		: data.override !== 'block' && data.policy === 'scheduled' ? 'moon' : 'ban')));
 	node.appendChild(E('span', { 'class': 'fw-status-text' }, label));
-	btns.forEach(function(b) { node.appendChild(b); });
-	var uNote = ulysses.note(data);
+	if (hasOverride && known) node.appendChild(E('span', { 'class': 'fw-tag-override' }, [fwui.icon('hand'), timed ? _('Timed override') : _('Override')]));
+	node.appendChild(E('div', { 'class': 'fw-profile-actions' }, btns));
+	var uNote = ulysses.note(data, fwui.icon('mast'));
 	if (uNote) node.appendChild(uNote);
 }
 
@@ -247,6 +222,7 @@ function buildTabs(allProfiles, activeId) {
 		var isActive = (id === activeId);
 		tabs.push(E('a', {
 			'class': 'fw-tab' + (isActive ? ' active' : ''),
+			'aria-current': isActive ? 'page' : null,
 			'href': profileUrl(id)
 		}, p.name || id));
 	});
@@ -260,7 +236,7 @@ function buildTabs(allProfiles, activeId) {
 		})
 	}, '+ ' + _('Add Profile')));
 
-	return E('div', { 'class': 'fw-tabs' }, tabs);
+	return E('div', { 'class': 'fw-tabs', 'role': 'navigation', 'aria-label': _('Profiles') }, tabs);
 }
 
 function buildStatusBar(status) {
@@ -290,7 +266,8 @@ return view.extend({
 		var dnsServices = data[4] || [];
 		var dnsStatus = data[5] || {};
 
-		injectStyles();
+		fwui.loadStyles('overview');
+		fwui.loadStyles('pages');
 
 		selectedProfile = getSelectedProfile();
 
@@ -302,10 +279,10 @@ return view.extend({
 		// No profiles at all
 		if (!selectedProfile || !allProfiles[selectedProfile]) {
 			var tabs = buildTabs(allProfiles, null);
-			return E('div', {}, [
-				E('h2', {}, _('Profiles')),
+			return E('div', { 'id': 'fw-profiles' }, [
+				fwui.header(_('Profiles'), _('Devices, allowed hours and DNS protection for each profile.')),
 				tabs,
-				E('div', { 'class': 'fw-empty-profile' }, [
+				E('div', { 'class': 'fw-empty-profile fw-empty' }, [
 					E('p', {}, _('No profiles configured yet.')),
 					E('p', {}, _('Click "+ Add Profile" above to create one.'))
 				])
@@ -358,7 +335,7 @@ return view.extend({
 		// applies additions at once and removals only when the pact ends.
 		var frozen = ulysses.isFrozen(status);
 
-		var s = m.section(form.NamedSection, selectedProfile, 'profile', _('Profile Settings'));
+		var s = m.section(form.NamedSection, selectedProfile, 'profile', _('Profile and internet access'));
 		s.addremove = false;
 
 		var nameOption = s.option(form.Value, 'name', _('Name'));
@@ -387,7 +364,7 @@ return view.extend({
 
 
 		var deviceOption = s.option(form.DynamicList, 'device', _('Devices'),
-			_('Select known devices or enter MAC addresses manually.'));
+			_('Select known devices or enter MAC addresses manually. Names come from DHCP and may be missing; a lease does not prove a device is online.'));
 		deviceOption.datatype = 'macaddr';
 		deviceOption.rmempty = true;
 		deviceOption.readonly = frozen;
@@ -397,6 +374,15 @@ return view.extend({
 		macs.forEach(function(mac) {
 			deviceOption.value(mac, knownDevices[mac]);
 		});
+
+		// A display-only divider keeps one native NamedSection and unique field IDs.
+		var dnsHeading = s.option(form.DummyValue, '_dns_heading');
+		dnsHeading.renderWidget = function() {
+			return E('div', { 'class': 'fw-form-heading' }, [
+				E('h4', {}, _('DNS protection on approved phones')),
+				E('p', {}, _('These settings configure this profile in AdGuard Home. Router sync does not prove that a phone has applied its policy.'))
+			]);
+		};
 
 		// DNS filtering: an AdGuard Home client of its own for this profile.
 		// Phones approved for the profile (Phones page) use strict
@@ -450,7 +436,7 @@ return view.extend({
 		// re-render left a stale policy widget that reverted policy on Save &
 		// Apply. Inline editing makes that bug class structurally impossible.
 		var pid = selectedProfile;
-		var ss = m.section(form.TableSection, 'schedule', _('Schedules'),
+		var ss = m.section(form.TableSection, 'schedule', _('Allowed internet windows'),
 			_('Internet is off by default in this mode. Add the time windows when access is allowed; any time outside every window is blocked.'));
 		ss.addremove = !frozen;
 		ss.anonymous = true;
@@ -491,10 +477,9 @@ return view.extend({
 			var selected = L.toArray(cfgvalue);
 			return E('div', {
 				'id': this.cbid(section_id),
-				'class': 'fw-days',
-				'style': 'display:flex;gap:10px;flex-wrap:wrap'
+				'class': 'fw-days'
 			}, dayKeys.map(function(d) {
-				return E('label', { 'style': 'display:flex;align-items:center;gap:3px;white-space:nowrap;cursor:pointer' }, [
+				return E('label', { 'class': 'fw-day' }, [
 					E('input', {
 						'type': 'checkbox',
 						'data-day': d,
@@ -536,6 +521,8 @@ return view.extend({
 		// --- Delete profile ---
 		var self = this;
 		var deleteSection = E('div', { 'class': 'fw-delete-section' }, [
+			E('h3', {}, _('Delete profile')),
+			E('p', {}, _('Removes this profile and its internet schedules. This action applies immediately.')),
 			E('button', {
 				'class': 'cbi-button cbi-button-negative',
 				// createHandlerFn keeps the button disabled/spinning while the
@@ -593,10 +580,15 @@ return view.extend({
 				policyUI.node.addEventListener('widget-change', syncScheduleVisibility);
 			syncScheduleVisibility();
 
-			return E('div', {}, [
-				E('h2', {}, _('Profiles')),
+			return E('div', { 'id': 'fw-profiles' }, [
+				fwui.header(_('Profiles'), _('Devices, allowed hours and DNS protection for each profile. Form edits are staged until Save & Apply.')),
 				tabs,
 				statusBar,
+				E('p', { 'class': 'fw-immediate-note' }, _('Status and quick actions above are live. Form edits below do not change access until Save & Apply.')),
+				frozen ? E('div', { 'class': 'fw-profile-lock' }, [
+					E('strong', {}, _('Held by the pact')),
+					E('p', {}, _('Internet rules, devices and schedules are read-only outside the amendment window. DNS stays editable: protections can be added now; loosening waits until the pact ends or its window. Phone bindings stay frozen throughout the pact.'))
+				]) : '',
 				formEl,
 				ulysses.isFrozen(status) ? '' : deleteSection
 			]);

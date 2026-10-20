@@ -1114,8 +1114,21 @@ ubus_reset() {
 }
 
 ubus_ticket() {
+    (
+    # Serialize ticket read/modify/apply so simultaneous additions cannot be lost.
+    # Separate from FW_LOCK: compile_and_apply acquires that lock itself.
+    flock -x 201 || { echo '{"error":"ticket lock failed"}'; return 1; }
     local profile="$1"
     local minutes="${2:-30}"
+    case "$minutes" in
+        *[!0-9]*|'') echo '{"error":"minutes must be a positive integer"}'; return 1 ;;
+    esac
+    # Normalize leading zeros before shell arithmetic; the ubus type is int32.
+    minutes=$(echo "$minutes" | sed 's/^0*//')
+    if ! [ "${minutes:-0}" -gt 0 ] 2>/dev/null || ! [ "$minutes" -le 2147483647 ] 2>/dev/null; then
+        echo '{"error":"minutes must be a positive integer"}'
+        return 1
+    fi
 
     fw_load
     local name
@@ -1123,8 +1136,15 @@ ubus_ticket() {
     [ -z "$name" ] && { echo '{"error":"profile not found"}'; return 1; }
     _refuse_if_bound "$profile" && return 1
 
-    local expires_epoch expires_iso
-    expires_epoch=$(($(date +%s) + minutes * 60))
+    local expires_epoch expires_iso now base override previous_expiry
+    now=$(date +%s)
+    base="$now"
+    override=$(state_get "${profile}.override" "none")
+    previous_expiry=$(state_get "${profile}.override_expires" "")
+    if [ "$override" = "allow" ] && [ -n "$previous_expiry" ] && [ "$previous_expiry" -gt "$now" ]; then
+        base="$previous_expiry"
+    fi
+    expires_epoch=$((base + minutes * 60))
     expires_iso=$(date -d "@${expires_epoch}" -Iseconds 2>/dev/null || date -u -d "@${expires_epoch}" +%Y-%m-%dT%H:%M:%S 2>/dev/null || echo "${expires_epoch}")
 
     state_set "${profile}.override" "allow"
@@ -1135,6 +1155,7 @@ ubus_ticket() {
         return 1
     fi
     echo "{\"status\":\"ok\",\"profile\":\"${profile}\",\"expires\":\"${expires_iso}\"}"
+    ) 201>"${FW_LOCK}.ticket"
 }
 
 # Make (or amend) the captain's pact. until=<epoch> for a pact that ends,

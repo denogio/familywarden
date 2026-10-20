@@ -66,21 +66,21 @@ return baseclass.extend({
 	},
 
 	// Info lines for the captain, or null
-	note: function(p) {
+	note: function(p, mastIcon) {
 		if (!this.isBound(p))
 			return null;
-		var lines = [];
-		if (p.pact_type === 'ongoing')
-			lines.push('⚓ ' + _('Bound to the mast by an ongoing pact. Changes only in the window: %s').format(windowLabel(p.pact_window)));
-		else
-			lines.push('⚓ ' + _('Bound to the mast until %s').format(fmtTime(p.pact_until)));
+		var headline = p.pact_type === 'ongoing'
+			? _('Bound to the mast by an ongoing pact. Changes only in the window: %s').format(windowLabel(p.pact_window))
+			: _('Bound to the mast until %s').format(fmtTime(p.pact_until));
+		var lines = [ E('div', { 'class': 'fw-pact-heading' }, mastIcon
+			? [mastIcon, E('span', {}, headline)] : '⚓ ' + headline) ];
 		if (p.pact_in_window)
-			lines.push('🕊 ' + _('The window is open: changes to this profile apply now.'));
+			lines.push(E('div', {}, _('The window is open: changes to this profile apply now.')));
 		if (p.release_at > 0)
-			lines.push('⛵ ' + _('Sailing home: free at %s').format(fmtTime(p.release_at)));
+			lines.push(E('div', {}, _('Sailing home: free at %s').format(fmtTime(p.release_at))));
 		if (p.mast_last_sync > 0)
-			lines.push('📱 ' + _('Mast synced %s').format(fmtTime(p.mast_last_sync)));
-		return E('div', { 'class': 'fw-ulysses' }, lines.map(function(l) { return E('div', {}, l); }));
+			lines.push(E('div', {}, _('Last policy fetch: %s').format(fmtTime(p.mast_last_sync))));
+		return E('div', { 'class': 'fw-ulysses' }, lines);
 	},
 
 	// Modal to make or amend the captain's pact. Resolves true once made.
