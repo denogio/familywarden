@@ -16,6 +16,9 @@ Overview is implemented in the existing LuCI view, not as a theme:
   and captain pact information using existing RPCs and shared pact controls.
 - `familywarden/overview.css` is explicitly packaged and scoped to `#fw-dashboard`.
 - Native LuCI navigation, dialogs and buttons remain. No mock `.lx-*` chrome ships.
+- A blue page surface now encloses Overview and its native tabs, with a subtle border
+  and rounded corners. It is selected only while `#fw-dashboard` exists, using CSS
+  `:has()` (modern browser required); no persistent global theme/class change.
 - Bootstrap's installed `data-darkmode` attribute was checked against its actual CSS
   and used for the branded dark palette. Other LuCI themes still require verification.
 - The unused Save/Apply/Reset footer is omitted on this immediate-action page only.
@@ -46,6 +49,9 @@ other pages remains pending, including the measured Profiles overflow at 390 px.
   and refresh failures, genuine empty state, focus retention, light/dark, 320–1440 px,
   200% CSS zoom/reflow and stylesheet coexistence with the profile editor.
 - Screenshots inspected in actual disposable LuCI: desktop light/dark and 390 px dark.
+- Blue-frame follow-up: targeted responsive/theme/isolation browser test passes at
+  320–1440 px and 200% CSS zoom. Other pages retain their original background even
+  with the Overview stylesheet loaded. No enforcement code changed in this follow-up.
 - No Android emulator suite: Android and backend enforcement were not changed.
 - No live router, AdGuard Home, phone or production pact was modified.
 

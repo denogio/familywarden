@@ -135,9 +135,11 @@ test('responsive scoped styles follow LuCI theme and do not restyle other pages'
   for (const dark of [false, true]) {
     await page.evaluate(d => document.documentElement.setAttribute('data-darkmode', String(d)), dark);
     await expect(page.locator('.fw-card').first()).toHaveCSS('background-color', dark ? 'rgb(18, 28, 39)' : 'rgb(255, 255, 255)');
+    await expect(page.locator('#maincontent')).toHaveCSS('background-color', dark ? 'rgb(10, 20, 32)' : 'rgb(234, 240, 246)');
     for (const width of [1440, 720, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
       expect(await page.locator('#fw-dashboard').evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+      expect(await page.locator('#maincontent').evaluate(el => el.getBoundingClientRect().right <= innerWidth + 1)).toBe(true);
     }
   }
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -146,7 +148,9 @@ test('responsive scoped styles follow LuCI theme and do not restyle other pages'
   // Simulate keeping the stylesheet loaded when leaving the Overview.
   await page.evaluate(() => { document.body.style.zoom = ''; });
   await page.goto(`${URL}/profiles`);
+  const originalBackground = await page.locator('#maincontent').evaluate(el => getComputedStyle(el).backgroundColor);
   await page.addStyleTag({ url: `${BASE}/luci-static/resources/familywarden/overview.css` });
+  await expect(page.locator('#maincontent')).toHaveCSS('background-color', originalBackground);
   await expect(page.locator('[data-name="policy"] select')).toBeVisible();
   await expect(page.locator('#fw-dashboard')).toHaveCount(0);
 });

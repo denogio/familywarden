@@ -1,4 +1,28 @@
 /* Overview only. LuCI owns navigation, dialogs, controls and the surrounding theme. */
+/* The native tabs are siblings of #view. :has() keeps this panel page-local
+   without moving LuCI DOM nodes or leaving a theme class behind on navigation. */
+#maincontent:has(#fw-dashboard) {
+	box-sizing: border-box;
+	padding: 16px 20px 20px;
+	margin-bottom: 24px;
+	background: #eaf0f6;
+	border: 1px solid #cdd6df;
+	border-radius: 16px;
+}
+:root[data-darkmode="true"] #maincontent:has(#fw-dashboard) {
+	background: #0a1420;
+	border-color: #2a3b4d;
+}
+#maincontent:has(#fw-dashboard) #tabmenu .tabs {
+	--tab-bar-background-color: #eaf0f6;
+}
+:root[data-darkmode="true"] #maincontent:has(#fw-dashboard) #tabmenu .tabs {
+	--tab-bar-background-color: #0a1420;
+}
+#maincontent:has(#fw-dashboard) #fw-dashboard { margin-bottom: 0; }
+@media (max-width: 640px) {
+	#maincontent:has(#fw-dashboard) { padding: 12px; border-radius: 12px; }
+}
 #fw-dashboard {
 	--fw-surface: #fff;
 	--fw-sunk: #f6f8fa;
