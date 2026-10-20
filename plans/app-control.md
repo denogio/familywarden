@@ -62,7 +62,7 @@ Per-app time control on Android phones, self-hosted by each household on its own
 |---|---|---|---|
 | A1 | Go or Rust? | Go | **Decided** |
 | A2 | Notification transport | App-held connection to an ntfy-compatible relay, E2E encrypted; own relay or public | Open |
-| A3 | Children's Google accounts with our Device Owner | Option A is impossible (tested 2026-10-20); **B: Device Owner without a supervised child account** | **Answered** |
+| A3 | Children's Google accounts with our Device Owner | Separate ordinary, unsupervised Google account per child; warn about Google's account rules in README | **Decided** |
 | A4 | Adult self-limit: how to get access when really needed? | A small daily pool the user may spend without approval; nothing beyond it during a pact | **Decided** |
 | A5 | Children's phones | Pixel 7 Pro, Android 17 | **Decided** |
 | A6 | Core vs existing shell backend | Core takes identity, policy, DNS and app control; shell stays the OpenWrt firewall adapter until ported | Open |
@@ -140,9 +140,8 @@ Family Link parental controls"). A user that already has a Device Owner cannot g
 another Profile Owner, so the activation never completes and setup loops ("Waiting for
 profile owner activation result"); the account is not added. This follows from Android's
 one-owner rule, not from the emulator. **Family Link and FamilyWarden as Device Owner
-are mutually exclusive.** Default: B. The child has no Play Store account of their own;
-a parent installs apps (parent account or Aurora Store) — a candidate FamilyWarden feature
-is "child requests an app, parent approves and installs".
+are mutually exclusive in this setup.** The earlier no-Google-account fallback is
+superseded by the separate ordinary-account decision below.
 
 **Decided 2026-10-20: each child uses a separately created Google account** on their
 phone (not a Family Link supervised account), for Play Store and Google apps.
@@ -150,21 +149,23 @@ FamilyWarden replaces Family Link's controls, including **usage collection**: th
 records per-app usage (UsageStats) and reports daily summaries to the router; parents see
 them in the FamilyWarden app and LuCI. Notes:
 
-- Google requires accounts of users under 13 (also in Denmark) to be supervised. An
-  account created with a false adult birth date for a younger child breaks Google's
-  terms and can be suspended. Compliant variants: the separate account is owned by the
-  parent (parent's details, no payment card) and only used on the child's phone, or the
-  child is 13 or older. To be chosen per child.
+- **Confirmed after vendor research:** use separate ordinary accounts and document
+  the risk in README. An unsupervised account for a child below Google's applicable
+  minimum age may violate Google's rules and lead to restrictions or suspension.
+  Minimum ages vary by country; check Google's current requirements. A separate or
+  parent-owned account is not a guaranteed exception. Do not recommend a false date
+  of birth. This is a project setup choice, not evidence of Google's approval.
 - New apps are suspended until a parent approves them; Play Store can be suspended
   outside approved installs.
 - Usage access: Device Owner has no API to grant it, but setup already uses adb, which can
   run `appops set <package> GET_USAGE_STATS allow`. To verify on the user's Pixel 10.
 
-How Tabaa (a commercial Device Owner product) handles it: it does not combine with
-Family Link either; it **replaces** it. Accounts are removed during setup and ordinary
-accounts signed back in (e.g. a parent's account for buying apps); app access is an
-allowlist approved from their supervisor app. From age 13 a child may have their own
-**unsupervised** Google account, which works next to a Device Owner (Play Store included).
+Vendor evidence: Tabaa documents removing accounts during Device Owner setup and
+signing back in afterwards, but does **not** explain supervised-child-account handling.
+Earlier claims here that Tabaa recommends a parent's account were inference, not a
+vendor recommendation. TimeLimit explicitly documents the Family Link conflict and
+an unsupported recovery-file workaround, which is not our recommended setup.
+Sources: https://tabaa.net/en/children/ and https://timelimit.io/en/.
 
 **Decided 2026-10-20: the son's Pixel 7 Pro is not a test device** (he uses it daily).
 A must be tested elsewhere (emulator with Google Play, or a spare phone) before it ever
@@ -180,8 +181,9 @@ Family Link).
    app suspension behavior, whether the app can grant itself usage access as Device
    Owner (or needs one tap), and battery cost of an app-held relay connection (A2).
 2. **Not on the son's phone:** emulator with Google Play or a spare phone: Device Owner
-   via adb and whether a supervised child account can coexist with it (A3). If not, the phone is
-   used without a Google account and apps are installed another way.
+   via adb and account compatibility (A3). The supervised-account emulator attempt
+   looped during activation; ordinary separate accounts are now the chosen setup.
+   Further tests require explicit authorization; do not use the son's daily phone.
 
 ## Not in scope for now
 

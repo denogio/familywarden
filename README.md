@@ -22,6 +22,19 @@ English and Danish. Status and open items: [plans/android-implementation.md](pla
 <img src="docs/screenshots/ulysses.png" width="200" alt="Ulysses: hotspot locked by an ongoing pact">
 </p>
 
+### Children's Google accounts (planned app control)
+
+The planned setup uses a separate, ordinary (non-Family-Link-supervised) Google account
+for each child, with FamilyWarden providing app limits and usage reporting. These
+app-control features are **not implemented yet**; see [the plan](plans/app-control.md).
+
+**Google account warning:** Using an unsupervised account for a child below Google's
+applicable minimum age may violate Google's account rules and could result in account
+restrictions or suspension. Minimum ages vary by country. FamilyWarden does not waive
+these requirements, and a separate or parent-owned account is not a guaranteed exception.
+Check [Google's age requirements](https://support.google.com/accounts/answer/1350409)
+before choosing this setup. We do not recommend providing a false date of birth.
+
 ## Installation
 
 Download both `.apk` files from the latest [release](https://github.com/denogio/familywarden/releases)
