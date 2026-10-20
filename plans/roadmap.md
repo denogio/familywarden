@@ -13,19 +13,25 @@ Home Assistant starts depending on it. Versions below are planned targets unless
 | 4 | Home Assistant (HACS) | L | 2 (pact information in API) | Separate repository, 0.1.0 |
 | 5 | DNS filtering | M–L | — | backend 1.0.0 |
 
-## Current Android/DNS implementation branch
+## Android/DNS baseline — v0.9.1
 
-Local FamilyWarden Android work is on `feature/familywarden-android`; see
-[`android-implementation.md`](android-implementation.md) for implemented behavior,
-prototype-only protocol boundaries, tests, and remaining gates. The production Mast
-app and live router/AdGuard configuration are unchanged. The new app's identity is
-not an in-place Device Owner update; do not deploy or migrate it from UI build success.
+PR #2 is merged into `master`, tagged `v0.9.1` (backend 0.9.1 / LuCI 0.6.1).
+Phone enrollment, signed device policy, strict Android DNS and AdGuard Home sync are
+implemented, with an explicitly authorized pilot. See
+[`android-implementation.md`](android-implementation.md) for evidence and remaining gates.
+The old Mast application ID still requires an explicit Device Owner migration, not an
+APK update in place. No further deployment is authorized merely by local test success.
+The historical phases/version targets below are not the current release status.
 
-## Planned: app control (Family Link / Switchly alternative)
+## Active: app control (Family Link / Switchly alternative)
 
-Planning only: [app-control.md](app-control.md). Self-hosted per household, Go or Rust
-core, router adapters (OpenWrt first, OPNsense/pfSense later), parent approval of
-ad hoc app time in the FamilyWarden app. First gate: tests on a spare phone.
+Implementation branch: `feature/app-control`, based on v0.9.1.
+Product decisions: [app-control.md](app-control.md).
+Detailed tasks, dependencies and acceptance gates: [app-control-todo.md](app-control-todo.md).
+Self-hosted per household, Go core, OpenWrt first, Android usage/app limits and parent
+approval of ad hoc extra time. Future OPNsense/pfSense adapters are deferred.
+No app-control feature code yet; production deployments and physical tests require
+separate consent. The son's daily phone is not a test device.
 
 ## Working rules (all phases)
 

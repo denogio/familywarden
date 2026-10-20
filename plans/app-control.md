@@ -1,7 +1,10 @@
-# App control: Family Link and Switchly alternative — planning
+# App control: Family Link and Switchly alternative
 
-Status: **planning only** (2026-10-19). Nothing is built or deployed from this document.
-Decisions below are the user's unless marked *proposed*.
+Status: **implementation authorized**, branch `feature/app-control`, based on v0.9.1.
+No app-control feature code has been written yet. The phased checklist and acceptance
+gates live in [app-control-todo.md](app-control-todo.md).
+Decisions below are the user's unless marked *proposed*. Production deployment and
+physical-device tests still require separate authorization.
 
 ## Goal
 
@@ -19,7 +22,7 @@ Per-app time control on Android phones, self-hosted by each household on its own
 1. **Self-hosted per household.** No hosted service run by the maintainer. Requiring
    OpenWrt is fine, but router-specific parts must sit behind an adapter so OPNsense and
    pfSense can be added later.
-2. **New backend in Go or Rust** for app control, enrollment/policy and requests. Router
+2. **New backend in Go** for app control, enrollment/policy and requests. Router
    features (firewall per MAC, lockdown, Ulysses hotspot) remain router adapters.
 3. **Replaces Family Link** on the children's phones, with extended functionality; no
    coexistence layer (Family Link has no API to build on).
@@ -33,11 +36,12 @@ Per-app time control on Android phones, self-hosted by each household on its own
 8. **Adult self-limit scope:** social media and browsers, limited to what is necessary:
    app suspension by schedule and/or daily quota, the same services blocked in DNS
    (catches web versions and in-app browsers), pact semantics (only tighten).
-9. Test children's phone: **Pixel 7 Pro, Android 17.**
+9. Target compatibility: **Pixel 7 Pro, Android 17**. The son's daily phone is **not**
+   a test device; use separately authorized disposable environments or a spare phone.
 
 ## Proposed architecture
 
-- **Core daemon** (Go or Rust, one static binary): profiles, phones, keys, signed policy,
+- **Core daemon** (Go, one static binary): profiles, phones, keys, signed policy,
   app rules, requests/grants, usage summaries. Runs on the router (OpenWrt package) and
   is the authority. Not reachable from the internet.
 - **Router adapters:** OpenWrt first (the existing rpcd/fw4 code can stay the firewall
@@ -54,7 +58,9 @@ Per-app time control on Android phones, self-hosted by each household on its own
 - **Transport (proposed):** the app keeps its own connection to a relay with an
   ntfy-compatible protocol; payloads are end-to-end encrypted and signed, so the relay
   can't read, forge or approve. Households choose their own relay or a public one.
-  No FCM (it would need the maintainer's Firebase credentials in every installation).
+  This is not decided. FCM is not inherently incompatible with self-hosting; compare
+  concrete service/credential dependencies, battery use and reliability before choosing.
+  Signing alone does not encrypt payloads.
 
 ## Open decisions
 
@@ -175,7 +181,7 @@ via adb → sign the supervised account back in. If Family Link can't supervise 
 our Device Owner, B is the robust default (or remove our app to give the phone back to
 Family Link).
 
-## First gates before any feature code
+## Device experiments (separate authorization required)
 
 1. **User's own Pixel 10** (already Device Owner with FamilyWarden, no reset needed):
    app suspension behavior, whether the app can grant itself usage access as Device
