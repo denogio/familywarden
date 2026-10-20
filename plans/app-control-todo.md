@@ -50,12 +50,16 @@ Selected before feature implementation; visual changes must preserve current beh
 - [x] Research current LuCI pages, Android identity and implementation constraints.
 - [x] Prepare [the continuation prompt](../docs/design/luci-design-prompt.md) for the
       existing Claude Design thread; [research notes](../docs/design/luci-design-research.md).
-- [ ] Submit the prompt to Claude Design and obtain the design export (user handoff).
-- [ ] Review exported states, factual claims, accessibility and native LuCI compatibility.
-- [ ] After design approval, implement Overview first and test in disposable LuCI.
+- [x] Submit the prompt to Claude Design and obtain the design export (user handoff).
+- [ ] Finish the full multi-page review of exported states, factual claims, accessibility
+      and native LuCI compatibility; Overview-specific findings are addressed.
+- [x] After design approval, implement Overview first and test in disposable LuCI.
+      [Implementation evidence and preserved exports](../docs/design/luci/README.md):
+      24 browser tests pass, scoped light/dark styling, no production deployment.
 - [ ] After Overview acceptance, apply the shared visual language to other existing pages.
 
-No generated design or UI implementation is implied by the completed research/prompt tasks.
+User-supplied design is archived; Overview is implemented. User visual acceptance and
+other pages remain open. App-control enforcement is still not implemented.
 
 ## P0 — Establish the implementation baseline
 
