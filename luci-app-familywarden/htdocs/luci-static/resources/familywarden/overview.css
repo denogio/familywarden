@@ -15,9 +15,27 @@
 }
 #maincontent:has(#fw-dashboard) #tabmenu .tabs {
 	--tab-bar-background-color: #eaf0f6;
+	--tab-active-background-color: #fff;
+	--tab-active-border-color: #cdd6df;
+	--tab-active-text-color: #0f1b27;
+	--tab-inactive-background-color: #eaf0f6;
+	--tab-inactive-border-color: #cdd6df;
+	--tab-inactive-text-color: #4a5d70;
+	--tab-inactive-hover-background-color: #fff;
 }
 :root[data-darkmode="true"] #maincontent:has(#fw-dashboard) #tabmenu .tabs {
 	--tab-bar-background-color: #14171b;
+	--tab-active-background-color: #14171b;
+	--tab-active-border-color: #323941;
+	--tab-active-text-color: #e6e8eb;
+	--tab-inactive-background-color: #14171b;
+	--tab-inactive-border-color: #323941;
+	--tab-inactive-text-color: #a9b1ba;
+	--tab-inactive-hover-background-color: #1d2127;
+}
+/* Bootstrap does not consume its active-text token on the selected tab. */
+#maincontent:has(#fw-dashboard) #tabmenu .tabs > .active {
+	color: var(--tab-active-text-color);
 }
 #maincontent:has(#fw-dashboard) #fw-dashboard { margin-bottom: 0; }
 @media (max-width: 640px) {

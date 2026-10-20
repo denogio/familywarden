@@ -136,6 +136,9 @@ test('responsive scoped styles follow LuCI theme and do not restyle other pages'
     await page.evaluate(d => document.documentElement.setAttribute('data-darkmode', String(d)), dark);
     await expect(page.locator('.fw-card').first()).toHaveCSS('background-color', dark ? 'rgb(18, 28, 39)' : 'rgb(255, 255, 255)');
     await expect(page.locator('#maincontent')).toHaveCSS('background-color', dark ? 'rgb(20, 23, 27)' : 'rgb(234, 240, 246)');
+    await expect(page.locator('#tabmenu .tabs > .active')).toHaveCSS('background-color', dark ? 'rgb(20, 23, 27)' : 'rgb(255, 255, 255)');
+    await expect(page.locator('#tabmenu .tabs > .active > a')).toHaveCSS('color', dark ? 'rgb(230, 232, 235)' : 'rgb(15, 27, 39)');
+    await expect(page.locator('#tabmenu .tabs > li:not(.active) > a').first()).toHaveCSS('color', dark ? 'rgb(169, 177, 186)' : 'rgb(74, 93, 112)');
     for (const width of [1440, 720, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
       expect(await page.locator('#fw-dashboard').evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
@@ -148,9 +151,11 @@ test('responsive scoped styles follow LuCI theme and do not restyle other pages'
   // Simulate keeping the stylesheet loaded when leaving the Overview.
   await page.evaluate(() => { document.body.style.zoom = ''; });
   await page.goto(`${URL}/profiles`);
+  const originalTabColor = await page.locator('#tabmenu .tabs > .active > a').evaluate(el => getComputedStyle(el).color);
   const originalBackground = await page.locator('#maincontent').evaluate(el => getComputedStyle(el).backgroundColor);
   await page.addStyleTag({ url: `${BASE}/luci-static/resources/familywarden/overview.css` });
   await expect(page.locator('#maincontent')).toHaveCSS('background-color', originalBackground);
+  await expect(page.locator('#tabmenu .tabs > .active > a')).toHaveCSS('color', originalTabColor);
   await expect(page.locator('[data-name="policy"] select')).toBeVisible();
   await expect(page.locator('#fw-dashboard')).toHaveCount(0);
 });
