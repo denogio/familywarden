@@ -68,7 +68,7 @@ Per-app time control on Android phones, self-hosted by each household on its own
 | A6 | Core vs existing shell backend | Core takes identity, policy, DNS and app control; shell stays the OpenWrt firewall adapter until ported | Open |
 | A7 | Request abuse and limits | Rate limit requests per child; approvals expire; optional "auto-deny after N" | Open |
 | A8 | Usage data and privacy | Keep summaries per app/day on the router only, short retention, no per-site logs | Open |
-| A9 | Device Owner setup for others | adb after signing out of accounts (no reset); QR provisioning only for new or reset phones | Open |
+| A9 | Device Owner setup for others | Like Tabaa: the app pairs with the phone's own *Wireless debugging* (user types the pairing code into a notification) and makes itself Device Owner, no computer; adb from a PC as alternative; QR provisioning only for new or reset phones | Open |
 | A10 | Support a light tier without Device Owner? | Yes, after the strict tier; bypass-evident with parent alerts | Open |
 | A11 | Android developer verification (2027) | Register the package as a verified developer, or rely on limited distribution / ADB | Open |
 
@@ -143,6 +143,12 @@ one-owner rule, not from the emulator. **Family Link and FamilyWarden as Device 
 are mutually exclusive.** Default: B. The child has no Play Store account of their own;
 a parent installs apps (parent account or Aurora Store) — a candidate FamilyWarden feature
 is "child requests an app, parent approves and installs".
+
+How Tabaa (a commercial Device Owner product) handles it: it does not combine with
+Family Link either; it **replaces** it. Accounts are removed during setup and ordinary
+accounts signed back in (e.g. a parent's account for buying apps); app access is an
+allowlist approved from their supervisor app. From age 13 a child may have their own
+**unsupervised** Google account, which works next to a Device Owner (Play Store included).
 
 **Decided 2026-10-20: the son's Pixel 7 Pro is not a test device** (he uses it daily).
 A must be tested elsewhere (emulator with Google Play, or a spare phone) before it ever
