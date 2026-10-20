@@ -144,6 +144,22 @@ are mutually exclusive.** Default: B. The child has no Play Store account of the
 a parent installs apps (parent account or Aurora Store) — a candidate FamilyWarden feature
 is "child requests an app, parent approves and installs".
 
+**Decided 2026-10-20: each child uses a separately created Google account** on their
+phone (not a Family Link supervised account), for Play Store and Google apps.
+FamilyWarden replaces Family Link's controls, including **usage collection**: the phone
+records per-app usage (UsageStats) and reports daily summaries to the router; parents see
+them in the FamilyWarden app and LuCI. Notes:
+
+- Google requires accounts of users under 13 (also in Denmark) to be supervised. An
+  account created with a false adult birth date for a younger child breaks Google's
+  terms and can be suspended. Compliant variants: the separate account is owned by the
+  parent (parent's details, no payment card) and only used on the child's phone, or the
+  child is 13 or older. To be chosen per child.
+- New apps are suspended until a parent approves them; Play Store can be suspended
+  outside approved installs.
+- Usage access: Device Owner has no API to grant it, but setup already uses adb, which can
+  run `appops set <package> GET_USAGE_STATS allow`. To verify on the user's Pixel 10.
+
 How Tabaa (a commercial Device Owner product) handles it: it does not combine with
 Family Link either; it **replaces** it. Accounts are removed during setup and ordinary
 accounts signed back in (e.g. a parent's account for buying apps); app access is an
