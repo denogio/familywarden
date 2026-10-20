@@ -10,14 +10,14 @@
 	border-radius: 16px;
 }
 :root[data-darkmode="true"] #maincontent:has(#fw-dashboard) {
-	background: #0a1420;
+	background: #14171b;
 	border-color: #2a3b4d;
 }
 #maincontent:has(#fw-dashboard) #tabmenu .tabs {
 	--tab-bar-background-color: #eaf0f6;
 }
 :root[data-darkmode="true"] #maincontent:has(#fw-dashboard) #tabmenu .tabs {
-	--tab-bar-background-color: #0a1420;
+	--tab-bar-background-color: #14171b;
 }
 #maincontent:has(#fw-dashboard) #fw-dashboard { margin-bottom: 0; }
 @media (max-width: 640px) {

@@ -135,7 +135,7 @@ test('responsive scoped styles follow LuCI theme and do not restyle other pages'
   for (const dark of [false, true]) {
     await page.evaluate(d => document.documentElement.setAttribute('data-darkmode', String(d)), dark);
     await expect(page.locator('.fw-card').first()).toHaveCSS('background-color', dark ? 'rgb(18, 28, 39)' : 'rgb(255, 255, 255)');
-    await expect(page.locator('#maincontent')).toHaveCSS('background-color', dark ? 'rgb(10, 20, 32)' : 'rgb(234, 240, 246)');
+    await expect(page.locator('#maincontent')).toHaveCSS('background-color', dark ? 'rgb(20, 23, 27)' : 'rgb(234, 240, 246)');
     for (const width of [1440, 720, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
       expect(await page.locator('#fw-dashboard').evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
