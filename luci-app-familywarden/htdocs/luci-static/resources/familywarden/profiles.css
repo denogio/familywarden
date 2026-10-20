@@ -1,0 +1,64 @@
+/* Native CBI editor styling only; shared identity/tokens live in overview.css. */
+#fw-profiles .fw-head { margin-bottom: 20px; }
+#fw-profiles .fw-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 12px; margin-bottom: 16px; border-bottom: 1px solid var(--fw-line); }
+#fw-profiles .fw-tab { display: inline-flex; align-items: center; min-height: 36px; padding: 6px 12px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--fw-muted); text-decoration: none; overflow-wrap: anywhere; }
+#fw-profiles .fw-tab:hover { background: var(--fw-sunk); color: var(--fw-ink); }
+#fw-profiles .fw-tab.active { background: var(--fw-surface); border-color: var(--fw-line); color: var(--fw-ink); font-weight: 600; }
+#fw-profiles .fw-tab-add { border-color: var(--fw-line); }
+#fw-profiles .fw-status-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 16px; margin-bottom: 8px; background: var(--fw-surface); border: 1px solid var(--fw-line); border-radius: 12px; }
+#fw-profiles .fw-status-text { font-size: 16px; font-weight: 600; }
+#fw-profiles .fw-status-icon { display: inline-flex; color: var(--fw-muted); }
+#fw-profiles .fw-status-bar[data-status="allowed"] .fw-status-icon { color: var(--fw-ok); }
+#fw-profiles .fw-status-bar[data-status="unknown"] { border-style: dashed; }
+#fw-profiles .fw-profile-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+#fw-profiles .fw-profile-actions .fw-icon { margin-right: 5px; }
+#fw-profiles .fw-status-bar .fw-ulysses { flex-basis: 100%; margin: 4px 0 0; }
+#fw-profiles .fw-immediate-note { margin: 0 0 20px; color: var(--fw-muted); font-size: 13px; }
+#fw-profiles .fw-profile-lock { padding: 16px; margin-bottom: 20px; border: 1px solid var(--fw-pact-line); border-radius: 12px; background: var(--fw-pact-soft); }
+#fw-profiles .fw-profile-lock strong { color: var(--fw-gold); }
+#fw-profiles .fw-profile-lock p { margin: 6px 0 0; }
+#fw-profiles .cbi-section { margin: 0 0 20px; padding: 20px; border: 1px solid var(--fw-line); border-radius: 14px; background: var(--fw-surface); min-width: 0; }
+#fw-profiles .cbi-section > h3 { margin: 0 0 16px; font: 600 20px/28px Georgia, serif; }
+#fw-profiles .cbi-section-descr { margin-bottom: 16px; color: var(--fw-muted); }
+#fw-profiles .cbi-value { margin-bottom: 18px; }
+#fw-profiles .cbi-value-field { min-width: 0; }
+#fw-profiles .cbi-value-title { color: var(--fw-ink); }
+#fw-profiles .cbi-value-description { color: var(--fw-muted); max-width: 72ch; }
+#fw-profiles .cbi-dropdown:not(.cbi-button), #fw-profiles .cbi-dynlist { max-width: 100%; }
+#fw-profiles input:not([type="checkbox"]):not([type="radio"]), #fw-profiles select { max-width: 100%; }
+#fw-profiles [data-name="_dns_heading"] { display: block; padding-top: 20px; margin-top: 24px; border-top: 1px solid var(--fw-line); }
+#fw-profiles .fw-form-heading h4 { margin: 0 0 4px; font: 600 19px/26px Georgia, serif; }
+#fw-profiles .fw-form-heading p { margin: 0; color: var(--fw-muted); max-width: 76ch; }
+#fw-profiles .fw-days { display: flex; flex-wrap: wrap; gap: 4px; }
+#fw-profiles .fw-day { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 36px; padding: 4px 8px; border: 1px solid var(--fw-line); border-radius: 6px; color: var(--fw-ink); cursor: pointer; }
+#fw-profiles .fw-day:has(input:checked) { background: var(--fw-ok-soft); border-color: var(--fw-ok-line); color: var(--fw-ok); }
+#fw-profiles .fw-day:has(input:disabled) { cursor: default; }
+#fw-profiles .fw-day input { margin: 0; flex: none; }
+#fw-profiles #cbi-familywarden-schedule .td { vertical-align: top; white-space: normal; }
+#fw-profiles #cbi-familywarden-schedule .td[data-name="start"], #fw-profiles #cbi-familywarden-schedule .td[data-name="stop"] { width: 8rem; }
+#fw-profiles #cbi-familywarden-schedule input[id$=".start"], #fw-profiles #cbi-familywarden-schedule input[id$=".stop"] { width: 7rem; min-width: 0; font-variant-numeric: tabular-nums; }
+#fw-profiles .fw-delete-section { padding: 20px; border: 1px solid var(--fw-line); border-radius: 14px; background: var(--fw-surface); }
+#fw-profiles .fw-delete-section h3 { margin: 0 0 6px; font: 600 18px/26px Georgia, serif; }
+#fw-profiles .fw-delete-section p { margin: 0 0 12px; color: var(--fw-muted); }
+@container fw-overview (max-width: 720px) {
+	#fw-profiles .cbi-section, #fw-profiles .fw-delete-section { padding: 16px; }
+	#fw-profiles .cbi-value { display: block; }
+	#fw-profiles .cbi-value label.cbi-value-title { display: block; width: auto; text-align: left; margin: 0 0 6px; padding-top: 0; }
+	#fw-profiles .cbi-value-field { margin-left: 0; }
+	#fw-profiles .cbi-dynlist, #fw-profiles .cbi-dropdown:not(.cbi-button) { min-width: 0; width: 100%; }
+	#fw-profiles .fw-profile-actions { flex-basis: 100%; margin-left: 0; }
+	#fw-profiles .fw-profile-actions .cbi-button { flex: 1 1 auto; }
+	#fw-profiles .fw-tab { min-height: 44px; }
+	#fw-profiles #cbi-familywarden-schedule table,
+	#fw-profiles #cbi-familywarden-schedule tbody { display: block; }
+	#fw-profiles #cbi-familywarden-schedule thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+	#fw-profiles #cbi-familywarden-schedule tr.cbi-section-table-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 12px; margin-bottom: 12px; border: 1px solid var(--fw-line); border-radius: 10px; }
+	#fw-profiles #cbi-familywarden-schedule .td { display: block; width: auto; min-width: 0; padding: 0; border: 0; }
+	#fw-profiles #cbi-familywarden-schedule .td[data-title]::before { content: attr(data-title); display: block; color: var(--fw-muted); font-size: 12px; margin-bottom: 6px; }
+	#fw-profiles #cbi-familywarden-schedule .td[data-name="days"],
+	#fw-profiles #cbi-familywarden-schedule .td.cbi-section-actions,
+	#fw-profiles #cbi-familywarden-schedule .placeholder .td { grid-column: 1 / -1; }
+	#fw-profiles #cbi-familywarden-schedule .fw-days { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+	#fw-profiles .fw-day { min-height: 44px; padding: 4px; }
+	#fw-profiles #cbi-familywarden-schedule input[id$=".start"], #fw-profiles #cbi-familywarden-schedule input[id$=".stop"] { width: 100%; }
+}

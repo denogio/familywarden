@@ -282,14 +282,14 @@ test('responsive scoped styles follow LuCI theme and do not restyle other pages'
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.evaluate(() => { document.body.style.zoom = '2'; });
   expect(await page.locator('#fw-dashboard').evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
-  // Simulate keeping the stylesheet loaded when leaving the Overview.
+  // Profiles now shares the frame; Info must stay untouched even with the stylesheet loaded.
   await page.evaluate(() => { document.body.style.zoom = ''; });
-  await page.goto(`${URL}/profiles`);
+  await page.goto(`${URL}/info`);
   const originalTabColor = await page.locator('#tabmenu .tabs > .active > a').evaluate(el => getComputedStyle(el).color);
   const originalBackground = await page.locator('#maincontent').evaluate(el => getComputedStyle(el).backgroundColor);
   await page.addStyleTag({ url: `${BASE}/luci-static/resources/familywarden/overview.css` });
   await expect(page.locator('#maincontent')).toHaveCSS('background-color', originalBackground);
   await expect(page.locator('#tabmenu .tabs > .active > a')).toHaveCSS('color', originalTabColor);
-  await expect(page.locator('[data-name="policy"] select')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Versions' })).toBeVisible();
   await expect(page.locator('#fw-dashboard')).toHaveCount(0);
 });

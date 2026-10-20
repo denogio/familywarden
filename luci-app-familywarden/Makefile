@@ -30,6 +30,8 @@ define Package/luci-app-familywarden/install
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/familywarden
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/ulysses.js $(1)/www/luci-static/resources/familywarden/ulysses.js
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/overview.css $(1)/www/luci-static/resources/familywarden/overview.css
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/profiles.css $(1)/www/luci-static/resources/familywarden/profiles.css
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/ui.js $(1)/www/luci-static/resources/familywarden/ui.js
 
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/luci-app-familywarden.json $(1)/usr/share/luci/menu.d/luci-app-familywarden.json
