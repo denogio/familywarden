@@ -43,6 +43,20 @@ Existing implementation to read before moving behavior:
 | Real disposable AGH tests | `scripts/test-agh.sh` |
 | Browser / Android lifecycle tests | `test/e2e/`, Android unit tests, `scripts/test-mast-emulator.sh` |
 
+## Design workstream — align LuCI with Android
+
+Selected before feature implementation; visual changes must preserve current behavior.
+
+- [x] Research current LuCI pages, Android identity and implementation constraints.
+- [x] Prepare [the continuation prompt](../docs/design/luci-design-prompt.md) for the
+      existing Claude Design thread; [research notes](../docs/design/luci-design-research.md).
+- [ ] Submit the prompt to Claude Design and obtain the design export (user handoff).
+- [ ] Review exported states, factual claims, accessibility and native LuCI compatibility.
+- [ ] After design approval, implement Overview first and test in disposable LuCI.
+- [ ] After Overview acceptance, apply the shared visual language to other existing pages.
+
+No generated design or UI implementation is implied by the completed research/prompt tasks.
+
 ## P0 — Establish the implementation baseline
 
 - [x] Create the branch from the merged v0.9.1 commit.
