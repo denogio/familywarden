@@ -132,7 +132,9 @@ app does not forbid other device admins, so coexistence is plausible but unprove
 | B | FamilyWarden Device Owner, no Google account | Most robust; only our rules | No Play Store with the child's account (parent installs, or Aurora Store); some apps need Google sign-in |
 | C | No Device Owner: light tier + Family Link | No account removal | Bypassable (see above) |
 
-Plan: test A on the Pixel 7 Pro without a reset: remove the supervised account (needs
+**Decided 2026-10-20: the son's Pixel 7 Pro is not a test device** (he uses it daily).
+A must be tested elsewhere (emulator with Google Play, or a spare phone) before it ever
+reaches his phone. Earlier plan, kept for reference: test A on the Pixel 7 Pro without a reset: remove the supervised account (needs
 the parent's password; turns Family Link off on the phone) and any others → Device Owner
 via adb → sign the supervised account back in. If Family Link can't supervise next to
 our Device Owner, B is the robust default (or remove our app to give the phone back to
@@ -143,8 +145,8 @@ Family Link).
 1. **User's own Pixel 10** (already Device Owner with FamilyWarden, no reset needed):
    app suspension behavior, whether the app can grant itself usage access as Device
    Owner (or needs one tap), and battery cost of an app-held relay connection (A2).
-2. **Pixel 7 Pro (child, no reset needed):** Device Owner via adb and whether a
-   supervised child account can coexist with it (A3). If not, the phone is
+2. **Not on the son's phone:** emulator with Google Play or a spare phone: Device Owner
+   via adb and whether a supervised child account can coexist with it (A3). If not, the phone is
    used without a Google account and apps are installed another way.
 
 ## Not in scope for now
