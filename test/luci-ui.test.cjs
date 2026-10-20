@@ -42,8 +42,8 @@ test('shared stylesheet loading is deduplicated across Overview and Profiles', (
   const { ui, head } = fixture();
   ui.loadStyles('overview');
   ui.loadStyles('overview');
-  ui.loadStyles('profiles');
+  ui.loadStyles('pages');
   assert.equal(head.children.length, 2);
   assert.equal(head.children[0].attrs.href, '/resources/familywarden/overview.css');
-  assert.equal(head.children[1].attrs.href, '/resources/familywarden/profiles.css');
+  assert.equal(head.children[1].attrs.href, '/resources/familywarden/pages.css');
 });
