@@ -67,12 +67,13 @@ not a completed final browser suite. App-control enforcement is still not implem
 
 - [x] Create the branch from the merged v0.9.1 commit.
 - [x] Write this backlog and link it from the product plan and roadmap.
-- [ ] Update stale current-status sections in `CLAUDE.md` and the roadmap: DNS and
-      enrollment are implemented; distinguish completed pilot evidence from remaining gates.
-- [ ] Inventory shell APIs, policy wire format, keys, UCI options and persistent files;
-      record which component owns each before and after migration.
-- [ ] Record baseline fast test results, package versions and available test environments.
-- [ ] Mark stale knowledge-graph entries explicitly; refresh after the architecture settles.
+- [x] Update stale current-status sections in `CLAUDE.md`: DNS and enrollment are
+      implemented, v0.9.2 released and deployed on rivendell (2026-10-21).
+- [x] Inventory shell APIs, policy wire format, keys, UCI options and persistent files with
+      current/proposed owners: [app-control-baseline.md](app-control-baseline.md).
+- [x] Record baseline versions, test results (integration 192, Playwright 29 in CI) and
+      available test environments (same file).
+- [x] Mark the knowledge graph as stale; refresh after the Go architecture settles.
 
 **Accept:** a reproducible baseline, no claim that old planning text describes current code.
 

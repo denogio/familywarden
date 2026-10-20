@@ -30,26 +30,23 @@ Use these library IDs directly (skip resolve-library-id):
 Always specify a topic (e.g. "rpc.declare signature", "TypedSection", or
 "ubus method registration"), rather than just a repository name.
 
-## Status (2026-10-16)
+## Status (2026-10-21)
 
-Versions: `familywarden` **0.8.0**, `luci-app-familywarden` **0.5.0**.
-Ulysses PR #1 is merged into `master`; `v0.8.0` is tagged. Release publication depends
-on successful CI. Previous published release: v0.7.3.
+Versions: `familywarden` **0.9.2**, `luci-app-familywarden` **0.7.0** — tagged `v0.9.2`,
+released, and deployed on rivendell 2026-10-21 (backup in `~/Backups/familywarden/`).
 Repository: https://github.com/denogio/familywarden — CI builds releases (see "CI / release").
 
-### Android development branch checkpoint
+Implemented and merged: phone enrollment with fingerprint approval (LuCI › Phones),
+device-bound signed policy, pact-frozen phone bindings, one-hour managed removal approval,
+AdGuard Home sync of FamilyWarden-owned clients only, strict Android Private DNS
+(`io.github.denogio.familywarden`, Device Owner), additive internet tickets, and the
+FamilyWarden LuCI design on all pages (`docs/design/luci/README.md`). Remaining Android
+gates: `plans/android-implementation.md`. The Android emulator suite takes ~15 min: run it
+once per larger change, not after every edit.
 
-Local work on `feature/familywarden-android` is documented in
-[`plans/android-implementation.md`](plans/android-implementation.md).
-The new application ID is `io.github.denogio.familywarden`; it is **not** an in-place
-update to the installed `me.hojgaard.ulysses.mast` owner. No production migration,
-router/AdGuard deployment, or user-pact change is authorized by local test work.
-Backend 0.9.0 / LuCI 0.6.0 on the branch add phone enrollment (own key, fingerprint
-approval under LuCI › Phones), device-bound signed policy, pact-frozen phone bindings,
-1-hour managed removal approval, and AdGuard Home sync of only FamilyWarden-owned
-clients/ClientIDs. The app applies and locks strict Private DNS. Tests: test-integration,
-test-agh (throwaway AGH), emulator, Playwright. The emulator suite takes ~15 min: run it
-once per larger change, not after every edit. Remaining gates: plans/android-implementation.md.
+**Active work:** app control (Family Link/Switchly alternative) on `feature/app-control`.
+Product decisions: `plans/app-control.md`; phased backlog: `plans/app-control-todo.md`;
+current-state inventory: `plans/app-control-baseline.md`. Read these before coding.
 
 ### Architecture (since 0.5.x)
 - **No polling daemon or cron for schedule evaluation.** Backend logic lives in the rpcd plugin
@@ -184,8 +181,7 @@ Designed with Dennis on 2026-10-14/15. One profile is the **captain**
   boot) remains a physical-access recovery option.
 
 ### Known gaps
-- ⚠️ **Per-profile traffic:** `overview.js` calls `traffic` (nlbwmon), but the rpcd plugin
-  has no such method. The modal silently closes on error.
+- ⚠️ **Per-profile traffic:** no backend method; the redesigned Overview no longer calls it.
 - ⚠️ **No i18n:** old Lua controller/`familywarden.da.lua` files were removed; no `.po` files exist.
 - ⚠️ **Outdated knowledge graph:** analyzed at `66c2701`, before block_router and
   kernel scheduling. Run `/understand` again.
@@ -206,7 +202,7 @@ Designed with Dennis on 2026-10-14/15. One profile is the **captain**
   UI checks cover pairing confirmation, light/dark, 200% text, stale removal dialogs,
   and successful Device Owner removal after release.
 - ⚠️ shellcheck reports platform-related warnings (SC1091 OpenWrt includes, SC3043 `local` in ash).
-- ✅ **Playwright e2e** (`test/e2e/`, 17 tests): `scripts/test-e2e.sh [apk-dir]` runs
+- ✅ **Playwright e2e** (`test/e2e/`, 29 tests): `scripts/test-e2e.sh [apk-dir]` runs
   against LuCI in an OpenWrt container (`scripts/e2e-container-setup.sh`, with a stub
   for procd's `system` object), also in CI. For QEMU:
   `FW_BASE_URL=http://localhost:8080 FW_PASSWORD=ulysses npx playwright test`.
@@ -223,42 +219,15 @@ Designed with Dennis on 2026-10-14/15. One profile is the **captain**
   Run `npm install` in `test/e2e/` and `npx playwright install chromium` before e2e tests.
 - Do not upgrade the live router or modify an active QEMU pact without explicit permission.
 
-### DNS filtering — NOT IMPLEMENTED (UI stub only)
+### DNS filtering (implemented, 0.9.x)
 
-The vision includes DNS filtering, but there is no implementation:
-- The rpcd plugin never reads `dns_profile` or changes DNS.
-- LuCI saves `dns_profile` to UCI, but nothing consumes it.
-- A commented UCI example exists, but no backend logic.
-- Current blocking uses MAC-based nft drops (internet on/off), not DNS.
-- Proposed direction: AdGuard Home client-policy integration plus nft DNS-path enforcement.
-  See `plans/dns-filtering.md`, especially its planning checkpoint and D1–D16 decisions.
-  Existing AGH is at `10.77.0.11`; base/wildcard DNS is `secure-dns.hojgaard.me`.
-  LAN-hairpin DoT works, but cellular access is unresolved. Split DNS and Mast Private
-  DNS/ClientID enforcement are proposals, not applied configuration. D1/D2 are confirmed:
-  always-on strict DNS, no automatic unfiltered fallback. Initial scope: user's phone;
-  Android product becomes FamilyWarden with a separate Ulysses section and a planned logo.
-  Approved new package ID: `io.github.denogio.familywarden` (not implemented).
-  Lighthouse logo reference: `docs/design/familywarden-logo.html`; Ulysses retains its
-  mast/sail subsection mark. Planning only. Package change needs Device Owner migration, not an APK
-  update in place. Personal DNS names are deployment settings, not project defaults;
-  changing the actual DNS domain is still an open question.
-  The user authorized preparation steps 1–3 only (scope, read-only inventory, design review).
-  Read `plans/dns-preflight-report.md` and `docs/design/familywarden-app/REVIEW.md` before
-  continuing. Inventory and design review are complete; 19 opt-in contract-review tests
-  plus 36 existing tests pass. The provided model is a reference, not runtime code.
-  Per-profile filtering must be selectable; map supported AGH controls rather than
-  promise arbitrary per-client blocklist groups. Only FamilyWarden-owned AGH clients/
-  settings may change; preserve existing clients and global lists.
-  Approved DoT ClientID: generate a unique DNS-safe ID from the profile name at first
-  setup, persist it profile-bound, and never regenerate on display-name edits or sync.
-  ClientID remains identification, not authentication.
-  Pilot user is admin + captain. Admin may remove their own app without an applicable
-  pact; managed-device removal needs admin approval. Approval/authentication protocol,
-  API access, exact filter defaults, and cellular verification still have gates.
-  Do not infer permission for implementation/deployment. Other questions are deferred
-  until relevant; do not decide them silently. Do not infer non-admin means child;
-  never confuse ClientID with authentication or LAN tests with external reachability.
-  Do not change the live router during its current pact test.
+Per-profile "Strict DNS": the router manages a `familywarden-<ClientID>` AdGuard Home
+client and its own allowed-ClientID entries only (re-read before, verified after; empty
+allowlists untouched); approved phones apply locked strict DoT to
+`<ClientID>.<dns_domain>` with no unfiltered fallback. During a pact DNS can only be
+tightened (`pact.dns` snapshot). ClientID is identification, not authentication.
+Design/decisions: `plans/dns-filtering.md`; defaults per profile are still open (#33).
+Deployment names (e.g. the real DoT domain) are settings, never project defaults.
 
 ### CI / release
 - `.github/workflows/ci.yml`: push/PR → syntax + integration tests → SDK build
@@ -274,7 +243,8 @@ The vision includes DNS filtering, but there is no implementation:
 
 ### Next steps
 
-See **`plans/roadmap.md`**: Ulysses (0.8.0), traffic, i18n, Home Assistant, DNS filtering.
+App control: `plans/app-control-todo.md` (P0 baseline → P1 contracts need user decisions).
+Other roadmap items: `plans/roadmap.md`.
 
 ---
 
