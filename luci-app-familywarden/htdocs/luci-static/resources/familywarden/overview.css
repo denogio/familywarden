@@ -49,7 +49,10 @@
 	--fw-muted: #4a5d70;
 	--fw-ok: #1f6a64;
 	--fw-ok-soft: #e4f2ef;
+	--fw-ok-line: #9ccfc7;
+	--fw-rest: #3b5266;
 	--fw-rest-soft: #ebf0f5;
+	--fw-rest-line: #b7c3cf;
 	--fw-gold: #7a5d00;
 	--fw-pact-soft: #faf3de;
 	--fw-pact-line: #e6d59e;
@@ -69,7 +72,10 @@
 	--fw-muted: #b4c4d3;
 	--fw-ok: #7cc7bd;
 	--fw-ok-soft: #16302f;
+	--fw-ok-line: #2e5f59;
+	--fw-rest: #b4c4d3;
 	--fw-rest-soft: #182431;
+	--fw-rest-line: #3a4c5e;
 	--fw-gold: #e0bd4a;
 	--fw-pact-soft: #1b2a3a;
 	--fw-pact-line: #5c5230;
@@ -103,11 +109,11 @@
 #fw-dashboard .fw-notice { margin-bottom: 16px; padding: 14px 16px; border: 1px solid var(--fw-line); border-radius: 10px; background: var(--fw-sunk); overflow-wrap: anywhere; }
 #fw-dashboard .fw-notice p { margin: 4px 0 8px; }
 #fw-dashboard .fw-notice.is-fault { color: var(--fw-fault); background: var(--fw-fault-soft); }
-#fw-dashboard .fw-section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 16px; margin: 8px 0 12px; }
+#fw-dashboard .fw-section-head { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin: 8px 0 12px; }
 #fw-dashboard .fw-section-head h3 { font: 650 18px/24px system-ui, sans-serif; margin: 0; }
 #fw-dashboard .fw-section-head p { margin: 0; color: var(--fw-muted); font-size: 13px; }
-#fw-dashboard .fw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr)); gap: 16px; }
-#fw-dashboard .fw-card { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--fw-line); border-radius: 14px; background: var(--fw-surface); }
+#fw-dashboard .fw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr)); align-items: start; gap: 16px; }
+#fw-dashboard .fw-card { display: flex; flex-direction: column; container: fw-card / inline-size; min-width: 0; border: 1px solid var(--fw-line); border-radius: 14px; background: var(--fw-surface); }
 #fw-dashboard .fw-card-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 16px 20px 12px; }
 #fw-dashboard .fw-card-name { margin: 0; font: 650 19px/26px system-ui, sans-serif; overflow-wrap: anywhere; }
 #fw-dashboard .fw-card-policy { color: var(--fw-muted); font-size: 13px; }
@@ -116,7 +122,13 @@
 #fw-dashboard .fw-state { display: flex; align-items: flex-start; gap: 12px; margin: 0 20px; padding: 12px 14px; border-radius: 10px; background: var(--fw-rest-soft); }
 #fw-dashboard .fw-state > div { min-width: 0; }
 #fw-dashboard .fw-state-icon { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--fw-surface); }
+#fw-dashboard .fw-icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+#fw-dashboard .fw-pact-heading { display: flex; align-items: flex-start; gap: 8px; }
+#fw-dashboard .fw-pact-heading .fw-icon { margin-top: 2px; }
 #fw-dashboard .fw-state-title { font-weight: 650; margin: 0; }
+#fw-dashboard .fw-state-titlerow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+#fw-dashboard .fw-tag-override { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border: 1.5px dashed var(--fw-ink); border-radius: 999px; background: var(--fw-surface); color: var(--fw-ink); font-size: 12px; line-height: 18px; font-weight: 600; }
+#fw-dashboard .fw-tag-override .fw-icon { width: 14px; height: 14px; }
 #fw-dashboard .fw-state-reason { color: var(--fw-muted); margin: 2px 0 0; overflow-wrap: anywhere; }
 #fw-dashboard .fw-state.is-allowed { background: var(--fw-ok-soft); }
 #fw-dashboard .is-allowed .fw-state-icon, #fw-dashboard .is-allowed .fw-state-title { color: var(--fw-ok); }
@@ -126,10 +138,11 @@
 #fw-dashboard .fw-facts dt { font-size: 13px; }
 #fw-dashboard .fw-devices, #fw-dashboard .fw-schedules { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 #fw-dashboard .fw-devices li, #fw-dashboard .fw-schedules li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 12px; color: var(--fw-ink); line-height: 1.5; overflow-wrap: anywhere; }
+#fw-dashboard .fw-schedules li { justify-content: flex-start; gap: 0 8px; }
 #fw-dashboard .fw-mono { color: var(--fw-muted); font: 12px/20px ui-monospace, monospace; }
 #fw-dashboard .fw-hours { font-variant-numeric: tabular-nums; }
 #fw-dashboard .fw-ulysses { margin: 0 20px 16px; padding: 14px 16px; background: var(--fw-pact-soft); border: 1px solid var(--fw-pact-line); border-radius: 10px; color: var(--fw-gold); line-height: 1.6; overflow-wrap: anywhere; }
-#fw-dashboard .fw-card-foot { margin-top: auto; padding: 12px 20px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border-top: 1px solid var(--fw-line); }
+#fw-dashboard .fw-card-foot { margin-top: 0; padding: 12px 20px 16px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; border-top: 1px solid var(--fw-line); }
 #fw-dashboard .fw-act-zone { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
 #fw-dashboard .fw-act-zone + .fw-act-zone { margin-left: 16px; padding-left: 16px; border-left: 1px solid var(--fw-line); }
 #fw-dashboard .fw-act-row { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -138,8 +151,37 @@
 #fw-dashboard .fw-act-hint { max-width: 36ch; }
 #fw-dashboard .fw-held { flex: 1 1 100%; margin: 0; }
 #fw-dashboard .cbi-button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; white-space: normal; word-break: normal; line-height: 1.4; padding: 7px 12px; border-radius: 6px; }
+/* Intent colours apply only to FamilyWarden's native LuCI action buttons. */
+#fw-dashboard .fw-btn-allow { background: var(--fw-ok-soft); border-color: var(--fw-ok-line); color: var(--fw-ok); font-weight: 600; }
+#fw-dashboard .fw-btn-block { background: var(--fw-rest-soft); border-color: var(--fw-rest-line); color: var(--fw-rest); font-weight: 600; }
+#fw-dashboard .fw-btn-reset { background: transparent; border: 1.5px solid var(--fw-ink); color: var(--fw-ink); font-weight: 600; }
+#fw-dashboard .fw-btn-reset:hover { background: var(--fw-sunk); }
+#fw-dashboard .fw-btn-pact { background: var(--fw-pact-soft); border-color: var(--fw-pact-line); color: var(--fw-gold); font-weight: 600; }
+#fw-dashboard .fw-btn-grant { background: transparent; border-color: var(--fw-ok-line); color: var(--fw-ok); font-weight: 600; }
+#fw-dashboard .fw-btn-revoke { background: transparent; border-color: var(--fw-rest-line); color: var(--fw-rest); font-weight: 600; }
+#fw-dashboard .fw-btn-grant:hover { background: var(--fw-ok-soft); }
+#fw-dashboard .fw-btn-revoke:hover { background: var(--fw-rest-soft); }
+/* Bootstrap otherwise forces blue hover borders with !important. */
+#fw-dashboard .fw-btn-allow:hover, #fw-dashboard .fw-btn-block:hover,
+#fw-dashboard .fw-btn-reset:hover, #fw-dashboard .fw-btn-pact:hover, #fw-dashboard .fw-btn-grant:hover,
+#fw-dashboard .fw-btn-revoke:hover { border-color: currentColor !important; }
+#fw-dashboard .fw-seg { display: inline-flex; }
+#fw-dashboard .fw-seg .cbi-button { min-width: 48px; padding: 7px 12px; border-radius: 0; margin-left: -1px; }
+#fw-dashboard .fw-seg .cbi-button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+#fw-dashboard .fw-seg .cbi-button:last-child { border-radius: 0 6px 6px 0; }
 #fw-dashboard .fw-empty { padding: 32px; border: 1px dashed var(--fw-muted); border-radius: 14px; background: var(--fw-surface); }
 #fw-dashboard .fw-empty h3 { margin: 0 0 8px; font: 600 22px/28px Georgia, serif; }
+@container fw-card (max-width: 460px) {
+	#fw-dashboard .fw-devices li { flex-direction: column; align-items: flex-start; }
+}
+@container fw-card (max-width: 440px) {
+	#fw-dashboard .fw-act-zone { width: 100%; align-items: stretch; }
+	#fw-dashboard .fw-act-zone + .fw-act-zone { margin-left: 0; padding-left: 0; border-left: 0; padding-top: 12px; border-top: 1px solid var(--fw-line); }
+	#fw-dashboard .fw-act-row > .cbi-button { flex: 1 1 auto; }
+	#fw-dashboard .fw-ticket .fw-seg { display: grid; width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+	#fw-dashboard .fw-seg .cbi-button, #fw-dashboard .fw-seg .cbi-button:first-child,
+	#fw-dashboard .fw-seg .cbi-button:last-child { border-radius: 6px; margin-left: 0; }
+}
 @container fw-overview (max-width: 640px) {
 	#fw-dashboard .fw-title { font-size: 24px; line-height: 30px; }
 	#fw-dashboard .fw-head > div, #fw-dashboard .fw-add-btn { width: 100%; }
@@ -152,10 +194,5 @@
 	#fw-dashboard .fw-fact { grid-template-columns: minmax(0, 1fr); gap: 2px; }
 	#fw-dashboard .fw-ulysses { margin: 0 16px 14px; }
 	#fw-dashboard .fw-card-foot { padding: 12px 16px 16px; }
-	#fw-dashboard .fw-card-foot > .cbi-button, #fw-dashboard .fw-act-zone { width: 100%; }
-	#fw-dashboard .fw-act-zone { align-items: stretch; }
-	#fw-dashboard .fw-act-zone + .fw-act-zone { margin-left: 0; padding-left: 0; border-left: 0; padding-top: 12px; border-top: 1px solid var(--fw-line); }
-	#fw-dashboard .fw-act-row .cbi-button { flex: 1; }
-	#fw-dashboard .fw-ticket .fw-act-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 	#fw-dashboard .cbi-button { min-height: 44px; }
 }

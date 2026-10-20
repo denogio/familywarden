@@ -54,6 +54,50 @@ function lighthouse() {
 	return svg;
 }
 
+// Small stroke icons from the design component board; status text carries the meaning.
+function icon(name) {
+	var circle = 'M21 12a9 9 0 1 1-18 0a9 9 0 1 1 18 0';
+	var paths = {
+		check: circle + ' M8 12.5l2.7 2.7L16 9.5',
+		ban: circle + ' M5.7 5.7l12.6 12.6',
+		moon: 'M19.5 14.2A8 8 0 0 1 9.8 4.5a8 8 0 1 0 9.7 9.7z',
+		info: circle + ' M12 11v5M12 8h.01',
+		mast: 'M12 2.5v17M12 4.5l6.5 10H12M4 19.5c2.7 1.6 5.3 1.6 8 0s5.3-1.6 8 0',
+		hand: 'M8 13V6.5a1.5 1.5 0 0 1 3 0V11M11 10V4.5a1.5 1.5 0 0 1 3 0V11M14 10.5V6a1.5 1.5 0 0 1 3 0v7c0 4-2.5 7-6 7-2.5 0-4-1.2-5.5-3.5L4 14.5a1.5 1.5 0 0 1 2.4-1.8L8 14.5'
+	};
+	var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+	svg.setAttribute('class', 'fw-icon');
+	svg.setAttribute('viewBox', '0 0 24 24');
+	svg.setAttribute('data-icon', name);
+	svg.setAttribute('aria-hidden', 'true');
+	svg.setAttribute('focusable', 'false');
+	var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+	path.setAttribute('d', paths[name]);
+	svg.appendChild(path);
+	return svg;
+}
+
+function formatDays(value) {
+	var days = Array.isArray(value) ? value : (value || '').split(/\s+/);
+	var week = Object.keys(dayLabels), selected = week.filter(function(d) { return days.indexOf(d) >= 0; });
+	if (selected.length === 7) return _('Every day');
+	var groups = [];
+	for (var i = 0; i < week.length; i++) {
+		if (selected.indexOf(week[i]) < 0) continue;
+		var start = i;
+		while (i + 1 < week.length && selected.indexOf(week[i + 1]) >= 0) i++;
+		groups.push(start === i ? dayLabels[week[i]] : dayLabels[week[start]] + '–' + dayLabels[week[i]]);
+	}
+	return groups.join(', ');
+}
+
+function compactTime(epoch) {
+	var date = new Date(epoch * 1000), now = new Date();
+	var time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+	return date.toDateString() === now.toDateString() ? time
+		: date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + time;
+}
+
 function policyLabel(policy) {
 	return { allow: _('Unrestricted'), block: _('Blocked'), scheduled: _('Scheduled') }[policy] || _('Unknown policy');
 }
@@ -64,19 +108,31 @@ function knownStatus(p) {
 
 function statusPanel(p) {
 	var allowed = p.status === 'allowed', known = knownStatus(p);
+	var timedOverride = known && p.override === 'allow' && +p.override_expires > 0;
+	var manualOverride = known && (p.override === 'block' || (p.override === 'allow' && !+p.override_expires));
 	var reason = _('Status is unavailable. Refresh before changing access.');
 	if (known) {
 		if (p.override === 'block') reason = _('Manual block until reset.');
 		else if (p.override === 'allow' && +p.override_expires > 0)
-			reason = _('Internet ticket · ends %s').format(new Date(p.override_expires * 1000).toLocaleString());
+			reason = _('Internet ticket · %s min left, ends %s').format(
+				Math.max(0, Math.ceil((p.override_expires - Date.now() / 1000) / 60)), compactTime(p.override_expires));
 		else if (p.override === 'allow') reason = _('Manual allow until reset.');
 		else if (p.policy === 'scheduled') reason = allowed ? _('Within allowed hours.') : _('Outside allowed hours.');
-		else reason = _('Following the profile policy.');
+		else if (p.policy === 'block') reason = ulysses.isBound(p)
+			? _('Policy is Blocked. The pact prevents Allow and tickets.')
+			: _('Policy is Blocked. Allow or a ticket opens it.');
+		else reason = _('Policy is Unrestricted. Internet stays allowed until blocked.');
 	}
 	return E('div', { 'class': 'fw-state fw-status ' + (!known ? 'is-unknown' : allowed ? 'is-allowed' : 'is-blocked') }, [
-		E('span', { 'class': 'fw-state-icon', 'aria-hidden': 'true' }, !known ? '?' : allowed ? '✓' : '☾'),
+		E('span', { 'class': 'fw-state-icon' }, icon(!known ? 'info' : allowed ? 'check'
+			: p.override !== 'block' && p.policy === 'scheduled' ? 'moon' : 'ban')),
 		E('div', {}, [
-			E('p', { 'class': 'fw-state-title' }, !known ? _('Status unknown') : allowed ? _('Internet allowed') : _('Internet blocked')),
+			E('div', { 'class': 'fw-state-titlerow' }, [
+				E('p', { 'class': 'fw-state-title' }, !known ? _('Status unknown') : allowed ? _('Internet allowed') : _('Internet blocked')),
+				manualOverride || timedOverride ? E('span', { 'class': 'fw-tag-override' }, [
+					icon('hand'), timedOverride ? _('Timed override') : _('Override')
+				]) : ''
+			]),
 			E('p', { 'class': 'fw-state-reason' }, reason)
 		])
 	]);
@@ -108,16 +164,12 @@ function profileCard(id, p, names) {
 	})) : _('No devices')) ];
 	if (p.policy === 'scheduled') {
 		facts.push(fact(_('Allowed hours'), schedules.length ? E('ul', { 'class': 'fw-schedules' }, schedules.map(function(s) {
-			var days = Array.isArray(s.days) ? s.days : (s.days || '').split(/\s+/);
-			return E('li', {}, [ E('span', {}, days.map(function(d) { return dayLabels[d] || d; }).join(' · ')),
-				E('span', { 'class': 'fw-hours' }, (s.start || '?') + '–' + (s.stop || '?')) ]);
+			var hours = (s.start || '?') + '–' + (s.stop || '?');
+			return E('li', {}, [ E('span', {}, formatDays(s.days)),
+				E('span', { 'class': 'fw-hours', 'title': hours }, s.start === '00:00' && s.stop === '23:59' ? _('All day') : hours) ]);
 		})) : _('No allow windows; internet is blocked by default.')));
 	}
-	if (p.override === 'allow' && +p.override_expires > 0) {
-		var remaining = Math.max(0, Math.ceil((p.override_expires - Date.now() / 1000) / 60));
-		facts.push(fact(_('Internet ticket'), _('%s min remaining').format(remaining)));
-	}
-	var note = ulysses.note(p);
+	var note = ulysses.note(p, icon('mast'));
 	return E('article', { 'class': 'fw-card', 'data-profile': id, 'aria-label': p.name || id }, [
 		E('div', { 'class': 'fw-card-head' }, [
 			E('h4', { 'class': 'fw-card-name' }, p.name || id),
@@ -132,7 +184,8 @@ function profileCard(id, p, names) {
 }
 
 function actionButton(id, label, key, fn) {
-	return E('button', { 'type': 'button', 'class': 'cbi-button fw-btn', 'data-focus': id + ':' + key,
+	var intent = key.indexOf('ticket-') === 0 ? 'grant' : { allow: 'allow', block: 'block', pact: 'pact' }[key];
+	return E('button', { 'type': 'button', 'class': 'cbi-button fw-btn' + (intent ? ' fw-btn-' + intent : ''), 'data-focus': id + ':' + key,
 		'click': function(ev) {
 			if (acting) return;
 			acting = true;
@@ -155,8 +208,11 @@ function cardButtons(id, p) {
 	var ticket = p.override === 'allow' && +p.override_expires > Date.now() / 1000;
 	var manual = p.override && p.override !== 'none' && !ticket;
 	var overrides = [];
-	if (manual)
-		overrides.push(actionButton(id, _('Reset override'), 'reset', function() { return callReset(id); }));
+	if (manual) {
+		var reset = actionButton(id, _('Reset override'), 'reset', function() { return callReset(id); });
+		reset.classList.add('fw-btn-reset');
+		overrides.push(reset);
+	}
 	else if (p.status === 'blocked') {
 		if (!bound) overrides.push(actionButton(id, _('Allow'), 'allow', function() { return callAllow(id); }));
 	} else overrides.push(actionButton(id, _('Block'), 'block', function() { return callBlock(id); }));
@@ -166,23 +222,33 @@ function cardButtons(id, p) {
 		E('div', { 'class': 'fw-act-row' }, overrides)
 	]));
 	if (!bound && !manual && (ticket || p.status === 'blocked')) {
-		var actions = [5, 10, 30].map(function(mins) {
-			return actionButton(id, '+%s min'.format(mins), 'ticket-' + mins, function() { return callTicket(id, mins); });
+		var minutes = [5, 10, 30].map(function(mins) {
+			var button = actionButton(id, '+' + mins, 'ticket-' + mins, function() { return callTicket(id, mins); });
+			button.setAttribute('aria-label', _('Add %s minutes').format(mins));
+			return button;
 		});
+		var actions = [ E('div', { 'class': 'fw-seg' }, minutes) ];
+		if (ticket) {
+			var cancel = actionButton(id, _('Cancel ticket'), 'reset', function() { return callReset(id); });
+			cancel.classList.add('fw-cancel-ticket', 'fw-btn-revoke');
+			actions.push(cancel);
+		}
 		btns.push(E('div', { 'class': 'fw-act-zone fw-ticket', 'role': 'group',
 			'aria-label': _('Internet ticket for %s').format(p.name || id) }, [
-			E('span', { 'class': 'fw-actions-label' }, _('Internet ticket')),
-			E('div', { 'class': 'fw-act-row' }, actions),
-			E('span', { 'class': 'fw-act-hint' }, ticket
-				? _('Adds time to the running ticket.')
-				: _('Starts now; returns to the profile policy when it expires.')),
-			ticket ? actionButton(id, _('Cancel ticket'), 'reset', function() { return callReset(id); }) : ''
+			E('span', { 'class': 'fw-actions-label' }, _('Internet ticket · minutes')),
+			E('div', { 'class': 'fw-act-row' }, actions)
 		]));
 	}
-	if (bound) btns.push(E('p', { 'class': 'fw-held' }, _('Bound by the pact: Allow and internet tickets are unavailable.')));
+	if (bound) btns.unshift(E('p', { 'class': 'fw-held' }, _('Bound by the pact: Allow and internet tickets are unavailable.')));
 	if (id === ulysses.captainId()) {
 		var label = !bound ? _('Make a pact') : p.pact_type === 'until' ? _('Extend pact') : p.pact_in_window ? _('Amend pact') : null;
-		if (label) btns.push(actionButton(id, label, 'pact', function() { return ulysses.showPactModal(p.name, p); }));
+		if (label) btns.push(E('div', { 'class': 'fw-act-zone fw-pact-actions', 'role': 'group',
+			'aria-label': _('Pact for %s').format(p.name || id) }, [
+			E('span', { 'class': 'fw-actions-label' }, _('Pact')),
+			E('div', { 'class': 'fw-act-row' }, [
+				actionButton(id, label, 'pact', function() { return ulysses.showPactModal(p.name, p); })
+			])
+		]));
 	}
 	return btns;
 }

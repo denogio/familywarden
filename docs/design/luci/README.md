@@ -7,6 +7,12 @@ Original user-supplied Claude Design exports, preserved unchanged:
 - `fw-luci.css`: reference stylesheet, including mock LuCI chrome. Do not ship wholesale.
 - `ticket-update.html`: subsequent user-supplied Overview revision separating Override
   and Internet ticket zones, with explicitly approved additive ticket behavior.
+- `overview-refinements.html`: later layout/status refinement reference.
+- `button-intents.html`: exact teal/slate/gold button styling and segmented minutes reference.
+- `reference-updated.html` and `fw-luci-updated.css`: latest standalone HTML/CSS pair;
+  verified that the CSS is embedded verbatim in the HTML. These supersede earlier
+  button-style references; mock LuCI theme rules remain reference-only.
+- `override-badge.html`: subsequent approved bold Reset override and dashed manual-override badge reference.
 
 Brief/research: [prompt](../luci-design-prompt.md), [research](../luci-design-research.md).
 
@@ -46,6 +52,35 @@ Overview is implemented in the existing LuCI view, not as a theme:
 The pending-phone notice in the mockup would need additional API wiring and is not
 included in this first Overview implementation. Full review/implementation of the
 other pages remains pending, including the measured Profiles overflow at 390 px.
+
+## Accepted Overview visual refinement
+
+- Cards fit their own content; action zones top-align. Profiles helper text sits below
+  its heading. MAC addresses stack below names when a card is narrower than 460 px.
+- Ticket minutes and short expiry appear once in the status line; same-day expiry omits
+  date/seconds. Cancel ticket remains a real bordered button beside the minute group.
+- SVG check/ban/moon icons distinguish allowed, policy/manual blocks and scheduled blocks.
+  The captain note uses the mast SVG; Pact actions have their own labeled zone and the
+  restriction explanation precedes controls. Block remains permitted by backend semantics.
+- Schedule days collapse into consecutive ranges; Every day/All day labels retain the
+  exact underlying `00:00–23:59` range in the tooltip. Times follow days directly.
+- Native LuCI buttons carry scoped intent classes: teal filled Allow, slate filled Block,
+  gold Pact, teal-outline segmented +5/+10/+30 and slate-outline Cancel ticket. Minute
+  controls have explicit accessible names. Reset override now uses bold text and an
+  ink outline as in the subsequent badge reference; manual overrides carry a small
+  dashed hand-SVG badge beside the status. Active tickets carry the same badge labeled
+  "Timed override", while manual Allow/Block use "Override".
+  The explanatory text beneath ticket buttons has been removed at the user's request.
+- Narrow action-zone stacking follows the card's own 440 px container breakpoint.
+- The supplied stale-state board is a button reference only: it does not override our
+  stale-data safeguards or imply that Block is forbidden during a pact.
+- User accepted this Overview checkpoint; Profiles is the next design workstream.
+  CI is explicitly skipped for this checkpoint to respect the requested Playwright pause.
+- Preview on localhost:18091 contains these changes. Screenshots in the repository
+  precede this refinement; no new screenshots were generated after Playwright was paused.
+- Syntax/structure checks and `git diff --check` pass. Earlier targeted layout/status
+  checks passed, but the full 29-test run was interrupted. The subsequent intent-color
+  changes have not been browser-tested: **Playwright is paused at the user's request**.
 
 ## Evidence
 

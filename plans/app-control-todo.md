@@ -58,8 +58,10 @@ Selected before feature implementation; visual changes must preserve current beh
       24 browser tests pass, scoped light/dark styling, no production deployment.
 - [ ] After Overview acceptance, apply the shared visual language to other existing pages.
 
-User-supplied design is archived; Overview is implemented. User visual acceptance and
-other pages remain open. App-control enforcement is still not implemented.
+User-supplied design is archived; Overview and its follow-up refinements are implemented
+and visually accepted. Next: Profiles, then Phones, Settings and Info. Playwright is
+paused at the user's request; latest refinements have syntax checks and manual preview,
+not a completed final browser suite. App-control enforcement is still not implemented.
 
 ## P0 — Establish the implementation baseline
 

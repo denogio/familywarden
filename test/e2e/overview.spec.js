@@ -2,6 +2,7 @@ const { test, expect } = require('@playwright/test');
 
 const BASE = process.env.FW_BASE_URL || 'http://localhost:8080';
 const URL = `${BASE}/cgi-bin/luci/admin/services/familywarden`;
+test.use({ locale: 'en-GB', timezoneId: 'UTC' });
 
 async function login(page) {
   await page.goto(`${BASE}/cgi-bin/luci/admin/login`);
@@ -62,7 +63,7 @@ test('Overview uses truthful access labels and preserves pact tightening', async
   await expect(root.locator('.fw-summary')).not.toContainText('Online');
   const alex = root.locator('[data-profile="alex"]');
   await expect(alex.locator('.fw-status')).toContainText('Internet blocked');
-  await expect(alex.getByRole('button', { name: '+10 min', exact: true })).toBeVisible();
+  await expect(alex.getByRole('button', { name: 'Add 10 minutes', exact: true })).toBeVisible();
   const captain = root.locator('[data-profile="morgan"]');
   await expect(captain.getByRole('button', { name: 'Block', exact: true })).toBeVisible();
   await expect(captain.getByRole('button', { name: 'Allow', exact: true })).toHaveCount(0);
@@ -101,14 +102,115 @@ test('running tickets extend through the UI and can be cancelled separately', as
   await page.reload();
   const alex = page.locator('[data-profile="alex"]');
   await expect(alex.locator('.fw-override')).toContainText('Override');
-  await expect(alex.locator('.fw-ticket')).toContainText('Adds time to the running ticket.');
-  await alex.getByRole('button', { name: '+10 min', exact: true }).click();
+  await expect(alex.locator('.fw-ticket .fw-act-hint')).toHaveCount(0);
+  await alex.getByRole('button', { name: 'Add 10 minutes', exact: true }).click();
   await expect.poll(async () => (await call('status', { profile: 'alex' })).override_expires)
     .toBe(initial.override_expires + 600);
   await expect(alex.getByRole('button', { name: 'Cancel ticket', exact: true })).toBeEnabled();
   await alex.getByRole('button', { name: 'Cancel ticket', exact: true }).click();
   await expect.poll(async () => (await call('status', { profile: 'alex' })).override).toBe('none');
   await expect(alex.locator('.fw-ticket')).toHaveCount(0);
+});
+
+test('refined cards use semantic SVG icons and grouped schedule days', async ({ page }) => {
+  await mockProfiles(page, () => ({ profiles: {
+    alex: { ...fixtures.alex, policy: 'block' },
+    living: { ...fixtures.alex, name: 'Living room', policy: 'allow', override: 'block' },
+    scheduled: { ...fixtures.alex, name: 'Scheduled' },
+    daily: { ...fixtures.alex, name: 'Daily', status: 'allowed', schedules: [
+      { days: 'sun mon tue wed thu fri sat mon', start: '00:00', stop: '23:59' },
+      { days: 'mon wed fri', start: '07:00', stop: '08:00' }
+    ] }
+  } }));
+  await page.goto(URL);
+  const alex = page.locator('[data-profile="alex"]');
+  await expect(alex.locator('.fw-state svg[data-icon="ban"]')).toBeVisible();
+  await expect(alex.locator('.fw-state-reason')).toHaveText('Policy is Blocked. Allow or a ticket opens it.');
+  await expect(page.locator('[data-profile="living"] .fw-state svg[data-icon="ban"]')).toBeVisible();
+  await expect(page.locator('[data-profile="living"] .fw-state-reason')).toHaveText('Manual block until reset.');
+  await expect(page.locator('[data-profile="living"] .fw-tag-override')).toHaveText('Override');
+  await expect(page.locator('[data-profile="living"] .fw-tag-override svg[data-icon="hand"]')).toBeVisible();
+  await expect(page.locator('[data-profile="living"] .fw-btn-reset')).toHaveCSS('font-weight', '600');
+  await expect(alex.locator('.fw-tag-override')).toHaveCount(0);
+  const scheduled = page.locator('[data-profile="scheduled"]');
+  await expect(scheduled.locator('.fw-state svg[data-icon="moon"]')).toBeVisible();
+  await expect(scheduled.locator('.fw-schedules')).toContainText('Mon–Fri');
+  const daily = page.locator('[data-profile="daily"]');
+  await expect(daily.locator('.fw-state svg[data-icon="check"]')).toBeVisible();
+  await expect(daily.locator('.fw-schedules li').first()).toHaveText('Every dayAll day');
+  await expect(daily.locator('.fw-hours').first()).toHaveAttribute('title', '00:00–23:59');
+  await expect(daily.locator('.fw-schedules li').nth(1)).toContainText('Mon, Wed, Fri');
+  const gap = await scheduled.locator('.fw-schedules li').evaluate(el =>
+    el.lastElementChild.getBoundingClientRect().left - el.firstElementChild.getBoundingClientRect().right);
+  expect(gap).toBeLessThanOrEqual(10);
+});
+
+test('ticket status combines minutes and short expiry with cancellation beside additions', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-10-20T21:24:00Z'));
+  await mockProfiles(page, () => ({ profiles: {
+    sam: { ...fixtures.alex, name: 'Sam', status: 'allowed', override: 'allow',
+      override_expires: Date.parse('2026-10-20T21:41:00Z') / 1000 },
+    tomorrow: { ...fixtures.alex, name: 'Tomorrow', status: 'allowed', override: 'allow',
+      override_expires: Date.parse('2026-10-21T00:05:00Z') / 1000 }
+  } }));
+  await page.goto(URL);
+  const sam = page.locator('[data-profile="sam"]');
+  await expect(sam.locator('.fw-state-reason')).toHaveText('Internet ticket · 17 min left, ends 21:41');
+  await expect(sam.locator('.fw-facts dt').filter({ hasText: 'Internet ticket' })).toHaveCount(0);
+  await expect(sam.locator('.fw-tag-override')).toHaveText('Timed override');
+  const cancel = sam.locator('.fw-ticket .fw-act-row').getByRole('button', { name: 'Cancel ticket', exact: true });
+  await expect(cancel).toBeVisible();
+  await expect(cancel).toHaveClass(/cbi-button/);
+  await expect(cancel).toHaveClass(/fw-btn-revoke/);
+  await expect(sam.locator('.fw-seg .fw-btn-grant')).toHaveCount(3);
+  await expect(sam.locator('.fw-seg .fw-btn-grant').first()).toHaveText('+5');
+  await expect(cancel).toHaveCSS('text-decoration-line', 'none');
+  await expect(cancel).toHaveCSS('border-top-style', 'solid');
+  await expect(page.locator('[data-profile="tomorrow"] .fw-state-reason')).toContainText('ends 21 Oct 00:05');
+});
+
+test('cards fit content, actions align at the top, and the captain gets a Pact zone', async ({ page }) => {
+  await page.goto(URL);
+  await expect(page.locator('#fw-dashboard')).toBeVisible();
+  const captainId = await page.evaluate(async () => (await L.require('uci')).get('familywarden', 'settings', 'ulysses_profile'));
+  await mockProfiles(page, () => ({ profiles: {
+    short: { ...fixtures.alex, name: 'Short', policy: 'block', devices: [], schedules: [] },
+    [captainId]: { ...fixtures.morgan, pact_type: 'until', pact_until: Math.floor(Date.now() / 1000) + 86400 }
+  } }));
+  await page.reload();
+  const short = page.locator('[data-profile="short"]');
+  const captain = page.locator(`[data-profile="${captainId}"]`);
+  await expect(short).toBeVisible();
+  await expect(page.locator('.fw-grid')).toHaveCSS('align-items', 'start');
+  await expect(short.locator('.fw-card-foot')).toHaveCSS('margin-top', '0px');
+  await expect(short.locator('.fw-card-foot')).toHaveCSS('align-items', 'flex-start');
+  expect((await short.boundingBox()).height).toBeLessThan((await captain.boundingBox()).height);
+  const labels = await short.locator('.fw-act-zone > .fw-actions-label').evaluateAll(els => els.map(e => e.getBoundingClientRect().top));
+  expect(Math.abs(labels[0] - labels[1])).toBeLessThanOrEqual(1);
+  await expect(captain.locator('.fw-ulysses svg[data-icon="mast"]')).toBeVisible();
+  await expect(captain.locator('.fw-ulysses')).not.toContainText('⚓');
+  await expect(captain.locator('.fw-pact-actions').getByRole('button', { name: 'Extend pact', exact: true })).toBeVisible();
+  await expect(captain.locator('.fw-card-foot > .fw-held:first-child')).toContainText('Allow and internet tickets are unavailable');
+  await expect(captain.locator('.fw-override').getByRole('button', { name: 'Block', exact: true })).toBeVisible();
+});
+
+test('MAC addresses stack based on card width and Profiles help stays below its heading', async ({ page }) => {
+  await mockProfiles(page, () => ({ profiles: { alex: fixtures.alex } }));
+  await page.goto(URL);
+  const card = page.locator('[data-profile="alex"]');
+  await expect(card).toBeVisible();
+  await card.evaluate(el => { el.style.width = '440px'; });
+  const positions = await card.locator('.fw-devices li').evaluate(el => ({
+    name: el.firstElementChild.getBoundingClientRect().toJSON(),
+    mac: el.lastElementChild.getBoundingClientRect().toJSON()
+  }));
+  expect(positions.mac.top).toBeGreaterThanOrEqual(positions.name.bottom);
+  expect(positions.mac.left).toBe(positions.name.left);
+  const help = await page.locator('.fw-section-head').evaluate(el => ({
+    heading: el.firstElementChild.getBoundingClientRect().toJSON(),
+    text: el.lastElementChild.getBoundingClientRect().toJSON()
+  }));
+  expect(help.text.top).toBeGreaterThanOrEqual(help.heading.bottom);
 });
 
 test('unknown status is not counted as allowed and offers no access actions', async ({ page }) => {
@@ -163,6 +265,10 @@ test('responsive scoped styles follow LuCI theme and do not restyle other pages'
   for (const dark of [false, true]) {
     await page.evaluate(d => document.documentElement.setAttribute('data-darkmode', String(d)), dark);
     await expect(page.locator('.fw-card').first()).toHaveCSS('background-color', dark ? 'rgb(18, 28, 39)' : 'rgb(255, 255, 255)');
+    await expect(page.locator('.fw-btn-allow')).toHaveCSS('background-color', dark ? 'rgb(22, 48, 47)' : 'rgb(228, 242, 239)');
+    await expect(page.locator('.fw-btn-allow')).toHaveCSS('color', dark ? 'rgb(124, 199, 189)' : 'rgb(31, 106, 100)');
+    await expect(page.locator('.fw-btn-block')).toHaveCSS('background-color', dark ? 'rgb(24, 36, 49)' : 'rgb(235, 240, 245)');
+    await expect(page.locator('.fw-btn-grant').first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(page.locator('#maincontent')).toHaveCSS('background-color', dark ? 'rgb(20, 23, 27)' : 'rgb(234, 240, 246)');
     await expect(page.locator('#tabmenu .tabs > .active')).toHaveCSS('background-color', dark ? 'rgb(20, 23, 27)' : 'rgb(255, 255, 255)');
     await expect(page.locator('#tabmenu .tabs > .active > a')).toHaveCSS('color', dark ? 'rgb(230, 232, 235)' : 'rgb(15, 27, 39)');
