@@ -282,14 +282,13 @@ test('responsive scoped styles follow LuCI theme and do not restyle other pages'
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.evaluate(() => { document.body.style.zoom = '2'; });
   expect(await page.locator('#fw-dashboard').evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
-  // Profiles now shares the frame; Info must stay untouched even with the stylesheet loaded.
+  // Every FamilyWarden page is framed, but only while its root exists: once the
+  // FamilyWarden root is gone, the stylesheet must leave LuCI's own chrome alone.
   await page.evaluate(() => { document.body.style.zoom = ''; });
   await page.goto(`${URL}/info`);
-  const originalTabColor = await page.locator('#tabmenu .tabs > .active > a').evaluate(el => getComputedStyle(el).color);
-  const originalBackground = await page.locator('#maincontent').evaluate(el => getComputedStyle(el).backgroundColor);
-  await page.addStyleTag({ url: `${BASE}/luci-static/resources/familywarden/overview.css` });
-  await expect(page.locator('#maincontent')).toHaveCSS('background-color', originalBackground);
-  await expect(page.locator('#tabmenu .tabs > .active > a')).toHaveCSS('color', originalTabColor);
-  await expect(page.getByRole('heading', { name: 'Versions' })).toBeVisible();
+  await expect(page.locator('#fw-info')).toBeVisible();
+  const framed = await page.locator('#maincontent').evaluate(el => getComputedStyle(el).backgroundColor);
+  await page.evaluate(() => document.getElementById('fw-info').remove());
+  await expect(page.locator('#maincontent')).not.toHaveCSS('background-color', framed);
   await expect(page.locator('#fw-dashboard')).toHaveCount(0);
 });

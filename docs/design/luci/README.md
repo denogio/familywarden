@@ -105,3 +105,27 @@ other pages remains pending, including the measured Profiles overflow at 390 px.
 
 Screenshots under `docs/screenshots/luci-overview-*` are disposable fixtures, not
 production state. The CSS-zoom check is not a full manual browser/accessibility audit.
+
+## Profiles, Phones, Settings and Info
+
+All FamilyWarden pages now share `familywarden/ui.js` (lighthouse header, SVG icons,
+stylesheet loader), the framed page surface and tokens from `overview.css`, and
+`pages.css` for the native-form pages. LuCI's own fields, dialogs and Save & Apply stay.
+
+- **Profiles:** profile chips, live status card with icons/override badges and intent
+  buttons, explicit live-vs-staged note, pact lock panel, DNS divider inside the one
+  native section, styled day checkboxes, stacked schedule rows on narrow screens.
+- **Phones:** pending requests as cards with large grouped fingerprints and Compare and
+  approve / Reject; approved phones as a table that stacks on mobile; separate,
+  explicit dialogs for "Allow removal for 1 hour" and "Remove enrollment" (which does
+  not uninstall or erase the phone's cached protection). Last policy fetch is labelled
+  as a fetch, not applied state.
+- **Settings:** General, Phone pairing (for all phones, not only Ulysses), DNS · AdGuard
+  Home, Ulysses. Login/sync are marked "applies immediately"; plain-HTTP AdGuard URLs
+  get an honest warning; the router key is grouped (it is the 16-hex usign id, not a
+  SHA-256 as drawn in the mockup).
+- **Info:** cache mismatch as a notice with Reload, versions as a key/value list.
+
+Validation: syntax checks and `test/luci-ui.test.cjs` pass; e2e tests updated for the
+new fingerprint text and framing isolation but **not run** (Playwright paused by the user).
+Reviewed manually in the disposable preview only.

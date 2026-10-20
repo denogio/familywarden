@@ -48,7 +48,7 @@ test('settings show the Ulysses Mast pairing QR', async ({ page }) => {
   await page.goto(`${FW_URL}/settings`);
   const mast = page.locator('[data-name="_mast"]');
   await expect(mast.locator('svg')).toBeVisible();
-  await expect(mast).toContainText(/Key fingerprint: [0-9a-f]{16}/);
+  await expect(mast).toContainText(/Router key fingerprint\s*([0-9a-f]{4}\s*){4}/);
   await expect(mast).toContainText('No phone has synced yet');
 });
 

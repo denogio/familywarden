@@ -1,0 +1,123 @@
+/* Profiles, Phones, Settings and Info. Shared identity/tokens live in overview.css. */
+#fw-profiles .fw-head { margin-bottom: 20px; }
+#fw-profiles .fw-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 12px; margin-bottom: 16px; border-bottom: 1px solid var(--fw-line); }
+#fw-profiles .fw-tab { display: inline-flex; align-items: center; min-height: 36px; padding: 6px 12px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--fw-muted); text-decoration: none; overflow-wrap: anywhere; }
+#fw-profiles .fw-tab:hover { background: var(--fw-sunk); color: var(--fw-ink); }
+#fw-profiles .fw-tab.active { background: var(--fw-surface); border-color: var(--fw-line); color: var(--fw-ink); font-weight: 600; }
+#fw-profiles .fw-tab-add { border-color: var(--fw-line); }
+#fw-profiles .fw-status-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 16px; margin-bottom: 8px; background: var(--fw-surface); border: 1px solid var(--fw-line); border-radius: 12px; }
+#fw-profiles .fw-status-text { font-size: 16px; font-weight: 600; }
+#fw-profiles .fw-status-icon { display: inline-flex; color: var(--fw-muted); }
+#fw-profiles .fw-status-bar[data-status="allowed"] .fw-status-icon { color: var(--fw-ok); }
+#fw-profiles .fw-status-bar[data-status="unknown"] { border-style: dashed; }
+#fw-profiles .fw-profile-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+#fw-profiles .fw-profile-actions .fw-icon { margin-right: 5px; }
+#fw-profiles .fw-status-bar .fw-ulysses { flex-basis: 100%; margin: 4px 0 0; }
+#fw-profiles .fw-immediate-note { margin: 0 0 20px; color: var(--fw-muted); font-size: 13px; }
+#fw-profiles .fw-profile-lock { padding: 16px; margin-bottom: 20px; border: 1px solid var(--fw-pact-line); border-radius: 12px; background: var(--fw-pact-soft); }
+#fw-profiles .fw-profile-lock strong { color: var(--fw-gold); }
+#fw-profiles .fw-profile-lock p { margin: 6px 0 0; }
+:is(#fw-profiles, #fw-settings) .cbi-section { margin: 0 0 20px; padding: 20px; border: 1px solid var(--fw-line); border-radius: 14px; background: var(--fw-surface); min-width: 0; }
+:is(#fw-profiles, #fw-settings) .cbi-section > h3 { margin: 0 0 16px; font: 600 20px/28px Georgia, serif; }
+:is(#fw-profiles, #fw-settings) .cbi-section-descr { margin-bottom: 16px; color: var(--fw-muted); }
+:is(#fw-profiles, #fw-settings) .cbi-value { margin-bottom: 18px; }
+:is(#fw-profiles, #fw-settings) .cbi-value-field { min-width: 0; }
+:is(#fw-profiles, #fw-settings) .cbi-value-title { color: var(--fw-ink); }
+:is(#fw-profiles, #fw-settings) .cbi-value-description { color: var(--fw-muted); max-width: 72ch; }
+:is(#fw-profiles, #fw-settings) .cbi-dropdown:not(.cbi-button), :is(#fw-profiles, #fw-settings) .cbi-dynlist { max-width: 100%; }
+:is(#fw-profiles, #fw-settings) input:not([type="checkbox"]):not([type="radio"]), :is(#fw-profiles, #fw-settings) select { max-width: 100%; }
+#fw-profiles [data-name="_dns_heading"] { display: block; padding-top: 20px; margin-top: 24px; border-top: 1px solid var(--fw-line); }
+#fw-profiles .fw-form-heading h4 { margin: 0 0 4px; font: 600 19px/26px Georgia, serif; }
+#fw-profiles .fw-form-heading p { margin: 0; color: var(--fw-muted); max-width: 76ch; }
+#fw-profiles .fw-days { display: flex; flex-wrap: wrap; gap: 4px; }
+#fw-profiles .fw-day { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 36px; padding: 4px 8px; border: 1px solid var(--fw-line); border-radius: 6px; color: var(--fw-ink); cursor: pointer; }
+#fw-profiles .fw-day:has(input:checked) { background: var(--fw-ok-soft); border-color: var(--fw-ok-line); color: var(--fw-ok); }
+#fw-profiles .fw-day:has(input:disabled) { cursor: default; }
+#fw-profiles .fw-day input { margin: 0; flex: none; }
+#fw-profiles #cbi-familywarden-schedule .td { vertical-align: top; white-space: normal; }
+#fw-profiles #cbi-familywarden-schedule .td[data-name="start"], #fw-profiles #cbi-familywarden-schedule .td[data-name="stop"] { width: 8rem; }
+#fw-profiles #cbi-familywarden-schedule input[id$=".start"], #fw-profiles #cbi-familywarden-schedule input[id$=".stop"] { width: 7rem; min-width: 0; font-variant-numeric: tabular-nums; }
+#fw-profiles .fw-delete-section { padding: 20px; border: 1px solid var(--fw-line); border-radius: 14px; background: var(--fw-surface); }
+#fw-profiles .fw-delete-section h3 { margin: 0 0 6px; font: 600 18px/26px Georgia, serif; }
+#fw-profiles .fw-delete-section p { margin: 0 0 12px; color: var(--fw-muted); }
+@container fw-overview (max-width: 720px) {
+	:is(#fw-profiles, #fw-settings) .cbi-section, :is(#fw-profiles, #fw-settings) .fw-delete-section { padding: 16px; }
+	:is(#fw-profiles, #fw-settings) .cbi-value { display: block; }
+	:is(#fw-profiles, #fw-settings) .cbi-value label.cbi-value-title { display: block; width: auto; text-align: left; margin: 0 0 6px; padding-top: 0; }
+	:is(#fw-profiles, #fw-settings) .cbi-value-field { margin-left: 0; }
+	:is(#fw-profiles, #fw-settings) .cbi-dynlist, :is(#fw-profiles, #fw-settings) .cbi-dropdown:not(.cbi-button) { min-width: 0; width: 100%; }
+	#fw-profiles .fw-profile-actions { flex-basis: 100%; margin-left: 0; }
+	#fw-profiles .fw-profile-actions .cbi-button { flex: 1 1 auto; }
+	#fw-profiles .fw-tab { min-height: 44px; }
+	#fw-profiles #cbi-familywarden-schedule table,
+	#fw-profiles #cbi-familywarden-schedule tbody { display: block; }
+	#fw-profiles #cbi-familywarden-schedule thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+	#fw-profiles #cbi-familywarden-schedule tr.cbi-section-table-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 12px; margin-bottom: 12px; border: 1px solid var(--fw-line); border-radius: 10px; }
+	#fw-profiles #cbi-familywarden-schedule .td { display: block; width: auto; min-width: 0; padding: 0; border: 0; }
+	#fw-profiles #cbi-familywarden-schedule .td[data-title]::before { content: attr(data-title); display: block; color: var(--fw-muted); font-size: 12px; margin-bottom: 6px; }
+	#fw-profiles #cbi-familywarden-schedule .td[data-name="days"],
+	#fw-profiles #cbi-familywarden-schedule .td.cbi-section-actions,
+	#fw-profiles #cbi-familywarden-schedule .placeholder .td { grid-column: 1 / -1; }
+	#fw-profiles #cbi-familywarden-schedule .fw-days { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+	#fw-profiles .fw-day { min-height: 44px; padding: 4px; }
+	#fw-profiles #cbi-familywarden-schedule input[id$=".start"], #fw-profiles #cbi-familywarden-schedule input[id$=".stop"] { width: 100%; }
+}
+
+/* ---- Phones, Settings and Info ---- */
+:is(#fw-phones, #fw-info) .fw-panel { margin: 0 0 20px; padding: 20px; border: 1px solid var(--fw-line); border-radius: 14px; background: var(--fw-surface); min-width: 0; }
+:is(#fw-phones, #fw-info) .fw-panel > h3 { margin: 0 0 4px; font: 600 20px/28px Georgia, serif; }
+:is(#fw-phones, #fw-settings, #fw-info) .fw-muted { color: var(--fw-muted); max-width: 80ch; }
+#fw-phones .fw-pending-list { display: grid; gap: 12px; }
+#fw-phones .fw-pending { display: grid; gap: 14px; padding: 18px 20px; border: 1.5px solid var(--fw-ok-line); border-radius: 14px; background: var(--fw-ok-soft); }
+#fw-phones .fw-pending-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+#fw-phones .fw-pending-top h4 { margin: 0; font-size: 17px; }
+#fw-phones .fw-pending-top .fw-icon { color: var(--fw-ok); }
+:is(#fw-phones, #fw-settings) .fw-fp-label { margin: 0 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--fw-muted); }
+:is(#fw-phones, #fw-settings) .fw-fp { display: flex; flex-wrap: wrap; gap: 2px 8px; font: 13px/20px ui-monospace, monospace; overflow-wrap: anywhere; }
+:is(#fw-phones, #fw-settings) .fw-fp span { white-space: nowrap; }
+:is(#fw-phones, #fw-settings) .fw-fp.is-large { display: inline-grid; grid-template-columns: repeat(4, max-content); gap: 6px 18px; padding: 14px 18px; font-size: 19px; line-height: 28px; border: 1px solid var(--fw-line); border-radius: 10px; background: var(--fw-sunk); }
+#fw-phones .fw-rowactions { display: flex; flex-wrap: wrap; gap: 6px; }
+#fw-phones .fw-deadline { margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--fw-ok); }
+#fw-phones .fw-held { display: flex; gap: 8px; align-items: flex-start; margin: 0; color: var(--fw-muted); font-size: 13px; }
+:is(#fw-phones, #fw-settings) .fw-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+:is(#fw-phones, #fw-settings) .fw-table th { padding: 10px 12px; text-align: left; font-size: 13px; font-weight: 600; color: var(--fw-muted); border-bottom: 1px solid var(--fw-line); }
+:is(#fw-phones, #fw-settings) .fw-table td { padding: 14px 12px; vertical-align: top; border-top: 1px solid var(--fw-line); color: var(--fw-ink); }
+:is(#fw-phones, #fw-settings) .fw-table tr:first-child td { border-top: 0; }
+#fw-phones .fw-table .fw-fp { max-width: 22rem; }
+#fw-settings .fw-pairing { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+#fw-settings .fw-qr { width: 200px; height: 200px; flex: none; padding: 8px; border-radius: 12px; background: #fff; }
+#fw-settings .fw-steps { margin: 0 0 16px; padding-left: 20px; display: grid; gap: 6px; }
+#fw-settings .fw-steps li { color: var(--fw-ink); line-height: 1.5; }
+#fw-settings .fw-immediate { display: grid; gap: 8px; justify-items: start; padding: 14px 16px; border: 1px solid var(--fw-line); border-radius: 12px; background: var(--fw-sunk); }
+#fw-settings .fw-immediate-tag { font-size: 12px; font-weight: 600; color: var(--fw-muted); }
+#fw-settings .fw-dns-table { margin: 0; }
+#fw-settings .fw-warning { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--fw-pact-line); border-radius: 10px; background: var(--fw-pact-soft); color: var(--fw-ink); max-width: 72ch; }
+#fw-settings .fw-warning[hidden] { display: none; }
+#fw-settings .fw-warning.is-fault { margin: 0; border-color: var(--fw-fault); background: var(--fw-fault-soft); color: var(--fw-fault); }
+#fw-info .fw-kv { display: grid; grid-template-columns: 12rem minmax(0, 1fr); gap: 10px 16px; margin: 12px 0 16px; }
+#fw-info .fw-kv dt { color: var(--fw-muted); font-weight: 400; }
+#fw-info .fw-kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+#fw-info .fw-warning-inline { color: var(--fw-fault); font-weight: 600; }
+@container fw-overview (max-width: 720px) {
+	:is(#fw-phones, #fw-info) .fw-panel { padding: 16px; }
+	:is(#fw-phones, #fw-settings) .fw-fp.is-large { grid-template-columns: repeat(2, max-content); font-size: 17px; }
+	:is(#fw-phones, #fw-settings) .fw-table, :is(#fw-phones, #fw-settings) .fw-table tbody,
+	:is(#fw-phones, #fw-settings) .fw-table tr, :is(#fw-phones, #fw-settings) .fw-table td { display: block; }
+	:is(#fw-phones, #fw-settings) .fw-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+	:is(#fw-phones, #fw-settings) .fw-table tr { margin: 0 0 12px; padding: 6px 14px 10px; border: 1px solid var(--fw-line); border-radius: 12px; background: var(--fw-surface); }
+	:is(#fw-phones, #fw-settings) .fw-table td { padding: 8px 0; border-top: 1px solid var(--fw-line); }
+	:is(#fw-phones, #fw-settings) .fw-table td:first-child { border-top: 0; }
+	:is(#fw-phones, #fw-settings) .fw-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 2px; font-size: 12px; font-weight: 600; color: var(--fw-muted); }
+	#fw-phones .fw-rowactions .cbi-button { flex: 1 1 100%; min-height: 44px; }
+	#fw-settings .fw-qr { width: 100%; max-width: 240px; height: auto; aspect-ratio: 1; }
+	#fw-info .fw-kv { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+	#fw-info .fw-kv dd { margin-bottom: 10px; }
+}
+
+/* LuCI dialogs render outside the page container, so they use the theme's own variables. */
+#modal_overlay .fw-fp-label { margin: 8px 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; opacity: .8; }
+#modal_overlay .fw-fp { display: inline-grid; grid-template-columns: repeat(4, max-content); gap: 6px 18px; padding: 12px 16px; font: 18px/26px ui-monospace, monospace; border: 1px solid var(--border-color-medium, #ccc); border-radius: 10px; }
+#modal_overlay .fw-fp span { white-space: nowrap; }
+#modal_overlay .fw-consequence { display: grid; gap: 6px; margin: 8px 0 12px; padding: 12px 14px 12px 32px; border: 1px solid var(--border-color-medium, #ccc); border-radius: 10px; }
+#modal_overlay .fw-consequence li { color: inherit; line-height: 1.5; }
+@media (max-width: 480px) { #modal_overlay .fw-fp { grid-template-columns: repeat(2, max-content); } }

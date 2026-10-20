@@ -5,6 +5,7 @@
 'require uci';
 'require ui';
 'require familywarden.ulysses as ulysses';
+'require familywarden.ui as fwui';
 
 var callReload = rpc.declare({
 	object: 'familywarden',
@@ -51,9 +52,14 @@ return view.extend({
 		var m, s, o;
 		var profiles = data[0] || {};
 		var bound = Object.keys(profiles).some(function(id) { return ulysses.isBound(profiles[id]); });
+		var mast = data[2] || {};
+		var dns = data[3] || {};
 
-		m = new form.Map('familywarden', _('FamilyWarden Settings'),
-			_('Configure global FamilyWarden options.'));
+		fwui.loadStyles('overview');
+		fwui.loadStyles('pages');
+
+		// No Map title: the shared FamilyWarden header replaces it.
+		m = new form.Map('familywarden');
 
 		var origSaveApply = m.handleSaveApply;
 		m.handleSaveApply = function(ev, mode) {
@@ -68,7 +74,7 @@ return view.extend({
 			});
 		};
 
-		s = m.section(form.TypedSection, 'global', _('Global Settings'),
+		s = m.section(form.TypedSection, 'global', _('General'),
 			bound ? _('A pact is active: these are frozen too, so they can not be used as a way out.') : null);
 		s.anonymous = true;
 		s.addremove = false;
@@ -86,55 +92,43 @@ return view.extend({
 		o.default = 'allow';
 		o.readonly = bound;
 
-		// Ulysses. Frozen for the pact's lifetime (the backend uses the captain
-		// and cooling-off stored with the pact, so edits here would be ignored).
-		s = m.section(form.TypedSection, 'global', '⚓ ' + _('Ulysses'),
-			bound
-				? _('A pact is active, so these settings are frozen until it ends or you sail home.')
-				: _('Bind yourself to the mast. The Ulysses profile (yours) can make a pact: while it lasts, the profile is frozen and, whenever it is blocked, the router is closed to every device except the sail page on port 7700.'));
+		// Pairing serves every FamilyWarden phone, not only the Ulysses captain.
+		s = m.section(form.TypedSection, 'global', _('Phone pairing'),
+			_('For every FamilyWarden phone, children\'s and adults\'. Pairing is separate from Ulysses.'));
 		s.anonymous = true;
 		s.addremove = false;
 
-		o = s.option(form.ListValue, 'ulysses_profile', _('Ulysses profile'),
-			_('The captain: the only profile that can make a pact. Usually your own.'));
-		o.value('', _('None'));
-		uci.sections('familywarden', 'profile').forEach(function(p) {
-			o.value(p['.name'], p.name || p['.name']);
-		});
-		o.readonly = bound;
-
-		o = s.option(form.Value, 'ulysses_delay', _('Cooling-off (hours)'),
-			_('How long "sailing home" on the sail page takes before the pact is lifted. Frozen into each pact when it is made.'));
-		o.datatype = 'range(1,720)';
-		o.placeholder = '24';
-		o.default = '24';
-		o.readonly = bound;
-
-		// Ulysses Mast: pair the captain's phone by scanning this QR in the app
-		var mast = data[2] || {};
-		o = s.option(form.DummyValue, '_mast', '📱 ' + _('Pair a phone'),
-			_('Scan this code with the FamilyWarden app (or the older Ulysses Mast app); the phone must be on this network. A FamilyWarden phone then waits for your approval under Phones, where you compare its fingerprint.'));
+		o = s.option(form.DummyValue, '_mast', _('Pairing code'));
 		o.renderWidget = function() {
 			var synced = mast.last_sync > 0
 				? _('Last sync: %s (%s)').format(new Date(mast.last_sync * 1000).toLocaleString(), mast.device || '?')
 				: _('No phone has synced yet');
-			var qr = E('div', { 'style': 'width:220px;height:220px;background:#fff;padding:8px;border-radius:8px' });
+			var qr = E('div', { 'class': 'fw-qr' });
 			if (mast.qr_svg)
 				qr.innerHTML = mast.qr_svg.replace(/width="[^"]*" height="[^"]*"/, 'width="100%" height="100%"');
 			else
-				qr = E('code', { 'style': 'word-break:break-all' }, mast.pair_uri || _('Pairing code unavailable'));
-			return E('div', {}, [
+				qr = E('code', { 'class': 'fw-mono' }, mast.pair_uri || _('Pairing code unavailable'));
+			return E('div', { 'class': 'fw-pairing' }, [
 				qr,
-				E('div', { 'style': 'margin-top:8px' }, _('Key fingerprint: %s').format(mast.fingerprint || '?')),
-				E('div', {}, synced)
+				E('div', {}, [
+					E('ol', { 'class': 'fw-steps' }, [
+						E('li', {}, _('On home Wi-Fi, open FamilyWarden on the phone and choose to pair with a router.')),
+						E('li', {}, _('Scan this code. Check that the phone shows the router key below.')),
+						E('li', {}, _('Approve the phone under Phones after comparing its own fingerprint.'))
+					]),
+					E('p', { 'class': 'fw-fp-label' }, _('Router key fingerprint')),
+					E('div', { 'class': 'fw-fp is-large' }, (mast.fingerprint || '?').match(/.{1,4}/g).map(function(g) {
+						return E('span', {}, g + ' ');
+					})),
+					E('p', { 'class': 'fw-muted' }, synced)
+				])
 			]);
 		};
 
 		// DNS filtering through AdGuard Home. The router manages only its own
 		// "familywarden-*" clients and the ClientIDs it added to AdGuard Home's
 		// allowed clients; everything else in AdGuard Home is left alone.
-		var dns = data[3] || {};
-		s = m.section(form.TypedSection, 'global', '🛡 ' + _('DNS filtering (AdGuard Home)'),
+		s = m.section(form.TypedSection, 'global', _('DNS · AdGuard Home'),
 			_('Phones of profiles with "Strict DNS" use DNS-over-TLS to &lt;ClientID&gt;.&lt;DNS domain&gt;. Your AdGuard Home needs encryption set up with a certificate covering that domain and its subdomains, reachable on port 853 from home and away. FamilyWarden only adds, changes and removes its own "familywarden-…" clients and the ClientIDs it added to the allowed clients list; your other clients, lists and settings are never changed.'));
 		s.anonymous = true;
 		s.addremove = false;
@@ -145,19 +139,32 @@ return view.extend({
 		o.rmempty = true;
 
 		o = s.option(form.Value, 'agh_url', _('AdGuard Home address'),
-			_('The AdGuard Home web interface as the router reaches it, e.g. http://192.168.1.2:3000. Plain http:// sends the password unencrypted, so only use it within your own network.'));
+			_('The AdGuard Home web interface as the router reaches it, e.g. http://192.168.1.2:3000.'));
 		o.placeholder = 'http://192.168.1.2:3000';
 		o.validate = function(section_id, value) {
 			return (!value || /^https?:\/\/[^\s\/]+\/?$/.test(value)) ? true : _('Expected http://host[:port] or https://host[:port]');
 		};
 		o.rmempty = true;
+		// Honest warning instead of a lock icon: plain HTTP exposes the login on the LAN.
+		o.renderWidget = function(section_id, option_index, cfgvalue) {
+			var node = form.Value.prototype.renderWidget.apply(this, [section_id, option_index, cfgvalue]);
+			var warn = E('div', { 'class': 'fw-warning' }, [
+				E('strong', {}, _('Plain HTTP: the login crosses your LAN unencrypted.')),
+				' ', _('Use https:// if AdGuard Home offers it, or keep it on a network segment you trust.')
+			]);
+			var sync = function(value) { warn.hidden = !/^http:\/\//.test(value || ''); };
+			sync(cfgvalue);
+			node.addEventListener('input', function(ev) { sync(ev.target.value); });
+			return E('div', {}, [node, warn]);
+		};
 
 		o = s.option(form.DummyValue, '_dns_auth', _('AdGuard Home login'),
 			_('Use a separate AdGuard Home user for FamilyWarden (AdGuard Home has no read-only users: any user can change everything). The password is stored on the router readable by root only and is never shown again.'));
 		o.renderWidget = function() {
 			var user = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'value': 'familywarden', 'autocomplete': 'off' });
 			var pass = E('input', { 'type': 'password', 'class': 'cbi-input-password', 'autocomplete': 'new-password' });
-			return E('div', {}, [
+			return E('div', { 'class': 'fw-immediate' }, [
+				E('span', { 'class': 'fw-immediate-tag' }, _('Applies immediately · not part of Save & Apply')),
 				E('div', {}, dns.credentials ? '✓ ' + _('Login stored') : _('No login stored')),
 				E('button', { 'class': 'cbi-button', 'click': function(ev) {
 					ev.preventDefault();
@@ -183,18 +190,27 @@ return view.extend({
 
 		o = s.option(form.DummyValue, '_dns_status', _('Sync status'));
 		o.renderWidget = function() {
-			var box = E('div', {});
+			var box = E('div', { 'class': 'fw-immediate' });
 			var show = function(st) {
-				var lines = [];
+				var lines = [ E('span', { 'class': 'fw-immediate-tag' }, _('Applies immediately · not part of Save & Apply')) ];
 				if (st.error)
-					lines.push(E('div', { 'style': 'color:var(--error-color-medium,#c00)' }, '⚠ ' + st.error));
+					lines.push(E('div', { 'class': 'fw-warning is-fault' }, '⚠ ' + st.error));
 				else if (+st.time > 0)
 					lines.push(E('div', {}, '✓ ' + _('In sync (%s)').format(new Date(st.time * 1000).toLocaleString())));
 				else
 					lines.push(E('div', {}, _('Not synced yet')));
-				Object.keys(st.profiles || {}).forEach(function(p) {
-					lines.push(E('div', {}, [ uci.get('familywarden', p, 'name') || p, ': ', E('code', {}, st.profiles[p].hostname) ]));
-				});
+				var ids = Object.keys(st.profiles || {});
+				if (ids.length)
+					lines.push(E('table', { 'class': 'fw-table fw-dns-table' }, [
+						E('thead', {}, E('tr', {}, [ E('th', {}, _('Profile')), E('th', {}, _('DNS identity')) ])),
+						E('tbody', {}, ids.map(function(p) {
+							return E('tr', {}, [
+								E('td', { 'data-label': _('Profile') }, uci.get('familywarden', p, 'name') || p),
+								E('td', { 'data-label': _('DNS identity') }, E('code', { 'class': 'fw-mono' }, st.profiles[p].hostname))
+							]);
+						}))
+					]));
+				lines.push(E('p', { 'class': 'fw-muted' }, _('In sync means the router reconciled AdGuard Home\'s client settings. It does not confirm that a phone applied its policy.')));
 				lines.push(E('button', { 'class': 'cbi-button', 'click': function(ev) {
 					ev.preventDefault();
 					ev.currentTarget.disabled = true;
@@ -206,8 +222,35 @@ return view.extend({
 			return box;
 		};
 
-		// Return the form.Map directly so LuCI renders it with native page
-		// chrome (title + tab bar) like every other config page.
-		return m.render();
+		// Ulysses. Frozen for the pact's lifetime (the backend uses the captain
+		// and cooling-off stored with the pact, so edits here would be ignored).
+		s = m.section(form.TypedSection, 'global', _('Ulysses'),
+			bound
+				? _('A pact is active, so these settings are frozen until it ends or you sail home.')
+				: _('Optional: bind yourself to the mast. The Ulysses profile (yours) can make a pact: while it lasts, the profile is frozen and, whenever it is blocked, the router is closed to every device except the sail page on port 7700.'));
+		s.anonymous = true;
+		s.addremove = false;
+
+		o = s.option(form.ListValue, 'ulysses_profile', _('Ulysses profile'),
+			_('The captain: the only profile that can make a pact. Usually your own.'));
+		o.value('', _('None'));
+		uci.sections('familywarden', 'profile').forEach(function(p) {
+			o.value(p['.name'], p.name || p['.name']);
+		});
+		o.readonly = bound;
+
+		o = s.option(form.Value, 'ulysses_delay', _('Cooling-off (hours)'),
+			_('How long "sailing home" on the sail page takes before the pact is lifted. Frozen into each pact when it is made.'));
+		o.datatype = 'range(1,720)';
+		o.placeholder = '24';
+		o.default = '24';
+		o.readonly = bound;
+
+		return m.render().then(function(formEl) {
+			return E('div', { 'id': 'fw-settings' }, [
+				fwui.header(_('Settings'), _('Form fields are staged until Save & Apply. Sections marked "applies immediately" talk to AdGuard Home right away.')),
+				formEl
+			]);
+		});
 	}
 });

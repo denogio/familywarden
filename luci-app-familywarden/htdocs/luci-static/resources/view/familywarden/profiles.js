@@ -267,7 +267,7 @@ return view.extend({
 		var dnsStatus = data[5] || {};
 
 		fwui.loadStyles('overview');
-		fwui.loadStyles('profiles');
+		fwui.loadStyles('pages');
 
 		selectedProfile = getSelectedProfile();
 
