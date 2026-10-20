@@ -62,7 +62,7 @@ Per-app time control on Android phones, self-hosted by each household on its own
 |---|---|---|---|
 | A1 | Go or Rust? | Go | **Decided** |
 | A2 | Notification transport | App-held connection to an ntfy-compatible relay, E2E encrypted; own relay or public | Open |
-| A3 | Children's Google accounts with our Device Owner | See "Children's Google accounts" below; test option A on the Pixel 7 Pro, fall back to B | Must be tested first |
+| A3 | Children's Google accounts with our Device Owner | Option A is impossible (tested 2026-10-20); **B: Device Owner without a supervised child account** | **Answered** |
 | A4 | Adult self-limit: how to get access when really needed? | A small daily pool the user may spend without approval; nothing beyond it during a pact | **Decided** |
 | A5 | Children's phones | Pixel 7 Pro, Android 17 | **Decided** |
 | A6 | Core vs existing shell backend | Core takes identity, policy, DNS and app control; shell stays the OpenWrt firewall adapter until ported | Open |
@@ -131,6 +131,18 @@ app does not forbid other device admins, so coexistence is plausible but unprove
 | A | FamilyWarden Device Owner + supervised child account, Family Link limits left off | Play Store, Gmail as usual | Unknown if Google allows it; two systems on the phone |
 | B | FamilyWarden Device Owner, no Google account | Most robust; only our rules | No Play Store with the child's account (parent installs, or Aurora Store); some apps need Google sign-in |
 | C | No Device Owner: light tier + Family Link | No account removal | Bypassable (see above) |
+
+**Tested 2026-10-20 (emulator, Android 17 with Google Play, FamilyWarden as Device
+Owner, no accounts): option A is not possible.** Signing in the supervised account makes
+Family Link ask Android to become **Profile Owner** of the primary user
+(`android.app.action.SET_PROFILE_OWNER`; "This device will be managed and monitored by
+Family Link parental controls"). A user that already has a Device Owner cannot get
+another Profile Owner, so the activation never completes and setup loops ("Waiting for
+profile owner activation result"); the account is not added. This follows from Android's
+one-owner rule, not from the emulator. **Family Link and FamilyWarden as Device Owner
+are mutually exclusive.** Default: B. The child has no Play Store account of their own;
+a parent installs apps (parent account or Aurora Store) — a candidate FamilyWarden feature
+is "child requests an app, parent approves and installs".
 
 **Decided 2026-10-20: the son's Pixel 7 Pro is not a test device** (he uses it daily).
 A must be tested elsewhere (emulator with Google Play, or a spare phone) before it ever
