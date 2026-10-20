@@ -7,11 +7,14 @@
 			"path": "admin/services/familywarden/overview"
 		},
 		"depends": {
-			"acl": [ "luci-app-familywarden" ],
-			"uci": { "familywarden": true }
+			"acl": [
+				"luci-app-familywarden"
+			],
+			"uci": {
+				"familywarden": true
+			}
 		}
 	},
-
 	"admin/services/familywarden/overview": {
 		"title": "Overview",
 		"order": 10,
@@ -20,7 +23,6 @@
 			"path": "familywarden/overview"
 		}
 	},
-
 	"admin/services/familywarden/profiles": {
 		"title": "Profiles",
 		"order": 20,
@@ -29,7 +31,14 @@
 			"path": "familywarden/profiles"
 		}
 	},
-
+	"admin/services/familywarden/devices": {
+		"title": "Phones",
+		"order": 25,
+		"action": {
+			"type": "view",
+			"path": "familywarden/devices"
+		}
+	},
 	"admin/services/familywarden/settings": {
 		"title": "Settings",
 		"order": 30,
@@ -38,7 +47,6 @@
 			"path": "familywarden/settings"
 		}
 	},
-
 	"admin/services/familywarden/info": {
 		"title": "Info",
 		"order": 40,

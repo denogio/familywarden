@@ -33,6 +33,9 @@ jobs:
           OPENWRT_IMAGE: openwrt/rootfs:x86-64-${{ env.OPENWRT_VERSION }}
         run: ./scripts/test-integration.sh
 
+      - name: AdGuard Home sync (throwaway AdGuard Home container)
+        run: ./scripts/test-agh.sh
+
   build:
     name: Build apks
     needs: test
@@ -209,7 +212,7 @@ jobs:
 
           \`\`\`sh
           adb install ulysses-mast-*.apk
-          adb shell dpm set-device-owner me.hojgaard.ulysses.mast/.MastAdminReceiver
+          adb shell dpm set-device-owner io.github.denogio.familywarden/.AdminReceiver
           \`\`\`
           EOF
           gh release create "${GITHUB_REF_NAME}" apk/*.apk mast/ulysses-mast-${{ steps.ver.outputs.fw }}.apk \

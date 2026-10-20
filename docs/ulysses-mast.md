@@ -1,4 +1,9 @@
-# Ulysses Mast — make your phone part of the mast
+# Ulysses Mast
+
+> This guide describes the released v0.8.0 Mast app and its existing Device Owner
+> identity. Local development of the differently packaged FamilyWarden app is tracked
+> in [the implementation checkpoint](../plans/android-implementation.md). It is not an
+> in-place update: do not remove/reset your current owner to install that branch. — make your phone part of the mast
 
 Ulysses Mast is a small Android app for the captain's phone. While a pact is active
 and your schedule blocks access, it restricts **hotspot and tethering** (Wi-Fi, USB,

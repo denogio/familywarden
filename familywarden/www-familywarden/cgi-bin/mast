@@ -1,16 +1,46 @@
 #!/bin/sh
-# Ulysses Mast sync endpoint (uhttpd instance on port 7700, reachable during a
-# lockdown). GET /cgi-bin/mast?device=<id>
-# Reply: line 1 = usign signature (base64), rest = payload JSON byte for byte.
+# FamilyWarden phone sync endpoint (uhttpd instance on port 7700, reachable
+# during a lockdown). Reply: line 1 = usign signature (base64), rest = the
+# payload JSON byte for byte.
+#
+#   GET /cgi-bin/mast?pubkey                    pairing: router key + fingerprint
+#   GET /cgi-bin/mast?device=<id>               v1 (Ulysses Mast): global captain state
+#   GET /cgi-bin/mast?device=<id>&nonce=<hex>&key=<b64>&sig=<b64>[&name=<model>]
+#                                               v2 (FamilyWarden): enrolled phone's policy
 
-#      GET /cgi-bin/mast?pubkey   (pairing: the router's public key + fingerprint)
+BIN=/usr/libexec/rpcd/familywarden
 
-dev=$(echo "$QUERY_STRING" | sed -n 's/^.*device=\([A-Za-z0-9-]*\).*$/\1/p')
+# Query parameter, with the percent-escapes base64 needs decoded
+param() {
+    printf '%s' "$QUERY_STRING" | tr '&' '\n' | sed -n "s/^$1=//p" | head -1 |
+        sed 's/%2[Bb]/+/g; s/%2[Ff]/\//g; s/%3[Dd]/=/g'
+}
 
-echo "Content-Type: text/plain"
-echo "Cache-Control: no-store"
-echo ""
+status() {
+    printf 'Status: %s\nContent-Type: text/plain\nCache-Control: no-store\n\n' "$1"
+}
+
 case "$QUERY_STRING" in
-    pubkey*) /usr/libexec/rpcd/familywarden mast-pubkey ;;
-    *) /usr/libexec/rpcd/familywarden mast "$dev" ;;
+    pubkey*)
+        status "200 OK"
+        "$BIN" mast-pubkey
+        exit 0
+        ;;
+esac
+
+dev=$(param device)
+case "$dev" in *[!A-Za-z0-9-]*) dev="" ;; esac
+nonce=$(param nonce)
+if [ -z "$nonce" ]; then
+    status "200 OK"
+    "$BIN" mast "$dev"
+    exit 0
+fi
+
+body=$("$BIN" mast2 "$dev" "$nonce" "$(param key)" "$(param sig)" "$(param name)")
+case $? in
+    0) status "200 OK"; printf '%s' "$body" ;;
+    2) status "400 Bad Request" ;;
+    3) status "403 Forbidden" ;;
+    *) status "500 Internal Server Error" ;;
 esac

@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">FamilyWarden</string>
+    <string name="pair_locked">Kræver godkendelse, og ingen gældende pagt må være aktiv.</string>
+    <string name="pair_failed">Parring mislykkedes: %1$s</string>
+</resources>

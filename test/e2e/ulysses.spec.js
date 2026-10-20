@@ -74,7 +74,10 @@ test("the captain's profile is frozen", async ({ page }) => {
   await expect(page.locator('[data-name="policy"] select')).toBeDisabled();
   await expect(page.locator('.fw-days input[data-day]').first()).toBeDisabled();
   await expect(page.locator('button:has-text("Delete Profile")')).toHaveCount(0);
-  await expect(page.locator('.cbi-page-actions')).toHaveCount(0);
+  // DNS can still be tightened during the pact (the backend never loosens it)
+  await expect(page.locator('[data-name="dns"] input[type=checkbox]')).toBeEnabled();
+  await expect(page.locator('[data-name="dns"]')).toContainText('can only be tightened');
+  await expect(page.locator('.cbi-page-actions')).toHaveCount(1);
 });
 
 test('other profiles stay editable during the pact', async ({ page }) => {
