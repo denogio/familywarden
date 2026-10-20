@@ -212,6 +212,43 @@ refute_rule "ticket is not a static rule" 'teen:override:allow'
 assert_json "status allowed during ticket" "$(call status '{"profile":"teen"}')" '@.status' "allowed"
 
 echo ""
+echo "=== active tickets extend from their expiry, including concurrent additions ==="
+expiry=$(call status '{"profile":"teen"}' | jsonfilter -e '@.override_expires')
+call ticket '{"profile":"teen","minutes":5}' >/dev/null
+assert_json "second ticket adds five minutes" "$(call status '{"profile":"teen"}')" '@.override_expires' "$((expiry + 300))"
+expiry=$(call status '{"profile":"teen"}' | jsonfilter -e '@.override_expires')
+echo '{"profile":"teen","minutes":1}' | "$BIN" call ticket >/tmp/ticket-one.json &
+pid_one=$!
+echo '{"profile":"teen","minutes":1}' | "$BIN" call ticket >/tmp/ticket-two.json &
+pid_two=$!
+wait "$pid_one"; wait "$pid_two"
+assert_json "first concurrent ticket succeeds" "$(cat /tmp/ticket-one.json)" '@.status' "ok"
+assert_json "second concurrent ticket succeeds" "$(cat /tmp/ticket-two.json)" '@.status' "ok"
+assert_json "concurrent additions are not lost" "$(call status '{"profile":"teen"}')" '@.override_expires' "$((expiry + 120))"
+for minutes in 0 -1 not-a-number; do
+    out=$(call ticket "{\"profile\":\"teen\",\"minutes\":\"$minutes\"}")
+    assert_json "invalid minutes $minutes refused" "$out" '@.error' "minutes must be a positive integer"
+done
+assert_json "invalid ticket leaves expiry unchanged" "$(call status '{"profile":"teen"}')" '@.override_expires' "$((expiry + 120))"
+
+# Expired tickets, permanent allows and manual blocks all start a fresh timer.
+for mode in expired allow block; do
+    case "$mode" in
+        expired) sed -i 's/^teen.override_expires=.*/teen.override_expires=1/' /tmp/familywarden.state ;;
+        *) call "$mode" '{"profile":"teen"}' >/dev/null ;;
+    esac
+    before=$(date +%s)
+    call ticket '{"profile":"teen","minutes":5}' >/dev/null
+    after=$(date +%s)
+    expiry=$(call status '{"profile":"teen"}' | jsonfilter -e '@.override_expires')
+    if [ "$expiry" -ge "$((before + 300))" ] && [ "$expiry" -le "$((after + 300))" ]; then
+        pass "ticket after $mode starts from now"
+    else
+        fail "ticket after $mode has wrong expiry: $expiry"
+    fi
+done
+
+echo ""
 echo "=== expired ticket is GC'd on next reload ==="
 sed -i 's/^teen.override_expires=.*/teen.override_expires=1/' /tmp/familywarden.state
 "$BIN" reload >/dev/null

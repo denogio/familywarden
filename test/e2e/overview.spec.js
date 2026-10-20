@@ -24,7 +24,7 @@ async function mockProfiles(page, reply) {
     for (const call of calls) {
       if (call.params?.[1] === 'familywarden' && call.params?.[2] === 'list') {
         const result = results.find(r => r.id === call.id);
-        result.result = [0, reply()];
+        result.result = [0, reply(result.result[1])];
       }
     }
     await route.fulfill({ response, json: Array.isArray(json) ? results : results[0] });
@@ -64,8 +64,8 @@ test('Overview uses truthful access labels and preserves pact tightening', async
   await expect(alex.locator('.fw-status')).toContainText('Internet blocked');
   await expect(alex.getByRole('button', { name: '+10 min', exact: true })).toBeVisible();
   const captain = root.locator('[data-profile="morgan"]');
-  await expect(captain.getByRole('button', { name: 'Block now', exact: true })).toBeVisible();
-  await expect(captain.getByRole('button', { name: 'Allow now', exact: true })).toHaveCount(0);
+  await expect(captain.getByRole('button', { name: 'Block', exact: true })).toBeVisible();
+  await expect(captain.getByRole('button', { name: 'Allow', exact: true })).toHaveCount(0);
   await expect(captain.locator('.fw-ticket')).toHaveCount(0);
   await expect(page.locator('.cbi-page-actions')).toHaveCount(0);
 });
@@ -77,10 +77,38 @@ test('native actions block and reset a real profile', async ({ page }) => {
   if (await alex.getByRole('button', { name: 'Reset override', exact: true }).count())
     await alex.getByRole('button', { name: 'Reset override', exact: true }).click();
   await expect(alex.locator('.fw-status')).toContainText('Internet allowed');
-  await alex.getByRole('button', { name: 'Block now', exact: true }).click();
+  await alex.getByRole('button', { name: 'Block', exact: true }).click();
   await expect(alex.locator('.fw-status')).toContainText('Internet blocked');
   await alex.getByRole('button', { name: 'Reset override', exact: true }).click();
   await expect(alex.locator('.fw-status')).toContainText('Internet allowed');
+});
+
+test('running tickets extend through the UI and can be cancelled separately', async ({ page }) => {
+  await page.goto(URL);
+  await expect(page.locator('#fw-dashboard')).toBeVisible();
+  const session = await page.evaluate(() => L.env.sessionid);
+  async function call(method, args) {
+    const response = await page.request.post(`${BASE}/ubus/`, { data: {
+      jsonrpc: '2.0', id: 1, method: 'call', params: [session, 'familywarden', method, args]
+    } });
+    const body = await response.json();
+    expect(body.result[0]).toBe(0);
+    return body.result[1];
+  }
+  await call('reset', { profile: 'alex' });
+  await call('ticket', { profile: 'alex', minutes: 5 });
+  const initial = await call('status', { profile: 'alex' });
+  await page.reload();
+  const alex = page.locator('[data-profile="alex"]');
+  await expect(alex.locator('.fw-override')).toContainText('Override');
+  await expect(alex.locator('.fw-ticket')).toContainText('Adds time to the running ticket.');
+  await alex.getByRole('button', { name: '+10 min', exact: true }).click();
+  await expect.poll(async () => (await call('status', { profile: 'alex' })).override_expires)
+    .toBe(initial.override_expires + 600);
+  await expect(alex.getByRole('button', { name: 'Cancel ticket', exact: true })).toBeEnabled();
+  await alex.getByRole('button', { name: 'Cancel ticket', exact: true }).click();
+  await expect.poll(async () => (await call('status', { profile: 'alex' })).override).toBe('none');
+  await expect(alex.locator('.fw-ticket')).toHaveCount(0);
 });
 
 test('unknown status is not counted as allowed and offers no access actions', async ({ page }) => {

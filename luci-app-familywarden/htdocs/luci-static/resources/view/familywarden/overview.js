@@ -152,18 +152,33 @@ function actionButton(id, label, key, fn) {
 function cardButtons(id, p) {
 	if (!knownStatus(p)) return [];
 	var btns = [], bound = ulysses.isBound(p);
-	if (p.override && p.override !== 'none')
-		btns.push(actionButton(id, _('Reset override'), 'reset', function() { return callReset(id); }));
+	var ticket = p.override === 'allow' && +p.override_expires > Date.now() / 1000;
+	var manual = p.override && p.override !== 'none' && !ticket;
+	var overrides = [];
+	if (manual)
+		overrides.push(actionButton(id, _('Reset override'), 'reset', function() { return callReset(id); }));
 	else if (p.status === 'blocked') {
-		if (!bound) {
-			btns.push(actionButton(id, _('Allow now'), 'allow', function() { return callAllow(id); }));
-			btns.push(E('div', { 'class': 'fw-ticket', 'role': 'group', 'aria-label': _('Give internet time to %s').format(p.name || id) }, [
-				E('span', { 'class': 'fw-actions-label' }, _('Give internet time'))
-			].concat([5, 10, 30].map(function(mins) {
-				return actionButton(id, '+%s min'.format(mins), 'ticket-' + mins, function() { return callTicket(id, mins); });
-			}))));
-		}
-	} else btns.push(actionButton(id, _('Block now'), 'block', function() { return callBlock(id); }));
+		if (!bound) overrides.push(actionButton(id, _('Allow'), 'allow', function() { return callAllow(id); }));
+	} else overrides.push(actionButton(id, _('Block'), 'block', function() { return callBlock(id); }));
+	if (overrides.length) btns.push(E('div', { 'class': 'fw-act-zone fw-override', 'role': 'group',
+		'aria-label': _('Override for %s').format(p.name || id) }, [
+		E('span', { 'class': 'fw-actions-label' }, _('Override')),
+		E('div', { 'class': 'fw-act-row' }, overrides)
+	]));
+	if (!bound && !manual && (ticket || p.status === 'blocked')) {
+		var actions = [5, 10, 30].map(function(mins) {
+			return actionButton(id, '+%s min'.format(mins), 'ticket-' + mins, function() { return callTicket(id, mins); });
+		});
+		btns.push(E('div', { 'class': 'fw-act-zone fw-ticket', 'role': 'group',
+			'aria-label': _('Internet ticket for %s').format(p.name || id) }, [
+			E('span', { 'class': 'fw-actions-label' }, _('Internet ticket')),
+			E('div', { 'class': 'fw-act-row' }, actions),
+			E('span', { 'class': 'fw-act-hint' }, ticket
+				? _('Adds time to the running ticket.')
+				: _('Starts now; returns to the profile policy when it expires.')),
+			ticket ? actionButton(id, _('Cancel ticket'), 'reset', function() { return callReset(id); }) : ''
+		]));
+	}
 	if (bound) btns.push(E('p', { 'class': 'fw-held' }, _('Bound by the pact: Allow and internet tickets are unavailable.')));
 	if (id === ulysses.captainId()) {
 		var label = !bound ? _('Make a pact') : p.pact_type === 'until' ? _('Extend pact') : p.pact_in_window ? _('Amend pact') : null;

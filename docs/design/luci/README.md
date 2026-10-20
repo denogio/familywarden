@@ -5,6 +5,8 @@ Original user-supplied Claude Design exports, preserved unchanged:
 - `design.html`: complete multi-board export (27 HTML boards).
 - `reference.html`: standalone Overview reference.
 - `fw-luci.css`: reference stylesheet, including mock LuCI chrome. Do not ship wholesale.
+- `ticket-update.html`: subsequent user-supplied Overview revision separating Override
+  and Internet ticket zones, with explicitly approved additive ticket behavior.
 
 Brief/research: [prompt](../luci-design-prompt.md), [research](../luci-design-research.md).
 
@@ -23,9 +25,15 @@ Overview is implemented in the existing LuCI view, not as a theme:
   and used for the branded dark palette. Other LuCI themes still require verification.
 - The unused Save/Apply/Reset footer is omitted on this immediate-action page only.
   Native configuration forms on Profiles and Settings are unchanged.
-- Block and Reset remain available where the existing pact/backend semantics permit;
-  Allow/tickets are not offered to a bound captain. Ticket buttons retain their existing
-  semantics; they do not extend an active ticket as the reference's "Add to ticket" suggests.
+- Block and Reset remain available where the pact/backend semantics permit;
+  Allow/tickets are not offered to a bound captain.
+- Approved ticket update: Override and Internet ticket are separate action zones.
+  Active tickets can be extended with +5/+10/+30 minutes and cancelled independently
+  (returning to profile policy). Manual overrides retain Reset override.
+- The router API now adds minutes to an unexpired timed allow; otherwise a ticket starts
+  from router time now. A dedicated ticket-operation lock prevents concurrent additions
+  from losing time. Zero/negative/non-integer durations are refused. Pact refusal remains.
+  Hints describe semantics rather than promising a browser-clock expiry estimate.
 - Allowed/blocked counts are not called online/offline. Unknown status has no quick actions.
 - Missing/malformed list envelopes produce an error; valid empty lists remove old cards.
   Failed refreshes retain explicitly stale previous results and disable quick actions.
@@ -52,7 +60,12 @@ other pages remains pending, including the measured Profiles overflow at 390 px.
 - Blue-frame follow-up: targeted responsive/theme/isolation browser test passes at
   320–1440 px and 200% CSS zoom. Other pages retain their original background even
   with the Overview stylesheet loaded. No enforcement code changed in this follow-up.
-- No Android emulator suite: Android and backend enforcement were not changed.
+- Ticket follow-up: `scripts/test-integration.sh` **192 checks pass**, including active
+  extension, concurrent additions, invalid input, expired/permanent-allow/manual-block
+  starting points and the existing pact refusal. Regression tests failed before the fix.
+- `scripts/test-e2e.sh /tmp/fw-ticket-build`: **25 passed** using newly built packages,
+  including real ticket extension and cancellation via the Overview.
+- No Android emulator suite: Android was not changed.
 - No live router, AdGuard Home, phone or production pact was modified.
 
 Screenshots under `docs/screenshots/luci-overview-*` are disposable fixtures, not

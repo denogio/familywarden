@@ -130,8 +130,12 @@
 #fw-dashboard .fw-hours { font-variant-numeric: tabular-nums; }
 #fw-dashboard .fw-ulysses { margin: 0 20px 16px; padding: 14px 16px; background: var(--fw-pact-soft); border: 1px solid var(--fw-pact-line); border-radius: 10px; color: var(--fw-gold); line-height: 1.6; overflow-wrap: anywhere; }
 #fw-dashboard .fw-card-foot { margin-top: auto; padding: 12px 20px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border-top: 1px solid var(--fw-line); }
-#fw-dashboard .fw-ticket { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-#fw-dashboard .fw-actions-label, #fw-dashboard .fw-held { color: var(--fw-muted); font-size: 12px; }
+#fw-dashboard .fw-act-zone { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+#fw-dashboard .fw-act-zone + .fw-act-zone { margin-left: 16px; padding-left: 16px; border-left: 1px solid var(--fw-line); }
+#fw-dashboard .fw-act-row { display: flex; flex-wrap: wrap; gap: 6px; }
+#fw-dashboard .fw-actions-label, #fw-dashboard .fw-held, #fw-dashboard .fw-act-hint { color: var(--fw-muted); font-size: 12px; }
+#fw-dashboard .fw-actions-label { font-weight: 600; }
+#fw-dashboard .fw-act-hint { max-width: 36ch; }
 #fw-dashboard .fw-held { flex: 1 1 100%; margin: 0; }
 #fw-dashboard .cbi-button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; white-space: normal; word-break: normal; line-height: 1.4; padding: 7px 12px; border-radius: 6px; }
 #fw-dashboard .fw-empty { padding: 32px; border: 1px dashed var(--fw-muted); border-radius: 14px; background: var(--fw-surface); }
@@ -148,8 +152,10 @@
 	#fw-dashboard .fw-fact { grid-template-columns: minmax(0, 1fr); gap: 2px; }
 	#fw-dashboard .fw-ulysses { margin: 0 16px 14px; }
 	#fw-dashboard .fw-card-foot { padding: 12px 16px 16px; }
-	#fw-dashboard .fw-card-foot > .cbi-button, #fw-dashboard .fw-ticket { width: 100%; }
-	#fw-dashboard .fw-ticket { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-	#fw-dashboard .fw-actions-label { grid-column: 1 / -1; }
+	#fw-dashboard .fw-card-foot > .cbi-button, #fw-dashboard .fw-act-zone { width: 100%; }
+	#fw-dashboard .fw-act-zone { align-items: stretch; }
+	#fw-dashboard .fw-act-zone + .fw-act-zone { margin-left: 0; padding-left: 0; border-left: 0; padding-top: 12px; border-top: 1px solid var(--fw-line); }
+	#fw-dashboard .fw-act-row .cbi-button { flex: 1; }
+	#fw-dashboard .fw-ticket .fw-act-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 	#fw-dashboard .cbi-button { min-height: 44px; }
 }
