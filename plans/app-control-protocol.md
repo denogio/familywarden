@@ -45,6 +45,7 @@ v3 is a strict superset of v2; unchanged v2 fields keep their meaning.
     "downtime": [ { "days": "mon tue wed thu", "start": "21:00", "stop": "07:00" } ],
     "blocked": ["com.example.blocked"],
     "essential": ["com.google.android.dialer", "io.github.denogio.familywarden"],
+    "approved": ["com.roblox.client", "com.spotify.music"],
     "new_apps": "suspend_until_approved",
     "budget": { "as_of": 1792539900, "remaining": { "r1": 1800, "r2": 0 } },
     "grants": [ "…active grants the router knows, see §4…" ]
@@ -60,6 +61,20 @@ v3 is a strict superset of v2; unchanged v2 fields keep their meaning.
 - Category membership comes from Android `ApplicationInfo.category` plus a router-side
   override list; unknown means "no category".
 
+### Precedence (evaluated per package, first match wins)
+
+1. `essential` → always allowed (dialer, FamilyWarden itself, launcher, input method).
+2. `blocked` → suspended. A grant does **not** unblock it; the parent changes the rule.
+3. Not in `approved` while `new_apps` is `suspend_until_approved` → suspended.
+4. A valid grant with minutes left → allowed, also during downtime and beyond the budget (D3).
+5. Inside `downtime` → suspended.
+6. Any matching rule with no shared budget left → suspended.
+7. Otherwise allowed.
+
+Adult profiles under a pact never accept grants (§4); their daily pool is defined in P11.
+Downtime windows use the router schedule semantics: `days` name the start day and an
+overnight window continues into the next day.
+
 ## 3. Extra-time request (child phone → router)
 
 Signed by the child phone key, sent on the LAN to the router (first slice); later also via
@@ -70,8 +85,9 @@ the off-home transport (A2/P9).
   "package": "com.roblox.client", "minutes": 30, "created": 1792540012 }
 ```
 
-Signed message: `familywarden-request-v1\n<canonical JSON>\n` (canonical = keys sorted,
-no whitespace). Rules (D7):
+Signed message: `familywarden-request-v1\n` followed by the **exact JSON bytes sent**; the
+receiver verifies those bytes and only then parses them (no canonical JSON form, so Kotlin
+and Go never have to agree on serialization). Rules (D7):
 - At most **one open request per child profile**: a second is refused with `request_open`.
 - A request expires **1 hour** after `created` (router clock) → `request_expired`.
 - No rate limit. Denial and expiry are visible to the child.
@@ -86,7 +102,7 @@ no whitespace). Rules (D7):
   "not_before": 1792540100, "not_after": 1792547300 }
 ```
 
-Signed message: `familywarden-grant-v1\n<canonical JSON>\n` by the issuer's key.
+Signed message: `familywarden-grant-v1\n` + the exact grant JSON bytes, by the issuer's key.
 - **Lifetime (D3):** `not_after = issue time + 2 h`; unused minutes are lost then, not at midnight.
 - **Bedtime (D3):** a valid grant permits the granted package during downtime/outside
   windows and beyond its daily rule, for exactly `minutes` of counted use.
@@ -130,7 +146,9 @@ plus elapsed monotonic time since that sync, never the wall clock alone.
 ## 7. Error codes (all replies are signed JSON objects)
 
 `not_enrolled`, `bad_signature`, `replay`, `wrong_profile`, `not_parent`, `request_open`,
-`request_expired`, `invalid_minutes`, `unknown_package`, `pact_forbids`, `unsupported_version`.
+`request_expired`, `grant_expired`, `invalid_minutes`, `unknown_package`, `pact_forbids`,
+`unsupported_version`, `malformed`. Grant validity tolerates 5 minutes of clock skew between
+the issuing phone and the router-anchored clock.
 
 ## 8. Compatibility
 

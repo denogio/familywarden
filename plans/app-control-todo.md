@@ -139,17 +139,24 @@ Depends on the relevant P1 semantics. No child-phone experiments.
 
 Depends on P0/P1. Use the standard library first; add dependencies only for concrete needs.
 
-- [ ] Create Go module, executable, configuration validation and clean shutdown.
-- [ ] Separate pure domain rules from storage, API transport and the OpenWrt boundary;
+- [x] Create Go module, executable, configuration validation and clean shutdown (`core/`).
+- [x] Separate pure domain rules from storage, API transport and the OpenWrt boundary;
       no adapter framework or speculative interfaces with no actual consumer.
-- [ ] Choose durable storage based on atomicity, router flash use, backups and build size.
+- [x] Choose durable storage based on atomicity, router flash use, backups and build size.
+      (Plain JSON files, atomic rename + fsync, written only on change; no dependencies.)
       Define schema versioning, crash recovery and bounded queues before writing data.
-- [ ] Add restricted local service transport, health/version/capability reporting and
+- [x] Add restricted local service transport, health/version/capability reporting and
       redacted logs; do not expose an unauthenticated WAN listener.
-- [ ] Add deterministic clocks and fixtures for policy, expiry and day-boundary tests.
-- [ ] Add Go formatting, unit tests, race checks where supported and build jobs to CI.
+- [x] Add deterministic clocks and fixtures for policy, expiry and day-boundary tests.
+- [x] Add Go formatting, unit tests, race checks where supported and build jobs to CI.
 
 **Accept:** a small runnable core with durable-state tests; legacy behavior still works.
+
+Done 2026-10-21: `core/` with `usign` (phone/router key format), `protocol` (signed
+request/grant verification, error codes), `rules` (precedence evaluator), `store` (usage
+ledger, one open request, 30-day prune) and `familywardend` (root-only unix socket,
+health/version, tzdata embedded). Static linux/arm64 binary: 6.4 MB (rivendell has
+~35 MB free flash). Schema versioning/migrations wait until the first stored format ships.
 
 ## P4 — Integrate OpenWrt without a big-bang rewrite
 
