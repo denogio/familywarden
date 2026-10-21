@@ -35,6 +35,28 @@ evidence for AOSP/Android behaviour, not for OEM, battery or real-hardware behav
 | Uninstall | `setUninstallBlocked` refused for a user app (`DELETE_FAILED_OWNER_BLOCKED`); not possible for system apps | Block uninstall of managed user apps; uninstalling a suspended app would otherwise drop its suspension |
 | Reboot | Suspensions survive reboot, **unless** the reboot happens within seconds of the change (not yet persisted) | Re-apply desired state at boot (P7 reconcile) |
 
+## Play Store controls for a Device Owner (official docs, not yet tested here)
+
+Source: https://developer.android.com/work/dpc/security (via the user's pointer to an
+r/Intune thread on blocking personal accounts on fully managed devices).
+
+- `setApplicationRestrictions(admin, "com.android.vending", bundle)` with
+  **`allowed_accounts`** = comma-separated account emails that may use Google Play; an
+  **empty string blocks every account**. Play 80970100+.
+- `DISALLOW_MODIFY_ACCOUNTS` stops adding other Google accounts (e.g. a friend's).
+- Device-wide unknown-source block: `verify_apps:device_wide_unknown_source_block` in the
+  same bundle + `ENSURE_VERIFY_APPS` + `DISALLOW_INSTALL_UNKNOWN_SOURCES`.
+- The page itself names scheduled `setPackagesSuspended` as the way to block games or
+  YouTube at certain times — the supported mechanism for our use case.
+
+Design consequence (replaces "hide Play Store"): keep Play Store visible but locked to the
+child's own account (`allowed_accounts`) and forbid adding accounts. Gate new installs either
+with `no_install_apps` lifted for an approved install, or with `allowed_accounts` empty by
+default and the child's account allowed only during an approved install.
+**Open, decides between them:** whether either method also blocks *updates* of already
+approved apps. Updates must keep working; this needs a real signed-in Google account
+(emulator with the user's help, or the Pixel 10).
+
 ## Still to verify on the user's Pixel 10 (needs a separate OK each time)
 
 Battery/Doze cost of counting and syncing, Spotify with the screen off, YouTube
