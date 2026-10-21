@@ -4,7 +4,14 @@
     <!-- Debug-only P2 probes: usage access is granted by adb (appops), never requested from users here -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <queries>
+        <package android:name="io.github.denogio.familywarden.fixture" />
+    </queries>
     <application>
+        <service android:name=".PackageWatchProbe" android:exported="false"
+            android:foregroundServiceType="systemExempted" />
         <!-- Debug builds only: lets scripts/test-mast-emulator.sh pair and sync via adb -->
         <receiver
             android:name=".DebugReceiver"
@@ -27,6 +34,11 @@
                 <action android:name="io.github.denogio.familywarden.PROBE_RESTRICT" />
                 <action android:name="io.github.denogio.familywarden.PROBE_SUPPORT" />
                 <action android:name="io.github.denogio.familywarden.PROBE_PLAY" />
+                <action android:name="io.github.denogio.familywarden.PROBE_PACKAGE_WATCH" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.PACKAGE_ADDED" />

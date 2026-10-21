@@ -78,6 +78,42 @@ remain enabled, the new-app launch race must be solved/tested rather than claimi
 periodic suspension pass closes it. No production policy decision follows from this
 emulator experiment alone.
 
+### Round 3: package visibility, dynamic events and first-launch race
+
+Reproducer: `test/android/install-probe/{build.sh,test.py}` and debug-only
+`PackageWatchProbe`. The synthetic APK logs `Activity.onCreate`; no child app or account
+is involved. Only this fixture package is suspended by the experiment.
+
+- Without explicit package visibility the foreground service also saw **no package
+  events**. Adding `<queries><package ...fixture.../></queries>` made dynamic delivery
+  work. Round 1 therefore did **not** establish that Android cannot deliver these events.
+- A running `systemExempted` foreground service (eligible as Device Owner) received
+  `PACKAGE_ADDED`, `PACKAGE_REMOVED` and `PACKAGE_REPLACED`, including replacement flags.
+- The first five fresh-install/launch races had no observed successful first start;
+  suspension completed about **42–100 ms after callback entry**. This measures callback
+  handling, **not installation-to-suspension latency**.
+- A second five-race run after reboot observed **three successful `onCreate` calls**.
+  One preceded the added callback; two happened even after the suspension call returned,
+  consistent with an already-dispatched launch. A successful suspension return is not
+  proof that no app code ran.
+- Deliberately pausing the watcher process also let the fixture start; resuming it applied
+  the queued suspension. This controlled delay is a separate test, not natural latency.
+- In-place APK replacement delivered the expected events and stayed suspended. Reboot
+  restarted the watcher and reconciled suspension. The test uses a changed boot ID and
+  waits for unlock/boot reconciliation rather than trusting an old `sys.boot_completed`.
+- The runnable test passed and cleaned up its fixture APK and watcher. The existing
+  Google account was preserved. No physical phone or router was touched.
+
+**Conclusion:** this is useful fast detection and eventual enforcement, but **not
+parental approval before any first execution**. Keeping public Play installs enabled
+cannot be described as a closed installation gap on this evidence. Update-safe strict
+approval remains a separate unresolved gate; neither a foreground service nor a periodic
+reconcile is a pre-install authorization hook.
+
+Official references: [broadcast registration](https://developer.android.com/reference/android/content/Context#registerReceiver(android.content.BroadcastReceiver,android.content.IntentFilter)),
+[package-added semantics](https://developer.android.com/reference/android/content/Intent#ACTION_PACKAGE_ADDED),
+[foreground service types](https://developer.android.com/develop/background-work/services/fgs/service-types).
+
 ## Still to verify on the user's Pixel 10 (needs a separate OK each time)
 
 Battery/Doze cost of counting and syncing, Spotify with the screen off, YouTube

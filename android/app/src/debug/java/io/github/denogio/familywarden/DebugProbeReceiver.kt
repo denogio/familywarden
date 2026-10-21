@@ -69,6 +69,16 @@ class DebugProbeReceiver : BroadcastReceiver() {
                     val state = if (!now.containsKey("allowed_accounts")) "unset" else if (now.getString("allowed_accounts").isNullOrEmpty()) "deny-all" else "allowlist (redacted)"
                     Log.i(TAG, "play allowed_accounts=$state")
                 }
+                "io.github.denogio.familywarden.PROBE_PACKAGE_WATCH" -> {
+                    val enabled = intent.getBooleanExtra("enabled", false)
+                    check(prefs.edit().putBoolean("package_watch", enabled).commit())
+                    val service = Intent(context, PackageWatchProbe::class.java)
+                    if (enabled) context.startForegroundService(service) else context.stopService(service)
+                }
+                Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                    if (prefs.getBoolean("package_watch", false))
+                        context.startForegroundService(Intent(context, PackageWatchProbe::class.java))
+                }
                 "io.github.denogio.familywarden.PROBE_AUTOSUSPEND" ->
                     prefs.edit().putBoolean("autosuspend", intent.getBooleanExtra("enabled", false)).apply()
                 "io.github.denogio.familywarden.PROBE_USAGE" -> dumpUsage(context, intent.getLongExtra("since", System.currentTimeMillis() - 3_600_000))

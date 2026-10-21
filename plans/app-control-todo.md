@@ -126,10 +126,11 @@ Depends on the relevant P1 semantics. No child-phone experiments.
       and non-suspendable/system packages; never blanket-suspend critical packages.
 - [x] Identify launcher, dialer/emergency access, input method, Settings recovery and
       FamilyWarden itself as safety cases with explicit allowlist rules.
-- [ ] Complete verification of package-added/replaced/removed events and the
-      install-to-suspend race. Round 1 found a launch window with this manifest receiver;
-      dynamic registration/replacement/removal paths remain unverified.
-      Do not promise an unapproved app can never run until evidence supports it.
+- [x] Verify package-added/replaced/removed events and the install-to-suspend race.
+      Round 3: explicit package visibility + dynamic foreground receiver works; a second
+      five-race run allowed three first executions before enforcement took effect.
+      Replacement and reboot reconciliation passed. Strict first-use approval is **not**
+      achieved by post-install suspension.
 - [ ] Measure counting/enforcement latency and battery cost with screen on/off and Doze.
 - [x] Verify ordinary-account sign-in on an authorized disposable setup. Round 2:
       user signed into a test account; Play installs/updates succeeded without restrictions.
@@ -141,7 +142,7 @@ Depends on the relevant P1 semantics. No child-phone experiments.
 Rounds 1–2 (emulator, Android 17) recorded 2026-10-21:
 [app-control-android-findings.md](app-control-android-findings.md). Round 2 restrictions
 were cleared; emulator/account are retained for follow-up (no wipe).
-Open: update-safe new-app approval, package-event coverage, battery/Doze, Spotify
+Open: update-safe strict new-app approval, battery/Doze, Spotify
 screen-off, YouTube PiP, real-device usage-grant persistence. The user approved proceeding
 with a real counting/enforcement build and Pixel 10 test; describe the exact same-key APK,
 changes and rollback before touching the phone. No physical-device changes made yet.
