@@ -19,7 +19,7 @@ evidence for AOSP/Android behaviour, not for OEM, battery or real-hardware behav
 | Screen off | `SCREEN_NON_INTERACTIVE` (16) arrives ~0.7 s **before** the app's `ACTIVITY_PAUSED`/`STOPPED` | Cut counting at type 16, not at the pause |
 | Screen on | `SCREEN_INTERACTIVE` (15) then the app's `ACTIVITY_RESUMED` | Resume counting at whichever is later |
 | Shutdown | Documented: `DEVICE_SHUTDOWN` closes all open activities without stop events | Close open intervals at shutdown |
-| Picture-in-picture | Could not force Chrome into PiP via adb on the emulator | Count **visible** time (`RESUMED` → `STOPPED`, cut by screen-off): covers PiP and split screen by construction; verify with YouTube on the Pixel 10 |
+| Picture-in-picture | Could not force Chrome into PiP via adb on the emulator | Proposed: count `RESUMED` → `STOPPED`, cut by screen-off. Whether this accurately tracks PiP/split-screen visibility remains unverified; test with YouTube on the Pixel 10 |
 | Background audio, screen off | Emulator has no audio device; playback could not be confirmed | By the screen-off cut it cannot count (D5); verify with Spotify on the Pixel 10 |
 
 ## App suspension (DevicePolicyManager)
@@ -30,12 +30,12 @@ evidence for AOSP/Android behaviour, not for OEM, battery or real-hardware behav
 | Dialog text | Title "Blocked by work policy" is fixed; body is replaced by `setShortSupportMessage` ("Paused by FamilyWarden. Ask a parent for more time in the FamilyWarden app.") | Set a FamilyWarden support message (EN/DA by locale); title stays Android's |
 | Not suspendable | FamilyWarden itself, **Play Store**, default dialer, active launcher, Settings — returned in the failed list | Never rely on suspending them; the failed list must be reported |
 | Play Store | Cannot be suspended, but `setApplicationHidden` hides it (no launcher entry) | Hide/unhide Play Store or use the install restriction below |
-| Block installs | `no_install_apps` user restriction refuses installs (adb included) | Default for children: installs blocked; lifted only for a parent-approved install |
-| New-app window | `PACKAGE_ADDED` is **not delivered** to a manifest receiver (implicit-broadcast limits): a freshly installed app launched unsuspended | With installs blocked this window does not open; a periodic reconcile suspends anything unapproved as a backstop |
+| Block installs | `no_install_apps` refuses Play installs **and updates** (see round 2 below); round 1 also reported an adb refusal, not retested here | Cannot use this as a permanent new-app gate while promising automatic updates |
+| New-app window | This debug manifest receiver observed **no** `PACKAGE_ADDED` delivery; a freshly installed app launched unsuspended. This does not prove package events are universally unavailable | Test dynamic registration / the supported delivery mechanism; periodic reconciliation alone leaves a launch window |
 | Uninstall | `setUninstallBlocked` refused for a user app (`DELETE_FAILED_OWNER_BLOCKED`); not possible for system apps | Block uninstall of managed user apps; uninstalling a suspended app would otherwise drop its suspension |
 | Reboot | Suspensions survive reboot, **unless** the reboot happens within seconds of the change (not yet persisted) | Re-apply desired state at boot (P7 reconcile) |
 
-## Play Store controls for a Device Owner (official docs, not yet tested here)
+## Play Store controls for a Device Owner
 
 Source: https://developer.android.com/work/dpc/security (via the user's pointer to an
 r/Intune thread on blocking personal accounts on fully managed devices).
@@ -49,13 +49,34 @@ r/Intune thread on blocking personal accounts on fully managed devices).
 - The page itself names scheduled `setPackagesSuspended` as the way to block games or
   YouTube at certain times — the supported mechanism for our use case.
 
-Design consequence (replaces "hide Play Store"): keep Play Store visible but locked to the
-child's own account (`allowed_accounts`) and forbid adding accounts. Gate new installs either
-with `no_install_apps` lifted for an approved install, or with `allowed_accounts` empty by
-default and the child's account allowed only during an approved install.
-**Open, decides between them:** whether either method also blocks *updates* of already
-approved apps. Updates must keep working; this needs a real signed-in Google account
-(emulator with the user's help, or the Pixel 10).
+### Round 2: signed-in Play Store (2026-10-21)
+
+Same disposable Android 17 emulator, Play Store version **85073430**, debug Device
+Owner. The user created and signed into an ordinary Google test account. No physical
+phone or production router was changed. Account addresses are omitted; the debug probe
+logs only `unset`, `deny-all`, or `allowlist (redacted)`.
+
+| Control | Observation |
+|---|---|
+| Unrestricted baseline | Authenticator installed (`7002011`); Keep installed (`220679618`) after an earlier blocked attempt |
+| `no_install_apps=true`, new installation | Keep remained absent on the first short attempt. A separate KDE Connect attempt remained absent after 70 s and added an installer log rejection, `User restriction prevents installing` |
+| `no_install_apps=true`, existing-app update | Photos stayed at `51413605` through 120 s after tapping Update. With the restriction cleared, the same update completed to `52549343` within 45 s. Gmail similarly stayed at `65615106` under restriction, then updated to `66089035` unrestricted |
+| `allowed_accounts=<signed-in test account>` | Tasks installed (`2100325`); YouTube Music updated from `91052280` to `94152280` within 45 s. This is an account allowlist, **not an app allowlist** |
+| `allowed_accounts=""` | After restarting Play Store, app-detail links led to the **Sign in** screen instead of an install/update page. Manual updates were therefore inaccessible; unattended/background update behaviour was **not independently tested** |
+| `no_modify_accounts=true` | Tapping **Add account** from Android's account settings produced **Blocked by work policy / For more info, contact your IT admin**. A direct Add-account intent was not reliable evidence (it can finish back onto an older chooser); use the normal Settings path for this check |
+
+All three test restrictions were cleared afterwards (`no_install_apps=false`,
+`no_modify_accounts=false`, `allowed_accounts` removed). Emulator and test account were
+preserved for follow-up; installed test apps were left in place.
+
+**Design consequence:** an account allowlist plus account-modification restriction can
+keep Play visible and prevent switching to an unapproved account, but does not approve
+individual apps. Permanent `no_install_apps` also prevents updates; a deny-all account
+list removes manual Play access. Neither is a demonstrated solution to **automatic
+updates plus parent-approved new apps**. Keep this acceptance gate open. If installations
+remain enabled, the new-app launch race must be solved/tested rather than claiming a
+periodic suspension pass closes it. No production policy decision follows from this
+emulator experiment alone.
 
 ## Still to verify on the user's Pixel 10 (needs a separate OK each time)
 

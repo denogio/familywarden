@@ -26,6 +26,7 @@
                 <action android:name="io.github.denogio.familywarden.PROBE_HIDE" />
                 <action android:name="io.github.denogio.familywarden.PROBE_RESTRICT" />
                 <action android:name="io.github.denogio.familywarden.PROBE_SUPPORT" />
+                <action android:name="io.github.denogio.familywarden.PROBE_PLAY" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.PACKAGE_ADDED" />

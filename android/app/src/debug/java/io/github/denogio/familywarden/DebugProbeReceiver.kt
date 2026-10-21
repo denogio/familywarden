@@ -22,6 +22,7 @@ import android.util.Log
  *   am broadcast -a io.github.denogio.familywarden.PROBE_HIDE --es package a --ez hidden true
  *   am broadcast -a io.github.denogio.familywarden.PROBE_RESTRICT --es restriction no_install_apps --ez set true
  *   am broadcast -a io.github.denogio.familywarden.PROBE_SUPPORT --es message "..."
+ *   am broadcast -a io.github.denogio.familywarden.PROBE_PLAY --es allowed_accounts "a@x,b@y"   ("" blocks all; omit to clear)
  *
  * Results go to logcat tag "FwProbe". PACKAGE_ADDED also arrives here: with
  * autosuspend enabled a newly installed app is suspended at once, to measure the
@@ -58,6 +59,15 @@ class DebugProbeReceiver : BroadcastReceiver() {
                 "io.github.denogio.familywarden.PROBE_SUPPORT" -> {
                     dpm.setShortSupportMessage(admin, intent.getStringExtra("message"))
                     Log.i(TAG, "shortSupportMessage=${dpm.getShortSupportMessage(admin)}")
+                }
+                "io.github.denogio.familywarden.PROBE_PLAY" -> {
+                    val bundle = android.os.Bundle(dpm.getApplicationRestrictions(admin, "com.android.vending"))
+                    if (intent.hasExtra("allowed_accounts")) bundle.putString("allowed_accounts", intent.getStringExtra("allowed_accounts").orEmpty())
+                    else bundle.remove("allowed_accounts")
+                    dpm.setApplicationRestrictions(admin, "com.android.vending", bundle)
+                    val now = dpm.getApplicationRestrictions(admin, "com.android.vending")
+                    val state = if (!now.containsKey("allowed_accounts")) "unset" else if (now.getString("allowed_accounts").isNullOrEmpty()) "deny-all" else "allowlist (redacted)"
+                    Log.i(TAG, "play allowed_accounts=$state")
                 }
                 "io.github.denogio.familywarden.PROBE_AUTOSUSPEND" ->
                     prefs.edit().putBoolean("autosuspend", intent.getBooleanExtra("enabled", false)).apply()

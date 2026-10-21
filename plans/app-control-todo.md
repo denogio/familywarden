@@ -126,18 +126,25 @@ Depends on the relevant P1 semantics. No child-phone experiments.
       and non-suspendable/system packages; never blanket-suspend critical packages.
 - [x] Identify launcher, dialer/emergency access, input method, Settings recovery and
       FamilyWarden itself as safety cases with explicit allowlist rules.
-- [x] Verify package-added/replaced/removed events and the install-to-suspend race.
+- [ ] Complete verification of package-added/replaced/removed events and the
+      install-to-suspend race. Round 1 found a launch window with this manifest receiver;
+      dynamic registration/replacement/removal paths remain unverified.
       Do not promise an unapproved app can never run until evidence supports it.
 - [ ] Measure counting/enforcement latency and battery cost with screen on/off and Doze.
-- [ ] Verify ordinary-account sign-in on an authorized disposable setup if still needed;
-      do not reuse supervised-account failure as proof of ordinary-account success.
+- [x] Verify ordinary-account sign-in on an authorized disposable setup. Round 2:
+      user signed into a test account; Play installs/updates succeeded without restrictions.
+      `no_install_apps` also blocked updates; account allowlisting alone did not gate apps.
 - [ ] Record results, device/API/build and known bypasses; remove test state afterwards.
 
 **Accept:** a documented supported approach and honest limitations, without production changes.
 
-Round 1 (emulator, Android 17) done 2026-10-21: [app-control-android-findings.md](app-control-android-findings.md).
-Open: battery/Doze, Spotify screen-off, YouTube PiP, real-device usage-grant persistence —
-needs the user's Pixel 10 and a separate OK.
+Rounds 1–2 (emulator, Android 17) recorded 2026-10-21:
+[app-control-android-findings.md](app-control-android-findings.md). Round 2 restrictions
+were cleared; emulator/account are retained for follow-up (no wipe).
+Open: update-safe new-app approval, package-event coverage, battery/Doze, Spotify
+screen-off, YouTube PiP, real-device usage-grant persistence. The user approved proceeding
+with a real counting/enforcement build and Pixel 10 test; describe the exact same-key APK,
+changes and rollback before touching the phone. No physical-device changes made yet.
 
 ## P3 — Bootstrap the Go core
 
