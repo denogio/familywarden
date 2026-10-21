@@ -71,13 +71,25 @@ class DebugProbeReceiver : BroadcastReceiver() {
                 }
                 "io.github.denogio.familywarden.PROBE_PACKAGE_WATCH" -> {
                     val enabled = intent.getBooleanExtra("enabled", false)
+                    check(!enabled || Mast.isDeviceOwner(context)) { "Device Owner required" }
                     check(prefs.edit().putBoolean("package_watch", enabled).commit())
                     val service = Intent(context, PackageWatchProbe::class.java)
                     if (enabled) context.startForegroundService(service) else context.stopService(service)
                 }
+                "io.github.denogio.familywarden.PROBE_APP_CONTROL" -> {
+                    val enabled = intent.getBooleanExtra("enabled", false)
+                    check(!enabled || Mast.isDeviceOwner(context)) { "Device Owner required" }
+                    val seconds = intent.getIntExtra("seconds", 30).also { require(it in 0..86400) }
+                    check(prefs.edit().putBoolean("app_control", enabled).putInt("app_control_seconds", seconds)
+                        .putBoolean("app_control_block", intent.getBooleanExtra("blocked", false)).commit())
+                    val service = Intent(context, AppControlProbe::class.java)
+                    if (enabled) context.startForegroundService(service) else context.stopService(service)
+                }
                 Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> {
-                    if (prefs.getBoolean("package_watch", false))
+                    if (Mast.isDeviceOwner(context) && prefs.getBoolean("package_watch", false))
                         context.startForegroundService(Intent(context, PackageWatchProbe::class.java))
+                    if (Mast.isDeviceOwner(context) && prefs.getBoolean("app_control", false))
+                        context.startForegroundService(Intent(context, AppControlProbe::class.java))
                 }
                 "io.github.denogio.familywarden.PROBE_AUTOSUSPEND" ->
                     prefs.edit().putBoolean("autosuspend", intent.getBooleanExtra("enabled", false)).apply()

@@ -221,6 +221,14 @@ Depends on P2/P5 and chosen accounting rules.
 
 **Accept:** known synthetic event traces yield exact expected summaries and retries do not drift.
 
+Local foundation implemented/tested 2026-10-21: `UsageCounter`, `UsageJournal` and
+`UsageMonitor` in Android main sources; debug-only fixture activation. 110 JVM tests and
+the emulator usage/restart/update/revocation/reboot smoke test pass. This does **not**
+complete the checkboxes: public class identity cannot distinguish same-class instances,
+PiP remains unverified, clock/history recovery and throttling need work, and signed
+activation/uploads/router retention await P5. See capability findings and
+`test/android/install-probe/README.md`.
+
 ## P7 — Enforce child app rules locally
 
 Depends on P2/P5/P6.
@@ -237,6 +245,13 @@ Depends on P2/P5/P6.
 
 **Accept:** targeted runtime evidence for exhaustion, offline restart and essential-app safety;
 unit tests cover precedence. No claim of root/recovery-proof enforcement.
+
+Local foundation implemented/tested 2026-10-21: pure `appAction` and `AppEnforcer`
+(main sources), exercising a local per-app quota with essential-package safety and
+owned-only suspension tracking. Debug fixture exhaustion/update/reboot passes. Full
+precedence/grants/shared quotas, signed policy activation, release/removal integration,
+UI and physical-device safety remain open. Post-install suspension is **not** strict
+pre-execution app approval (P2 round 3).
 
 ## P8 — Deliver the first end-to-end extra-time slice
 

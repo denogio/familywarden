@@ -114,6 +114,68 @@ Official references: [broadcast registration](https://developer.android.com/refe
 [package-added semantics](https://developer.android.com/reference/android/content/Intent#ACTION_PACKAGE_ADDED),
 [foreground service types](https://developer.android.com/develop/background-work/services/fgs/service-types).
 
+## Local usage/enforcement foundation (2026-10-21, not production activation)
+
+The real components now live under `android/app/src/main/...`:
+
+- `UsageCounter.kt`: event reducer, screen/keyguard clipping, package union of visible
+  **activity classes**, router-timezone date splitting, 23/25-hour DST days and retention.
+- `UsageJournal.kt`: bounded schema-1 `AtomicFile` checkpoint containing cursor, cumulative
+  millisecond totals, current visibility, sequence and missing-data metadata together.
+  A damaged/unsupported checkpoint is an error, never a new zero budget.
+- `UsageMonitor.kt`: checked usage app-op, bounded event query (50,000 events / at most
+  one day of continuous history), exclusive query-end cursor, boot/clock-gap detection
+  and persistence **before** enforcement. No networking or raw event archive.
+- `AppEnforcement.kt`: local per-app budgets, explicit blocks, downtime and a candidate
+  unapproved-user-app rule; essential-package safety overrides policy. It tracks its own
+  suspensions and only lifts those. Non-launchable system components, launchers, dialer,
+  SMS app, input methods, Settings, active admins and FamilyWarden are protected.
+
+`AppControlProbe` is a **debug-only** foreground service that activates these components
+for the synthetic fixture only. One-second polling/checkpointing is for this experiment,
+not a battery-approved production setting. Nothing in the current release app activates
+unsigned local app policy. Existing signed v2 enrollment, DNS, pacts and removal are unchanged.
+
+### Verification
+
+- **110 JVM tests pass**, including reducer/checkpoint continuity, same-timestamp query
+  boundaries, multiple activity classes, screen/keyguard cuts, shutdown, midnight/DST,
+  retention, malformed checkpoints, clock/reboot gaps, essential safety, exhausted/unknown
+  usage and downtime in the router timezone even while the caller uses another timezone.
+- Debug APK build/lint and release Kotlin/manifest/lint checks pass. The release manifest
+  has no debug probe receiver/service.
+- `test/android/install-probe/usage_test.py --reboot` passed on the same emulator:
+  final run: about **5.01 s** counted during a five-second foreground test; **0 ms additional**
+  after screen-off and after activity stop; service restart did not double count; a local
+  **96,000 ms** daily limit suspended the fixture, with **97,879 ms** finally recorded.
+  That overshoot is real polling/suspension latency, not an exact-time guarantee.
+- The APK update preserved totals and suspension. Usage-access revocation reported missing
+  data rather than zero, and retained both counters and the exhausted-app block. Reboot
+  retained totals/blocks and restarted the debug collector. Initial smoke-test comparison
+  was corrected to wait for the asynchronous final STOP event before comparing totals.
+- Probe was stopped and the synthetic APK removed. The local checkpoint and Google test
+  account were retained. No Pixel or production router changes.
+
+### Remaining gates — do not call this complete P6/P7
+
+- Public `UsageEvents.Event` exposes package/class names, **not an activity instance ID**.
+  Several simultaneous instances of the same class cannot be distinguished and may be
+  undercounted. No hidden API/reflection is used. Physical PiP/split-screen correctness
+  remains open; the simple lifecycle model is not yet a general visible-time proof.
+- Missing history, changed boot or clock is an explicit gap. The current uncertain day
+  holds prior budget decisions (known exhaustion still blocks), rather than inventing
+  usage or silently granting a fresh budget. This is not a complete recovery/anti-tamper
+  strategy. Trusted clock anchoring and timezone migration belong to P5/P6 integration.
+- Local schema/size bounds fail without replacing the last good checkpoint. Retention
+  does not prune on an uncertain day; long-lived uncertainty/storage-cap recovery still
+  needs implementation. Production write throttling/battery cost is unmeasured.
+- These are **local** budgets, not cross-device shared allocation. There is no usage upload,
+  signed v3 policy activation, parent grant consumption, replay ledger, app-control UI or
+  validated Android/Go precedence parity. Those roadmap items stay open.
+- Boot/package-change reconciliation is eventual. The first-install race above is still
+  present. No claim of pre-execution approval, root/recovery-proof enforcement, or final
+  system-app safety across OEMs follows from this synthetic test.
+
 ## Still to verify on the user's Pixel 10 (needs a separate OK each time)
 
 Battery/Doze cost of counting and syncing, Spotify with the screen off, YouTube

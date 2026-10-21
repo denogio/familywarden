@@ -10,8 +10,12 @@
         <package android:name="io.github.denogio.familywarden.fixture" />
     </queries>
     <application>
+        <!-- Entry points require Device Owner, an eligible systemExempted use case.
+             Lint only models the alternative alarm-permission eligibility path. -->
+        <service android:name=".AppControlProbe" android:exported="false"
+            android:foregroundServiceType="systemExempted" tools:ignore="ForegroundServicePermission" />
         <service android:name=".PackageWatchProbe" android:exported="false"
-            android:foregroundServiceType="systemExempted" />
+            android:foregroundServiceType="systemExempted" tools:ignore="ForegroundServicePermission" />
         <!-- Debug builds only: lets scripts/test-mast-emulator.sh pair and sync via adb -->
         <receiver
             android:name=".DebugReceiver"
@@ -35,6 +39,7 @@
                 <action android:name="io.github.denogio.familywarden.PROBE_SUPPORT" />
                 <action android:name="io.github.denogio.familywarden.PROBE_PLAY" />
                 <action android:name="io.github.denogio.familywarden.PROBE_PACKAGE_WATCH" />
+                <action android:name="io.github.denogio.familywarden.PROBE_APP_CONTROL" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
