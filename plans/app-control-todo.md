@@ -81,20 +81,21 @@ not a completed final browser suite. App-control enforcement is still not implem
 
 Depends on P0. Discuss unresolved choices before building their enforcement.
 
-- [ ] Specify signed device roles, parent-to-child scope, revocation and multiple parents.
+- [x] Specify signed device roles, parent-to-child scope, revocation and multiple parents.
       (Decided: router **and** parent phones may sign grants — app-control.md decision 2.)
       A normal parent phone must not need Device Owner merely to approve requests.
-- [ ] Define precedence: essential apps, explicit blocks, downtime, per-app/category
+- [x] Define precedence: essential apps, explicit blocks, downtime, per-app/category
       quotas, one-off grants, adult pool, and active pacts.
-- [~] Define whether grants bypass downtime/explicit blocks, and when unused minutes expire.
-      (Decided: parent grants work after bedtime. Open: midnight expiry; network ticket.)
+- [x] Define whether grants bypass downtime/explicit blocks, and when unused minutes expire.
+      (Decided: grants work after bedtime, valid 2 h, also open router internet.)
 - [x] Define per-device vs shared multi-device budgets; do not claim global offline
       budgets without an allocation strategy that prevents double spending.
       (Decided: shared per child; bounded offline overspend, reconciled — decision 4.)
-- [~] Define usage: foreground time, screen lock, split screen, picture-in-picture,
+- [x] Define usage: foreground time, screen lock, split screen, picture-in-picture,
       background audio, overlapping activities and incomplete Android event history.
-      (Decided: screen-on foreground; screen-off background audio excluded. PiP to confirm.)
-- [ ] Define household timezone/day boundaries, DST, clock rollback and travel behavior.
+      (Decided: screen-on foreground incl. PiP; screen-off background audio excluded.)
+- [x] Define household timezone/day boundaries, DST, clock rollback and travel behavior.
+      (Decided: router-timezone midnight; signed server_time + monotonic clock.)
 - [x] Set request rate limits, outstanding-request bounds, expiry and repeated-denial UX (A7).
       (Decided: no rate limit, one open request per child, expires after 1 hour.)
 - [x] Choose usage retention/deletion and visibility for child, parent and adult (A8).
@@ -107,7 +108,8 @@ Depends on P0. Discuss unresolved choices before building their enforcement.
 - [x] Specify who authorizes offline grants: router only, or delegated parent keys;
       cover revocation, trust expiry and offline replay/double-spend limits.
       (Decided: delegated parent keys; mechanics go in the protocol document.)
-- [ ] Record schema examples, error codes and compatibility rules in a protocol document.
+- [x] Record schema examples, error codes and compatibility rules in a protocol document:
+      [app-control-protocol.md](app-control-protocol.md) (draft; fields final once tested).
 
 **Accept:** explicit decisions for the first vertical slice; deferred choices stay labeled.
 

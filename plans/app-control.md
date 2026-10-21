@@ -77,16 +77,20 @@ follow-ups recorded with them, not additional decisions.
 3. **Grants vs bedtime:** a parent can give extra time **also after bedtime/outside allowed
    windows** — an explicit parent grant wins over downtime and schedule limits for the
    granted app and minutes. *Adult self-limits under a pact are unaffected: no self-approval
-   beyond the daily pool. Open: whether unused granted minutes expire at midnight, and
-   whether an app grant must also open the profile's internet at the router for the same
-   duration (otherwise an online app is still offline at night).*
+   beyond the daily pool.*
+   - **Grant lifetime:** unused granted minutes do not expire at midnight; a grant is valid
+     for **2 hours after approval**.
+   - **Network:** an app grant also opens the child's **internet at the router** (a
+     profile ticket) for the same period, so an online app works after bedtime at home.
 4. **Budgets are shared per child** across all the child's devices. *Offline devices cannot
    know what the others spent: each device enforces the remaining shared budget it last
    received, so two devices offline at once can overspend by at most that remainder.
    Reconciled at sync; overspend is reported, never silently ignored.*
 5. **What counts as use:** foreground time with the screen on. Background audio with the
-   screen off (e.g. Spotify) does **not** count. *Proposed: with the screen on only the
-   visible foreground app counts; picture-in-picture counts for the PiP app. To confirm.*
+   screen off (e.g. Spotify) does **not** count. With the screen on, the visible foreground
+   app counts, and **picture-in-picture counts** for the PiP app.
+8. **Day boundary:** a new day starts at **midnight in the router's timezone**, also when the
+   child travels to another timezone.
 6. **Retention (A8):** 30 days for per-app activity and for visited websites. *Websites are
    available as **domains** from AdGuard Home's per-client query log, not full URLs or page
    content; DNS misses apps with their own encrypted DNS. Data stays in the household
