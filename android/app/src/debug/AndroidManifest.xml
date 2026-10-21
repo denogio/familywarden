@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Debug-only P2 probes: usage access is granted by adb (appops), never requested from users here -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
     <application>
         <!-- Debug builds only: lets scripts/test-mast-emulator.sh pair and sync via adb -->
         <receiver
@@ -8,6 +12,24 @@
             <intent-filter>
                 <action android:name="io.github.denogio.familywarden.DEBUG_PAIR" />
                 <action android:name="io.github.denogio.familywarden.DEBUG_SYNC" />
+            </intent-filter>
+        </receiver>
+        <!-- Debug builds only: P2 capability experiments (app suspension, usage events) -->
+        <receiver
+            android:name=".DebugProbeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.github.denogio.familywarden.PROBE_SUSPEND" />
+                <action android:name="io.github.denogio.familywarden.PROBE_UNINSTALL_BLOCK" />
+                <action android:name="io.github.denogio.familywarden.PROBE_USAGE" />
+                <action android:name="io.github.denogio.familywarden.PROBE_AUTOSUSPEND" />
+                <action android:name="io.github.denogio.familywarden.PROBE_HIDE" />
+                <action android:name="io.github.denogio.familywarden.PROBE_RESTRICT" />
+                <action android:name="io.github.denogio.familywarden.PROBE_SUPPORT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_ADDED" />
+                <data android:scheme="package" />
             </intent-filter>
         </receiver>
     </application>

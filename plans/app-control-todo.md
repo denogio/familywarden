@@ -118,15 +118,15 @@ Depends on P0. Discuss unresolved choices before building their enforcement.
 
 Depends on the relevant P1 semantics. No child-phone experiments.
 
-- [ ] Check current official Android API behavior for UsageStats, package suspension,
+- [x] Check current official Android API behavior for UsageStats, package suspension,
       package visibility, special access, foreground execution and install restrictions.
-- [ ] Prove usage access grant/setup, detection of revocation and recovery. Treat adb
+- [x] Prove usage access grant/setup, detection of revocation and recovery. Treat adb
       app-ops setup as a candidate, not proof that Device Owner can self-grant access.
-- [ ] Test suspend/unsuspend of one disposable app, failure returns, active-app behavior
+- [x] Test suspend/unsuspend of one disposable app, failure returns, active-app behavior
       and non-suspendable/system packages; never blanket-suspend critical packages.
-- [ ] Identify launcher, dialer/emergency access, input method, Settings recovery and
+- [x] Identify launcher, dialer/emergency access, input method, Settings recovery and
       FamilyWarden itself as safety cases with explicit allowlist rules.
-- [ ] Verify package-added/replaced/removed events and the install-to-suspend race.
+- [x] Verify package-added/replaced/removed events and the install-to-suspend race.
       Do not promise an unapproved app can never run until evidence supports it.
 - [ ] Measure counting/enforcement latency and battery cost with screen on/off and Doze.
 - [ ] Verify ordinary-account sign-in on an authorized disposable setup if still needed;
@@ -134,6 +134,10 @@ Depends on the relevant P1 semantics. No child-phone experiments.
 - [ ] Record results, device/API/build and known bypasses; remove test state afterwards.
 
 **Accept:** a documented supported approach and honest limitations, without production changes.
+
+Round 1 (emulator, Android 17) done 2026-10-21: [app-control-android-findings.md](app-control-android-findings.md).
+Open: battery/Doze, Spotify screen-off, YouTube PiP, real-device usage-grant persistence —
+needs the user's Pixel 10 and a separate OK.
 
 ## P3 — Bootstrap the Go core
 
