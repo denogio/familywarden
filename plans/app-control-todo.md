@@ -51,12 +51,13 @@ Selected before feature implementation; visual changes must preserve current beh
 - [x] Prepare [the continuation prompt](../docs/design/luci-design-prompt.md) for the
       existing Claude Design thread; [research notes](../docs/design/luci-design-research.md).
 - [x] Submit the prompt to Claude Design and obtain the design export (user handoff).
-- [ ] Finish the full multi-page review of exported states, factual claims, accessibility
+- [x] Finish the full multi-page review of exported states, factual claims, accessibility
       and native LuCI compatibility; Overview-specific findings are addressed.
 - [x] After design approval, implement Overview first and test in disposable LuCI.
       [Implementation evidence and preserved exports](../docs/design/luci/README.md):
       24 browser tests pass, scoped light/dark styling, no production deployment.
-- [ ] After Overview acceptance, apply the shared visual language to other existing pages.
+- [x] After Overview acceptance, apply the shared visual language to other existing pages
+      (all pages; released in LuCI 0.7.0 / v0.9.2 and deployed on rivendell).
 
 User-supplied design is archived; Overview and its follow-up refinements are implemented
 and visually accepted. Next: Profiles, then Phones, Settings and Info. Playwright is
