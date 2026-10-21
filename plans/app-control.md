@@ -62,6 +62,39 @@ Per-app time control on Android phones, self-hosted by each household on its own
   concrete service/credential dependencies, battery use and reliability before choosing.
   Signing alone does not encrypt payloads.
 
+## Contract decisions (2026-10-21)
+
+The user's answers to the P1 questions. Notes in *italics* are consequences or open
+follow-ups recorded with them, not additional decisions.
+
+1. **Split (A6):** the Go core owns identity, signed policy, DNS sync and app control;
+   the shell plugin remains the OpenWrt adapter for firewall, schedules, tickets and pacts.
+2. **Who may authorize extra time:** the router **and** a parent's phone. A grant signed by
+   an approved parent phone is valid on the child's phone directly, also away from home.
+   *Requires: approved parent keys delivered inside the router-signed policy; grants bound
+   to child, app, minutes and request ID; single use; a short validity window. Revoking a
+   parent key reaches an offline child phone only at its next sync.*
+3. **Grants vs bedtime:** a parent can give extra time **also after bedtime/outside allowed
+   windows** — an explicit parent grant wins over downtime and schedule limits for the
+   granted app and minutes. *Adult self-limits under a pact are unaffected: no self-approval
+   beyond the daily pool. Open: whether unused granted minutes expire at midnight, and
+   whether an app grant must also open the profile's internet at the router for the same
+   duration (otherwise an online app is still offline at night).*
+4. **Budgets are shared per child** across all the child's devices. *Offline devices cannot
+   know what the others spent: each device enforces the remaining shared budget it last
+   received, so two devices offline at once can overspend by at most that remainder.
+   Reconciled at sync; overspend is reported, never silently ignored.*
+5. **What counts as use:** foreground time with the screen on. Background audio with the
+   screen off (e.g. Spotify) does **not** count. *Proposed: with the screen on only the
+   visible foreground app counts; picture-in-picture counts for the PiP app. To confirm.*
+6. **Retention (A8):** 30 days for per-app activity and for visited websites. *Websites are
+   available as **domains** from AdGuard Home's per-client query log, not full URLs or page
+   content; DNS misses apps with their own encrypted DNS. Data stays in the household
+   (router/AdGuard host), deleted after 30 days. The earlier "no per-site logs" proposal
+   is superseded.*
+7. **Requests (A7):** no rate limit; a child has at most **one open request** at a time;
+   an unanswered request **expires after 1 hour**.
+
 ## Open decisions
 
 | ID | Question | Proposal | State |
@@ -71,9 +104,9 @@ Per-app time control on Android phones, self-hosted by each household on its own
 | A3 | Children's Google accounts with our Device Owner | Separate ordinary, unsupervised Google account per child; warn about Google's account rules in README | **Decided** |
 | A4 | Adult self-limit: how to get access when really needed? | A small daily pool the user may spend without approval; nothing beyond it during a pact | **Decided** |
 | A5 | Children's phones | Pixel 7 Pro, Android 17 | **Decided** |
-| A6 | Core vs existing shell backend | Core takes identity, policy, DNS and app control; shell stays the OpenWrt firewall adapter until ported | Open |
-| A7 | Request abuse and limits | Rate limit requests per child; approvals expire; optional "auto-deny after N" | Open |
-| A8 | Usage data and privacy | Keep summaries per app/day on the router only, short retention, no per-site logs | Open |
+| A6 | Core vs existing shell backend | Core takes identity, policy, DNS and app control; shell stays the OpenWrt firewall/pact adapter until ported | **Decided** |
+| A7 | Request abuse and limits | No rate limit; one open request per child at a time; a request expires after 1 hour | **Decided** |
+| A8 | Usage data and privacy | 30 days for app activity **and** visited websites (domains), on the household's own infrastructure | **Decided** (details below) |
 | A9 | Device Owner setup for others | Like Tabaa: the app pairs with the phone's own *Wireless debugging* (user types the pairing code into a notification) and makes itself Device Owner, no computer; adb from a PC as alternative; QR provisioning only for new or reset phones | Open |
 | A10 | Support a light tier without Device Owner? | Yes, after the strict tier; bypass-evident with parent alerts | Open |
 | A11 | Android developer verification (2027) | Register the package as a verified developer, or rely on limited distribution / ADB | Open |
@@ -194,4 +227,4 @@ Family Link).
 ## Not in scope for now
 
 iPhone (no equivalent API outside Screen Time), web dashboards, a maintainer-run service,
-per-website history.
+full-URL or page-content history (domain history is in scope, see decision 6).
