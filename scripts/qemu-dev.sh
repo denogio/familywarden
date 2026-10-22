@@ -15,10 +15,16 @@
 #   LuCI       http://localhost:8080   (root / ulysses)
 #   Sail page  http://localhost:7700
 #   SSH        ssh -p 2222 root@localhost
+#
+# A second, disposable VM next to it: run the script from another checkout (its own
+# images/ overlay) with HTTP_PORT=18081 SAIL_PORT=17701 SSH_PORT=12223.
 
 set -e
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+HTTP_PORT=${HTTP_PORT:-8080}
+SAIL_PORT=${SAIL_PORT:-7700}
+SSH_PORT=${SSH_PORT:-2222}
 VERSION=25.12.4
 IMG_DIR="$REPO/images"
 BASE="$IMG_DIR/openwrt-$VERSION-x86-64-base.img"
@@ -32,7 +38,7 @@ GZ="openwrt-$VERSION-x86-64-generic-ext4-combined.img.gz"
 PASSWORD="ulysses"
 # Dedicated key for the test VM, installed while root still has no password
 KEY="$RUN/id_ed25519"
-SSH=(ssh -p 2222 -i "$KEY" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=no
+SSH=(ssh -p "$SSH_PORT" -i "$KEY" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=no
      -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5 root@localhost)
 
 die() { echo "❌ $*" >&2; exit 1; }
@@ -89,7 +95,7 @@ cmd_start() {
     qemu-system-x86_64 \
         -enable-kvm -m 256 -smp 2 \
         -drive "file=$OVERLAY,if=virtio,format=qcow2" \
-        -netdev "user,id=lan,net=192.168.1.0/24,host=192.168.1.2,dhcpstart=192.168.1.200,hostfwd=tcp:127.0.0.1:8080-192.168.1.1:80,hostfwd=tcp:127.0.0.1:7700-192.168.1.1:7700,hostfwd=tcp:127.0.0.1:2222-192.168.1.1:22" \
+        -netdev "user,id=lan,net=192.168.1.0/24,host=192.168.1.2,dhcpstart=192.168.1.200,hostfwd=tcp:127.0.0.1:$HTTP_PORT-192.168.1.1:80,hostfwd=tcp:127.0.0.1:$SAIL_PORT-192.168.1.1:7700,hostfwd=tcp:127.0.0.1:$SSH_PORT-192.168.1.1:22" \
         -device virtio-net-pci,netdev=lan \
         -netdev user,id=wan \
         -device virtio-net-pci,netdev=wan \
@@ -97,7 +103,7 @@ cmd_start() {
         -monitor "unix:$MONITOR,server=on,wait=off" \
         -display none -daemonize -pidfile "$PIDFILE"
     wait_ssh
-    echo "LuCI http://localhost:8080 · sail page http://localhost:7700 · ssh -p 2222 root@localhost"
+    echo "LuCI http://localhost:$HTTP_PORT · sail page http://localhost:$SAIL_PORT · ssh -p $SSH_PORT root@localhost"
 }
 
 cmd_deploy() {
@@ -167,7 +173,7 @@ fi
 rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache
 /etc/init.d/rpcd restart
 EOF
-    echo "✓ Deployed. LuCI http://localhost:8080 (root / $PASSWORD), sail page http://localhost:7700"
+    echo "✓ Deployed. LuCI http://localhost:$HTTP_PORT (root / $PASSWORD), sail page http://localhost:$SAIL_PORT"
     echo "  Cooling-off is 1 hour in the test config. Router time: $("${SSH[@]}" "date '+%a %H:%M'")"
 }
 
