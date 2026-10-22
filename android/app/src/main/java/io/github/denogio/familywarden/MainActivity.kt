@@ -264,9 +264,26 @@ class MainActivity : ComponentActivity() {
             |dnsMatches=${applied.hostname != null && applied.hostname == store.effectiveState?.dns?.hostname} dnsLocked=${applied.locked}
             |sync=${store.lastError ?: "ok"} lastSync=${store.lastSync} wire=${store.wireSeen}
             |apps=${store.effectiveState?.apps != null} appsStatus=${store.appsStatus ?: "none"} appsApplied=${store.appsApplied == store.effectiveState?.apps?.rev && store.appsApplied != null}
+            |${usageToday(store)}
         """.trimMargin()
         getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("FamilyWarden", report))
         message(R.string.fw_diagnostics_copied)
+    }
+
+    /**
+     * Today's counted minutes for the apps the router limits: the only way to check counting
+     * on a release build (not debuggable, no usage upload yet). Package names come from the
+     * router's own policy; no other app activity is included.
+     */
+    private fun usageToday(store: Store): String {
+        val state = store.effectiveState ?: return "usage=none"
+        val apps = state.apps ?: return "usage=none"
+        val zone = AppControl.zone(state)
+        val counter = runCatching { UsageJournal(this).load() }.getOrNull()?.counter ?: return "usage=unavailable"
+        val day = java.time.LocalDate.now(zone).toString()
+        return "usage $day: " + apps.limitsMinutes.keys.sorted().joinToString(" ") { pkg ->
+            "$pkg=%.1f/%dmin".format(java.util.Locale.ROOT, counter.used(day, pkg) / 60_000.0, apps.limitsMinutes.getValue(pkg))
+        }.ifEmpty { "no limits" }
     }
 
     private fun message(id: Int) = Toast.makeText(this, id, Toast.LENGTH_LONG).show()
