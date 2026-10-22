@@ -176,6 +176,15 @@ unsigned local app policy. Existing signed v2 enrollment, DNS, pacts and removal
   present. No claim of pre-execution approval, root/recovery-proof enforcement, or final
   system-app safety across OEMs follows from this synthetic test.
 
+## Continued installation-control research
+
+The post-install race did **not** end the investigation.
+[Continued research](app-control-install-research.md) records the native lock-task
+alternative: activity launch blocked before onCreate, a Play Maps update completed in
+native mode, and a provider still executed despite activity blocking. Home/Direct Boot
+experiments expose a readiness interval and phone-UX/recovery gates. No production
+architecture decision or physical deployment follows yet.
+
 ## Still to verify on the user's Pixel 10 (needs a separate OK each time)
 
 Battery/Doze cost of counting and syncing, Spotify with the screen off, YouTube

@@ -76,6 +76,12 @@ class DebugProbeReceiver : BroadcastReceiver() {
                     val service = Intent(context, PackageWatchProbe::class.java)
                     if (enabled) context.startForegroundService(service) else context.stopService(service)
                 }
+                "io.github.denogio.familywarden.PROBE_LOCK_TASK" -> LockTaskProbe.set(context, intent.getBooleanExtra("enabled", false))
+                "io.github.denogio.familywarden.PROBE_LOCK_TASK_IN_TASK" -> {
+                    check(android.os.Build.HARDWARE in setOf("ranchu", "goldfish")) { "emulator only" }
+                    context.startActivity(Intent(context, LockTaskProbeActivity::class.java)
+                        .putExtra("try_fixture", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                }
                 "io.github.denogio.familywarden.PROBE_APP_CONTROL" -> {
                     val enabled = intent.getBooleanExtra("enabled", false)
                     check(!enabled || Mast.isDeviceOwner(context)) { "Device Owner required" }

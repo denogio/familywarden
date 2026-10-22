@@ -130,7 +130,9 @@ Depends on the relevant P1 semantics. No child-phone experiments.
       Round 3: explicit package visibility + dynamic foreground receiver works; a second
       five-race run allowed three first executions before enforcement took effect.
       Replacement and reboot reconciliation passed. Strict first-use approval is **not**
-      achieved by post-install suspension.
+      achieved by post-install suspension. Continued native lock-task/Home research is
+      tracked in `app-control-install-research.md`: activity blocking is promising,
+      queued Play update completion passes, but background code/readiness/UX gates remain.
 - [ ] Measure counting/enforcement latency and battery cost with screen on/off and Doze.
 - [x] Verify ordinary-account sign-in on an authorized disposable setup. Round 2:
       user signed into a test account; Play installs/updates succeeded without restrictions.
