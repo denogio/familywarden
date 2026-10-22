@@ -648,6 +648,111 @@ assert_json "the UCI deletion takes effect once the pact is over" "$(v2payload p
 assert_json "the phone that joined is free again" "$(v2payload phoneD fw-d1 "$N1")" '@.pact.active' "false"
 
 echo ""
+echo "=== App control: wire v3 (apps policy, acknowledgement, pact freeze) ==="
+# Both signatures, as a v3 phone sends them: $1 phone key, $2 device id, $3 nonce,
+# $4 applied revision ("-" = none) [, $5 revision actually signed in the v3 message]
+mast3() {
+    printf 'familywarden-sync-v2\n%s\n%s\n' "$2" "$3" > /tmp/m3.msg2
+    printf 'familywarden-sync-v3\n%s\n%s\n%s\n' "$2" "$3" "${5:-$4}" > /tmp/m3.msg3
+    usign -S -m /tmp/m3.msg2 -s "/tmp/$1.key" -x /tmp/m3.sig2
+    usign -S -m /tmp/m3.msg3 -s "/tmp/$1.key" -x /tmp/m3.sig3
+    REQUEST_METHOD=GET QUERY_STRING="device=$2&nonce=$3&key=$(enc "$(sed -n 2p "/tmp/$1.pub")")&sig=$(enc "$(sed -n 2p /tmp/m3.sig2)")&sig3=$(enc "$(sed -n 2p /tmp/m3.sig3)")&applied=$4&name=Pixel-9" sh "$MAST"
+}
+v3payload() { mast3 "$@" | sed '1,/^$/d' | sed 1d; }
+count() { echo "$1" | jsonfilter -e "$2" 2>/dev/null | grep -c .; }
+
+payload=$(v3payload phoneD fw-d1 "$N1" -)
+assert_json "v3 request gets a v3 reply" "$payload" '@.v' "3"
+assert_json "v3 keeps the v2 binding" "$payload" '@.binding.profile_id' "kid"
+[ -z "$(echo "$payload" | jsonfilter -e '@.apps')" ] && pass "no apps object while app control is off" || fail "apps without app control"
+assert_json "an old (v2-only) phone still gets v2" "$(v2payload phoneD fw-d1 "$N1")" '@.v' "2"
+
+uci set familywarden.kid.apps='1'
+for s in "kid_roblox app com.roblox.client 60 0" "kid_roblox2 app com.roblox.client 30 0" \
+         "kid_tiktok app com.zhiliaoapp.musically - 1" "kid_spotify app com.spotify.music - 0" \
+         "kid_bad app ../etc - 0" "parent_other app com.example.other 5 0"; do
+    set -- $s
+    uci set "familywarden.$1=$2"
+    uci set "familywarden.$1.profile=${1%%_*}"
+    uci set "familywarden.$1.package=$3"
+    [ "$4" = "-" ] || uci set "familywarden.$1.minutes=$4"
+    uci set "familywarden.$1.blocked=$5"
+done
+uci set familywarden.parent.apps='1'
+uci set familywarden.kid_bed=app_downtime
+uci set familywarden.kid_bed.profile='kid'
+uci set familywarden.kid_bed.days='mon tue wed thu'
+uci set familywarden.kid_bed.start='21:00'
+uci set familywarden.kid_bed.stop='07:00'
+uci set familywarden.kid_badbed=app_downtime
+uci set familywarden.kid_badbed.profile='kid'
+uci set familywarden.kid_badbed.days='someday'
+uci set familywarden.kid_badbed.start='21:00'
+uci set familywarden.kid_badbed.stop='07:00'
+uci commit familywarden
+"$BIN" reload >/dev/null
+
+mast3 phoneD fw-d1 "$N1" - > /tmp/m3.out
+sed '1,/^$/d' /tmp/m3.out > /tmp/m3.body
+printf 'untrusted comment: test\n%s\n' "$(sed -n 1p /tmp/m3.body)" > /tmp/m3.rsig
+sed 1d /tmp/m3.body > /tmp/m3.payload
+usign -V -q -m /tmp/m3.payload -p /tmp/mast.pub -x /tmp/m3.rsig && pass "v3 reply signed by the router" || fail "v3 reply signature"
+payload=$(cat /tmp/m3.payload)
+rev=$(echo "$payload" | jsonfilter -e '@.apps.rev')
+echo "$rev" | grep -qE '^[0-9a-f]{16}$' && pass "apps revision ($rev)" || fail "bad apps revision: $rev"
+assert_json "new apps are suspended by default (A12)" "$payload" '@.apps.suspend_new' "true"
+assert_json "duplicate rules merge to the smallest limit" "$payload" '@.apps.limits[@.package="com.roblox.client"].minutes' "30"
+[ "$(count "$payload" '@.apps.limits[*]')" = 1 ] && pass "one limit (blocked/unlimited apps have none)" || fail "limits: $(echo "$payload" | jsonfilter -e '@.apps.limits')"
+assert_json "blocked app" "$payload" '@.apps.blocked[0]' "com.zhiliaoapp.musically"
+[ "$(count "$payload" '@.apps.approved[*]')" = 2 ] && echo "$payload" | jsonfilter -e '@.apps.approved[*]' | grep -qx com.spotify.music \
+    && ! echo "$payload" | jsonfilter -e '@.apps.approved[*]' | grep -qx com.zhiliaoapp.musically \
+    && pass "approved = configured and not blocked" || fail "approved: $(echo "$payload" | jsonfilter -e '@.apps.approved')"
+echo "$payload" | grep -q 'etc"' && fail "invalid package name emitted" || pass "invalid package name ignored"
+echo "$payload" | grep -q 'com.example.other' && fail "another profile's rule leaked" || pass "only this profile's rules"
+assert_json "downtime window" "$payload" '@.apps.downtime[0].days' "mon tue wed thu"
+[ "$(count "$payload" '@.apps.downtime[*]')" = 1 ] && pass "invalid downtime ignored" || fail "downtime: $(echo "$payload" | jsonfilter -e '@.apps.downtime')"
+assert_json "revision is stable" "$(v3payload phoneD fw-d1 "$N2" -)" '@.apps.rev' "$rev"
+
+assert_json "devices: expected revision" "$(call devices)" '@.devices[@.id="fw-d1"].apps_rev' "$rev"
+assert_json "devices: nothing applied yet" "$(call devices)" '@.devices[@.id="fw-d1"].apps_applied' ""
+v3payload phoneD fw-d1 "$N1" "$rev" >/dev/null
+assert_json "devices: signed acknowledgement recorded" "$(call devices)" '@.devices[@.id="fw-d1"].apps_applied' "$rev"
+mast3 phoneD fw-d1 "$N1" "$rev" "0000000000000000" | head -1 | grep -q '^Status: 403' \
+    && pass "acknowledgement must be signed" || fail "forged acknowledgement accepted"
+mast3 phoneD fw-d1 "$N1" "not-a-rev" | head -1 | grep -q '^Status: 400' \
+    && pass "malformed acknowledgement refused" || fail "malformed acknowledgement accepted"
+assert_json "forged acknowledgement not recorded" "$(call devices)" '@.devices[@.id="fw-d1"].apps_applied' "$rev"
+[ -z "$(v2payload phoneD fw-d1 "$N1" | jsonfilter -e '@.apps')" ] && pass "v2 replies never carry apps" || fail "apps in a v2 reply"
+assert_json "pending phone gets v3 but nothing else" "$(v3payload phoneB fw-p1 "$N1" -)" '@.enrollment' "pending"
+[ -z "$(v3payload phoneB fw-p1 "$N1" - | jsonfilter -e '@.apps')" ] && pass "no apps before approval" || fail "pending phone got apps"
+
+uci set familywarden.kid.apps_suspend_new='0'
+uci commit familywarden
+"$BIN" reload >/dev/null
+payload=$(v3payload phoneD fw-d1 "$N1" -)
+assert_json "suspend_new can be turned off" "$payload" '@.apps.suspend_new' "false"
+[ "$(echo "$payload" | jsonfilter -e '@.apps.rev')" != "$rev" ] && pass "any change gives a new revision" || fail "revision unchanged"
+uci set familywarden.kid.apps_suspend_new='1'
+uci commit familywarden
+"$BIN" reload >/dev/null
+
+call pact "{\"until\":0,\"window_day\":\"$tomorrow\",\"window_start\":\"10:00\",\"window_stop\":\"11:00\"}" >/dev/null
+uci delete familywarden.kid_tiktok
+uci set familywarden.kid_roblox2.minutes='600'
+uci delete familywarden.kid_bed
+uci set familywarden.kid.apps='0'
+uci commit familywarden
+"$BIN" reload >/dev/null
+payload=$(v3payload phoneD fw-d1 "$N1" -)
+assert_json "pact: app rules frozen (revision)" "$payload" '@.apps.rev' "$rev"
+assert_json "pact: block can't be removed live" "$payload" '@.apps.blocked[0]' "com.zhiliaoapp.musically"
+assert_json "pact: limit can't be raised live" "$payload" '@.apps.limits[@.package="com.roblox.client"].minutes' "30"
+assert_json "pact: downtime can't be deleted live" "$payload" '@.apps.downtime[0].start' "21:00"
+echo $(( $(date +%s) - 1 )) > /etc/familywarden/release
+"$BIN" tick
+[ -z "$(v3payload phoneD fw-d1 "$N1" - | jsonfilter -e '@.apps')" ] && pass "after the pact the live config applies (app control off)" || fail "stale apps after the pact"
+
+echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All integration checks passed!"
 else

@@ -7,6 +7,8 @@
 #   GET /cgi-bin/mast?device=<id>               v1 (Ulysses Mast): global captain state
 #   GET /cgi-bin/mast?device=<id>&nonce=<hex>&key=<b64>&sig=<b64>[&name=<model>]
 #                                               v2 (FamilyWarden): enrolled phone's policy
+#   ...&sig3=<b64>&applied=<rev|->              v3: v2 plus the app policy; acknowledges
+#                                               the applied app policy revision
 
 BIN=/usr/libexec/rpcd/familywarden
 
@@ -37,7 +39,7 @@ if [ -z "$nonce" ]; then
     exit 0
 fi
 
-body=$("$BIN" mast2 "$dev" "$nonce" "$(param key)" "$(param sig)" "$(param name)")
+body=$("$BIN" mast2 "$dev" "$nonce" "$(param key)" "$(param sig)" "$(param name)" "$(param sig3)" "$(param applied)")
 case $? in
     0) status "200 OK"; printf '%s' "$body" ;;
     2) status "400 Bad Request" ;;
