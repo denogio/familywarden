@@ -26,6 +26,68 @@ Roles are attributes of an approved device binding, set by an administrator in L
 A parent phone needs no Device Owner; it only signs. Revocation = removing the parent role
 in LuCI; a child phone learns it at its next successful sync (D2 consequence).
 
+## 2a. Wire v3 as implemented (P5, 2026-10-22)
+
+The first implemented subset of §2. Signing, enrollment and the router key stay in the
+shell plugin for now (usign, unchanged pins); moving identity into the Go core (A6) is a
+later migration, not a wire change.
+
+**Request.** A v3 phone adds two parameters to the v2 request and signs two messages
+with its enrolled key:
+
+- `sig` over `familywarden-sync-v2\n<id>\n<nonce>\n` (unchanged: an old router answers v2);
+- `sig3` over `familywarden-sync-v3\n<id>\n<nonce>\n<applied>\n`, with `applied` = the
+  16-hex app policy revision the phone **enforces**, or `-`. Both must verify, else 403;
+  a malformed `applied`/`sig3` is 400.
+
+**Reply.** `v: 3` and everything v2 has, plus, when the phone's profile has app control
+on (`option apps '1'`):
+
+```json
+"apps": { "rev": "adf7f46a6b7de5f1", "suspend_new": true,
+  "limits": [ { "package": "com.roblox.client", "minutes": 45 } ],
+  "blocked": [ "com.zhiliaoapp.musically" ],
+  "approved": [ "com.roblox.client", "com.spotify.music" ],
+  "downtime": [ { "days": "mon fri", "start": "21:30", "stop": "07:00" } ] }
+```
+
+- UCI source: profile `apps`, `apps_suspend_new` (default 1, A12); `config app`
+  (`profile package minutes blocked`) and `config app_downtime` (`profile days start stop`).
+- `approved` = configured and not blocked; `limits` only for approved packages. Duplicate
+  package sections merge to the strictest rule (blocked wins, smallest limit wins). The
+  router drops invalid package names/downtime with a log line; the phone **rejects** a
+  contradictory or oversized policy (keeps its last trusted one) rather than repairing it.
+- `rev` = first 16 hex of SHA-256 over the canonical rule lines; any change, also of
+  `suspend_new`, changes it. Pending/unapproved phones get no `apps`; v2 replies never do.
+- **Pact:** the captain's app rules are part of the pact snapshot (frozen like schedules,
+  refreshed only in the amendment window). Without this, live app sections of the
+  captain would be dropped from the effective config and the rules loosened.
+- **Acknowledgement:** the router stores the signed `applied` revision per phone (RAM,
+  with last-seen); `ubus call familywarden devices` shows `apps_applied` next to the
+  expected `apps_rev`. Fetching is not applying: the app sends `-` until enforcement
+  has actually applied a revision.
+- Not yet in v3: shared `budget`, `grants`, `parents`, categories, `requires` capabilities.
+  They are optional fields to add; phones ignore unknown fields.
+
+**Fixture.** `android/app/src/test/resources/v3-payload.{json,sig}` + `v3-router.pub`
+are a real reply from the shell plugin (jshn + usign); `WireV3FixtureTest` verifies the
+signature and parses it. Regenerate them after any wire change.
+
+### Compatibility and rollback matrix
+
+| Phone app \ Router | 0.9.2 (v2 only) | with v3 |
+|---|---|---|
+| 0.9.0 pilot (v2, no `sig3`) | v2 | v2 (unchanged behaviour) |
+| v3 app, never accepted a v3 reply | v2 accepted; no app control | v3 |
+| v3 app, has accepted v3 | **refused as "downgraded reply"**; keeps the last trusted policy offline, shows a sync error | v3 |
+
+- Router rollback after phones saw v3: phones keep enforcing their last signed policy
+  and report the sync error until the router is upgraded again, or until the phone is
+  re-paired (pairing is a fresh trust decision and resets the highest seen version).
+- Upgrading the router during a pact: existing snapshots have no app sections, so the
+  captain gets app control only after the amendment window or the next pact. Nothing is
+  loosened, because there were no app rules before.
+
 ## 2. Policy v3 (router → phone, signed reply as today)
 
 v3 is a strict superset of v2; unchanged v2 fields keep their meaning.

@@ -147,6 +147,69 @@ class DevicePolicyTest {
         }
     }
 
+    private fun v3(): JSONObject = payload().put("v", 3).put("apps", JSONObject("""{
+      "rev":"3d3515b169db9112","suspend_new":true,
+      "limits":[{"package":"com.roblox.client","minutes":30}],
+      "blocked":["com.zhiliaoapp.musically"],
+      "approved":["com.roblox.client","com.spotify.music"],
+      "downtime":[{"days":"mon tue wed thu","start":"21:00","stop":"07:00"}]
+    }"""))
+
+    @Test fun v3IsV2PlusSignedAppPolicy() {
+        val s = parsed(v3())
+        assertEquals(3, s.wireVersion)
+        assertTrue(s.appliesTo("fw-example"))
+        assertTrue(s.canSelfRemove("fw-example", 1800000000))
+        val apps = s.apps!!
+        assertEquals("3d3515b169db9112", apps.rev)
+        assertEquals(mapOf("com.roblox.client" to 30), apps.limitsMinutes)
+        assertEquals(setOf("com.zhiliaoapp.musically"), apps.blocked)
+        assertEquals(1, apps.downtime.size)
+        val local = apps.toLocal(java.time.ZoneId.of("Europe/Copenhagen"))
+        assertEquals(1_800_000L, local.limitsMillis["com.roblox.client"])
+        assertTrue(local.suspendNewUserApps)
+    }
+
+    @Test fun v3WithoutAppsMeansNoAppControl() { assertNull(parsed(v3().apply { remove("apps") }).apps) }
+
+    @Test fun appsInAnOlderPayloadAreNeverTrusted() { assertNull(parsed(v3().put("v", 2)).apps) }
+
+    @Test fun pendingV3ReplyCarriesNoPolicy() {
+        val o = JSONObject().put("v", 3).put("server_time", 1800000000)
+            .put("device", "fw-example").put("nonce", nonce).put("enrollment", "pending")
+            .put("apps", v3().getJSONObject("apps"))
+        val s = parsed(o)
+        assertTrue(s.pending)
+        assertNull(s.apps)
+        assertFalse(s.appliesTo("fw-example"))
+    }
+
+    @Test fun contradictoryOrOversizedAppPolicyIsRejectedNotRepaired() {
+        val bad = listOf<(JSONObject) -> Unit>(
+            { it.put("rev", "not-hex") },
+            { it.getJSONArray("approved").put("com.zhiliaoapp.musically") },          // blocked and approved
+            { it.getJSONArray("limits").put(JSONObject().put("package", "com.other.app").put("minutes", 5)) },
+            { it.getJSONArray("limits").getJSONObject(0).put("minutes", 1441) },
+            { it.getJSONArray("limits").put(JSONObject().put("package", "com.roblox.client").put("minutes", 5)) },
+            { it.getJSONArray("blocked").put("../etc") },
+            { it.getJSONArray("approved").put("com.spotify.music") },                   // duplicate
+            { it.getJSONArray("downtime").getJSONObject(0).put("days", "someday") },
+            { it.getJSONArray("downtime").getJSONObject(0).put("start", "9:00") },
+            { it.remove("suspend_new") },
+            { a -> val arr = a.getJSONArray("blocked"); repeat(257) { arr.put("com.example.app$it") } },
+        )
+        bad.forEachIndexed { i, mutate ->
+            val o = v3()
+            mutate(o.getJSONObject("apps"))
+            assertTrue("case $i", runCatching { parsed(o) }.isFailure)
+        }
+    }
+
+    @Test fun validatesPackageNames() {
+        for (p in listOf("com.roblox.client", "a.b", "com.example.app_2")) assertTrue(p, validPackage(p))
+        for (p in listOf("android", "com..x", ".com.x", "com.x.", "1com.x", "com.1x", "com/x", "c".repeat(256) + ".x")) assertFalse(p, validPackage(p))
+    }
+
     @Test fun normalizesValidAsciiHostname() {
         val o = payload()
         o.getJSONObject("dns").put("hostname", "ALEX.DNS.EXAMPLE.NET")

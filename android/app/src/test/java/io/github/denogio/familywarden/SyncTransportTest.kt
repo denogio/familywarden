@@ -66,6 +66,63 @@ class SyncTransportTest {
         }
     }
 
+    private val router = PhoneKey.generate() // any usign Ed25519 key can act as a test router
+
+    private fun params(uri: URI) = uri.rawQuery.split('&').associate {
+        val p = it.split('=', limit = 2)
+        p[0] to java.net.URLDecoder.decode(p[1], "UTF-8")
+    }
+
+    /** A signed approved reply of [version] bound to the request in [uri]. */
+    private fun signedReply(uri: URI, version: Int): String {
+        val q = params(uri)
+        val json = """{"v":$version,"server_time":1800000000,"nonce":"${q["nonce"]}","device":"${q["device"]}",
+          "enrollment":"approved","binding":{"device_id":"${q["device"]}","profile_id":"kid","profile_name":"Kid",
+          "captain":false,"administrator":false,"can_self_remove":false},"captain":"",
+          "pact":{"active":false,"type":"","until":0,"release_at":0},
+          "rules":{"enabled":"0","policy":"allow","override":"none","windows":[]}
+          ${if (version == 3) ""","apps":{"rev":"0123456789abcdef","suspend_new":true,"limits":[],"blocked":[],"approved":[],"downtime":[]}""" else ""}}"""
+        return router.sign(json.toByteArray(Charsets.UTF_8)) + "\n" + json
+    }
+
+    @Test fun v3RequestSignsTheAppliedRevisionAndAcceptsAV3Reply() {
+        server({ uri, out ->
+            val q = params(uri)
+            val phoneKey = Usign.parsePublicKey(phone.publicKey)
+            assertEquals("0123456789abcdef", q["applied"])
+            // Old routers check this one and answer v2 ...
+            assertTrue(Usign.verify(phoneKey, q.getValue("sig"), Sync.requestMessage("fw-example", q.getValue("nonce"))))
+            // ... new routers also check the v3 message, which binds the acknowledgement.
+            assertTrue(Usign.verify(phoneKey, q.getValue("sig3"),
+                Sync.requestMessageV3("fw-example", q.getValue("nonce"), "0123456789abcdef")))
+            assertFalse(Usign.verify(phoneKey, q.getValue("sig3"),
+                Sync.requestMessageV3("fw-example", q.getValue("nonce"), "-")))
+            reply(out, signedReply(uri, 3))
+        }) { endpoint ->
+            val r = Sync.fetch(endpoint, router.publicKey, "fw-example", phone, requireDevicePolicy = true,
+                appliedRev = "0123456789abcdef", minWire = 3)
+            assertEquals("0123456789abcdef", (r as Sync.Result.Ok).state.apps!!.rev)
+        }
+    }
+
+    @Test fun nothingAppliedIsSentAsDashAndJunkIsNeverAcknowledged() {
+        server({ uri, out ->
+            assertEquals("-", params(uri)["applied"])
+            reply(out, signedReply(uri, 3))
+        }) { endpoint ->
+            assertTrue(Sync.fetch(endpoint, router.publicKey, "fw-example", phone) is Sync.Result.Ok)
+            assertTrue(Sync.fetch(endpoint, router.publicKey, "fw-example", phone, appliedRev = "x&applied=f") is Sync.Result.Ok)
+        }
+    }
+
+    @Test fun oldRouterStillWorksUntilAV3ReplyWasSeenThenItIsADowngrade() {
+        server({ uri, out -> reply(out, signedReply(uri, 2)) }) { endpoint ->
+            assertTrue(Sync.fetch(endpoint, router.publicKey, "fw-example", phone, requireDevicePolicy = true, minWire = 2) is Sync.Result.Ok)
+            assertEquals(Sync.Result.Failed("downgraded reply"),
+                Sync.fetch(endpoint, router.publicKey, "fw-example", phone, requireDevicePolicy = true, minWire = 3))
+        }
+    }
+
     @Test fun refusesRedirectRatherThanFollowingCaptivePortal() {
         val redirected = AtomicInteger()
         server({ uri, out ->

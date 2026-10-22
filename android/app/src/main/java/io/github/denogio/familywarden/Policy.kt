@@ -28,6 +28,8 @@ data class MastState(
     val device: String? = null,
     /** v2: not approved (yet): no binding, no policy. */
     val pending: Boolean = false,
+    /** v3: app policy of this phone's profile; null = no app control. */
+    val apps: AppsPolicy? = null,
 )
 
 data class Rules(

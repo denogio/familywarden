@@ -48,25 +48,35 @@ object Sync {
      * and replies older than the last accepted one (replayed "no pact").
      */
     fun fetch(store: Store, model: String = ""): Result {
-        return fetch(store.host, store.publicKey, store.deviceId, store.phoneKey, model, store.state, store.provisioned)
+        return fetch(store.host, store.publicKey, store.deviceId, store.phoneKey, model, store.state, store.provisioned,
+            store.appsApplied, store.wireSeen)
     }
 
     /**
      * The request names this phone and a fresh nonce, signed with the phone's
      * own key ([PhoneKey]): the router only answers an approved id+key pair with
      * a binding. [model] is shown to the administrator next to the fingerprint.
+     *
+     * Both signatures are sent: sig over the v2 message (an older router answers
+     * v2) and sig3 over the v3 message, which also binds [appliedRev], the app
+     * policy revision this phone actually enforces. Once a v3 reply was accepted
+     * ([minWire]), an older reply is a downgrade and refused.
      */
     internal fun fetch(host: String?, key: String?, deviceId: String, phoneKey: PhoneKey, model: String = "",
-        previous: MastState? = null, requireDevicePolicy: Boolean = false): Result {
+        previous: MastState? = null, requireDevicePolicy: Boolean = false,
+        appliedRev: String? = null, minWire: Int = 0): Result {
         if (host == null || key == null) return Result.Failed("not paired")
         val pub = try { Usign.parsePublicKey(key) } catch (_: IllegalArgumentException) {
             return Result.Failed("bad paired key")
         }
         val nonce = newNonce()
         val requestSignature = phoneKey.sign(requestMessage(deviceId, nonce))
+        val applied = appliedRev?.takeIf { it.matches(Regex("[0-9a-f]{16}")) } ?: "-"
+        val v3Signature = phoneKey.sign(requestMessageV3(deviceId, nonce, applied))
         val name = model.map { if (it.isLetterOrDigit() && it.code < 128 || it in "._-") it else '-' }.joinToString("").take(40)
         val body = try {
-            get("${base(host)}/cgi-bin/mast?device=$deviceId&nonce=$nonce&key=${enc(phoneKey.publicKey)}&sig=${enc(requestSignature)}&name=$name")
+            get("${base(host)}/cgi-bin/mast?device=$deviceId&nonce=$nonce&key=${enc(phoneKey.publicKey)}&sig=${enc(requestSignature)}" +
+                "&sig3=${enc(v3Signature)}&applied=$applied&name=$name")
         } catch (e: ReplyRejected) {
             return Result.Failed(e.reason)
         } catch (e: Exception) {
@@ -82,12 +92,14 @@ object Sync {
         } catch (e: Exception) {
             return Result.Failed("unreadable payload")
         }
-        if (state.wireVersion == 2 && !responseMatches(state, deviceId, nonce)) {
+        if (state.wireVersion >= 2 && !responseMatches(state, deviceId, nonce)) {
             return Result.Failed("response mismatch")
         }
+        // A router rollback (or a replayed old router) must not silently drop app policy.
+        if (state.wireVersion < minWire) return Result.Failed("downgraded reply")
         // Never downgrade an enrolled device to global v1 state after a router rollback,
         // and keep its last policy if the router no longer recognises it.
-        if (requireDevicePolicy && state.wireVersion == 2 && state.pending) return Result.Failed("device not approved")
+        if (requireDevicePolicy && state.wireVersion >= 2 && state.pending) return Result.Failed("device not approved")
         if (requireDevicePolicy && !state.appliesTo(deviceId)) return Result.Failed("unsupported device policy")
         if (previous != null && state.serverTime < previous.serverTime) return Result.Failed("stale reply")
         return Result.Ok(payload, state)
@@ -141,6 +153,10 @@ object Sync {
     /** What the phone signs; the router's cli_mast2 checks exactly these bytes. */
     internal fun requestMessage(deviceId: String, nonce: String): ByteArray =
         "familywarden-sync-v2\n$deviceId\n$nonce\n".toByteArray(Charsets.UTF_8)
+
+    /** v3: also binds the applied app policy revision ("-" = none) to this request. */
+    internal fun requestMessageV3(deviceId: String, nonce: String, applied: String): ByteArray =
+        "familywarden-sync-v3\n$deviceId\n$nonce\n$applied\n".toByteArray(Charsets.UTF_8)
 
     private fun enc(b64: String) = b64.replace("+", "%2B").replace("/", "%2F").replace("=", "%3D")
 

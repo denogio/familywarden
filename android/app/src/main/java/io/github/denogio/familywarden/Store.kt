@@ -73,26 +73,41 @@ class Store(context: Context) {
 
     val effectiveState: MastState? get() = state?.takeIf { it.appliesTo(deviceId) }
 
-    /** Signed v2 reply says this phone still waits for an administrator's approval. */
-    val awaitingApproval: Boolean get() = !provisioned && state?.let { it.wireVersion == 2 && it.pending } == true
+    /** Signed v2/v3 reply says this phone still waits for an administrator's approval. */
+    val awaitingApproval: Boolean get() = !provisioned && state?.let { it.wireVersion >= 2 && it.pending } == true
+
+    /** Highest wire version accepted from the paired router: older replies are downgrades. */
+    val wireSeen: Int get() = prefs.getInt("wire_seen", 0)
+
+    /**
+     * App policy revision this phone actually enforces, acknowledged to the router.
+     * Set only by enforcement after applying it, never merely on fetching.
+     */
+    var appsApplied: String?
+        get() = prefs.getString("apps_applied", null)
+        set(v) { prefs.edit().putString("apps_applied", v).commit() }
 
     /** Policy, enrollment latch, and sync metadata are one atomic preference update. */
     internal fun accept(reply: Sync.Result.Ok) {
         prefs.edit().putString("payload", reply.payload)
             .putBoolean("provisioned", provisioned || reply.state.appliesTo(deviceId))
+            .putInt("wire_seen", maxOf(wireSeen, reply.state.wireVersion))
             .putLong("last_sync", System.currentTimeMillis() / 1000).remove("last_error").apply()
     }
 
+    /** Pairing is a fresh trust decision, also about which wire version this router speaks. */
     internal fun pairVerified(address: String, key: String, reply: Sync.Result.Ok) {
         prefs.edit().putString("host", address).putString("pubkey", key)
             .putString("payload", reply.payload)
             .putBoolean("provisioned", reply.state.appliesTo(deviceId))
+            .putInt("wire_seen", reply.state.wireVersion).remove("apps_applied")
             .putBoolean("ulysses", false).putLong("last_sync", System.currentTimeMillis() / 1000)
             .remove("last_error").apply()
     }
 
     fun unpair() {
         prefs.edit().remove("host").remove("pubkey").remove("payload").remove("last_sync")
-            .remove("last_error").remove("ulysses").remove("dns_error").remove("provisioned").apply()
+            .remove("last_error").remove("ulysses").remove("dns_error").remove("provisioned")
+            .remove("wire_seen").remove("apps_applied").apply()
     }
 }

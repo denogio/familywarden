@@ -67,7 +67,7 @@ enum class RemovalRefusal { ActivePact, MissingAuthority, Unreachable, Unsupport
 fun removalRefusal(state: MastState?, syncError: String?): RemovalRefusal = when {
     syncError == "router unreachable" -> RemovalRefusal.Unreachable
     syncError == "unsupported device policy" -> RemovalRefusal.Unsupported
-    syncError != null || state == null || state.wireVersion != 2 -> RemovalRefusal.Unverified
+    syncError != null || state == null || state.wireVersion < 2 -> RemovalRefusal.Unverified
     Policy.pactActive(state, state.serverTime) -> RemovalRefusal.ActivePact
     state.binding?.selfRemoval != true -> RemovalRefusal.MissingAuthority
     else -> RemovalRefusal.NotCompleted

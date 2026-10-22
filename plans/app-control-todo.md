@@ -227,16 +227,31 @@ reboot, stop/start, removal; fw4 chain and shell backend unchanged throughout).
 
 Depends on P3/P4 and P1 protocol decisions.
 
-- [ ] Reuse current full-key fingerprint approval and per-device request authentication.
-- [ ] Preserve pinned router identity and existing phone keys during migration.
+- [x] Reuse current full-key fingerprint approval and per-device request authentication.
+      v3 adds a second signature by the same enrolled phone key; nothing new to approve.
+- [x] Preserve pinned router identity and existing phone keys during migration.
+      No key, pin or enrollment change; signing stays in the shell (usign) for now.
 - [ ] Add scoped roles, app rules, schema/capability negotiation and policy revisions.
-- [ ] Bound payloads, verify signed fields before parsing into trusted state, and reject
+      Done: app rules + revision in wire v3, version negotiation by dual signature.
+      Open: parent role/`approves` (needed by P8 grants), `requires` capabilities.
+- [x] Bound payloads, verify signed fields before parsing into trusted state, and reject
       unknown unsafe versions, mismatched devices, replay and downgrade.
-- [ ] Persist last trusted policy atomically; retain it offline without a 24/48-hour
-      escalation. Separate policy freshness from fresh authorization for removal/grants.
-- [ ] Add applied-state acknowledgements; fetching policy is not evidence of enforcement.
+      Signature over exact bytes before parsing (unchanged); strict apps validation;
+      once v3 was accepted an older reply is refused ("downgraded reply").
+- [x] Persist last trusted policy atomically; retain it offline without a 24/48-hour
+      escalation. Unchanged Store behaviour; payload, enrollment latch and highest wire
+      version are one preference commit. Removal still needs a fresh signed reply.
+- [x] Add applied-state acknowledgements; fetching policy is not evidence of enforcement.
+      Signed `applied` revision per phone, shown as `apps_applied` vs `apps_rev`. The app
+      sends `-` until enforcement (P7) sets `Store.appsApplied`.
 - [ ] Address same-key router-address repair without accepting redirects or replacing pins.
 - [ ] Test pending enrollment, changed pending keys, revoked roles and old Android clients.
+      Done: pending/foreign-key v3, v2-only phones, router-rollback downgrade (integration
+      + JVM). Open: revoked parent roles (no parent role yet); emulator run with the real app.
+
+Wire v3 as built, with the compatibility/rollback matrix: `app-control-protocol.md` §2a.
+Evidence 2026-10-22: 224 integration checks (32 new, pact-freeze tests fail when the
+snapshot omits app rules), 121 JVM tests incl. a real router-signed v3 fixture.
 
 **Accept:** mixed-version integration tests and a documented rollback/compatibility matrix.
 
