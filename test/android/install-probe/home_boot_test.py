@@ -108,6 +108,8 @@ try:
         assert 'verified successfully' in adb('shell', "locksettings verify --old ''"), 'Existing credential must not be changed'
         assert 'Pin set' in adb('shell', 'locksettings', 'set-pin', PIN)
         pin_set = True
+    # Disabled in the manifest so ordinary debug installs never offer a second Home.
+    adb('shell', 'pm', 'enable', HOME)
     adb('install', '-r', str(args.apks / 'fixture-1.apk'))
     baseline = len(logs())
     adb('shell', 'am', 'start', '-W', '-n', PKG + '/.ProbeActivity')
@@ -171,6 +173,7 @@ finally:
         time.sleep(1)
     assert mode() == 'NONE' and inactive()
     assert home() == original_home
+    adb('shell', 'pm', 'disable', HOME, check=False)
     if pin_set:
         assert 'cleared' in adb('shell', 'locksettings', 'clear', '--old', PIN).lower()
         adb('shell', 'wm', 'dismiss-keyguard')

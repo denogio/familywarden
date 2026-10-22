@@ -11,8 +11,11 @@
     </queries>
     <application>
         <activity android:name=".LockTaskProbeActivity" android:exported="false" />
-        <!-- Reversible emulator-only Home/bootstrap research; never part of release. -->
-        <activity android:name=".LockTaskHomeProbe" android:exported="true"
+        <!-- Reversible emulator-only Home/bootstrap research; never part of release.
+             Disabled by default: an enabled second HOME activity makes Android ask for a
+             home app after reboots on every debug install (it broke the emulator test).
+             home_boot_test.py enables it with pm and disables it again afterwards. -->
+        <activity android:name=".LockTaskHomeProbe" android:exported="true" android:enabled="false"
             android:directBootAware="true" android:launchMode="singleTask"
             android:lockTaskMode="if_whitelisted">
             <intent-filter>
