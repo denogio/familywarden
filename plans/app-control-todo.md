@@ -233,7 +233,7 @@ Depends on P3/P4 and P1 protocol decisions.
       No key, pin or enrollment change; signing stays in the shell (usign) for now.
 - [ ] Add scoped roles, app rules, schema/capability negotiation and policy revisions.
       Done: app rules + revision in wire v3, version negotiation by dual signature.
-      Open: parent role/`approves` (needed by P8 grants), `requires` capabilities.
+      Deferred to P8 (first user): parent role/`approves`/`parents` keys; `requires` capabilities.
 - [x] Bound payloads, verify signed fields before parsing into trusted state, and reject
       unknown unsafe versions, mismatched devices, replay and downgrade.
       Signature over exact bytes before parsing (unchanged); strict apps validation;
@@ -251,7 +251,9 @@ Depends on P3/P4 and P1 protocol decisions.
       Unit-tested rule; not yet exercised on a device with a real address change.
 - [ ] Test pending enrollment, changed pending keys, revoked roles and old Android clients.
       Done: pending/foreign-key v3, v2-only phones, router-rollback downgrade (integration
-      + JVM). Open: revoked parent roles (no parent role yet); emulator run with the real app.
+      + JVM), and the real debug app against a real v3 router on the Android 15 emulator
+      (CI run 39820424952: pairing, approval, pact, DNS, offline cache, signed removal).
+      Open: revoked parent roles — the parent role itself is deferred to P8.
 
 Wire v3 as built, with the compatibility/rollback matrix: `app-control-protocol.md` §2a.
 Evidence 2026-10-22: 224 integration checks (32 new, pact-freeze tests fail when the
