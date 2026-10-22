@@ -199,14 +199,18 @@ test('MAC addresses stack based on card width and Profiles help stays below its 
   await page.goto(URL);
   const card = page.locator('[data-profile="alex"]');
   await expect(card).toBeVisible();
-  // overview.css is injected as a <link> after the cards render: measuring before it
-  // applies sees no container queries (the flaky failure in CI runs 39792461019/39807423257).
+  // overview.css is injected as a <link> after the cards render.
   await expect(card).toHaveCSS('container-type', 'inline-size');
-  await card.evaluate(el => { el.style.width = '440px'; });
-  const positions = await card.locator('.fw-devices li').evaluate(el => ({
-    name: el.firstElementChild.getBoundingClientRect().toJSON(),
-    mac: el.lastElementChild.getBoundingClientRect().toJSON()
-  }));
+  // Resize and measure in one step: the dashboard's refresh can replace the card in
+  // between, and a fresh card has its normal width (flaky in CI runs 39792461019 ff.).
+  const positions = await card.evaluate(el => {
+    el.style.width = '440px';
+    const li = el.querySelector('.fw-devices li');
+    return {
+      name: li.firstElementChild.getBoundingClientRect().toJSON(),
+      mac: li.lastElementChild.getBoundingClientRect().toJSON()
+    };
+  });
   expect(positions.mac.top).toBeGreaterThanOrEqual(positions.name.bottom);
   expect(positions.mac.left).toBe(positions.name.left);
   const help = await page.locator('.fw-section-head').evaluate(el => ({
