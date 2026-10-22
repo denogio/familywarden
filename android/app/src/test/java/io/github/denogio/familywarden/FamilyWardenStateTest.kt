@@ -97,4 +97,21 @@ class FamilyWardenStateTest {
         assertFalse(s.canRePair)
         assertFalse(healthy().copy(binding = null).canRequestRemoval)
     }
+
+    @Test fun managedOrPactBoundPhoneCanStillScanToFollowItsRouter() {
+        val managed = healthy().copy(binding = binding.copy(administrator = false, selfRemoval = false))
+        assertFalse(managed.canRePair)
+        assertTrue(managed.canScan)
+        assertTrue(healthy().copy(pact = PactStatus.Bound(true, null, Pact(null, null, null))).canScan)
+        assertFalse(managed.copy(owner = false).canScan)
+    }
+
+    @Test fun addressRepairOnlyForTheVeryKeyThisPhonePinned() {
+        val key = PhoneKey.generate().publicKey
+        val info = Sync.PairingInfo("192.0.2.9", key, Usign.parsePublicKey(key).fingerprint)
+        assertTrue(Sync.isAddressRepair(true, key, info))
+        assertFalse(Sync.isAddressRepair(false, key, info))          // not enrolled: normal pairing
+        assertFalse(Sync.isAddressRepair(true, null, info))
+        assertFalse(Sync.isAddressRepair(true, PhoneKey.generate().publicKey, info)) // another router
+    }
 }

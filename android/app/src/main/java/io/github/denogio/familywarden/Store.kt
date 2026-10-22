@@ -105,6 +105,13 @@ class Store(context: Context) {
             .remove("last_error").apply()
     }
 
+    /** New address for the same pinned key, with the signed reply that proved it: one commit. */
+    internal fun repairAddress(address: String, reply: Sync.Result.Ok) {
+        prefs.edit().putString("host", address).putString("payload", reply.payload)
+            .putInt("wire_seen", maxOf(wireSeen, reply.state.wireVersion))
+            .putLong("last_sync", System.currentTimeMillis() / 1000).remove("last_error").apply()
+    }
+
     fun unpair() {
         prefs.edit().remove("host").remove("pubkey").remove("payload").remove("last_sync")
             .remove("last_error").remove("ulysses").remove("dns_error").remove("provisioned")

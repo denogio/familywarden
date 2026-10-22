@@ -36,6 +36,8 @@ data class FamilyWardenState(
     val bound: Boolean get() = pact is PactStatus.Bound
     val showUlysses: Boolean get() = bound || (binding?.captain == true && ulyssesEnabled)
     val canRePair: Boolean get() = canRequestRemoval && (!provisioned || binding?.administrator == true)
+    /** Scanning the router's code again only moves to a new address when the key matches. */
+    val canScan: Boolean get() = canRePair || (owner && provisioned)
     // This exposes an action only. Final removal ALWAYS needs a fresh request-bound response.
     val canRequestRemoval: Boolean get() = !bound && (!provisioned || binding?.selfRemoval == true)
     val currentCheck: ResolverCheck? get() = resolverCheck?.takeIf {

@@ -88,4 +88,5 @@
     <string name="fw_sync_not_approved">The router no longer approves this phone; last policy kept</string>
     <string name="fw_phone_key">This phone\'s key</string>
     <string name="fw_migration_note">If another Device Owner, including the older Mast app, already manages this phone, stop here. Do not remove it, delete accounts, or reset the phone without an approved migration.</string>
+    <string name="fw_address_repaired">Router address updated. The key is unchanged.</string>
 </resources>

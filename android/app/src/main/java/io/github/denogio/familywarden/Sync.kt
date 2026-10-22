@@ -145,6 +145,14 @@ object Sync {
         java.security.SecureRandom().nextBytes(it)
     }.joinToString("") { "%02x".format(it) }
 
+    /**
+     * Same-key address repair: an enrolled phone may follow its router to a new
+     * address, but only to the very key it pinned. A different key is re-pairing,
+     * which still needs removal authority.
+     */
+    internal fun isAddressRepair(provisioned: Boolean, pinnedKey: String?, info: PairingInfo): Boolean =
+        provisioned && pinnedKey != null && info.publicKey.trim() == pinnedKey.trim()
+
     /** Exactly the request this phone made: its device id and its fresh nonce. */
     internal fun responseMatches(state: MastState, deviceId: String, nonce: String): Boolean =
         state.device == deviceId && state.requestNonce == nonce &&

@@ -244,7 +244,11 @@ Depends on P3/P4 and P1 protocol decisions.
 - [x] Add applied-state acknowledgements; fetching policy is not evidence of enforcement.
       Signed `applied` revision per phone, shown as `apps_applied` vs `apps_rev`. The app
       sends `-` until enforcement (P7) sets `Store.appsApplied`.
-- [ ] Address same-key router-address repair without accepting redirects or replacing pins.
+- [x] Address same-key router-address repair without accepting redirects or replacing pins.
+      An enrolled phone may scan/enter its router again (also managed or pact-bound): same
+      pinned key -> only the address changes, after a fresh request-bound signed reply from
+      the new address (`Mast.repairAddress`). Another key still needs removal authority.
+      Unit-tested rule; not yet exercised on a device with a real address change.
 - [ ] Test pending enrollment, changed pending keys, revoked roles and old Android clients.
       Done: pending/foreign-key v3, v2-only phones, router-rollback downgrade (integration
       + JVM). Open: revoked parent roles (no parent role yet); emulator run with the real app.

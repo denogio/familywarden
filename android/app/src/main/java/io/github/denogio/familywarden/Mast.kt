@@ -151,6 +151,23 @@ object Mast {
         )
     }
 
+    /**
+     * Follow the router to [address] if it still holds the pinned key and answers this
+     * phone's fresh request with its own signed device policy. Nothing else changes:
+     * key pin, enrollment, pact and removal rules stay as they are.
+     */
+    @Synchronized
+    fun repairAddress(context: Context, address: String): Boolean {
+        val store = Store(context)
+        if (!store.provisioned) return false
+        val r = Sync.fetch(address, store.publicKey, store.deviceId, store.phoneKey, android.os.Build.MODEL.orEmpty(),
+            store.state, requireDevicePolicy = true, appliedRev = store.appsApplied, minWire = store.wireSeen)
+        if (r !is Sync.Result.Ok) return false
+        store.repairAddress(address, r)
+        refresh(context, sync = false)
+        return true
+    }
+
     /** Cached eligibility is for presenting an action, never final authorization. */
     fun canRelease(context: Context): Boolean {
         val store = Store(context)

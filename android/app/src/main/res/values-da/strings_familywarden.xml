@@ -86,4 +86,5 @@
     <string name="fw_sync_not_approved">Routeren godkender ikke længere telefonen; seneste politik bevares</string>
     <string name="fw_phone_key">Telefonens nøgle</string>
     <string name="fw_migration_note">Hvis en anden Device Owner, herunder den gamle Mast-app, allerede administrerer telefonen, skal du stoppe her. Fjern ikke appen, slet ikke konti og nulstil ikke telefonen uden en godkendt migrering.</string>
+    <string name="fw_address_repaired">Routerens adresse er opdateret. Nøglen er uændret.</string>
 </resources>

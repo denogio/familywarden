@@ -304,8 +304,8 @@ private fun SettingsContent(s: FamilyWardenState, actions: FamilyWardenActions, 
         if (b.captain) Text(stringResource(R.string.fw_role_captain))
         if (b.administrator) Text(stringResource(R.string.fw_role_admin))
     } }
-    WideAction(R.string.action_scan, Icons.Outlined.QrCodeScanner, actions.scan, s.canRePair)
-    TextButton(onClick = actions.manualPair, enabled = s.canRePair, modifier = Modifier.fillMaxWidth()) {
+    WideAction(R.string.action_scan, Icons.Outlined.QrCodeScanner, actions.scan, s.canScan)
+    TextButton(onClick = actions.manualPair, enabled = s.canScan, modifier = Modifier.fillMaxWidth()) {
         Text(stringResource(R.string.action_pair_manually))
     }
     WideAction(R.string.fw_diagnostics, Icons.Outlined.ContentCopy, actions.copyDiagnostics)

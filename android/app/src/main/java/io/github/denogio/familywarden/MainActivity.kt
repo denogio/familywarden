@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
     private val actions = FamilyWardenActions(
         sync = { refresh() }, scan = { scan() },
         manualPair = {
-            if (canPair()) {
+            if (canPair() || canRepair()) {
                 dialog = MastDialog.ManualAddress(Store(this).host ?: defaultGateway() ?: "192.168.1.1")
                 render()
             }
@@ -129,8 +129,11 @@ class MainActivity : ComponentActivity() {
                 store.effectiveState?.canSelfRemove(store.deviceId, System.currentTimeMillis() / 1000) == true))
     }
 
+    /** An enrolled phone may always follow its own router (same pinned key) to a new address. */
+    private fun canRepair(): Boolean = Mast.isDeviceOwner(this) && Store(this).provisioned
+
     private fun scan() {
-        if (!canPair() || busy) return
+        if (!(canPair() || canRepair()) || busy) return
         val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
         GmsBarcodeScanning.getClient(this, options).startScan()
             .addOnSuccessListener { it.rawValue?.let(::confirmPairing) }
@@ -138,23 +141,34 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun confirmPairing(uri: String) {
-        if (!canPair()) return message(R.string.pair_locked)
+        if (!(canPair() || canRepair())) return message(R.string.pair_locked)
         runCatching { Sync.parsePairingUri(uri) }.fold(::showPairing) { message(R.string.fw_error_pairing) }
     }
 
     private fun showPairing(info: Sync.PairingInfo) {
-        if (!canPair()) return
+        val store = Store(this)
+        if (Sync.isAddressRepair(store.provisioned, store.publicKey, info)) return repair(info)
+        if (!canPair()) return message(R.string.pair_locked)
         pendingPairing = info
         dialog = MastDialog.ConfirmPairing(info.host, info.fingerprint)
         render()
     }
 
     private fun fetchPairing(host: String) {
-        if (!canPair() || busy) return
+        if (!(canPair() || canRepair()) || busy) return
         background({ Sync.fetchPairingInfo(host) }) { result ->
             result.fold(::showPairing) {
                 dialog = MastDialog.ManualAddress(host, getString(R.string.fw_error_pairing))
             }
+        }
+    }
+
+    /** Same key, new address: no fingerprint dialog, the pin itself is the check. */
+    private fun repair(info: Sync.PairingInfo) {
+        if (busy) return
+        dialog = null
+        background({ Mast.repairAddress(this, Sync.numericEndpoint(info.host)) }) {
+            message(if (it.getOrDefault(false)) R.string.fw_address_repaired else R.string.fw_error_pairing)
         }
     }
 
