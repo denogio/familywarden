@@ -87,6 +87,11 @@ class Store(context: Context) {
         get() = prefs.getString("apps_applied", null)
         set(v) { prefs.edit().putString("apps_applied", v).commit() }
 
+    /** Last app-control state for the UI: "ok", "usage_access_missing", "suspend_failed", ... */
+    var appsStatus: String?
+        get() = prefs.getString("apps_status", null)
+        set(v) = prefs.edit().putString("apps_status", v).apply()
+
     /** Policy, enrollment latch, and sync metadata are one atomic preference update. */
     internal fun accept(reply: Sync.Result.Ok) {
         prefs.edit().putString("payload", reply.payload)

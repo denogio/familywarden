@@ -6,7 +6,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import io.github.denogio.familywarden.*
 import io.github.denogio.familywarden.ui.theme.MastTheme
 
-private val previewActions = FamilyWardenActions({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+private val previewActions = FamilyWardenActions({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
 private val previewDns = DnsPolicy("alex.dns.example.net", setOf(Protection.FILTER_LISTS, Protection.SAFE_SEARCH))
 private val previewNow = 1_800_000_000_000L
 private val previewState = FamilyWardenState(

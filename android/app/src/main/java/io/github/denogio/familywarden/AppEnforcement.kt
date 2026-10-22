@@ -9,9 +9,7 @@ import android.view.inputmethod.InputMethodManager
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
-/** Local enforcement slice, NOT the v3/shared-budget/grant wire contract.
- * No caller in the release app activates it until trusted policy integration (P5).
- */
+/** Local form of the signed v3 app policy (`AppsPolicy.toLocal`); no grants or shared budget yet. */
 data class LocalAppPolicy(
     val zone: ZoneId,
     val limitsMillis: Map<String, Long> = emptyMap(),
@@ -48,8 +46,9 @@ fun appAction(policy: LocalAppPolicy, pkg: String, essential: Boolean, userApp: 
 class AppEnforcer(private val context: Context) {
     private val prefs = context.getSharedPreferences("app-enforcement", Context.MODE_PRIVATE)
 
+    /** Serialized: the service tick and lifting on policy removal must not interleave. */
     fun reconcile(policy: LocalAppPolicy, used: Map<String, Long>, now: ZonedDateTime,
-        usageReliable: Boolean): Set<String> {
+        usageReliable: Boolean): Set<String> = synchronized(AppEnforcer::class.java) {
         check(Mast.isDeviceOwner(context)) { "device owner required" }
         val pm = context.packageManager
         val dpm = Mast.dpm(context)
@@ -83,7 +82,7 @@ class AppEnforcer(private val context: Context) {
             } else if (!block) owned.remove(pkg)
             check(prefs.edit().putStringSet("suspended", owned.toSet()).commit()) { "suspension persistence failed" }
         }
-        return failures
+        failures
     }
 
     private fun essentialPackages(): Set<String> {

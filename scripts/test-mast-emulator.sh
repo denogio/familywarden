@@ -334,6 +334,41 @@ docker exec "$ROUTER" sh -c 'echo $(( $(date +%s) - 1 )) > /etc/familywarden/rel
 broadcast io.github.denogio.familywarden.DEBUG_SYNC
 ui removal-allowed
 ui_has 'Free sailing'
+
+echo ""
+echo "=== App limits from the signed v3 policy ==="
+# A launchable, non-essential app of the system image stands in for a child's game.
+TARGET=""
+for p in com.android.camera2 com.android.deskclock com.google.android.deskclock com.android.contacts; do
+    $ADB shell pm path "$p" 2>/dev/null | grep -q package: && { TARGET=$p; break; }
+done
+suspended() { $ADB shell dumpsys package "$1" | tr -d '\r' | grep -q 'suspended=true'; }
+rdev() { docker exec "$ROUTER" sh -c "echo '{}' | /usr/libexec/rpcd/familywarden call devices" | docker exec -i "$ROUTER" jsonfilter -e "@.devices[0].$1"; }
+# Usage access before the first sample: a day with a usage gap is never acknowledged.
+$ADB shell appops set --uid io.github.denogio.familywarden GET_USAGE_STATS allow
+docker exec -e TARGET="$TARGET" "$ROUTER" sh -c '
+    uci set familywarden.alex.apps=1
+    uci set familywarden.alex_game=app
+    uci set familywarden.alex_game.profile=alex
+    uci set familywarden.alex_game.package="$TARGET"
+    uci set familywarden.alex_game.blocked=1
+    uci commit familywarden
+    familywarden reload >/dev/null'
+broadcast io.github.denogio.familywarden.DEBUG_SYNC
+sleep 6
+[ -n "$TARGET" ] && suspended "$TARGET" && pass "router-blocked app suspended ($TARGET)" || fail "blocked app not suspended (${TARGET:-no target})"
+$ADB shell dumpsys activity services io.github.denogio.familywarden | grep -q AppControlService \
+    && pass "app-control service runs while the policy has apps" || fail "app-control service not running"
+broadcast io.github.denogio.familywarden.DEBUG_SYNC
+rev=$(rdev apps_rev)
+[ -n "$rev" ] && [ "$(rdev apps_applied)" = "$rev" ] && pass "router got the signed acknowledgement ($rev)" \
+    || fail "acknowledgement: applied='$(rdev apps_applied)' expected='$rev'"
+$ADB shell appops set --uid io.github.denogio.familywarden GET_USAGE_STATS ignore
+broadcast io.github.denogio.familywarden.DEBUG_SYNC
+sleep 4
+suspended "$TARGET" && pass "block stays without usage access" || fail "block lifted when usage access was revoked"
+ui apps-usage-missing
+ui_has 'Allow usage access'
 open_removal
 ui removal-final-confirmation
 tap_text 'Remove'
@@ -345,6 +380,7 @@ has disallow_config_private_dns && fail "Private DNS still locked after removal"
 mode=$($ADB shell settings get global private_dns_mode | tr -d '\r')
 [ "$mode" = "opportunistic" ] && pass "Private DNS back to Automatic" || fail "private_dns_mode=$mode"
 $ADB shell dpm list-owners | grep -q 'DeviceOwner' && fail "still device owner" || pass "device-owner role released"
+suspended "$TARGET" && fail "app still suspended after removal" || pass "removal lifts FamilyWarden's app suspensions"
 
 echo ""
 [ "$FAILED" -eq 0 ] && echo "All emulator checks passed!" || echo "Some emulator checks FAILED"

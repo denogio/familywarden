@@ -74,6 +74,9 @@ class MainActivity : ComponentActivity() {
             }
         },
         copyDiagnostics = { copyDiagnostics() },
+        openUsageAccess = {
+            runCatching { startActivity(Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+        },
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -229,6 +232,7 @@ class MainActivity : ComponentActivity() {
             appliedDnsHost = applied.hostname, dnsLocked = applied.locked, dnsError = store.dnsError,
             networkId = getSystemService(ConnectivityManager::class.java).activeNetwork?.networkHandle,
             dialog = dialog,
+            appsActive = state?.apps != null && Mast.isDeviceOwner(this), appsStatus = store.appsStatus,
         )
     }
 
@@ -258,7 +262,8 @@ class MainActivity : ComponentActivity() {
             |devicePolicy=${store.effectiveState != null} awaitingApproval=${store.awaitingApproval} dnsPolicy=${store.effectiveState?.dns != null}
             |dnsApplyError=${store.dnsError ?: "none"} dnsOwned=${store.dnsOwned}
             |dnsMatches=${applied.hostname != null && applied.hostname == store.effectiveState?.dns?.hostname} dnsLocked=${applied.locked}
-            |sync=${store.lastError ?: "ok"} lastSync=${store.lastSync}
+            |sync=${store.lastError ?: "ok"} lastSync=${store.lastSync} wire=${store.wireSeen}
+            |apps=${store.effectiveState?.apps != null} appsStatus=${store.appsStatus ?: "none"} appsApplied=${store.appsApplied == store.effectiveState?.apps?.rev && store.appsApplied != null}
         """.trimMargin()
         getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("FamilyWarden", report))
         message(R.string.fw_diagnostics_copied)

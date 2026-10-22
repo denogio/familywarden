@@ -89,4 +89,10 @@
     <string name="fw_phone_key">This phone\'s key</string>
     <string name="fw_migration_note">If another Device Owner, including the older Mast app, already manages this phone, stop here. Do not remove it, delete accounts, or reset the phone without an approved migration.</string>
     <string name="fw_address_repaired">Router address updated. The key is unchanged.</string>
+    <string name="fw_apps_channel">App limits</string>
+    <string name="fw_apps_notification">App limits are active</string>
+    <string name="fw_apps_active">App limits from the router are active on this phone.</string>
+    <string name="fw_apps_usage_missing">App limits need usage access to count time. Blocked and new apps are still paused.</string>
+    <string name="fw_apps_open_usage">Allow usage access</string>
+    <string name="fw_apps_suspend_failed">Some apps could not be paused. The router shows this phone as not up to date.</string>
 </resources>

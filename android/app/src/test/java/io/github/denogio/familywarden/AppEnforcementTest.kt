@@ -57,4 +57,10 @@ class AppEnforcementTest {
         for (limit in listOf(-1L, 86400001L))
             assertTrue(runCatching { LocalAppPolicy(zone, mapOf(pkg to limit)) }.isFailure)
     }
+
+    @Test fun acknowledgeOnlyWhatIsFullyInForce() {
+        assertTrue(AppControl.acknowledges(emptySet(), usageReliable = true))
+        assertFalse(AppControl.acknowledges(setOf("com.example.game"), usageReliable = true))
+        assertFalse(AppControl.acknowledges(emptySet(), usageReliable = false)) // limits only held
+    }
 }

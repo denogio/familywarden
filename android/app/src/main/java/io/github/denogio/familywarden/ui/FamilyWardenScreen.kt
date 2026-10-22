@@ -97,6 +97,7 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions) {
                         }
                     }
                     Facts(state)
+                    AppLimitsNote(state, actions)
                     WideAction(R.string.action_sync, Icons.Outlined.Sync, actions.sync, !state.syncing)
                 }
                 page == Page.Dns -> DnsContent(state, actions)
@@ -219,6 +220,22 @@ private fun Facts(s: FamilyWardenState) {
         DetailItem(stringResource(R.string.fw_resolver_reachable), health),
         DetailItem(stringResource(R.string.fw_router_reachable), sync),
     ))
+}
+
+/** App limits are enforced locally; only problems need the user's attention. */
+@Composable
+private fun AppLimitsNote(s: FamilyWardenState, actions: FamilyWardenActions) {
+    if (!s.appsActive) return
+    when (s.appsStatus) {
+        "usage_access_missing" -> {
+            InfoNote(Icons.Outlined.Info, stringResource(R.string.fw_apps_usage_missing))
+            TextButton(onClick = actions.openUsageAccess, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.fw_apps_open_usage))
+            }
+        }
+        "suspend_failed" -> InfoNote(Icons.Outlined.Info, stringResource(R.string.fw_apps_suspend_failed))
+        else -> InfoNote(Icons.Outlined.Lock, stringResource(R.string.fw_apps_active))
+    }
 }
 
 @Composable

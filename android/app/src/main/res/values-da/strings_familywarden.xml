@@ -87,4 +87,10 @@
     <string name="fw_phone_key">Telefonens nøgle</string>
     <string name="fw_migration_note">Hvis en anden Device Owner, herunder den gamle Mast-app, allerede administrerer telefonen, skal du stoppe her. Fjern ikke appen, slet ikke konti og nulstil ikke telefonen uden en godkendt migrering.</string>
     <string name="fw_address_repaired">Routerens adresse er opdateret. Nøglen er uændret.</string>
+    <string name="fw_apps_channel">App-grænser</string>
+    <string name="fw_apps_notification">App-grænser er aktive</string>
+    <string name="fw_apps_active">Routerens app-grænser er aktive på denne telefon.</string>
+    <string name="fw_apps_usage_missing">App-grænser kræver adgang til brugsdata for at tælle tid. Blokerede og nye apps er stadig sat på pause.</string>
+    <string name="fw_apps_open_usage">Giv adgang til brugsdata</string>
+    <string name="fw_apps_suspend_failed">Nogle apps kunne ikke sættes på pause. Routeren viser telefonen som ikke opdateret.</string>
 </resources>

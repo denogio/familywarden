@@ -32,6 +32,10 @@ data class FamilyWardenState(
     val probeGeneration: Long = 0,
     val canTestResolver: Boolean = false,
     val dialog: MastDialog? = null,
+    /** A trusted v3 policy with app rules is being applied on this phone. */
+    val appsActive: Boolean = false,
+    /** Last app-control state ("ok", "usage_access_missing", "suspend_failed", ...). */
+    val appsStatus: String? = null,
 ) {
     val bound: Boolean get() = pact is PactStatus.Bound
     val showUlysses: Boolean get() = bound || (binding?.captain == true && ulyssesEnabled)
@@ -90,4 +94,5 @@ class FamilyWardenActions(
     val testResolver: () -> Unit,
     val openSail: () -> Unit,
     val copyDiagnostics: () -> Unit,
+    val openUsageAccess: () -> Unit,
 )

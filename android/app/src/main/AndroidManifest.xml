@@ -12,6 +12,10 @@
          No inventory is transmitted; signed app-policy activation remains gated on P5. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
+    <!-- App limits run in a foreground service while a signed policy has app rules.
+         systemExempted: allowed for a Device Owner (lint only knows the alarm route). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
     <!-- Flip the restriction exactly at schedule boundaries (e.g. 21:30) -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
@@ -51,6 +55,12 @@
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
         </receiver>
+
+        <service
+            android:name=".AppControlService"
+            android:exported="false"
+            android:foregroundServiceType="systemExempted"
+            tools:ignore="ForegroundServicePermission" />
 
         <receiver
             android:name=".EventReceiver"

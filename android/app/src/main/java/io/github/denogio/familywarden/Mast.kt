@@ -91,6 +91,7 @@ object Mast {
         if (!store.provisioned || state != null) {
             enforce(context, state != null, decision.block)
             scheduleNext(context, store)
+            AppControl.sync(context, state)
         }
         // DNS is always on while the verified policy has it, independent of Ulysses
         if (state != null) PrivateDns.apply(context, store, state.dns)
@@ -199,6 +200,8 @@ object Mast {
         // Hand Private DNS back first; if Android refuses, stay owner (nothing half-done)
         if (!PrivateDns.restore(context, Store(context))) return false
         enforce(context, paired = false, block = false)
+        // Lift our own app suspensions while we still are Device Owner.
+        AppControl.stop(context, Store(context).effectiveState?.let(AppControl::zone) ?: java.time.ZoneId.systemDefault())
         if (isDeviceOwner(context)) dpm(context).clearDeviceOwnerApp(context.packageName)
         Store(context).unpair()
         scheduleNext(context, Store(context))

@@ -85,6 +85,8 @@ class DebugProbeReceiver : BroadcastReceiver() {
                 "io.github.denogio.familywarden.PROBE_APP_CONTROL" -> {
                     val enabled = intent.getBooleanExtra("enabled", false)
                     check(!enabled || Mast.isDeviceOwner(context)) { "Device Owner required" }
+                    // The real AppControlService owns the same usage journal while a signed policy has apps.
+                    check(!enabled || Store(context).effectiveState?.apps == null) { "signed app policy active" }
                     val seconds = intent.getIntExtra("seconds", 30).also { require(it in 0..86400) }
                     check(prefs.edit().putBoolean("app_control", enabled).putInt("app_control_seconds", seconds)
                         .putBoolean("app_control_block", intent.getBooleanExtra("blocked", false)).commit())
