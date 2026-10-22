@@ -1,7 +1,8 @@
 # App approval / Play updates — continued research
 
 Research and disposable-emulator experiments: **2026-10-21–22**.
-Status: **promising activity-control alternative, not a production decision**.
+Status: **decided 2026-10-22 (A12): post-install suspension.** Lock task stays a
+researched alternative, not the product model. The first-launch window is accepted.
 No physical phone, production router, owner migration or account removal.
 
 ## Separate the requirements

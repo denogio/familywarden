@@ -113,6 +113,7 @@ follow-ups recorded with them, not additional decisions.
 | A8 | Usage data and privacy | 30 days for app activity **and** visited websites (domains), on the household's own infrastructure | **Decided** (details below) |
 | A9 | Device Owner setup for others | Like Tabaa: the app pairs with the phone's own *Wireless debugging* (user types the pairing code into a notification) and makes itself Device Owner, no computer; adb from a PC as alternative; QR provisioning only for new or reset phones | Open |
 | A10 | Support a light tier without Device Owner? | Yes, after the strict tier; bypass-evident with parent alerts | Open |
+| A12 | New-app approval model | **Post-install suspension:** new user apps are suspended as soon as Android reports them; Play installs and updates stay enabled. The rare first-launch window before suspension is accepted and documented. Lock task (phone-UX cost, background code still runs) and install windows (no automatic updates) rejected for now. See [install research](app-control-install-research.md) | **Decided** (2026-10-22) |
 | A11 | Android developer verification (2027) | Register the package as a verified developer, or rely on limited distribution / ADB | Open |
 
 ## Research: what is possible without Device Owner (2026-10-19)

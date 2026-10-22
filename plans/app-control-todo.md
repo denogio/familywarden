@@ -240,6 +240,9 @@ Depends on P2/P5/P6.
 - [ ] Suspend/unsuspend only managed packages, record failures and reconcile at boot,
       package changes, policy updates and budget/schedule boundaries.
 - [ ] Handle package replacement/uninstall, newly installed apps and essential-app exceptions.
+      Model decided (A12): suspend new user apps on the dynamic package event (needs
+      package visibility) plus boot/periodic reconcile; Play installs/updates stay on.
+      UI and docs must state the brief first-launch window, never "blocked before use".
 - [ ] Protect relevant configuration, time, uninstall and user/profile changes where supported.
 - [ ] Restore only FamilyWarden-owned restrictions on approved removal; never erase another
       administrator's policy. Preserve the existing signed removal and pact guards.
