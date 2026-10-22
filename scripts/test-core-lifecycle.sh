@@ -13,6 +13,7 @@ pid() { pidof familywardend; }
 case "${1:-before}" in
 before)
     /etc/init.d/familywarden-core enabled && pass "init script enabled by the package" || fail "not enabled"
+    ubus list familywarden-core >/dev/null 2>&1 && pass "ubus object registered by postinst" || fail "no ubus object (rpcd not reloaded)"
     wait_up && pass "core running under procd: $(ubus call familywarden-core status | tr -d '\n ')" || fail "core not running"
     old=$(pid)
     kill -9 "$old"
