@@ -49,5 +49,19 @@ define Package/familywarden-core/install
 	$(INSTALL_BIN) ./files/familywarden-core.rpcd $(1)/usr/libexec/rpcd/familywarden-core
 endef
 
+# rpcd only scans exec plugins at (re)load: without this the ubus object is
+# missing after install and lingers after removal.
+define Package/familywarden-core/postinst
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] || /etc/init.d/rpcd reload
+exit 0
+endef
+
+define Package/familywarden-core/postrm
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] || /etc/init.d/rpcd reload
+exit 0
+endef
+
 $(eval $(call GoBinPackage,familywarden-core))
 $(eval $(call BuildPackage,familywarden-core))
