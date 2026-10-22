@@ -1,0 +1,11 @@
+#!/bin/sh
+# rpcd exec plugin: the narrow ubus bridge to the core's unix socket.
+case "$1" in
+list) echo '{"status":{}}' ;;
+call)
+    case "$2" in
+    status) exec /usr/sbin/familywardend -socket /var/run/familywarden-core/core.sock status ;;
+    *) echo '{"error":"unknown method"}' ;;
+    esac
+    ;;
+esac
