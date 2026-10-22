@@ -68,10 +68,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Shell + LuCI only: the core package compiles the whole Go toolchain in the
+      # SDK (~8 min) and nothing downstream needs it, so it has its own job below.
       - name: Build with OpenWrt SDK
         env:
           SDK_IMAGE: openwrt/sdk:x86-64-${{ env.OPENWRT_VERSION }}
           OUT: ${{ runner.temp }}/apk
+          WITH_CORE: 0
         run: ./scripts/build-apk-docker.sh
 
       - name: Smoke-test apks (install, postinst, reinstall, remove)
@@ -84,6 +87,24 @@ jobs:
           name: apks
           path: ${{ runner.temp }}/apk/*.apk
           if-no-files-found: error
+
+  core-apk:
+    name: Core apk (OpenWrt package)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build with OpenWrt SDK (incl. familywarden-core)
+        env:
+          SDK_IMAGE: openwrt/sdk:x86-64-${{ env.OPENWRT_VERSION }}
+          OUT: ${{ runner.temp }}/apk
+        run: ./scripts/build-apk-docker.sh
+
+      - name: Smoke-test apks incl. the core daemon
+        env:
+          OPENWRT_IMAGE: openwrt/rootfs:x86-64-${{ env.OPENWRT_VERSION }}
+        run: ./scripts/test-apk.sh "${{ runner.temp }}/apk"
 
   e2e:
     name: LuCI e2e (Playwright)
