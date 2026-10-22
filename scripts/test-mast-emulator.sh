@@ -38,12 +38,7 @@ docker volume inspect mast-sdk >/dev/null 2>&1 || docker volume create mast-sdk 
 docker run --rm -v mast-sdk:/opt/extra "$SDK_IMAGE" sh -c \
     "test -d /opt/extra/system-images || { yes | sdkmanager --sdk_root=/opt/extra --licenses >/dev/null; sdkmanager --sdk_root=/opt/extra emulator platform-tools '$SYSIMG' >/dev/null; }"
 
-# An explicit subnet: newer Docker only allows reconnecting with --ip (the router
-# must come back on the address the phone pinned) on user-configured subnets.
-for i in 0 1 2 3 4 5 6 7 8 9; do
-    docker network create --subnet "172.30.$(( (ID + i) % 250 )).0/24" "$NET" >/dev/null 2>&1 && break
-done
-docker network inspect "$NET" >/dev/null 2>&1 || { echo "could not create a test network"; exit 1; }
+docker network create "$NET" >/dev/null
 
 echo "=== Router with an ongoing pact (captain always blocked) ==="
 docker run -d --name "$ROUTER" --network "$NET" --cap-add NET_ADMIN \
@@ -315,7 +310,10 @@ has no_config_tethering && pass "old removal dialog cannot bypass a new pact" ||
 
 echo ""
 echo "=== Router unreachable: the cached pact still binds ==="
-docker network disconnect "$NET" "$ROUTER"
+# Paused, not disconnected: the router keeps the address the phone pinned (newer
+# Docker refuses to reconnect with --ip on networks without a configured subnet,
+# and the emulator could not reach a custom 172.30.x subnet).
+docker pause "$ROUTER" >/dev/null
 $ADB reboot
 sleep 10
 for _ in $(seq 1 120); do
@@ -331,7 +329,7 @@ ui_has 'Router out of reach; cached policy remains'
 
 echo ""
 echo "=== Removal after a fresh signed release ==="
-docker network connect --ip "$ROUTER_IP" "$NET" "$ROUTER"
+docker unpause "$ROUTER" >/dev/null
 docker exec "$ROUTER" sh -c 'echo $(( $(date +%s) - 1 )) > /etc/familywarden/release; familywarden tick'
 broadcast io.github.denogio.familywarden.DEBUG_SYNC
 ui removal-allowed
