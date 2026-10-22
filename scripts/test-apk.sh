@@ -72,7 +72,8 @@ if [ -n "$CORE" ]; then
         mkdir -p /var/run/familywarden-core
         familywardend -data /etc/familywarden/core -socket "$SOCK" 2>>/tmp/core.log &
         CORE_PID=$!
-        for _ in 1 2 3 4 5; do [ -S "$SOCK" ] && break; sleep 1; done
+        # Not just [ -S ]: after a crash the stale socket file already exists.
+        for _ in 1 2 3 4 5; do st | grep -q '"running":true' && break; sleep 1; done
     }
     start_core
     v=$(st)
