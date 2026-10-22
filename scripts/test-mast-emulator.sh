@@ -38,7 +38,12 @@ docker volume inspect mast-sdk >/dev/null 2>&1 || docker volume create mast-sdk 
 docker run --rm -v mast-sdk:/opt/extra "$SDK_IMAGE" sh -c \
     "test -d /opt/extra/system-images || { yes | sdkmanager --sdk_root=/opt/extra --licenses >/dev/null; sdkmanager --sdk_root=/opt/extra emulator platform-tools '$SYSIMG' >/dev/null; }"
 
-docker network create "$NET" >/dev/null
+# An explicit subnet: newer Docker only allows reconnecting with --ip (the router
+# must come back on the address the phone pinned) on user-configured subnets.
+for i in 0 1 2 3 4 5 6 7 8 9; do
+    docker network create --subnet "172.30.$(( (ID + i) % 250 )).0/24" "$NET" >/dev/null 2>&1 && break
+done
+docker network inspect "$NET" >/dev/null 2>&1 || { echo "could not create a test network"; exit 1; }
 
 echo "=== Router with an ongoing pact (captain always blocked) ==="
 docker run -d --name "$ROUTER" --network "$NET" --cap-add NET_ADMIN \

@@ -199,6 +199,9 @@ test('MAC addresses stack based on card width and Profiles help stays below its 
   await page.goto(URL);
   const card = page.locator('[data-profile="alex"]');
   await expect(card).toBeVisible();
+  // overview.css is injected as a <link> after the cards render: measuring before it
+  // applies sees no container queries (the flaky failure in CI runs 39792461019/39807423257).
+  await expect(card).toHaveCSS('container-type', 'inline-size');
   await card.evaluate(el => { el.style.width = '440px'; });
   const positions = await card.locator('.fw-devices li').evaluate(el => ({
     name: el.firstElementChild.getBoundingClientRect().toJSON(),
