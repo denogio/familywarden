@@ -176,16 +176,52 @@ health/version, tzdata embedded). Static linux/arm64 binary: 6.4 MB (rivendell h
 
 Depends on P3 and ownership decisions from P1.
 
-- [ ] Add architecture-specific Go package builds, procd lifecycle and configuration.
-      The existing shell package is `PKGARCH:=all`; a compiled core cannot be.
+- [x] Add architecture-specific Go package builds, procd lifecycle and configuration.
+      Separate package `familywarden-core` (OpenWrt `golang-package.mk`, Go from the
+      packages feed bootstrapped from the official golang image); the shell package stays
+      `PKGARCH:=all` and unchanged. `scripts/build-apk-docker.sh` builds it (`WITH_CORE=0` skips).
 - [ ] Connect authenticated LuCI/ubus calls through a narrow local bridge and least-privilege ACLs.
-- [ ] Keep the existing fw4 compiler and sail endpoint authoritative initially unless
-      the migration contract explicitly assigns them elsewhere.
-- [ ] Define reload ordering, failures, timeouts and single-writer ownership per state file.
-- [ ] Add clean install, upgrade, restart and uninstall tests with preserved configuration.
+      Done for root/ubus: rpcd exec plugin, one method `ubus call familywarden-core status`
+      (always one JSON object, also when the core is down). No LuCI ACL yet: added when a
+      LuCI view consumes it.
+- [x] Keep the existing fw4 compiler and sail endpoint authoritative initially.
+      The core touches neither; stopping, crashing or removing it leaves fw4 untouched (tested).
+- [x] Define reload ordering, failures, timeouts and single-writer ownership per state file —
+      see "Core on OpenWrt: ownership" below.
+- [x] Add clean install, upgrade, restart and uninstall tests with preserved configuration.
+      `scripts/test-apk.sh` (container) and `scripts/test-core-lifecycle.sh` (real procd).
 - [ ] Measure package/RAM/storage cost on target architectures; document minimum requirements.
+      Measured on x86_64 only (below). aarch64_cortex-a53 package build/measurement open.
 
 **Accept:** disposable OpenWrt installation and reboot work without DNS/pact/firewall regressions.
+
+### Core on OpenWrt: ownership and lifecycle (2026-10-22)
+
+| Path | Owner (single writer) | Notes |
+|---|---|---|
+| `/etc/familywarden/core/` (0700) | `familywardend` | Durable core state; kept on upgrade **and removal** (user data) |
+| `/var/run/familywarden-core/core.sock` (0600, dir 0700) | `familywardend` | Root-only; not shared with the shell's `/var/run/familywarden` |
+| everything else under `/etc/familywarden`, `/tmp/familywarden.*`, `/var/etc/familywarden.include`, UCI | shell plugin | Unchanged; the core reads none of it yet |
+
+- **Ordering:** independent services. `familywarden` (START=95) never waits for or calls
+  the core, so a broken core cannot delay or break firewall rules. The core (START=94)
+  needs nothing from the shell.
+- **Failures:** procd respawns with back-off (`respawn 3600 5 5`). Startup refuses a
+  `-socket` path that is not a socket and refuses to start a second instance on a live
+  socket; a stale socket after a crash is taken over. The status bridge times out after 3 s.
+- **rpcd:** exec plugins are only scanned at (re)load, so postinst/postrm reload rpcd —
+  without it the ubus object was missing after install and lingered after removal (found
+  in the QEMU test).
+- **Release:** CI builds and tests the x86_64 core but does not attach it to releases yet.
+
+Measured 2026-10-22 on OpenWrt 25.12.4 x86_64 (container + disposable QEMU, real procd):
+package 2.9 MB (apk), binary 7.3 MB installed, idle RSS 7.4–8.1 MB. Build adds about
+8 min the first time (Go toolchain). Production rivendell had ~35 MB overlay and
+~118 MB RAM free at last read: fits, but re-measure on aarch64 before any deployment.
+Tests passed: `test-apk.sh` (install, ubus while down/up, 0600/0700 modes, second
+instance refused, crash → stale socket → takeover, reinstall/removal keep data) and
+`test-core-lifecycle.sh` (enabled + ubus right after a plain `apk add`, procd respawn,
+reboot, stop/start, removal; fw4 chain and shell backend unchanged throughout).
 
 ## P5 — Extend identity and signed policy
 

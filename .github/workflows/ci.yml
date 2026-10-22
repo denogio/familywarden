@@ -240,7 +240,10 @@ jobs:
           adb shell dpm set-device-owner io.github.denogio.familywarden/.AdminReceiver
           \`\`\`
           EOF
-          gh release create "${GITHUB_REF_NAME}" apk/*.apk mast/ulysses-mast-${{ steps.ver.outputs.fw }}.apk \
+          # familywarden-core (x86_64, built and tested above) is not released yet:
+          # it has no user-facing function until P5, and release builds need per-arch SDKs.
+          gh release create "${GITHUB_REF_NAME}" apk/familywarden-[0-9]*.apk apk/luci-app-familywarden-*.apk \
+            mast/ulysses-mast-${{ steps.ver.outputs.fw }}.apk \
             --title "FamilyWarden ${GITHUB_REF_NAME}" \
             --notes-file notes.md \
             --generate-notes \
