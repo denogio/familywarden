@@ -248,6 +248,12 @@ function buildStatusBar(status) {
 return view.extend({
 
 	load: function() {
+		// Save & Apply belongs to the view, not form.Map. Reload only after confirmation.
+		document.addEventListener('uci-applied', function() {
+			callReload().catch(function(error) {
+				ui.addNotification(null, E('p', {}, _('Could not reload FamilyWarden: %s').format(error.message)), 'error');
+			});
+		});
 		return Promise.all([
 			callList(),
 			uci.load('familywarden'),
@@ -316,18 +322,6 @@ return view.extend({
 
 		// --- Profile settings form ---
 		var m = new form.Map('familywarden');
-		var origSaveApply = m.handleSaveApply;
-		m.handleSaveApply = function(ev, mode) {
-			// origSaveApply already saves AND applies the UCI changes; just
-			// reload the daemon afterwards. Calling uci.apply() again here would
-			// hit ubus code 5 (ENODATA) since no changes remain pending.
-			return origSaveApply.apply(this, [ev, mode]).then(function() {
-				return callReload();
-			}).then(function() {
-				// Reload UCI state so the UI reflects fresh daemon state
-				return uci.load('familywarden');
-			});
-		};
 
 		// The captain's profile is frozen for the pact's lifetime, except in
 		// its weekly window (the backend ignores edits anyway): read-only, no

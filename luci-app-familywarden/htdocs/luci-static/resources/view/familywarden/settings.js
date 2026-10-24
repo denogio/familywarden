@@ -44,6 +44,12 @@ var callList = rpc.declare({
 
 return view.extend({
 	load: function() {
+		// Save & Apply belongs to the view, not form.Map. Reload only after confirmation.
+		document.addEventListener('uci-applied', function() {
+			callReload().catch(function(error) {
+				ui.addNotification(null, E('p', {}, _('Could not reload FamilyWarden: %s').format(error.message)), 'error');
+			});
+		});
 		return Promise.all([ callList(), uci.load('familywarden'), callMast(window.location.hostname),
 			L.resolveDefault(callDnsStatus(), {}) ]);
 	},
@@ -61,18 +67,6 @@ return view.extend({
 		// No Map title: the shared FamilyWarden header replaces it.
 		m = new form.Map('familywarden');
 
-		var origSaveApply = m.handleSaveApply;
-		m.handleSaveApply = function(ev, mode) {
-			// origSaveApply already saves AND applies the UCI changes; just
-			// reload the daemon afterwards. Calling uci.apply() again here would
-			// hit ubus code 5 (ENODATA) since no changes remain pending.
-			return origSaveApply.apply(this, [ev, mode]).then(function() {
-				return callReload();
-			}).then(function() {
-				// Reload UCI state so the UI reflects fresh daemon state
-				return uci.load('familywarden');
-			});
-		};
 
 		s = m.section(form.TypedSection, 'global', _('General'),
 			bound ? _('A pact is active: these are frozen too, so they can not be used as a way out.') : null);

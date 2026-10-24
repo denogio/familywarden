@@ -47,6 +47,42 @@ test.describe('FamilyWarden LuCI UI', () => {
     await expect(page.locator('h2').first()).toContainText(/profile/i, { timeout: 10000 });
   });
 
+  test('screen time settings persist and bonus time reaches the router', async ({ page }) => {
+    await page.goto(`${FW_URL}/profiles?name=alex`);
+    const apps = page.locator('[id="cbid.familywarden.alex.apps"] input');
+    await apps.check();
+    const daily = page.locator('input[id$=".screen_minutes"]');
+    const weekday = page.locator('input[id$=".screen_weekday"]');
+    const weekend = page.locator('input[id$=".screen_weekend"]');
+    await daily.fill('120');
+    await weekday.fill('90');
+    await weekend.fill('180');
+    const always = page.locator('input[id$=".always_allowed"]');
+    await always.fill('com.example.school');
+    await always.press('Enter');
+    // Internet schedule visibility must not hide the separate phone downtime table.
+    await expect(page.locator('#cbi-familywarden-app_downtime')).toBeVisible();
+    await page.locator('li').filter({ hasText: /^Save & Apply$/ }).click();
+    await expect(page.getByText('Configuration changes applied.')).toBeVisible();
+    await page.reload();
+    await expect(apps).toBeChecked();
+    await expect(daily).toHaveValue('120');
+    await expect(weekday).toHaveValue('90');
+    await expect(weekend).toHaveValue('180');
+    await expect(page.locator('[id="cbid.familywarden.alex.always_allowed"]')).toContainText('com.example.school');
+    await page.goto(FW_URL);
+    const bonus = page.locator('[data-profile="alex"] .fw-bonus');
+    await expect(bonus).toBeVisible();
+    const given = +(await bonus.innerText()).match(/(\d+) min given/)?.[1] || 0;
+    await bonus.getByRole('button', { name: 'Add 15 minutes of screen time today', exact: true }).click();
+    await expect(bonus).toContainText(`${given + 15} min given`);
+    // Leave the shared fixture without phone limits for the other UI tests.
+    await page.goto(`${FW_URL}/profiles?name=alex`);
+    await apps.uncheck();
+    await page.locator('li').filter({ hasText: /^Save & Apply$/ }).click();
+    await expect(page.getByText('Configuration changes applied.')).toBeVisible();
+  });
+
   test('Settings page loads', async ({ page }) => {
     await page.goto(`${FW_URL}/settings`);
     await expect(page.locator('h2').first()).toContainText(/setting/i, { timeout: 10000 });

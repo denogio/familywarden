@@ -153,7 +153,9 @@ function actionButton(id, label, key, fn) {
 			acting = true;
 			var button = ev.currentTarget;
 			button.disabled = true;
-			return Promise.resolve().then(fn).then(function(res) {
+			// Let any in-flight read finish before mutating; otherwise its old reply
+			// can overwrite the result and suppress the action's immediate refresh.
+			return Promise.resolve(refreshing).then(fn).then(function(res) {
 				if (res && res.error) throw new Error(res.error);
 			}).catch(function(err) {
 				ui.addNotification(null, E('p', {}, _('Action failed: %s').format(err.message)), 'warning');
@@ -295,8 +297,7 @@ function showFailure() {
 
 function refreshDashboard() {
 	if (refreshing || acting || document.body.classList.contains('modal-overlay-active')) return Promise.resolve();
-	refreshing = true;
-	return loadDashboard().then(function(data) {
+	return refreshing = loadDashboard().then(function(data) {
 		lastUpdated = new Date();
 		var active = document.activeElement;
 		var focusKey = dashboardNode.contains(active) && active.getAttribute('data-focus');

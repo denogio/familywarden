@@ -184,7 +184,14 @@ test('cards fit content, actions align at the top, and the captain gets a Pact z
   await expect(page.locator('.fw-grid')).toHaveCSS('align-items', 'start');
   await expect(short.locator('.fw-card-foot')).toHaveCSS('margin-top', '0px');
   await expect(short.locator('.fw-card-foot')).toHaveCSS('align-items', 'flex-start');
-  expect((await short.boundingBox()).height).toBeLessThan((await captain.boundingBox()).height);
+  // Polling replaces the cards: measure both in one DOM snapshot, not across awaits.
+  await expect.poll(() => page.locator('.fw-grid').evaluate((grid, id) => {
+    const short = grid.querySelector('[data-profile="short"]');
+    const captain = Array.from(grid.querySelectorAll('[data-profile]'))
+      .find(el => el.dataset.profile === id);
+    return !!short && !!captain && short.getBoundingClientRect().height > 0 &&
+      short.getBoundingClientRect().height < captain.getBoundingClientRect().height;
+  }, captainId)).toBe(true);
   const labels = await short.locator('.fw-act-zone > .fw-actions-label').evaluateAll(els => els.map(e => e.getBoundingClientRect().top));
   expect(Math.abs(labels[0] - labels[1])).toBeLessThanOrEqual(1);
   await expect(captain.locator('.fw-ulysses svg[data-icon="mast"]')).toBeVisible();
