@@ -335,7 +335,9 @@ Depends on P5–P7 (done for the local slice). Next pilot build: `0.10.0-pilot2`
 - [ ] Tests: router expansion/revision/pact freeze/bonus expiry; JVM union counting,
       weekday lookup in router zone, midnight with bonus; emulator total exhaustion keeps
       dialer/launcher/Settings usable; pilot rehearsal; then Pixel pilot2.
-- [ ] Decide (open): should app downtime pause all ordinary apps for children?
+- [ ] Downtime pauses all ordinary apps (Family Link), except always-allowed apps marked
+      for downtime; drop SMS from the built-in essential set (only if always-allowed).
+- [ ] Wording and flow follow Family Link (product principle in `app-control.md`).
 
 ## P8 — Deliver the first end-to-end extra-time slice
 

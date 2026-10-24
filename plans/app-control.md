@@ -99,6 +99,33 @@ follow-ups recorded with them, not additional decisions.
 7. **Requests (A7):** no rate limit; a child has at most **one open request** at a time;
    an unanswered request **expires after 1 hour**.
 
+## Product principle (2026-10-24)
+
+**Copy Google Family Link's model and wording as closely as possible**, and add only what
+the user explicitly finds missing. When in doubt, do what Family Link does. Reference
+(checked 2026-10-24): [screen time](https://support.google.com/families/answer/7103340),
+[schedules](https://support.google.com/families/answer/15938652),
+[app limits](https://support.google.com/families/answer/15957417),
+[kids FAQ](https://support.google.com/accounts/community-guide/390673031).
+
+| Family Link | FamilyWarden | Status |
+|---|---|---|
+| Daily limit, weekly schedule, "apply to all days" | Total screen time, all days or weekdays/weekend, per-weekday in policy (D9) | P7b |
+| Downtime (and School time): device limited, calls work | Downtime pauses **all ordinary apps**, not only limited ones | P7b (changed from app-only) |
+| App limits per app per day; system apps can't be limited | Per-app limits (wire v3) | Done, piloted |
+| Blocked apps | `blocked` | Done |
+| Always allowed ("unlimited") apps: don't count, work after the limit and (if chosen) in downtime | `always_allowed` | P7b |
+| Texting in downtime only if the messaging app is always allowed | Same; only calls/emergency, launcher, Settings, keyboard and FamilyWarden are built-in exceptions | P7b |
+| Bonus time for today, without changing the schedule | Bonus (D9) | P7b |
+| Lock now (parent); unlimited apps also locked unless enabled | Lock now | Later (P10) |
+| "Almost out of time" notification; child taps *Ask for more time* | 5-min warning (D10); request for more time | P7b / P8 |
+| New app download: child taps *Ask*, parent approves | Post-install pause (A12) + *Ask* to approve | P8/P10 |
+| Limits apply per device | **Shared per child across devices** (D4, user addition) | P8 |
+
+**Additions the user wants beyond Family Link:** asking for extra time **for one specific
+app** (D2/D3, parent phone may approve offline); a shared budget across a child's devices
+(D4); internet blocking at the router; DNS filtering; adult self-limits (Ulysses, A4).
+
 ## Contract decisions (2026-10-24, after the Pixel 10 pilot)
 
 9. **Total daily screen time for children.** Besides per-app limits, a child profile has a
@@ -118,8 +145,10 @@ follow-ups recorded with them, not additional decisions.
      from the child's request/grant flow (D2/D3, P8), which keeps its 2-hour lifetime.
    - Shared across a child's devices like the per-app budgets (D4); until P8 the limit is
      enforced per phone.
-   - *Open (proposed, not decided):* whether app **downtime** for children should also pause
-     all ordinary apps (bedtime for the whole phone) with the same exceptions.
+   - **Downtime pauses the whole phone** (Family Link): all ordinary apps, except
+     always-allowed apps the parent chose to allow in downtime. Calls/emergency, launcher,
+     Settings, keyboard and FamilyWarden always work; SMS only if always-allowed (as in
+     Family Link, so the built-in SMS exception from the P7 slice goes).
 10. **Warnings and pause text** (pilot finding): the phone notifies "5 minutes left" (once
     per app/day and for the total) and "paused: daily limit reached". Android's pause
     dialog title ("Blocked by work policy") cannot be changed by a Device Owner; its body is
