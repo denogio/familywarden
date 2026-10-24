@@ -13,6 +13,7 @@ var callBlock = rpc.declare({ object: 'familywarden', method: 'block', params: [
 var callAllow = rpc.declare({ object: 'familywarden', method: 'allow', params: [ 'profile' ] });
 var callReset = rpc.declare({ object: 'familywarden', method: 'reset', params: [ 'profile' ] });
 var callTicket = rpc.declare({ object: 'familywarden', method: 'ticket', params: [ 'profile', 'minutes' ] });
+var callBonus = rpc.declare({ object: 'familywarden', method: 'bonus', params: [ 'profile', 'minutes' ] });
 var callDHCPLeases = rpc.declare({
 	object: 'luci-rpc', method: 'getDHCPLeases', expect: { dhcp_leases: [] }
 });
@@ -145,7 +146,7 @@ function profileCard(id, p, names) {
 }
 
 function actionButton(id, label, key, fn) {
-	var intent = key.indexOf('ticket-') === 0 ? 'grant' : { allow: 'allow', block: 'block', pact: 'pact' }[key];
+	var intent = (key.indexOf('ticket-') === 0 || key.indexOf('bonus-') === 0) ? 'grant' : { allow: 'allow', block: 'block', pact: 'pact' }[key];
 	return E('button', { 'type': 'button', 'class': 'cbi-button fw-btn' + (intent ? ' fw-btn-' + intent : ''), 'data-focus': id + ':' + key,
 		'click': function(ev) {
 			if (acting) return;
@@ -198,6 +199,20 @@ function cardButtons(id, p) {
 			'aria-label': _('Internet ticket for %s').format(p.name || id) }, [
 			E('span', { 'class': 'fw-actions-label' }, _('Internet ticket · minutes')),
 			E('div', { 'class': 'fw-act-row' }, actions)
+		]));
+	}
+	// Family Link "Bonus time": extra screen time on the phones today; never for a bound captain.
+	if (p.apps && !bound) {
+		var bonus = [15, 30, 60].map(function(mins) {
+			var button = actionButton(id, '+' + mins, 'bonus-' + mins, function() { return callBonus(id, mins); });
+			button.setAttribute('aria-label', _('Add %s minutes of screen time today').format(mins));
+			return button;
+		});
+		btns.push(E('div', { 'class': 'fw-act-zone fw-bonus', 'role': 'group',
+			'aria-label': _('Bonus time for %s').format(p.name || id) }, [
+			E('span', { 'class': 'fw-actions-label' }, +p.bonus_today > 0
+				? _('Bonus time today · %d min given').format(+p.bonus_today) : _('Bonus time today · minutes')),
+			E('div', { 'class': 'fw-act-row' }, [ E('div', { 'class': 'fw-seg' }, bonus) ])
 		]));
 	}
 	if (bound) btns.unshift(E('p', { 'class': 'fw-held' }, _('Bound by the pact: Allow and internet tickets are unavailable.')));

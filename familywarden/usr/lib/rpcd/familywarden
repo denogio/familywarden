@@ -1247,6 +1247,11 @@ EOF
     json_add_int "override_expires" "${override_expires:-0}"
     json_add_boolean "block_router" "$block_router"
     json_add_bound "$profile"
+    # App control on this profile's phones, and today's bonus on the total (LuCI/HA)
+    local apps_on
+    config_get apps_on "$profile" apps "0"
+    json_add_boolean "apps" "$([ "$apps_on" = 1 ] && echo 1 || echo 0)"
+    json_add_int "bonus_today" "$(_bonus_today "$profile" | awk -F'|' '$2 == "total" { print $3 }' | head -1 | grep . || echo 0)"
 
     json_add_array "devices"
     config_list_foreach "$profile" device json_add_dev

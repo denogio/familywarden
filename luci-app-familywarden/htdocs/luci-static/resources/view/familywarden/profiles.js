@@ -430,6 +430,51 @@ return view.extend({
 			return id ? _('ClientID %s, waiting for sync').format(id) : _('Created on the next sync from the profile name, and kept when the profile is renamed.');
 		};
 
+		// --- Screen time and apps on this profile's phones (Family Link model, D9) ---
+		var appsHeading = s.option(form.DummyValue, '_apps_heading');
+		appsHeading.renderWidget = function() {
+			return E('div', { 'class': 'fw-form-heading' }, [
+				E('h4', {}, _('Screen time and apps on approved phones')),
+				E('p', {}, _('Enforced by the FamilyWarden app on this profile\'s phones, also away from home. Phones apply changes at their next sync.'))
+			]);
+		};
+		var appsOption = s.option(form.Flag, 'apps', _('Screen time and app limits'));
+		appsOption.rmempty = true;
+		appsOption.default = '0';
+		appsOption.readonly = frozen;
+
+		function minutesOption(name, title, description) {
+			var o = s.option(form.Value, name, title, description);
+			o.datatype = 'range(0,1440)';
+			o.placeholder = _('No limit');
+			o.rmempty = true;
+			o.readonly = frozen;
+			o.depends('apps', '1');
+			return o;
+		}
+		minutesOption('screen_minutes', _('Daily screen time, every day (minutes)'),
+			_('Total time on the phone per day. When it is used up, every app pauses except calls, the alarm clock and always-allowed apps.'));
+		minutesOption('screen_weekday', _('Weekdays, Mon–Fri (minutes)'), _('Leave empty to use the every-day value.'));
+		minutesOption('screen_weekend', _('Weekend, Sat–Sun (minutes)'), _('Leave empty to use the every-day value.'));
+
+		var newAppsOption = s.option(form.Flag, 'apps_suspend_new', _('Pause new apps until approved'),
+			_('A newly installed app is paused as soon as Android reports it. In rare cases it can open briefly first. Approve it by adding it under App limits.'));
+		newAppsOption.rmempty = false;
+		newAppsOption.default = '1';
+		newAppsOption.readonly = frozen;
+		newAppsOption.depends('apps', '1');
+
+		var packageRe = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/;
+		function validPackage(section_id, value) {
+			return (!value || packageRe.test(value)) ? true : _('Use an Android package name, e.g. com.example.app');
+		}
+		var alwaysOption = s.option(form.DynamicList, 'always_allowed', _('Always allowed apps'),
+			_('Never count towards screen time and keep working after the daily limit and during downtime (Family Link "Unlimited time"). Android package names.'));
+		alwaysOption.validate = validPackage;
+		alwaysOption.rmempty = true;
+		alwaysOption.readonly = frozen;
+		alwaysOption.depends('apps', '1');
+
 		// --- Schedules for this profile ---
 		// Inline TableSection (NOT GridSection): rows are edited in place with
 		// no modal. The modal was the source of a bug where its map.save()
@@ -470,7 +515,8 @@ return view.extend({
 		var dayLabels = { mon: _('Mon'), tue: _('Tue'), wed: _('Wed'),
 			thu: _('Thu'), fri: _('Fri'), sat: _('Sat'), sun: _('Sun') };
 
-		var o = ss.option(form.MultiValue, 'days', _('Days'));
+		function addDays(sec) {
+		var o = sec.option(form.MultiValue, 'days', _('Days'));
 		dayKeys.forEach(function(d) { o.value(d, dayLabels[d]); });
 		o.rmempty = true;
 		o.renderWidget = function(section_id, option_index, cfgvalue) {
@@ -499,8 +545,11 @@ return view.extend({
 			});
 			return vals.length ? vals : null;
 		};
+		return o;
+		}
+		addDays(ss);
 
-		o = ss.option(form.Value, 'start', _('Start'));
+		var o = ss.option(form.Value, 'start', _('Start'));
 		o.readonly = frozen;
 		o.placeholder = '07:00';
 		o.rmempty = true;
@@ -518,6 +567,54 @@ return view.extend({
 			return true;
 		};
 
+		// --- App limits: per-app daily minutes or blocked (also approves the app) ---
+		function profileSection(type, title, description, addTitle) {
+			var sec = m.section(form.TableSection, type, title, description);
+			sec.addremove = !frozen;
+			sec.anonymous = true;
+			sec.addbtntitle = addTitle;
+			sec.filter = function(section_id) { return uci.get('familywarden', section_id, 'profile') === pid; };
+			sec.handleAdd = function(ev) {
+				var id = uci.add('familywarden', type);
+				uci.set('familywarden', id, 'profile', pid);
+				return this.map.save(null, true);
+			};
+			return sec;
+		}
+		var as = profileSection('app', _('App limits'),
+			_('Each app listed here is approved. Set minutes per day, or block it. Leave minutes empty for no limit.'), _('Add app'));
+		o = as.option(form.Value, 'package', _('App (package name)'));
+		o.placeholder = 'com.example.app';
+		o.validate = validPackage;
+		o.readonly = frozen;
+		o.rmempty = true;
+		o = as.option(form.Value, 'minutes', _('Minutes per day'));
+		o.datatype = 'range(0,1440)';
+		o.placeholder = _('No limit');
+		o.readonly = frozen;
+		o.rmempty = true;
+		o = as.option(form.Flag, 'blocked', _('Blocked'));
+		o.readonly = frozen;
+		o.rmempty = true;
+
+		var ds = profileSection('app_downtime', _('Downtime'),
+			_('During downtime every app on the phones pauses except calls, the alarm clock and always-allowed apps (Family Link bedtime). A window that ends before it starts runs overnight.'), _('Add downtime'));
+		addDays(ds);
+		o = ds.option(form.Value, 'start', _('Start'));
+		o.placeholder = '21:00';
+		o.readonly = frozen;
+		o.rmempty = true;
+		o.validate = function(section_id, value) {
+			return (!value || /^\d{2}:\d{2}$/.test(value)) ? true : _('Use HH:MM format');
+		};
+		o = ds.option(form.Value, 'stop', _('Stop'));
+		o.placeholder = '07:00';
+		o.readonly = frozen;
+		o.rmempty = true;
+		o.validate = function(section_id, value) {
+			return (!value || /^\d{2}:\d{2}$/.test(value)) ? true : _('Use HH:MM format');
+		};
+
 		// --- Delete profile ---
 		var self = this;
 		var deleteSection = E('div', { 'class': 'fw-delete-section' }, [
@@ -532,9 +629,11 @@ return view.extend({
 						return;
 
 					// Remove schedules for this profile
-					uci.sections('familywarden', 'schedule', function(s) {
-						if (s.profile === pid)
-							uci.remove('familywarden', s['.name']);
+					[ 'schedule', 'app', 'app_downtime' ].forEach(function(type) {
+						uci.sections('familywarden', type, function(s) {
+							if (s.profile === pid)
+								uci.remove('familywarden', s['.name']);
+						});
 					});
 					uci.remove('familywarden', pid);
 					// Save and apply immediately so the deletion is persisted to disk.

@@ -794,6 +794,9 @@ assert_json "bonus in the signed policy: app" "$payload" '@.apps.bonus.apps[0].m
 assert_json "bonus leaves the standing limit alone" "$payload" '@.apps.screen.mon' "60"
 rev2=$(echo "$payload" | jsonfilter -e '@.apps.rev')
 assert_json "devices: expected revision includes the bonus" "$(call devices)" '@.devices[@.id="fw-d1"].apps_rev' "$rev2"
+assert_json "list: app control flag for LuCI" "$(call list)" '@.profiles.kid.apps' "true"
+assert_json "list: today's bonus for LuCI" "$(call list)" '@.profiles.kid.bonus_today' "45"
+assert_json "list: no app control elsewhere" "$(call list)" '@.profiles.teen.apps' "false"
 grep -q "^kid|$(date +%F)|total|45$" /etc/familywarden/bonus && pass "bonus persisted (survives a router reboot)" || fail "bonus file: $(cat /etc/familywarden/bonus)"
 echo "kid|2000-01-01|total|99" >> /etc/familywarden/bonus
 call bonus '{"profile":"kid","minutes":1}' >/dev/null
