@@ -16,6 +16,12 @@ class UsageCounter(
     val visible: MutableMap<String, MutableSet<String>> = mutableMapOf(),
     val days: MutableMap<String, MutableMap<String, Long>> = mutableMapOf(),
 ) {
+    /**
+     * Apps that never count towards the daily total (essential and always-allowed). Set by
+     * the caller before consuming; not persisted. Changing it affects only time from then on.
+     */
+    var excluded: Set<String> = emptySet()
+
     enum class Kind { RESUME, STOP, SCREEN_ON, SCREEN_OFF, UNLOCK, LOCK, STARTUP, SHUTDOWN }
     data class Event(val at: Long, val kind: Kind, val pkg: String = "", val activity: String = "")
 
@@ -53,6 +59,11 @@ class UsageCounter(
 
     fun used(day: String, pkg: String) = days[day]?.get(pkg) ?: 0L
 
+    companion object {
+        /** Key of the daily total in [days]; not a package name (those contain a dot). */
+        const val TOTAL = "total"
+    }
+
     fun prune(now: Long, zone: ZoneId) {
         val oldest = Instant.ofEpochMilli(now).atZone(zone).toLocalDate().minusDays(29).toString()
         days.keys.removeAll { it < oldest }
@@ -66,6 +77,8 @@ class UsageCounter(
                 val stop = minOf(until, local.toLocalDate().plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli())
                 val totals = days.getOrPut(local.toLocalDate().toString()) { mutableMapOf() }
                 for (pkg in visible.keys) totals[pkg] = Math.addExact(totals[pkg] ?: 0, stop - start)
+                // Daily total (D9): the union, so PiP over another app counts once.
+                if (visible.keys.any { it !in excluded }) totals[TOTAL] = Math.addExact(totals[TOTAL] ?: 0, stop - start)
                 start = stop
             }
         }

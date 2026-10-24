@@ -165,7 +165,7 @@ class DevicePolicyTest {
         assertEquals(mapOf("com.roblox.client" to 30), apps.limitsMinutes)
         assertEquals(setOf("com.zhiliaoapp.musically"), apps.blocked)
         assertEquals(1, apps.downtime.size)
-        val local = apps.toLocal(java.time.ZoneId.of("Europe/Copenhagen"))
+        val local = apps.toLocal(java.time.ZoneId.of("Europe/Copenhagen"), java.time.LocalDate.parse("2026-10-21"))
         assertEquals(1_800_000L, local.limitsMillis["com.roblox.client"])
         assertTrue(local.suspendNewUserApps)
     }
@@ -197,6 +197,36 @@ class DevicePolicyTest {
             { it.getJSONArray("downtime").getJSONObject(0).put("start", "9:00") },
             { it.remove("suspend_new") },
             { a -> val arr = a.getJSONArray("blocked"); repeat(257) { arr.put("com.example.app$it") } },
+        )
+        bad.forEachIndexed { i, mutate ->
+            val o = v3()
+            mutate(o.getJSONObject("apps"))
+            assertTrue("case $i", runCatching { parsed(o) }.isFailure)
+        }
+    }
+
+    @Test fun parsesScreenTimeAlwaysAllowedAndBonus() {
+        val o = v3()
+        o.getJSONObject("apps").put("screen", JSONObject().put("mon", 120).put("sat", 180))
+            .put("always_allowed", org.json.JSONArray().put("com.example.school"))
+            .put("bonus", JSONObject("""{"day":"2026-10-24","total":30,"apps":[{"package":"com.roblox.client","minutes":15}]}"""))
+        val a = parsed(o).apps!!
+        assertEquals(mapOf(java.time.DayOfWeek.MONDAY to 120, java.time.DayOfWeek.SATURDAY to 180), a.screenMinutes)
+        assertEquals(setOf("com.example.school"), a.alwaysAllowed)
+        assertEquals(java.time.LocalDate.parse("2026-10-24"), a.bonusDay)
+        assertEquals(30, a.bonusTotalMinutes)
+        assertEquals(mapOf("com.roblox.client" to 15), a.bonusAppMinutes)
+    }
+
+    @Test fun invalidScreenTimeOrBonusIsRejectedNotRepaired() {
+        val bad = listOf<(JSONObject) -> Unit>(
+            { it.put("screen", JSONObject().put("monday", 60)) },
+            { it.put("screen", JSONObject().put("xyz", 60)) },
+            { it.put("screen", JSONObject().put("mon", 1441)) },
+            { it.put("always_allowed", org.json.JSONArray().put("../x")) },
+            { it.put("bonus", JSONObject().put("day", "not-a-date").put("total", 5)) },
+            { it.put("bonus", JSONObject().put("day", "2026-10-24").put("total", -5)) },
+            { it.put("bonus", JSONObject("""{"day":"2026-10-24","apps":[{"package":"com.a.b","minutes":0}]}""")) },
         )
         bad.forEachIndexed { i, mutate ->
             val o = v3()

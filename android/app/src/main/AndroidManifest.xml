@@ -14,6 +14,8 @@
         tools:ignore="QueryAllPackagesPermission" />
     <!-- App limits run in a foreground service while a signed policy has app rules.
          systemExempted: allowed for a Device Owner (lint only knows the alarm route). -->
+    <!-- Limit warnings; granted by the Device Owner itself (setPermissionGrantState). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
     <!-- Flip the restriction exactly at schedule boundaries (e.g. 21:30) -->

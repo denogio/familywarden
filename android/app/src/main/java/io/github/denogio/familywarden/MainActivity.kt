@@ -280,8 +280,11 @@ class MainActivity : ComponentActivity() {
         val apps = state.apps ?: return "usage=none"
         val zone = AppControl.zone(state)
         val counter = runCatching { UsageJournal(this).load() }.getOrNull()?.counter ?: return "usage=unavailable"
-        val day = java.time.LocalDate.now(zone).toString()
-        return "usage $day: " + apps.limitsMinutes.keys.sorted().joinToString(" ") { pkg ->
+        val today = java.time.LocalDate.now(zone)
+        val day = today.toString()
+        val total = apps.toLocal(zone, today).dailyLimitMillis?.let { "%d/%dmin".format(java.util.Locale.ROOT, counter.used(day, UsageCounter.TOTAL) / 60_000, it / 60_000) }
+            ?: "%dmin".format(java.util.Locale.ROOT, counter.used(day, UsageCounter.TOTAL) / 60_000)
+        return "usage $day: total=$total " + apps.limitsMinutes.keys.sorted().joinToString(" ") { pkg ->
             "$pkg=%.1f/%dmin".format(java.util.Locale.ROOT, counter.used(day, pkg) / 60_000.0, apps.limitsMinutes.getValue(pkg))
         }.ifEmpty { "no limits" }
     }

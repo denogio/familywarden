@@ -127,4 +127,18 @@ class UsageCounterTest {
         assertEquals("reboot_gap", usageDiscontinuity(2000, 10, 2, 1000, 1000, 1))
         assertEquals("history_gap", usageDiscontinuity(90000000, 90000000, 1, 1000, 1000, 1))
     }
+
+    @Test fun dailyTotalIsTheUnionOfOrdinaryAppsAndSkipsExcludedOnes() {
+        val c = fresh().apply { excluded = setOf("com.android.dialer") }
+        c.consume(listOf(
+            event(0, UsageCounter.Kind.RESUME),                                       // game visible
+            UsageCounter.Event(base + 1000, UsageCounter.Kind.RESUME, "com.example.video", "Pip"), // PiP on top
+            event(3000, UsageCounter.Kind.STOP),
+            UsageCounter.Event(base + 4000, UsageCounter.Kind.STOP, "com.example.video", "Pip"),
+            UsageCounter.Event(base + 5000, UsageCounter.Kind.RESUME, "com.android.dialer", "Call"),
+        ), base + 8000, zone)
+        assertEquals(4000, c.used(day, UsageCounter.TOTAL))    // 0..4 s once, not 3 + 3 s
+        assertEquals(3000, c.used(day, pkg))
+        assertEquals(3000, c.used(day, "com.android.dialer"))  // per-app time is still known
+    }
 }

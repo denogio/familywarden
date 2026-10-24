@@ -93,4 +93,10 @@
     <string name="fw_apps_usage_missing">App-grænser kræver adgang til brugsdata for at tælle tid. Blokerede og nye apps er stadig sat på pause.</string>
     <string name="fw_apps_open_usage">Giv adgang til brugsdata</string>
     <string name="fw_apps_suspend_failed">Nogle apps kunne ikke sættes på pause. Routeren viser telefonen som ikke opdateret.</string>
+    <string name="fw_apps_alerts_channel">Skærmtidsbeskeder</string>
+    <string name="fw_apps_support">Sat på pause af FamilyWarden: en skærmtidsgrænse eller nedetid gælder. Åbn FamilyWarden for detaljer.</string>
+    <string name="fw_apps_total_warning">5 minutters skærmtid tilbage i dag</string>
+    <string name="fw_apps_app_warning">5 minutter tilbage af %1$s i dag</string>
+    <string name="fw_apps_total_paused">Skærmtiden er brugt for i dag</string>
+    <string name="fw_apps_app_paused">%1$s er sat på pause: dagens grænse er nået</string>
 </resources>

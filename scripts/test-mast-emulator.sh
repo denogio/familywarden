@@ -339,7 +339,7 @@ echo ""
 echo "=== App limits from the signed v3 policy ==="
 # A launchable, non-essential app of the system image stands in for a child's game.
 TARGET=""
-for p in com.android.camera2 com.android.deskclock com.google.android.deskclock com.android.contacts; do
+for p in com.android.camera2 com.android.contacts com.google.android.contacts; do
     $ADB shell pm path "$p" 2>/dev/null | grep -q package: && { TARGET=$p; break; }
 done
 suspended() { $ADB shell dumpsys package "$1" | tr -d '\r' | grep -q 'suspended=true'; }
@@ -363,6 +363,29 @@ broadcast io.github.denogio.familywarden.DEBUG_SYNC
 rev=$(rdev apps_rev)
 [ -n "$rev" ] && [ "$(rdev apps_applied)" = "$rev" ] && pass "router got the signed acknowledgement ($rev)" \
     || fail "acknowledgement: applied='$(rdev apps_applied)' expected='$rev'"
+
+# Daily total used up (0 minutes): every ordinary app pauses, calls and the alarm clock do not.
+OTHER=""
+for p in com.android.chrome com.google.android.calendar com.android.calendar com.google.android.contacts com.android.contacts; do
+    [ "$p" != "$TARGET" ] && $ADB shell pm path "$p" 2>/dev/null | grep -q package: && { OTHER=$p; break; }
+done
+DIALER=$($ADB shell telecom get-default-dialer 2>/dev/null | tr -d '\r')
+CLOCK=""
+for p in com.google.android.deskclock com.android.deskclock; do $ADB shell pm path "$p" 2>/dev/null | grep -q package: && { CLOCK=$p; break; }; done
+docker exec "$ROUTER" sh -c 'uci set familywarden.alex.screen_minutes=0; uci commit familywarden; familywarden reload >/dev/null'
+broadcast io.github.denogio.familywarden.DEBUG_SYNC
+sleep 6
+suspended "$OTHER" && pass "daily limit pauses an ordinary app ($OTHER)" || fail "daily limit did not pause ${OTHER:-no app}"
+[ -n "$DIALER" ] && ! suspended "$DIALER" && pass "phone app stays usable ($DIALER)" || fail "phone app paused or unknown ($DIALER)"
+[ -z "$CLOCK" ] || { suspended "$CLOCK" && fail "alarm clock paused" || pass "alarm clock stays usable ($CLOCK)"; }
+$ADB shell dumpsys notification --noredact | tr -d '\r' | grep -q 'Screen time is up for today' \
+    && pass "notification: screen time is up" || fail "no 'screen time is up' notification"
+out=$(docker exec "$ROUTER" sh -c "echo '{\"profile\":\"alex\",\"minutes\":30}' | /usr/libexec/rpcd/familywarden call bonus")
+echo "$out" | grep -q '"minutes_today": 30' && pass "router: bonus +30 for today" || fail "bonus: $out"
+broadcast io.github.denogio.familywarden.DEBUG_SYNC
+sleep 6
+suspended "$OTHER" && fail "bonus did not lift the daily-limit pause" || pass "bonus lifts the daily-limit pause"
+suspended "$TARGET" && pass "blocked app stays blocked despite bonus" || fail "bonus lifted a blocked app"
 $ADB shell appops set --uid io.github.denogio.familywarden GET_USAGE_STATS ignore
 broadcast io.github.denogio.familywarden.DEBUG_SYNC
 sleep 4

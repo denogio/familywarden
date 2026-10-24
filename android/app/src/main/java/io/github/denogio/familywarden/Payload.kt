@@ -148,7 +148,30 @@ object Payload {
         require(approved.containsAll(limits.keys)) { "limit for an unapproved package" }
         val down = a.getJSONArray("downtime")
         require(down.length() <= 32) { "too many downtime windows" }
+        // D9 fields are optional: a router without them sends none.
+        val screen = a.optJSONObject("screen")?.let { s ->
+            require(s.length() <= 7) { "too many screen days" }
+            s.keys().asSequence().associate { key ->
+                val day = Policy.parseDays(key).singleOrNull()
+                require(day != null && key.length == 3) { "invalid screen day" }
+                day to s.getInt(key).also { require(it in 0..1440) { "invalid screen minutes" } }
+            }
+        } ?: emptyMap()
+        val always = if (a.has("always_allowed")) packages("always_allowed", 256).toSet() else emptySet()
+        val bonus = a.optJSONObject("bonus")
+        val bonusDay = bonus?.getString("day")?.let { java.time.LocalDate.parse(it) }
+        val bonusApps = bonus?.optJSONArray("apps")?.let { arr ->
+            require(arr.length() <= 64) { "too many app bonuses" }
+            (0 until arr.length()).associate { i ->
+                val b = arr.getJSONObject(i)
+                b.getString("package").also { require(validPackage(it)) { "invalid package" } } to
+                    b.getInt("minutes").also { require(it in 1..1440) { "invalid bonus minutes" } }
+            }.also { require(it.size == arr.length()) { "duplicate app bonus" } }
+        } ?: emptyMap()
+        val bonusTotal = bonus?.optInt("total", 0) ?: 0
+        require(bonusTotal in 0..1440) { "invalid bonus minutes" }
         return AppsPolicy(rev, a.getBoolean("suspend_new"), limits, blocked, approved,
-            (0 until down.length()).map { window(down.getJSONObject(it)) })
+            (0 until down.length()).map { window(down.getJSONObject(it)) },
+            screen, always, bonusDay, bonusTotal, bonusApps)
     }
 }

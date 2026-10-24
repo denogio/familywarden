@@ -41,9 +41,24 @@ data class AppsPolicy(
     val blocked: Set<String>,
     val approved: Set<String>,
     val downtime: List<Window>,
+    /** Daily total screen time per weekday in the router's zone; a missing day has no limit (D9). */
+    val screenMinutes: Map<java.time.DayOfWeek, Int> = emptyMap(),
+    val alwaysAllowed: Set<String> = emptySet(),
+    /** Bonus for [bonusDay] only (router-local date): total and per app. */
+    val bonusDay: java.time.LocalDate? = null,
+    val bonusTotalMinutes: Int = 0,
+    val bonusAppMinutes: Map<String, Int> = emptyMap(),
 ) {
-    fun toLocal(zone: java.time.ZoneId) = LocalAppPolicy(zone,
-        limitsMinutes.mapValues { it.value * 60_000L }, blocked, approved, suspendNew, downtime)
+    /** The rules for [today] (a date in the router's zone), bonus included only on its own day. */
+    fun toLocal(zone: java.time.ZoneId, today: java.time.LocalDate): LocalAppPolicy {
+        val bonus = bonusDay == today
+        val appBonus = if (bonus) bonusAppMinutes else emptyMap()
+        return LocalAppPolicy(zone,
+            limitsMinutes.mapValues { (pkg, min) -> (min + (appBonus[pkg] ?: 0)) * 60_000L },
+            blocked, approved, suspendNew, downtime,
+            screenMinutes[today.dayOfWeek]?.let { (it + if (bonus) bonusTotalMinutes else 0) * 60_000L },
+            alwaysAllowed)
+    }
 }
 
 /** No v1/global captain state may silently become this phone's authorization. */

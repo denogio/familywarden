@@ -36,7 +36,9 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
 
     init { require(state.zone == zone.id) { "usage timezone change needs explicit migration" } }
 
-    fun sample(): Sample {
+    /** [excluded]: apps that do not count towards the daily total (see [UsageCounter.excluded]). */
+    fun sample(excluded: Set<String> = emptySet()): Sample {
+        state.counter.excluded = excluded
         val wall = System.currentTimeMillis()
         val elapsed = SystemClock.elapsedRealtime()
         val boot = boot()

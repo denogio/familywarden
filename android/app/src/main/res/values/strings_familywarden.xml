@@ -95,4 +95,10 @@
     <string name="fw_apps_usage_missing">App limits need usage access to count time. Blocked and new apps are still paused.</string>
     <string name="fw_apps_open_usage">Allow usage access</string>
     <string name="fw_apps_suspend_failed">Some apps could not be paused. The router shows this phone as not up to date.</string>
+    <string name="fw_apps_alerts_channel">Screen time alerts</string>
+    <string name="fw_apps_support">Paused by FamilyWarden: a screen time limit or downtime applies. Open FamilyWarden for details.</string>
+    <string name="fw_apps_total_warning">5 minutes of screen time left today</string>
+    <string name="fw_apps_app_warning">5 minutes left on %1$s today</string>
+    <string name="fw_apps_total_paused">Screen time is up for today</string>
+    <string name="fw_apps_app_paused">%1$s is paused: daily limit reached</string>
 </resources>

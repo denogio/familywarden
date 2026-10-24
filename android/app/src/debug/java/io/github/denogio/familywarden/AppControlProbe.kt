@@ -60,7 +60,7 @@ class AppControlProbe : Service() {
             val pkg = PackageWatchProbe.FIXTURE
             val policy = LocalAppPolicy(zone, limitsMillis = mapOf(pkg to prefs.getInt("app_control_seconds", 30) * 1000L),
                 blocked = if (prefs.getBoolean("app_control_block", false)) setOf(pkg) else emptySet())
-            val failures = if (running) AppEnforcer(this).reconcile(policy, sample.millis, ZonedDateTime.now(zone), sample.reliable) else emptySet()
+            val failures = if (running) AppEnforcer(this).reconcile(policy, sample.millis, sample.millis[UsageCounter.TOTAL] ?: 0, ZonedDateTime.now(zone), sample.reliable).failures else emptySet()
             Log.i("FwAppControlProbe", "day=${sample.day} fixtureMs=${sample.millis[pkg] ?: 0} seq=${sample.sequence} status=${sample.status} reliable=${sample.reliable} gaps=${sample.gaps} failures=${failures.size}")
         } catch (e: Exception) {
             // No reset-to-zero on corruption/overflow/storage errors; existing blocks stay.
@@ -79,7 +79,7 @@ class AppControlProbe : Service() {
         handler.post {
             try {
                 if (!getSharedPreferences("probe", MODE_PRIVATE).getBoolean("app_control", false))
-                    AppEnforcer(this).reconcile(LocalAppPolicy(zone), emptyMap(), ZonedDateTime.now(zone), false)
+                    AppEnforcer(this).reconcile(LocalAppPolicy(zone), emptyMap(), 0, ZonedDateTime.now(zone), false)
             } finally { worker.quitSafely() }
         }
         super.onDestroy()
