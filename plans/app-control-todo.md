@@ -375,6 +375,12 @@ Depends on P1 transport decision and P8.
 
 Develop incrementally with P5–P9; no separate web dashboard framework.
 
+First child/adult UI slice (2026-10-24): Today, reliable local counts, daily/app limits,
+bonus-aware remaining time, downtime, always-allowed apps, local history totals and
+captain pact status implemented. EN/DA, 139 JVM tests and focused light/dark/200%-text
+emulator render checks pass. Parent roles/requests/pools and full history are still
+pending. Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
+
 - [ ] Parent Android: children/devices, app inventory, rules, pending requests, usage/day
       summaries and connection/applied-policy status.
 - [ ] Child Android: remaining budgets, blocked reasons, request status and usage visibility.

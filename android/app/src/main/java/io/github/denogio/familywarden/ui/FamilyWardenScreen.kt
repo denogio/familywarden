@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -17,7 +18,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.text.style.TextOverflow
 import io.github.denogio.familywarden.*
 import io.github.denogio.familywarden.R
 import io.github.denogio.familywarden.BuildConfig
@@ -31,6 +31,7 @@ import java.time.ZoneId
 
 private enum class Page(val title: Int, val icon: ImageVector) {
     Overview(R.string.fw_overview, Icons.Outlined.Explore),
+    History(R.string.fw_history, Icons.Outlined.History),
     Dns(R.string.fw_dns, Icons.Outlined.Shield),
     Ulysses(R.string.fw_ulysses, MastIcons.Mast),
     Settings(R.string.fw_settings, Icons.Outlined.Tune),
@@ -42,39 +43,54 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions) {
     var selected by rememberSaveable { mutableStateOf(Page.Overview.name) }
     var featureSheet by rememberSaveable { mutableStateOf(false) }
     var enableConfirmation by rememberSaveable { mutableStateOf(false) }
-    val pages = Page.entries.filter { it != Page.Ulysses || state.showUlysses }
+    val childNavigation = state.appsActive && state.binding?.captain == false
+    val pages = Page.entries.filter {
+        when (it) {
+            Page.History -> childNavigation
+            Page.Dns -> !childNavigation
+            Page.Ulysses -> state.showUlysses
+            else -> true
+        }
+    }
     val page = pages.firstOrNull { it.name == selected } ?: Page.Overview
     val readyForNavigation = state.owner && state.paired
+    val largeText = LocalDensity.current.fontScale >= 1.5f
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(color = MaterialTheme.colorScheme.background) {
+                Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                         if (page == Page.Overview || !readyForNavigation) {
                             Icon(painterResource(R.drawable.ic_lighthouse), null, tint = Color.Unspecified, modifier = Modifier.size(28.dp))
                             Spacer(Modifier.width(10.dp))
                         }
-                        Text(stringResource(if (page == Page.Overview || !readyForNavigation) R.string.fw_name else page.title),
+                        Text(stringResource(if (largeText && state.screenTime != null && page == Page.Overview) R.string.fw_today
+                            else if (page == Page.Overview || !readyForNavigation) R.string.fw_name else page.title),
                             style = MaterialTheme.typography.titleLarge)
                     }
-                },
-                actions = {
                     if (state.paired) IconButton(onClick = actions.sync, enabled = !state.syncing) {
                         if (state.syncing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                         else Icon(Icons.Outlined.Sync, stringResource(R.string.action_sync))
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
-            )
+                }
+            }
         },
         bottomBar = {
-            if (readyForNavigation) NavigationBar {
+            if (readyForNavigation && largeText) {
+                // Native scrollable tabs keep long localized labels intact at 200% text.
+                ScrollableTabRow(selectedTabIndex = pages.indexOf(page), edgePadding = 0.dp) {
+                    pages.forEach { p -> Tab(selected = p == page, onClick = { selected = p.name },
+                        icon = { Icon(p.icon, null) },
+                        text = { Text(stringResource(if (p == Page.Overview && state.screenTime != null) R.string.fw_today else p.title)) }) }
+                }
+            } else if (readyForNavigation) NavigationBar {
                 pages.forEach { p -> NavigationBarItem(
                     selected = p == page,
                     onClick = { selected = p.name },
                     icon = { Icon(p.icon, null) },
-                    label = { Text(stringResource(p.title), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    label = { Text(stringResource(if (p == Page.Overview && state.screenTime != null) R.string.fw_today else p.title)) },
                 ) }
             }
         },
@@ -88,6 +104,8 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions) {
             when {
                 !state.owner -> OwnerSetup(actions)
                 !state.paired -> PairSetup(actions)
+                page == Page.Overview && state.screenTime != null -> ScreenTimeContent(state, actions)
+                page == Page.History -> ScreenTimeHistory(state.screenTime)
                 page == Page.Overview -> {
                     DnsHero(state)
                     if (state.showUlysses) {
@@ -102,7 +120,10 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions) {
                 }
                 page == Page.Dns -> DnsContent(state, actions)
                 page == Page.Ulysses -> UlyssesContent(state, actions)
-                page == Page.Settings -> SettingsContent(state, actions) { featureSheet = true }
+                page == Page.Settings -> {
+                    SettingsContent(state, actions) { featureSheet = true }
+                    if (childNavigation) DnsContent(state, actions)
+                }
             }
             Spacer(Modifier.height(16.dp))
         }
@@ -234,7 +255,8 @@ private fun AppLimitsNote(s: FamilyWardenState, actions: FamilyWardenActions) {
             }
         }
         "suspend_failed" -> InfoNote(Icons.Outlined.Info, stringResource(R.string.fw_apps_suspend_failed))
-        else -> InfoNote(Icons.Outlined.Lock, stringResource(R.string.fw_apps_active))
+        "ok" -> InfoNote(Icons.Outlined.Lock, stringResource(R.string.fw_apps_active))
+        else -> InfoNote(Icons.Outlined.Info, stringResource(R.string.fw_time_unavailable))
     }
 }
 

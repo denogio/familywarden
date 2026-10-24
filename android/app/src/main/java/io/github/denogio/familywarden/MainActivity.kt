@@ -233,6 +233,10 @@ class MainActivity : ComponentActivity() {
             networkId = getSystemService(ConnectivityManager::class.java).activeNetwork?.networkHandle,
             dialog = dialog,
             appsActive = state?.apps != null && Mast.isDeviceOwner(this), appsStatus = store.appsStatus,
+            screenTime = state?.apps?.takeIf { Mast.isDeviceOwner(this) }?.let {
+                screenTimeState(it, AppControl.usageReport, now.withZoneSameInstant(AppControl.zone(state)),
+                    android.os.SystemClock.elapsedRealtime(), AppControl.hasUsageAccess(this))
+            },
         )
     }
 

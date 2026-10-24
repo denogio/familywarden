@@ -92,6 +92,11 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
             problem == null && day > state.uncertainThroughDay, state.gaps)
     }
 
+    /** Recorded local totals only; gaps are not reconstructed or presented as complete history. */
+    fun historyTotals(): Map<String, Long> = state.counter.days.mapNotNull { (day, apps) ->
+        apps[UsageCounter.TOTAL]?.let { day to it }
+    }.toMap()
+
     private fun screenOn() = context.getSystemService(PowerManager::class.java).isInteractive
     private fun unlocked() = !context.getSystemService(KeyguardManager::class.java).isKeyguardLocked
     private fun boot() = Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, 0)

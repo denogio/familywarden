@@ -1,6 +1,7 @@
 package io.github.denogio.familywarden
 
 import android.Manifest
+import android.app.AppOpsManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -16,6 +17,9 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.Process
+import android.os.SystemClock
+import io.github.denogio.familywarden.ui.AppUsageReport
 import android.util.Log
 import java.time.LocalDate
 import java.time.ZoneId
@@ -31,6 +35,15 @@ object AppControl {
     // Nothing counts with the screen off, so nothing polls then. Measure battery on the Pixel.
     const val SCREEN_ON_INTERVAL_MS = 15_000L
     const val WARN_BEFORE_MS = 5 * 60_000L
+
+    /** In-process only: after process death the UI waits for a new service observation. */
+    @Volatile var usageReport: AppUsageReport? = null
+        private set
+
+    fun hasUsageAccess(context: Context): Boolean = context.getSystemService(AppOpsManager::class.java)
+        .unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName) == AppOpsManager.MODE_ALLOWED
+
+    fun publish(report: AppUsageReport?) { usageReport = report }
 
     /** Acknowledge only what is fully in force: every action applied and usage trustworthy. */
     fun acknowledges(failures: Set<String>, usageReliable: Boolean) = failures.isEmpty() && usageReliable
@@ -72,6 +85,7 @@ object AppControl {
 
     /** No (more) app policy, or removal: stop and lift only FamilyWarden's own suspensions. */
     fun stop(context: Context, zone: ZoneId) {
+        usageReport = null
         context.stopService(Intent(context, AppControlService::class.java))
         if (Mast.isDeviceOwner(context)) synchronized(AppEnforcer::class.java) {
             stopped = true
@@ -91,6 +105,7 @@ class AppControlService : Service() {
     private lateinit var worker: HandlerThread
     private lateinit var handler: Handler
     private var monitor: UsageMonitor? = null
+    private var monitorZone: ZoneId? = null
     private val tick = Runnable { tick() }
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) { handler.post(tick) }
@@ -140,10 +155,12 @@ class AppControlService : Service() {
             val policy = apps.toLocal(zone, today)
             val enforcer = AppEnforcer(this)
             // A changed router timezone needs a journal migration; until then limits hold.
+            if (monitorZone != zone) { monitor = null; monitorZone = zone }
             if (monitor == null) monitor = runCatching { UsageMonitor(this, zone) }
                 .onFailure { Log.w(TAG, "usage journal unavailable: ${it.message}") }.getOrNull()
+            val essential = enforcer.essentialPackages()
             val sample = monitor?.let { m ->
-                runCatching { m.sample(enforcer.essentialPackages() + policy.alwaysAllowed) }
+                runCatching { m.sample(essential + policy.alwaysAllowed) }
                     .onFailure { Log.w(TAG, "usage sample failed", it) }.getOrNull()
             }
             val reliable = sample?.reliable == true
@@ -158,9 +175,13 @@ class AppControlService : Service() {
                 sample == null -> "usage_unavailable"
                 else -> sample.status
             }
+            val labels = (policy.limitsMillis.keys + policy.blocked + policy.alwaysAllowed).associateWith(::label)
+            AppControl.publish(AppUsageReport(apps.rev, zone.id, today, SystemClock.elapsedRealtime(),
+                reliable, used.toMap(), labels, monitor?.historyTotals() ?: emptyMap(), essential))
             if (store.appsStatus != status) store.appsStatus = status
             if (AppControl.acknowledges(result.failures, reliable) && store.appsApplied != apps.rev) store.appsApplied = apps.rev
         } catch (e: Exception) {
+            AppControl.publish(null)
             Log.e(TAG, "app control tick failed", e)
         } finally {
             if (getSystemService(PowerManager::class.java).isInteractive)
@@ -204,6 +225,7 @@ class AppControlService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        AppControl.publish(null)
         unregisterReceiver(receiver)
         handler.removeCallbacksAndMessages(null)
         worker.quitSafely()

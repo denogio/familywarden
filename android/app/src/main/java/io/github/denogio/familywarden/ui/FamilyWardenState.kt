@@ -36,6 +36,7 @@ data class FamilyWardenState(
     val appsActive: Boolean = false,
     /** Last app-control state ("ok", "usage_access_missing", "suspend_failed", ...). */
     val appsStatus: String? = null,
+    val screenTime: ScreenTimeState? = null,
 ) {
     val bound: Boolean get() = pact is PactStatus.Bound
     val showUlysses: Boolean get() = bound || (binding?.captain == true && ulyssesEnabled)

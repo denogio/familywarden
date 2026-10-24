@@ -17,6 +17,65 @@ private val previewState = FamilyWardenState(
     resolverCheck = ResolverCheck(previewDns, 1, previewNow, ProbeResult.ANSWERED),
 )
 
+private val screenNow = java.time.ZonedDateTime.parse("2026-10-23T19:00:00+02:00[Europe/Copenhagen]")
+private val screenApps = AppsPolicy("0123456789abcdef", false,
+    mapOf("com.example.video" to 30, "com.example.game" to 60), emptySet(), emptySet(), emptyList(),
+    mapOf(screenNow.dayOfWeek to 120), setOf("com.example.school"))
+private val screenReport = AppUsageReport(screenApps.rev, screenNow.zone.id, screenNow.toLocalDate(), 1000,
+    true, mapOf(UsageCounter.TOTAL to 82 * 60_000L, "com.example.video" to 12 * 60_000L,
+        "com.example.game" to 45 * 60_000L),
+    mapOf("com.example.video" to "Video", "com.example.game" to "Game", "com.example.school" to "School"),
+    mapOf(screenNow.toLocalDate().toString() to 82 * 60_000L))
+private val screenState = previewState.copy(nowMillis = screenNow.toInstant().toEpochMilli(),
+    binding = previewState.binding!!.copy(captain = false, administrator = false),
+    appsActive = true, appsStatus = "ok", screenTime = screenTimeState(screenApps, screenReport, screenNow, 1000, true))
+
+@Preview(name = "Child — Today", showBackground = true, widthDp = 400, heightDp = 840)
+@Composable
+private fun ChildTodayPreview() { MastTheme { FamilyWardenScreen(screenState, previewActions) } }
+
+@Preview(name = "Child — time is up, dark", uiMode = Configuration.UI_MODE_NIGHT_YES,
+    showBackground = true, widthDp = 400, heightDp = 840)
+@Composable
+private fun TimesUpPreview() { MastTheme {
+    FamilyWardenScreen(screenState.copy(screenTime = screenTimeState(screenApps,
+        screenReport.copy(used = mapOf(UsageCounter.TOTAL to 120 * 60_000L)), screenNow, 1000, true)), previewActions)
+} }
+
+@Preview(name = "Child — five minutes left", showBackground = true, widthDp = 400, heightDp = 840)
+@Composable
+private fun NearLimitPreview() { MastTheme {
+    FamilyWardenScreen(screenState.copy(screenTime = screenTimeState(screenApps,
+        screenReport.copy(used = mapOf(UsageCounter.TOTAL to 115 * 60_000L)), screenNow, 1000, true)), previewActions)
+} }
+
+@Preview(name = "Child — downtime", showBackground = true, widthDp = 400, heightDp = 840)
+@Composable
+private fun DowntimePreview() { MastTheme {
+    val apps = screenApps.copy(downtime = listOf(Window(setOf(screenNow.dayOfWeek),
+        java.time.LocalTime.of(18, 0), java.time.LocalTime.of(20, 0))))
+    FamilyWardenScreen(screenState.copy(screenTime = screenTimeState(apps, screenReport, screenNow, 1000, true)), previewActions)
+} }
+
+@Preview(name = "Child — Danish at 200 percent", locale = "da", fontScale = 2f,
+    showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun ChildLargePreview() { MastTheme { FamilyWardenScreen(screenState, previewActions) } }
+
+@Preview(name = "Adult — Today and pact", showBackground = true, widthDp = 400, heightDp = 840)
+@Composable
+private fun AdultTodayPreview() { MastTheme {
+    FamilyWardenScreen(screenState.copy(binding = previewState.binding,
+        pact = PactStatus.Bound(true, null, Pact(null, null, null))), previewActions)
+} }
+
+@Preview(name = "Child — usage unavailable", showBackground = true, widthDp = 400, heightDp = 840)
+@Composable
+private fun ChildUnknownPreview() { MastTheme {
+    FamilyWardenScreen(screenState.copy(appsStatus = "usage_access_missing",
+        screenTime = screenTimeState(screenApps, screenReport, screenNow, 1000, false)), previewActions)
+} }
+
 @Preview(name = "FamilyWarden — applied DNS", showBackground = true, widthDp = 400, heightDp = 840)
 @Composable
 private fun OverviewPreview() { MastTheme { FamilyWardenScreen(previewState, previewActions) } }

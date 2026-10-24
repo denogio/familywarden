@@ -6,6 +6,9 @@
 [`../role-app-brief.md`](../role-app-brief.md). Open it in a browser; it unpacks itself
 offline (embedded Noto fonts, OFL licence kept in the file).
 
+Implementation mapping and verification: [`UI-SPEC.md`](UI-SPEC.md). The first
+child/adult UI slice is implemented; the parent/request/pool parts are not.
+
 ## Boards
 
 1. Roles and navigation · Family Link mapping

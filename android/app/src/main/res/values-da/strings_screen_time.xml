@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_today">I dag</string>
+    <string name="fw_history">Historik</string>
+    <string name="fw_time_left">TID TILBAGE I DAG</string>
+    <string name="fw_time_recorded">REGISTRERET TID I DAG</string>
+    <string name="fw_time_almost">SNART SLUT</string>
+    <string name="fw_time_up">DAGENS GRÆNSE ER NÅET</string>
+    <string name="fw_time_up_title">Tiden er gået for i dag</string>
+    <string name="fw_time_downtime">PAUSETID</string>
+    <string name="fw_time_downtime_title">Tid til en pause</string>
+    <string name="fw_time_used_of">%1$s af %2$s registreret i dag</string>
+    <string name="fw_time_not_counted">Tiden tælles ikke lige nu</string>
+    <string name="fw_time_no_daily_limit">Ingen daglig grænse for skærmtid.</string>
+    <string name="fw_time_no_app_limit">Ingen særskilt appgrænse</string>
+    <string name="fw_time_save_work">Gem det, du er i gang med. Dagens tid er snart brugt.</string>
+    <string name="fw_time_downtime_starts">Pausetiden starter %1$s</string>
+    <string name="fw_time_downtime_ends">Pausetiden slutter %1$s</string>
+    <string name="fw_time_reset">Et nyt dagsbudget starter %1$s. Pausetid kan stadig gælde.</string>
+    <string name="fw_time_still_work">Opkald, alarmer og de altid tilladte apps nedenfor virker stadig.</string>
+    <string name="fw_time_this_phone">Registreret på denne telefon</string>
+    <string name="fw_time_offline">Routeren kunne ikke nås. Dine gemte regler gælder stadig.</string>
+    <string name="fw_time_unavailable">Der er ingen pålidelig tidsmåling lige nu. Gemte regler og pausetid gælder stadig; den resterende tid bliver ikke gættet.</string>
+    <string name="fw_time_apps">APPS MED REGLER</string>
+    <string name="fw_time_not_allowed">Sat på pause af appreglen</string>
+    <string name="fw_time_always">ALTID TILLADT</string>
+    <string name="fw_time_calls_clock">Telefon, nødopkald og vækkeur</string>
+    <string name="fw_time_always_body">Disse apps tæller ikke med i dagens skærmtid og virker i pausetiden.</string>
+    <string name="fw_history_local">Registreret skærmtid på denne telefon i op til 30 dage. Huller i målingen kan gøre tallene ufuldstændige. Det er lokale tal, ikke webhistorik eller rapporter fra andre telefoner.</string>
+    <string name="fw_history_empty">Der er endnu ingen registreret historik.</string>
+    <plurals name="fw_time_minutes">
+        <item quantity="one">%d min.</item>
+        <item quantity="other">%d min.</item>
+    </plurals>
+</resources>
