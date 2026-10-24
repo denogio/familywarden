@@ -343,6 +343,7 @@ private fun SettingsContent(s: FamilyWardenState, actions: FamilyWardenActions, 
         Text(stringResource(R.string.fw_role_managed))
         if (b.captain) Text(stringResource(R.string.fw_role_captain))
         if (b.administrator) Text(stringResource(R.string.fw_role_admin))
+        if (b.approves.isNotEmpty()) Text(stringResource(R.string.fw_role_parent, b.approves.joinToString(", ") { it.name }))
     } }
     WideAction(R.string.action_scan, Icons.Outlined.QrCodeScanner, actions.scan, s.canScan)
     TextButton(onClick = actions.manualPair, enabled = s.canScan, modifier = Modifier.fillMaxWidth()) {

@@ -33,4 +33,5 @@
         <item quantity="other">%d min.</item>
     </plurals>
     <string name="fw_sync_upgrade_required">Denne app kan ikke anvende de funktioner, som reglerne kræver. Opdater FamilyWarden; de senest betroede regler gælder stadig.</string>
+    <string name="fw_role_parent">Kan godkende anmodninger for: %1$s</string>
 </resources>

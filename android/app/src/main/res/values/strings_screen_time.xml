@@ -33,4 +33,5 @@
         <item quantity="other">%d min</item>
     </plurals>
     <string name="fw_sync_upgrade_required">This app cannot apply the required policy features. Update FamilyWarden; the last trusted policy remains in force.</string>
+    <string name="fw_role_parent">Can approve requests for: %1$s</string>
 </resources>

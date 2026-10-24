@@ -777,6 +777,26 @@ assert_json "stripping v3 negotiation cannot obtain a weaker v2 binding" "$(v2pa
 assert_json "pending phone gets v3 but nothing else" "$(v3payload phoneB fw-p1 "$N1" -)" '@.enrollment' "pending"
 [ -z "$(v3payload phoneB fw-p1 "$N1" - | jsonfilter -e '@.apps')" ] && pass "no apps before approval" || fail "pending phone got apps"
 
+echo "=== Parent approval scopes (signed, no grants yet) ==="
+assert_json "no parent scope by default" "$(v3payload phoneC fw-c1 "$N1" - "" legacy)" '@.binding.approves[0]' ""
+assert_json "cannot approve for its own profile" "$(call device_update '{"device":"fw-c1","approves":"parent"}')" '@.error' "a phone cannot approve for its own profile"
+assert_json "cannot approve for an unknown profile" "$(call device_update '{"device":"fw-c1","approves":"nobody"}')" '@.error' "approves: profile not found"
+assert_json "invalid profile ids refused" "$(call device_update '{"device":"fw-c1","approves":"kid;x"}')" '@.error' "invalid profile in approves"
+assert_json "parent may approve for a child" "$(call device_update '{"device":"fw-c1","approves":"teen kid kid"}')" '@.status' "ok"
+[ "$(uci -q get familywarden.dev_fw_c1.approves)" = "kid teen" ] && pass "approval scope stored sorted and unique" || fail "approves: $(uci -q get familywarden.dev_fw_c1.approves)"
+payload=$(v3payload phoneC fw-c1 "$N1" - "" legacy)
+assert_json "parent phone gets its signed scope" "$payload" '@.binding.approves[0].profile_id' "kid"
+assert_json "scope carries display names" "$payload" '@.binding.approves[0].profile_name' "Kid"
+assert_json "parent scope is not administrator" "$payload" '@.binding.administrator' "false"
+payload=$(v3payload phoneD fw-d1 "$N1" -)
+assert_json "child phone learns its parent's device" "$payload" '@.parents[0].device_id' "fw-c1"
+assert_json "child phone learns the parent's enrolled key" "$payload" '@.parents[0].pubkey' "$(sed -n 2p /tmp/phoneC.pub)"
+[ -z "$(v2payload phoneC fw-c1 "$N1" | jsonfilter -e '@.binding.approves')" ] && pass "v2 replies carry no parent scope" || fail "scope in v2"
+assert_json "devices lists the stored scope" "$(call devices)" '@.devices[@.id="fw-c1"].approves' "kid teen"
+assert_json "devices lists the signed scope" "$(call devices)" '@.devices[@.id="fw-c1"].approves_effective' "kid teen"
+assert_json "omitting approves on update keeps the scope" "$(call device_update '{"device":"fw-c1","name":"Taylor phone"}')" '@.status' "ok"
+[ "$(uci -q get familywarden.dev_fw_c1.approves)" = "kid teen" ] && pass "scope kept when not sent" || fail "scope lost on unrelated update"
+
 uci set familywarden.kid.apps_suspend_new='0'
 uci commit familywarden
 "$BIN" reload >/dev/null
@@ -797,6 +817,15 @@ uci commit familywarden
 payload=$(v3payload phoneD fw-d1 "$N1" -)
 assert_json "pact: app rules frozen (revision)" "$payload" '@.apps.rev' "$rev"
 assert_json "pact: block can't be removed live" "$payload" '@.apps.blocked[0]' "com.zhiliaoapp.musically"
+[ -z "$(echo "$payload" | jsonfilter -e '@.parents[0]')" ] && pass "pact: captain's phone trusts no parent keys" || fail "parent keys for a pact-bound captain"
+[ "$(v3payload phoneC fw-c1 "$N1" - "" legacy | jsonfilter -e '@.binding.approves[*].profile_id')" = "teen" ] \
+    && pass "pact: parent scope over the captain is suspended" || fail "parent scope over the captain during the pact"
+assert_json "pact: unrelated edits keep an existing (suspended) scope" "$(call device_update '{"device":"fw-c1","name":"Taylor"}')" '@.status' "ok"
+assert_json "pact: LuCI sees the scope suspended" "$(call devices)" '@.devices[@.id="fw-c1"].approves_effective' "teen"
+assert_json "pact: resending the stored scope is allowed" "$(call device_update '{"device":"fw-c1","approves":"kid teen"}')" '@.status' "ok"
+assert_json "pact: scopes can always be reduced" "$(call device_update '{"device":"fw-c1","approves":""}')" '@.status' "ok"
+[ -z "$(uci -q get familywarden.dev_fw_c1.approves)" ] && pass "an empty scope clears parent power" || fail "scope not cleared"
+assert_json "pact: no new parent power over the captain" "$(call device_update '{"device":"fw-c1","approves":"kid"}')" '@.error' "bound by Ulysses pact"
 assert_json "pact: limit can't be raised live" "$payload" '@.apps.limits[@.package="com.roblox.client"].minutes' "30"
 assert_json "pact: downtime can't be deleted live" "$payload" '@.apps.downtime[0].start' "21:00"
 assert_json "pact: required features also use frozen policy" "$(v3payload phoneD fw-d1 "$N1" - "" legacy)" '@.error' "unsupported_capabilities"

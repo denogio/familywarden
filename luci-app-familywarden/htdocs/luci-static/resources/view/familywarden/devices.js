@@ -20,7 +20,7 @@ var callDevices = rpc.declare({
 var callApprove = rpc.declare({
 	object: 'familywarden',
 	method: 'device_approve',
-	params: [ 'device', 'profile', 'name', 'administrator', 'fingerprint' ]
+	params: [ 'device', 'profile', 'name', 'administrator', 'fingerprint', 'approves' ]
 });
 
 var callReject = rpc.declare({
@@ -32,7 +32,7 @@ var callReject = rpc.declare({
 var callUpdate = rpc.declare({
 	object: 'familywarden',
 	method: 'device_update',
-	params: [ 'device', 'profile', 'name', 'administrator' ]
+	params: [ 'device', 'profile', 'name', 'administrator', 'approves' ]
 });
 
 var callDelete = rpc.declare({
@@ -91,6 +91,28 @@ return view.extend({
 				p.name || p['.name']);
 		}));
 		var adminInput = E('input', { 'type': 'checkbox', 'checked': dev.administrator === '1' ? '' : null });
+		// Parent scope: never the phone's own profile, so the list follows the profile select.
+		var scope = (dev.approves || '').split(' ').filter(Boolean);
+		var approvesBox = E('div', { 'class': 'fw-approves', 'role': 'group', 'aria-label': _('May approve requests for') });
+		function renderScope() {
+			approvesBox.replaceChildren.apply(approvesBox, profiles.filter(function(p) {
+				return p['.name'] !== profileSelect.value;
+			}).map(function(p) {
+				return E('label', { 'class': 'fw-day' }, [
+					E('input', { 'type': 'checkbox', 'value': p['.name'], 'checked': scope.indexOf(p['.name']) >= 0 ? '' : null,
+						'change': function(ev) {
+							scope = scope.filter(function(s) { return s !== p['.name']; });
+							if (ev.currentTarget.checked) scope.push(p['.name']);
+						} }),
+					p.name || p['.name']
+				]);
+			}));
+		}
+		profileSelect.addEventListener('change', function() {
+			scope = scope.filter(function(s) { return s !== profileSelect.value; });
+			renderScope();
+		});
+		renderScope();
 
 		ui.showModal(approve ? _('Approve this phone?') : _('Edit phone'), [
 			approve ? E('p', {}, _('On that phone, open FamilyWarden and compare its key fingerprint with this one, group by group. Only approve a phone you can see.')) : '',
@@ -112,6 +134,12 @@ return view.extend({
 					E('div', { 'class': 'cbi-value-description' },
 						_('An administrator\'s phone may remove FamilyWarden itself when no pact applies to it. Other phones need your approval each time. It is separate from being the Ulysses captain.')) ])
 			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Parent of')),
+				E('div', { 'class': 'cbi-value-field' }, [ approvesBox,
+					E('div', { 'class': 'cbi-value-description' },
+						_('Profiles this phone may later approve extra time and new apps for. Not its own profile, and not administrator rights. While a pact binds a profile, no phone holds parent power over it.')) ])
+			]),
 			E('div', { 'class': 'right' }, [
 				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
 				' ',
@@ -122,8 +150,8 @@ return view.extend({
 					// The fingerprint shown here is sent back: if the phone's key changed
 					// meanwhile, the router refuses instead of approving an unseen key.
 					var req = approve
-						? callApprove(dev.id, profileSelect.value, name, admin, dev.fingerprint)
-						: callUpdate(dev.id, profileSelect.value, name, admin);
+						? callApprove(dev.id, profileSelect.value, name, admin, dev.fingerprint, scope.join(' '))
+						: callUpdate(dev.id, profileSelect.value, name, admin, scope.join(' '));
 					return req.then(function(res) {
 						ui.hideModal();
 						notify(res);
@@ -229,7 +257,11 @@ return view.extend({
 					E('td', { 'data-label': heads[0] }, [ E('strong', {}, d.name || d.id),
 						+d.remove_until > 0 ? E('div', { 'class': 'fw-deadline' }, _('May remove FamilyWarden until %s').format(fmtTime(d.remove_until))) : '' ]),
 					E('td', { 'data-label': heads[1] }, profileName(d.profile)),
-					E('td', { 'data-label': heads[2] }, d.administrator === '1' ? _('Administrator') : _('Member')),
+					E('td', { 'data-label': heads[2] }, [
+						E('div', {}, d.administrator === '1' ? _('Administrator') : _('Member')),
+						d.approves_effective ? E('div', {}, _('Parent of %s').format(d.approves_effective.split(' ').map(profileName).join(', '))) : '',
+						(d.approves || '') !== (d.approves_effective || '') ? E('div', { 'class': 'fw-muted' }, _('Some parent rights are not active now (a pact binds that profile, or it was removed).')) : ''
+					]),
 					E('td', { 'data-label': heads[3] }, fingerprint(d.fingerprint)),
 					E('td', { 'data-label': heads[4] }, fmtTime(d.seen)),
 					E('td', { 'data-label': heads[5] }, d.apps_error === 'unsupported_capabilities'

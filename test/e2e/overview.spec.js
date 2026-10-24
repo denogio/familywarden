@@ -93,6 +93,31 @@ test('Phones distinguishes incompatible clients from waiting and acknowledgement
   await expect(row('Sam tablet')).toContainText('Not reported by this router');
 });
 
+test('Phones edits a parent scope without offering the phone its own profile', async ({ page }) => {
+  await mockFamilyWarden(page, 'devices', () => ({ pending: [], devices: [
+    { id: 'fw-parent', name: 'Robin phone', profile: 'alex', administrator: '0', fingerprint: 'b'.repeat(64),
+      seen: 0, frozen: false, apps_rev: '', approves: 'dennis', approves_effective: '' }
+  ] }));
+  const sent = [];
+  page.on('request', r => {
+    if (!/\/ubus/.test(r.url())) return;
+    const body = r.postDataJSON();
+    (Array.isArray(body) ? body : [body]).forEach(c => { if (c?.params?.[2] === 'device_update') sent.push(c.params[3]); });
+  });
+  await page.goto(`${URL}/devices`);
+  const row = page.locator('tbody tr').filter({ has: page.getByText('Robin phone', { exact: true }) });
+  await expect(row).toContainText('Some parent rights are not active now');
+  await row.getByRole('button', { name: 'Edit…' }).click();
+  const scope = page.getByRole('group', { name: 'May approve requests for' });
+  await expect(scope.getByRole('checkbox')).toHaveCount(1);
+  await expect(scope.getByLabel('Dennis')).toBeChecked();
+  await expect(scope.getByLabel('Alex')).toHaveCount(0);
+  await scope.getByLabel('Dennis').uncheck();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect.poll(() => sent.length).toBe(1);
+  expect(sent[0]).toMatchObject({ device: 'fw-parent', profile: 'alex', approves: '' });
+});
+
 test('native actions block and reset a real profile', async ({ page }) => {
   await page.goto(URL);
   const alex = page.locator('[data-profile="alex"]');

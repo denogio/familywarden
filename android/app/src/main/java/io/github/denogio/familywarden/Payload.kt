@@ -38,11 +38,13 @@ object Payload {
             DeviceBinding(
                 b.getString("device_id"), b.getString("profile_id"), b.getString("profile_name"),
                 b.getBoolean("captain"), b.getBoolean("administrator"), b.getBoolean("can_self_remove"),
+                if (version == 3) approves(b) else emptyList(),
             ).also {
                 require(it.deviceId.matches(Regex("[A-Za-z0-9-]{1,80}"))) { "invalid device ID" }
                 require(it.profileId.matches(Regex("[A-Za-z0-9_-]{1,64}"))) { "invalid profile ID" }
                 require(it.profileName.length in 1..128) { "invalid profile name" }
                 require(it.deviceId == device) { "binding for another device" }
+                require(it.approves.none { ref -> ref.id == it.profileId }) { "self-approval scope" }
             }
         } else null
         val dnsObject = if (scoped && o.has("dns") && !o.isNull("dns")) o.getJSONObject("dns") else null
@@ -88,6 +90,7 @@ object Payload {
             ),
             binding = binding, dns = dns, requestNonce = nonce, wireVersion = version, timeZone = zone,
             device = device, apps = apps,
+            parents = if (version == 3 && binding != null) parents(o, binding.deviceId) else emptyList(),
         )
         // Bounded epoch seconds (through year 9999), not milliseconds/overflowing alarm times.
         require(listOf(state.serverTime, state.pactUntil, state.releaseAt).all {
@@ -103,9 +106,39 @@ object Payload {
                 require(binding?.captain == true && state.captain == binding.profileId) { "pact is not applicable to this device" }
                 require(state.pactType in setOf("ongoing", "until")) { "invalid pact type" }
                 require(state.pactType != "until" || state.pactUntil > 0) { "invalid pact end" }
+                // No grants beyond the pact (A4/A17): a bound captain trusts no parent keys.
+                require(state.parents.isEmpty()) { "parent keys for a pact-bound phone" }
             }
         }
         return state
+    }
+
+    private val profileId = Regex("[A-Za-z0-9_-]{1,64}")
+
+    /** Optional; strict when present. Unique profiles, never the phone's own (checked by caller). */
+    private fun approves(b: JSONObject): List<ProfileRef> {
+        val arr = b.optJSONArray("approves") ?: return emptyList()
+        require(arr.length() <= 16) { "too many approved profiles" }
+        return (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            ProfileRef(o.getString("profile_id").also { require(it.matches(profileId)) { "invalid profile ID" } },
+                o.getString("profile_name").also { require(it.length in 1..128) { "invalid profile name" } })
+        }.also { refs -> require(refs.map { it.id }.toSet().size == refs.size) { "duplicate approved profile" } }
+    }
+
+    /** Keys are parsed now so a malformed key can never be trusted later for grants. */
+    private fun parents(o: JSONObject, self: String): List<ParentKey> {
+        val arr = o.optJSONArray("parents") ?: return emptyList()
+        require(arr.length() <= 16) { "too many parents" }
+        return (0 until arr.length()).map { i ->
+            val p = arr.getJSONObject(i)
+            ParentKey(p.getString("device_id").also { require(it.matches(Regex("[A-Za-z0-9-]{1,80}"))) { "invalid device ID" } },
+                p.getString("name").also { require(it.length in 1..128) { "invalid parent name" } },
+                p.getString("pubkey").also { Usign.parsePublicKey(it) })
+        }.also { keys ->
+            require(keys.map { it.deviceId }.toSet().size == keys.size) { "duplicate parent" }
+            require(keys.none { it.deviceId == self }) { "phone listed as its own parent" }
+        }
     }
 
     /** Strict schedule window: known weekdays, "HH:MM" bounds. */

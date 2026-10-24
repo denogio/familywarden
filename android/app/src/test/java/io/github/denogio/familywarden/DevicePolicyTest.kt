@@ -42,6 +42,43 @@ class DevicePolicyTest {
         parsed(payload().put("v", 3).put("error", "unsupported_capabilities"))
     }
 
+    private val parentKey = PhoneKey.generate().publicKey
+    private fun scoped(): JSONObject = payload().put("v", 3).apply {
+        getJSONObject("binding").put("approves", org.json.JSONArray()
+            .put(JSONObject().put("profile_id", "kid").put("profile_name", "Kid")))
+        put("parents", org.json.JSONArray()
+            .put(JSONObject().put("device_id", "fw-parent").put("name", "Taylor phone").put("pubkey", parentKey)))
+    }
+
+    @Test fun parsesSignedParentScopeAndParentKeys() {
+        val s = parsed(scoped())
+        assertEquals(listOf(ProfileRef("kid", "Kid")), s.binding!!.approves)
+        assertEquals(listOf(ParentKey("fw-parent", "Taylor phone", parentKey)), s.parents)
+    }
+
+    @Test fun parentFieldsAreOptionalAndNeverTrustedFromOlderVersions() {
+        assertTrue(parsed().binding!!.approves.isEmpty())
+        val old = scoped().put("v", 2)
+        assertTrue(parsed(old).binding!!.approves.isEmpty())
+        assertTrue(parsed(old).parents.isEmpty())
+    }
+
+    @Test fun parentScopeAndKeysAreStrict() {
+        fun bad(change: (JSONObject) -> Unit) {
+            val o = scoped().also(change)
+            try { parsed(o); fail("accepted: $o") } catch (_: Exception) { }
+        }
+        bad { it.getJSONObject("binding").getJSONArray("approves").put(JSONObject().put("profile_id", "captain").put("profile_name", "Me")) }
+        bad { it.getJSONObject("binding").getJSONArray("approves").put(JSONObject().put("profile_id", "kid").put("profile_name", "Kid")) }
+        bad { it.getJSONObject("binding").getJSONArray("approves").put(JSONObject().put("profile_id", "../x").put("profile_name", "X")) }
+        bad { it.getJSONArray("parents").getJSONObject(0).put("pubkey", "not-a-key") }
+        bad { it.getJSONArray("parents").put(JSONObject().put("device_id", "fw-parent").put("name", "Again").put("pubkey", parentKey)) }
+        bad { it.getJSONArray("parents").put(JSONObject().put("device_id", "fw-example").put("name", "Self").put("pubkey", parentKey)) }
+        bad { o -> o.put("parents", org.json.JSONArray((1..17).map { JSONObject().put("device_id", "fw-p$it").put("name", "P").put("pubkey", parentKey) })) }
+        // A pact-bound captain trusts no parent keys, whatever the router sends.
+        bad { it.put("pact", JSONObject().put("active", true).put("type", "ongoing").put("until", 0).put("release_at", 0)) }
+    }
+
     @Test fun acknowledgementsFromOlderImplementationsMustBeReappliedNotReused() {
         val revision = "0123456789abcdef"
         assertNull(PolicyCapabilities.acknowledgedRevision(revision, null))

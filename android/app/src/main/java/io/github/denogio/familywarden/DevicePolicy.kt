@@ -8,7 +8,14 @@ data class DeviceBinding(
     val captain: Boolean,
     val administrator: Boolean,
     val selfRemoval: Boolean,
+    /** v3: child profiles this phone may approve requests for. Not administrator power. */
+    val approves: List<ProfileRef> = emptyList(),
 )
+
+data class ProfileRef(val id: String, val name: String)
+
+/** A parent phone's enrolled key as signed by the router; trusted only for this profile. */
+data class ParentKey(val deviceId: String, val name: String, val publicKey: String)
 
 /** Policy IDs are typed/localized in the app; never render server-supplied HTML. */
 data class DnsPolicy(val hostname: String, val protections: Set<Protection>, val services: List<String> = emptyList()) {

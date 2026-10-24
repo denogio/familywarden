@@ -241,7 +241,7 @@ _frag_phone() {
     config_get v "$s" id ""
     [ -n "$v" ] || return
     echo "config device '$s'"
-    for o in id name profile pubkey administrator; do
+    for o in id name profile pubkey administrator approves; do
         config_get v "$s" "$o" ""
         [ -n "$v" ] && echo "	option $o $(_q "$v")"
     done
@@ -1854,7 +1854,28 @@ mast2_payload() {
     # administrator's one-hour approval (device_allow_removal). The phone still
     # refuses while an applicable pact is active.
     json_add_boolean "can_self_remove" "$({ [ "$admin" = "1" ] || [ "$rem" -gt "$now" ]; } && echo 1 || echo 0)"
+    # v3: profiles this phone may approve requests for (informational until grants exist)
+    if [ "$ver" = 3 ]; then
+        local p pn
+        json_add_array "approves"
+        for p in $(_effective_approves "$sec"); do
+            config_get pn "$p" name "$p"
+            json_add_object ""
+            json_add_string "profile_id" "$p"
+            json_add_string "profile_name" "$pn"
+            json_close_object
+        done
+        json_close_array
+    fi
     json_close_object
+    # v3: parent keys a child phone may trust for grants. None while a pact binds it.
+    if [ "$ver" = 3 ]; then
+        _parents_for="$profile"
+        _parents_n=0
+        json_add_array "parents"
+        config_foreach _json_parents_cb device
+        json_close_array
+    fi
     # Only the captain's phones are bound by the pact
     if [ "$is_cap" = "1" ]; then
         json_add_string "captain" "$captain"
@@ -1949,6 +1970,10 @@ _json_device() {
     json_add_array "capabilities"
     for cap in $(printf '%s' "$caps" | tr ',' ' '); do [ "$cap" = "-" ] || json_add_string "" "$cap"; done
     json_close_array
+    # Stored scope (for editing) and what is signed now (a pact suspends power over the captain)
+    config_get v "$s" approves ""
+    json_add_string "approves" "$v"
+    json_add_string "approves_effective" "$(_effective_approves "$s")"
     for v in name profile administrator; do
         config_get "_v" "$s" "$v" ""
         json_add_string "$v" "$_v"
@@ -2003,7 +2028,7 @@ _json_error() {
 # Append an approved phone to a running pact's snapshot (adding a phone to the
 # captain only strengthens the pact). Needs the exclusive lock.
 _snap_add_device() {
-    local sec="$1" id="$2" name="$3" profile="$4" key="$5" admin="$6"
+    local sec="$1" id="$2" name="$3" profile="$4" key="$5" admin="$6" approves="$7"
     pact_active && [ "$profile" = "$(pact_get captain)" ] && [ -s "$FW_PACT_SNAP" ] || return 0
     {
         echo "config device '$sec'"
@@ -2012,13 +2037,72 @@ _snap_add_device() {
         echo "	option profile $(_q "$profile")"
         echo "	option pubkey $(_q "$key")"
         echo "	option administrator $(_q "$admin")"
+        [ -n "$approves" ] && echo "	option approves $(_q "$approves")"
     } >> "$FW_PACT_SNAP"
 }
 
+# Parent approval scope: child profiles this phone may later approve requests for.
+# Prints the canonical sorted list, or an error on stderr. Needs fw_load and the lock.
+# Never the phone's own profile (no self-approval) and never a pact-bound captain:
+# adding parent power over the captain during a pact would be a way out of it.
+_valid_approves() {
+    local own="$1" list="$2" p t n=0 captain=""
+    # $3 = 1: an unchanged existing scope; it stays stored, signing suspends it (_effective_approves)
+    [ "$3" = 1 ] || captain=$(pact_captain)
+    for p in $list; do
+        n=$((n + 1))
+        case "$p" in *[!A-Za-z0-9_-]*) echo "invalid profile in approves" >&2; return 1 ;; esac
+        [ "${#p}" -le 64 ] || { echo "invalid profile in approves" >&2; return 1; }
+        config_get t "$p" TYPE ""
+        [ "$t" = profile ] || { echo "approves: profile not found" >&2; return 1; }
+        [ "$p" != "$own" ] || { echo "a phone cannot approve for its own profile" >&2; return 1; }
+        # Only NEW power over a pact-bound captain is refused; an already stored entry
+        # may be resent (LuCI saves the whole form) and stays suspended while signing.
+        case " $4 " in *" $p "*) ;; *)
+            [ -z "$captain" ] || [ "$p" != "$captain" ] || { echo "bound by Ulysses pact" >&2; return 1; } ;;
+        esac
+    done
+    [ "$n" -le 16 ] || { echo "too many approved profiles" >&2; return 1; }
+    printf '%s\n' $list | LC_ALL=C sort -u | tr '\n' ' ' | sed 's/ $//'
+}
+
+# Effective scope for signing now: existing profiles, not own, not the pact captain.
+_effective_approves() {
+    local sec="$1" own list p t captain out=""
+    config_get own "$sec" profile ""
+    config_get list "$sec" approves ""
+    captain=$(pact_captain)
+    for p in $list; do
+        config_get t "$p" TYPE ""
+        [ "$t" = profile ] && [ "$p" != "$own" ] && { [ -z "$captain" ] || [ "$p" != "$captain" ]; } || continue
+        out="$out $p"
+    done
+    echo $out
+}
+
+_json_parents_cb() {
+    local s="$1" id name key p
+    [ "$_parents_n" -lt 16 ] || return 0
+    for p in $(_effective_approves "$s"); do
+        [ "$p" = "$_parents_for" ] || continue
+        config_get id "$s" id ""
+        config_get name "$s" name ""
+        config_get key "$s" pubkey ""
+        [ -n "$id" ] && _valid_b64 "$key" 56 || return 0
+        json_add_object ""
+        json_add_string "device_id" "$id"
+        json_add_string "name" "${name:-$id}"
+        json_add_string "pubkey" "$key"
+        json_close_object
+        _parents_n=$((_parents_n + 1))
+    done
+}
+
 # Shared by approve/update: write a device section unless the phone is frozen
-# by a pact. $1 id, $2 profile, $3 name, $4 administrator, $5 key ("" = keep)
+# by a pact. $1 id, $2 profile, $3 name, $4 administrator, $5 key ("" = keep),
+# $6 fingerprint, $7 approves (space-separated profiles), $8 1 = keep current approves
 _dev_write() {
-    local id="$1" profile="$2" name="$3" admin="$4" key="$5" sec ptype old
+    local id="$1" profile="$2" name="$3" admin="$4" key="$5" approves="$7" sec ptype old err
     _valid_device_id "$id" || { _json_error "invalid device"; return 1; }
     case "$admin" in 0|1) ;; *) _json_error "administrator must be 0 or 1"; return 1 ;; esac
     name=$(printf '%s' "$name" | tr -d '\r\n' | cut -c1-64)
@@ -2047,6 +2131,14 @@ _dev_write() {
             key=$(uci -q get "familywarden.$sec.pubkey")
             [ -n "$key" ] || { _json_error "device not found"; return 1; }
         fi
+        old=$(uci -q get "familywarden.$sec.approves")
+        [ "$8" = 1 ] && approves=$old
+        approves=$(_valid_approves "$profile" "$approves" "$8" "$old" 2>/tmp/familywarden.approves.err) || {
+            err=$(cat /tmp/familywarden.approves.err); rm -f /tmp/familywarden.approves.err
+            _json_error "$err"
+            return 1
+        }
+        rm -f /tmp/familywarden.approves.err
         # Values are arguments, never interpolated as UCI batch commands.
         uci set "familywarden.$sec=device" &&
         uci set "familywarden.$sec.id=$id" &&
@@ -2054,10 +2146,12 @@ _dev_write() {
         uci set "familywarden.$sec.profile=$profile" &&
         uci set "familywarden.$sec.pubkey=$key" &&
         uci set "familywarden.$sec.administrator=$admin" &&
+        if [ -n "$approves" ]; then uci set "familywarden.$sec.approves=$approves"
+        else uci -q delete "familywarden.$sec.approves" || true; fi &&
         uci commit familywarden || { _json_error "saving device failed"; return 1; }
-        _snap_add_device "$sec" "$id" "$name" "$profile" "$key" "$admin"
+        _snap_add_device "$sec" "$id" "$name" "$profile" "$key" "$admin" "$approves"
         rm -f "$FW_PENDING/$id"
-        logger -t familywarden "device $id approved for profile $profile (administrator=$admin)"
+        logger -t familywarden "device $id approved for profile $profile (administrator=$admin, approves=${approves:-none})"
     ) 200>"$FW_LOCK" || return 1
     compile_and_apply >/dev/null || { _json_error "compile failed"; return 1; }
     json_init
@@ -2071,9 +2165,10 @@ ubus_device_approve() {
     _valid_device_id "$id" && [ -f "$FW_PENDING/$id" ] || { _json_error "no pending device"; return 1; }
     key=$(sed -n 1p "$FW_PENDING/$id")
     _valid_b64 "$key" 56 || { _json_error "invalid key"; return 1; }
-    _dev_write "$id" "$2" "$3" "${4:-0}" "$key" "$5"
+    _dev_write "$id" "$2" "$3" "${4:-0}" "$key" "$5" "$6" 0
 }
 
+# $5 approves, $6 1 when the caller sent approves (an empty list clears it)
 ubus_device_update() {
     local id="$1" profile="$2" name="$3" admin="$4" sec
     _valid_device_id "$id" || { _json_error "invalid device"; return 1; }
@@ -2081,7 +2176,7 @@ ubus_device_update() {
     [ -n "$profile" ] || profile=$(uci -q get "familywarden.$sec.profile")
     [ -n "$name" ] || name=$(uci -q get "familywarden.$sec.name")
     [ -n "$admin" ] || admin=$(uci -q get "familywarden.$sec.administrator")
-    _dev_write "$id" "$profile" "$name" "${admin:-0}" ""
+    _dev_write "$id" "$profile" "$name" "${admin:-0}" "" "" "$5" "$([ "$6" = 1 ] && echo 0 || echo 1)"
 }
 
 # Rejecting a pending key must never delete an approved device with the same ID.
@@ -2652,9 +2747,9 @@ case "$1" in
   "mast": { "host": "string" },
   "version": {},
   "devices": {},
-  "device_approve": { "device": "string", "profile": "string", "name": "string", "administrator": "string", "fingerprint": "string" },
+  "device_approve": { "device": "string", "profile": "string", "name": "string", "administrator": "string", "fingerprint": "string", "approves": "string" },
   "device_reject": { "device": "string" },
-  "device_update": { "device": "string", "profile": "string", "name": "string", "administrator": "string" },
+  "device_update": { "device": "string", "profile": "string", "name": "string", "administrator": "string", "approves": "string" },
   "device_delete": { "device": "string" },
   "device_allow_removal": { "device": "string" },
   "dns_status": {},
@@ -2778,7 +2873,8 @@ EOF
                 json_get_var name name
                 json_get_var administrator administrator
                 json_get_var fingerprint fingerprint
-                ubus_device_approve "$device" "$profile" "$name" "$administrator" "$fingerprint"
+                json_get_var approves approves
+                ubus_device_approve "$device" "$profile" "$name" "$administrator" "$fingerprint" "$approves"
                 ;;
             device_update)
                 read -r input
@@ -2787,7 +2883,9 @@ EOF
                 json_get_var profile profile
                 json_get_var name name
                 json_get_var administrator administrator
-                ubus_device_update "$device" "$profile" "$name" "$administrator"
+                json_get_var approves approves
+                json_get_type approves_type approves
+                ubus_device_update "$device" "$profile" "$name" "$administrator" "$approves" "$([ -n "$approves_type" ] && echo 1 || echo 0)"
                 ;;
             device_reject)
                 read -r input

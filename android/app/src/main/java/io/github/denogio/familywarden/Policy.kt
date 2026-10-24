@@ -30,6 +30,8 @@ data class MastState(
     val pending: Boolean = false,
     /** v3: app policy of this phone's profile; null = no app control. */
     val apps: AppsPolicy? = null,
+    /** v3: parent phones whose keys may later sign grants for this phone's profile. */
+    val parents: List<ParentKey> = emptyList(),
 )
 
 data class Rules(
