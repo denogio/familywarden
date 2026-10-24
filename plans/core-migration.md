@@ -1,0 +1,91 @@
+# Core migration plan (A6, A18–A20)
+
+Goal: all product logic in the Go core (`core/`), router specifics in a thin adapter,
+one shared administrator UI. The shell plugin (`familywarden/usr/lib/rpcd/familywarden`)
+is the interim OpenWrt implementation and only shrinks. Decisions: `app-control.md`
+A6 (core owns identity/policy/DNS/apps), A18 (router-agnostic), A19 (core-owned store),
+A20 (shared UI embedded natively, on OpenWrt via a LuCI view + rpcd shim).
+
+## Order
+
+| Step | Moves to the core | Stays in the shell meanwhile |
+|---|---|---|
+| **1** | Phone identity: enrollment, device registry, roles/parent scopes, capability check, acknowledgements, request verification and reply signing | Policy *content* (pact, schedules, DNS, apps), firewall, sail page |
+| 2 | Requests and grants (P8), built in the core from the start | — |
+| 3 | Profiles, schedules, app rules, pacts and the effective-policy computation | Firewall compiler reading the effective config |
+| 4 | DNS (AdGuard Home) sync | — |
+| 5 | Optional: firewall compiler as a Go OpenWrt adapter; sail page | init/rpcd/LuCI wrappers |
+
+The existing seam for step 3/5: shell enforcement already reads only the effective
+config (`fw_load` → `/var/run/familywarden/familywarden`). The core will produce that;
+the adapter turns it into nftables. Other platforms get their own applier (pf).
+
+## Step 1 in detail
+
+### Boundary
+
+- **Core** implements the phone endpoint handler and the device/LuCI API. It never calls
+  `uci`, `ubus`, `fw4`, `usign` or OpenWrt paths. All platform facts come through one
+  Go interface, `platform.Adapter`, with exactly the methods step 1 needs:
+  - `PolicyContent(profile, device, version, caps) ([]byte, error)` — interim: the
+    signed payload's policy part (pact, rules, DNS, apps, `requires`) still computed by the
+    shell. Removed in step 3.
+  - `Profiles() ([]Profile, error)` — id, name, exists (validates bindings/scopes).
+  - `PactCaptain() (string, error)` — profile bound by an active pact, or "".
+  - `TimeZone() string`, `Now() time.Time`.
+  A fake adapter in `core` tests implements the same interface (second consumer, A18).
+- **OpenWrt adapter** (Go package `adapter/openwrt` in the core binary): implements the
+  interface by running the shell CLI (`familywarden policy-json …`, `pact-captain`),
+  reading UCI profiles and `system.zonename`. Only this package knows OpenWrt.
+- **Transport, interim:** uhttpd keeps port 7700 (also the sail page and the lockdown
+  exception). `cgi-bin/mast` becomes a forwarder: it passes the query string to the core
+  socket and returns the core's reply byte for byte. URLs, parameters and replies are
+  unchanged, so no phone notices. Later the core may bind the port itself.
+- **LuCI, interim:** the Phones page calls the same ubus methods; the shell's `devices`/
+  `device_*` handlers forward to the core over the socket (rpcd shim). LuCI is unchanged.
+
+### Data
+
+- Core store gets a versioned `devices.json`: id, name, profile, enrolled public key,
+  administrator, approves, removal deadline. Pending enrollments, last fetch,
+  acknowledgements and capability results stay in RAM (as today; reboot clears them).
+- **One-time migration** on first start: UCI `config device` sections → `devices.json`,
+  then the UCI sections are removed only after the core has persisted and verified the
+  import. Idempotent; a failed import changes nothing and the shell path keeps working.
+- **Router key:** the core reads the existing usign secret key (`/etc/familywarden/mast.key`)
+  through the adapter and signs with it. No new key, no re-pairing. Requires a usign
+  secret-key parser (unencrypted keys only; refuse anything else).
+
+### Pact rules without a snapshot
+
+Today device bindings are frozen by copying them into `pact.snap`, because UCI can be
+edited directly. In the core store they can only change through the core API, so the
+API enforces the same rules against `PactCaptain()`:
+
+- no moving, deleting, re-keying or removal permission for a device bound to the captain;
+- moving a device *into* the captain profile is allowed (it only strengthens the pact);
+- no new parent scope over the captain; existing scope is kept but not signed;
+- a captain's phone gets no parent keys.
+
+If `PactCaptain()` fails, mutations are refused (fail closed); signing replies does not
+weaken anything because policy content still comes from the pact-aware shell.
+
+### Acceptance
+
+- `scripts/test-integration.sh` passes **unchanged** against the core-backed endpoint
+  and ubus methods (309 checks today): enrollment, fingerprint approval, pact freeze,
+  v3/capabilities, refusals, parent scopes, acknowledgements.
+- Go unit tests per rule with the fake adapter: signatures (v2/v3/caps), nonce/device
+  binding, replay/stale, downgrade, capability gating, pact rules, migration and
+  partial-failure rollback, usign secret key parsing (fixtures from real `usign -G`).
+- Upgrade rehearsal: router at current version + enrolled emulator phone → new router;
+  same router key, phone keeps syncing without re-pairing (`scripts/test-pilot-upgrade.sh`).
+- Core down: the endpoint returns an error, never an unsigned or weaker reply; phones keep
+  their last trusted policy. LuCI shows the core as not running.
+- Measured on aarch64 before any production install: package size, binary size, idle and
+  per-request RSS (local cross-build first; on rivendell only with explicit permission).
+
+### Not in step 1
+
+Requests/grants, profiles/pacts in the core, DNS sync, the shared UI. The Phones page is
+the first candidate for the shared UI once its API is in the core.
