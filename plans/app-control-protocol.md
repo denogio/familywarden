@@ -223,6 +223,6 @@ the issuing phone and the router-anchored clock.
 
 ## Still open (not blocking the LAN slice)
 
-- Per-role visibility of history (what a child sees of their own app/domain history).
-- Off-home transport (A2) — needed for P9, not for the LAN slice.
-- Category source details and the maximum grant size (240 min proposed).
+- ~~Per-role visibility of history~~ decided A14: the child sees own app and domain history, read-only.
+- Off-home transport (A2): native notifications on the parent phone decided; FCM vs UnifiedPush open — needed for P9, not for the LAN slice.
+- ~~Category source and maximum grant size~~ decided A15/A16: 240 min; Android category + router override.

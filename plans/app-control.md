@@ -159,17 +159,22 @@ app** (D2/D3, parent phone may approve offline); a shared budget across a child'
 | ID | Question | Proposal | State |
 |---|---|---|---|
 | A1 | Go or Rust? | Go | **Decided** |
-| A2 | Notification transport | App-held connection to an ntfy-compatible relay, E2E encrypted; own relay or public | Open |
+| A2 | Notification transport | **Requirement decided (2026-10-24): native Android notifications on the parent's phone** (requests, approvals, limits). Delivery mechanism still to choose: FCM (Google push, works with app closed, needs a Firebase project) or UnifiedPush/ntfy (self-hostable, needs a distributor or app-held connection); content E2E-encrypted either way | Requirement **decided**, transport open |
 | A3 | Children's Google accounts with our Device Owner | Separate ordinary, unsupervised Google account per child; warn about Google's account rules in README | **Decided** |
 | A4 | Adult self-limit: how to get access when really needed? | A small daily pool the user may spend without approval; nothing beyond it during a pact | **Decided** |
 | A5 | Children's phones | Pixel 7 Pro, Android 17 | **Decided** |
 | A6 | Core vs existing shell backend | Core takes identity, policy, DNS and app control; shell stays the OpenWrt firewall/pact adapter until ported | **Decided** |
 | A7 | Request abuse and limits | No rate limit; one open request per child at a time; a request expires after 1 hour | **Decided** |
 | A8 | Usage data and privacy | 30 days for app activity **and** visited websites (domains), on the household's own infrastructure | **Decided** (details below) |
-| A9 | Device Owner setup for others | Like Tabaa: the app pairs with the phone's own *Wireless debugging* (user types the pairing code into a notification) and makes itself Device Owner, no computer; adb from a PC as alternative; QR provisioning only for new or reset phones | Open |
-| A10 | Support a light tier without Device Owner? | Yes, after the strict tier; bypass-evident with parent alerts | Open |
+| A9 | Device Owner setup for others | Like Tabaa: the app pairs with the phone's own *Wireless debugging* (user types the pairing code into a notification) and makes itself Device Owner, no computer; adb from a PC as alternative; QR provisioning only for new or reset phones | **Decided** (2026-10-24) |
+| A10 | Support a light tier without Device Owner? | Yes, after the strict tier; bypass-evident with parent alerts | Deferred (decide later) |
 | A12 | New-app approval model | **Post-install suspension:** new user apps are suspended as soon as Android reports them; Play installs and updates stay enabled. The rare first-launch window before suspension is accepted and documented. Lock task (phone-UX cost, background code still runs) and install windows (no automatic updates) rejected for now. See [install research](app-control-install-research.md) | **Decided** (2026-10-22) |
-| A11 | Android developer verification (2027) | Register the package as a verified developer, or rely on limited distribution / ADB | Open |
+| A11 | Android developer verification (2027) | Register the package as a verified developer | **Decided** (2026-10-24) |
+| A13 | One app for all roles | One APK; the router-signed policy decides child / adult / parent views (parent needs no Device Owner); admin tasks stay in LuCI first. Screens copy Family Link's parent and child experience | **Decided** (2026-10-24) |
+| A14 | Child sees own history | **Yes, read-only:** own app time and own websites (domains) for the retention period; cannot delete or change anything | **Decided** (2026-10-24) |
+| A15 | Largest extra time per request | 240 minutes | **Decided** (2026-10-24) |
+| A16 | App categories | **Yes:** needed so Ulysses rules can target a group (e.g. all productivity apps) easily. Source: Android `ApplicationInfo.category`, overridable per app on the router. A deliberate addition beyond Family Link | **Decided** (2026-10-24) |
+| A17 | Adult daily pool size (P11) | **Adjustable** per adult profile; during a pact it changes only like other pact rules (amendment window) | **Decided** (2026-10-24) |
 
 ## Research: what is possible without Device Owner (2026-10-19)
 
