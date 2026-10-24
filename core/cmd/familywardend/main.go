@@ -42,7 +42,7 @@ func handler(st *store.Store, id *identity.Service) http.Handler {
 	mux.HandleFunc("GET /version", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"core": version})
 	})
-	_ = st // request/usage endpoints arrive with P8
+	_ = st // authenticated usage upload is not implemented yet
 	if id == nil {
 		return mux
 	}
@@ -58,22 +58,44 @@ func handler(st *store.Store, id *identity.Service) http.Handler {
 		w.WriteHeader(code)
 		_, _ = w.Write(body)
 	})
+	// Signed uploads from phones (requests, decisions); reply = status + signed body.
+	mux.HandleFunc("POST /app/{op}", func(w http.ResponseWriter, r *http.Request) {
+		b, err := io.ReadAll(io.LimitReader(r.Body, maxAPI+1))
+		if err != nil || len(b) > maxAPI {
+			w.WriteHeader(identity.StatusMalformed)
+			return
+		}
+		code, body := id.App(r.PathValue("op"), b)
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(code)
+		_, _ = w.Write(body)
+	})
 	// Administrator API (LuCI via the rpcd shim): always one JSON object.
 	mux.HandleFunc("POST /api/{method}", func(w http.ResponseWriter, r *http.Request) {
 		var c identity.Change
+		var a identity.Answer
 		b, err := io.ReadAll(io.LimitReader(r.Body, maxAPI+1))
 		if err == nil && len(b) > maxAPI {
 			err = errors.New("too large")
 		}
+		method := r.PathValue("method")
 		if err == nil && len(bytes.TrimSpace(b)) > 0 {
-			err = json.Unmarshal(b, &c)
+			if method == "request_answer" {
+				a, err = identity.DecodeAnswer(b)
+			} else {
+				err = json.Unmarshal(b, &c)
+			}
 		}
 		if err != nil {
 			writeJSON(w, identity.Reply{"error": "malformed request"})
 			return
 		}
 		var reply identity.Reply
-		switch r.PathValue("method") {
+		switch method {
+		case "requests":
+			reply = id.Requests()
+		case "request_answer":
+			reply = id.AnswerRequest(a)
 		case "devices":
 			reply = id.Devices()
 		case "device_approve":
@@ -159,6 +181,35 @@ func cgiPhone(socket string, out io.Writer) {
 	_, _ = out.Write(body)
 }
 
+// cgiApp forwards a signed upload (POST body) for ?op=request|decision.
+func cgiApp(socket string, in io.Reader, out io.Writer) {
+	status := map[int]string{200: "200 OK", 400: "400 Bad Request", 403: "403 Forbidden", 500: "500 Internal Server Error"}
+	code, body := 400, []byte(nil)
+	op, hasPrefix := strings.CutPrefix(os.Getenv("QUERY_STRING"), "op=")
+	if os.Getenv("REQUEST_METHOD") == "POST" && hasPrefix && (op == "request" || op == "decision") {
+		b, err := io.ReadAll(io.LimitReader(in, maxAPI+1))
+		code = 503
+		if err == nil && len(b) <= maxAPI {
+			resp, err := client(socket).Post("http://core/app/"+op, "text/plain", bytes.NewReader(b))
+			if err == nil {
+				body, err = io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+				resp.Body.Close()
+				if err == nil {
+					code = resp.StatusCode
+				}
+			}
+		} else if err == nil {
+			code = 400
+		}
+	}
+	line, known := status[code]
+	if !known {
+		line, body = "503 Service Unavailable", nil
+	}
+	fmt.Fprintf(out, "Status: %s\nContent-Type: text/plain\nCache-Control: no-store\n\n", line)
+	_, _ = out.Write(body)
+}
+
 // api is the rpcd shim: JSON on stdin, one JSON object on stdout.
 func api(socket, method string, in io.Reader, out io.Writer) {
 	b, _ := io.ReadAll(io.LimitReader(in, maxAPI+1))
@@ -211,6 +262,9 @@ func main() {
 		return
 	case "cgi-phone":
 		cgiPhone(*socket, os.Stdout)
+		return
+	case "cgi-app":
+		cgiApp(*socket, os.Stdin, os.Stdout)
 		return
 	case "api":
 		api(*socket, flag.Arg(1), os.Stdin, os.Stdout)

@@ -72,7 +72,11 @@ start_core() {
     mkdir -p /var/run/familywarden-core
     /usr/sbin/familywardend -data /etc/familywarden/core -socket "$CORE_SOCK" >>/tmp/core.log 2>&1 &
     CORE_PID=$!
-    for _ in $(seq 1 100); do [ -S "$CORE_SOCK" ] && return 0; sleep 0.1; done
+    # OpenWrt's BusyBox sleep need not support fractional seconds.
+    for _ in $(seq 1 20); do
+        [ "$(/usr/sbin/familywardend -socket "$CORE_SOCK" status | jsonfilter -e '@.running')" = true ] && return 0
+        sleep 1
+    done
     fail "core did not start: $(tail -3 /tmp/core.log)"
 }
 stop_core() { kill "$CORE_PID" 2>/dev/null; wait "$CORE_PID" 2>/dev/null; }
@@ -928,6 +932,96 @@ echo $(( $(date +%s) - 1 )) > /etc/familywarden/release
 assert_json "after the pact: live screen time" "$(v3payload phoneD fw-d1 "$N1" -)" '@.apps.screen.wed' "999"
 
 echo ""
+echo "=== Extra-time requests and grants (P8, in the core) ==="
+APP=/src/familywarden/www-familywarden/cgi-bin/app
+# $1 phone key, $2 kind (request|decision), $3 exact JSON: POST signature line + bytes
+upload() {
+    printf 'familywarden-%s-v1\n%s' "$2" "$3" > /tmp/up.msg
+    usign -S -m /tmp/up.msg -s "/tmp/$1.key" -x /tmp/up.sig
+    { sed -n 2p /tmp/up.sig; printf '%s' "$3"; } > /tmp/up.body
+    REQUEST_METHOD=POST QUERY_STRING="op=$2" sh "$APP" < /tmp/up.body
+}
+upbody() { upload "$@" | sed '1,/^$/d' | sed 1d; }
+call device_update '{"device":"fw-c1","approves":"kid"}' >/dev/null
+now=$(date +%s)
+req="{\"type\":\"request\",\"v\":1,\"request_id\":\"req-int-0001\",\"device\":\"fw-d1\",\"profile\":\"kid\",\"target\":\"com.roblox.client\",\"minutes\":30,\"label\":\"Roblox\",\"created\":$now}"
+upload phoneD request "$req" > /tmp/up.out
+head -1 /tmp/up.out | grep -q '^Status: 200' && pass "request accepted on the phone port" || fail "request: $(head -1 /tmp/up.out)"
+sed '1,/^$/d' /tmp/up.out > /tmp/up.reply
+printf 'untrusted comment: test\n%s\n' "$(sed -n 1p /tmp/up.reply)" > /tmp/up.rsig; sed 1d /tmp/up.reply > /tmp/up.rjson
+usign -V -q -m /tmp/up.rjson -p /tmp/mast.pub -x /tmp/up.rsig && pass "request reply signed by the router" || fail "unsigned request reply"
+assert_json "request is pending" "$(cat /tmp/up.rjson)" '@.state' "pending"
+upload phoneC request "$req" | head -1 | grep -q '^Status: 403' && pass "request signed by another phone refused" || fail "foreign request accepted"
+REQUEST_METHOD=GET QUERY_STRING="op=request" sh "$APP" </dev/null | head -1 | grep -q '^Status: 400' && pass "GET refused" || fail "GET accepted"
+assert_json "one open request per child" "$(upbody phoneD request "$(echo "$req" | sed 's/req-int-0001/req-int-0009/')")" '@.error' "request_open"
+hash=$(printf '%s' "$req" | sha256sum | cut -d' ' -f1)
+assert_json "upload reply binds the exact message" "$(cat /tmp/up.rjson)" '@.message_sha256' "$hash"
+assert_json "empty decision hash is refused" "$(upbody phoneC decision "{\"type\":\"decision\",\"v\":1,\"request_id\":\"req-int-0001\",\"request_sha256\":\"\",\"device\":\"fw-c1\",\"approve\":true,\"minutes\":20,\"created\":$now}")" '@.error' "malformed"
+payload=$(v3payload phoneC fw-c1 "$N1" - "" apps-v1,screen-time-v1)
+assert_json "parent phone sees the pending request" "$payload" '@.requests[0].request_id' "req-int-0001"
+assert_json "...with the hash of the exact request" "$payload" '@.requests[0].request_sha256' "$hash"
+assert_json "child phone sees its pending request" "$(v3payload phoneD fw-d1 "$N1" - "" apps-v1,screen-time-v1)" '@.request.state' "pending"
+assert_json "a child cannot answer its own request" "$(upbody phoneD decision "{\"type\":\"decision\",\"v\":1,\"request_id\":\"req-int-0001\",\"request_sha256\":\"$hash\",\"device\":\"fw-d1\",\"approve\":true,\"minutes\":30,\"created\":$now}")" '@.error' "not_parent"
+dec="{\"type\":\"decision\",\"v\":1,\"request_id\":\"req-int-0001\",\"request_sha256\":\"$hash\",\"device\":\"fw-c1\",\"approve\":true,\"minutes\":20,\"created\":$now}"
+out=$(upbody phoneC decision "$dec")
+assert_json "parent approves 20 of 30 minutes" "$out" '@.granted' "20"
+assert_json "grant opens the home internet" "$out" '@.home_internet' "true"
+until=$(echo "$out" | jsonfilter -e '@.not_after')
+[ "$until" -ge $((now + 7190)) ] && [ "$until" -le $((now + 7210)) ] && pass "grant valid two hours after approval" || fail "not_after $until (now $now)"
+assert_json "ticket until the grant ends" "$(call status '{"profile":"kid"}')" '@.override_expires' "$until"
+assert_json "identical retry gives the same result" "$(upbody phoneC decision "$dec")" '@.not_after' "$until"
+assert_json "a second answer is refused" "$(call request_answer '{"request_id":"req-int-0001","approve":false}')" '@.error' "already_answered"
+assert_json "phone without grant support is refused, not silently weakened" "$(v3payload phoneD fw-d1 "$N1" - "" apps-v1,screen-time-v1)" '@.error' "unsupported_capabilities"
+payload=$(v3payload phoneD fw-d1 "$N1" - "" apps-v1,grants-v1,screen-time-v1)
+assert_json "grant in the child's signed policy" "$payload" '@.apps.grants[0].minutes' "20"
+assert_json "grant target" "$payload" '@.apps.grants[0].target' "com.roblox.client"
+assert_json "grant bound to the requesting phone" "$payload" '@.apps.grants[0].device_id' "fw-d1"
+assert_json "child sees the approval" "$payload" '@.request.state' "approved"
+grev=$(echo "$payload" | jsonfilter -e '@.apps.rev')
+assert_json "LuCI expects the grant revision" "$(call devices)" '@.devices[@.id="fw-d1"].apps_rev' "$grev"
+v3payload phoneD fw-d1 "$N1" "$grev" "" apps-v1,grants-v1,screen-time-v1 >/dev/null
+assert_json "acknowledged grant shows as delivered" "$(call requests)" '@.requests[0].delivered' "true"
+call reset '{"profile":"kid"}' >/dev/null
+req2=$(echo "$req" | sed 's/req-int-0001/req-int-0002/')
+upbody phoneD request "$req2" >/dev/null
+call block '{"profile":"kid"}' >/dev/null
+out=$(call request_answer '{"request_id":"req-int-0002","approve":true,"minutes":10}')
+assert_json "administrator can approve from LuCI" "$out" '@.state' "approved"
+assert_json "a manual block is not overridden by a grant" "$out" '@.home_internet' "false"
+assert_json "...and stays in force" "$(call status '{"profile":"kid"}')" '@.override' "block"
+call reset '{"profile":"kid"}' >/dev/null
+
+echo ""
+# An invalid compiler input must not leave RAM intent that a retry mistakes for
+# a working ticket. The last valid nft rules must remain in place.
+parent_policy=$(uci -q get familywarden.parent.policy)
+uci set familywarden.parent.policy=block
+uci add_list familywarden.parent.device=not-a-mac
+uci commit familywarden
+out=$("$BIN" core-ticket kid "$until")
+assert_json "failed firewall apply is reported" "$out" '@.error' "compile failed"
+assert_json "failed grant ticket restores the previous RAM override" "$(call status '{"profile":"kid"}')" '@.override' "none"
+uci del_list familywarden.parent.device=not-a-mac
+uci set "familywarden.parent.policy=$parent_policy"
+uci commit familywarden
+assert_json "the ticket retry really applies it" "$("$BIN" core-ticket kid "$until")" '@.opened' "true"
+for trial in 1 2 3 4 5 6 7 8; do
+    call reset '{"profile":"kid"}' >/dev/null
+    "$BIN" core-ticket kid "$until" >/dev/null &
+    ticket_pid=$!
+    call block '{"profile":"kid"}' >/dev/null
+    wait "$ticket_pid"
+    assert_json "concurrent block wins over grant ticket ($trial)" "$(call status '{"profile":"kid"}')" '@.override' "block"
+done
+call reset '{"profile":"kid"}' >/dev/null
+stop_core
+start_core
+assert_json "request grant survives a real daemon restart" "$(call requests)" '@.requests[0].state' "approved"
+restarted_payload=$(v3payload phoneD fw-d1 "$N1" - "" apps-v1,grants-v1,screen-time-v1)
+expected_ticket=$(echo "$restarted_payload" | jsonfilter -e '@.apps.grants[*].not_after' | sort -n | tail -1)
+after_restart=$(call status '{"profile":"kid"}' | jsonfilter -e '@.override_expires')
+[ "$after_restart" = "$expected_ticket" ] && pass "child sync restores a missing ticket without extending the grant" || fail "wrong grant ticket after restart"
+nft list set inet fw4 familywarden_ticket | grep -q "aa:bb:cc:00:00:01" && pass "restored grant ticket is in the kernel timeout set" || fail "restored ticket missing in nft"
 echo "=== Core: one-time import of UCI phones, restart, core down ==="
 stop_core
 mv /etc/familywarden/core/devices.json /tmp/devices.keep

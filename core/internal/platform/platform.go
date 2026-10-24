@@ -51,4 +51,8 @@ type Adapter interface {
 	RouterKey() (usign.SecretKey, error)
 	LegacyDevices() ([]LegacyDevice, error)
 	RemoveLegacyDevices() error
+	// EnsureTicket keeps the profile's home internet open at least until the epoch
+	// (an approved grant, D3). It never shortens a ticket and never overrides a
+	// manual block or a pact; ok=false reports that nothing was opened.
+	EnsureTicket(profile string, until int64) (ok bool, err error)
 }

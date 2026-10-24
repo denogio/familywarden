@@ -6,6 +6,7 @@ package store
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -13,16 +14,13 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/denogio/familywarden/core/internal/protocol"
 )
 
 const Retention = 30 // days of app activity kept (D6)
 
 var (
-	ErrRequestOpen = errors.New("request_open")
-	ErrInvalidID   = errors.New("invalid id")
-	validID        = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+	ErrInvalidID = errors.New("invalid id")
+	validID      = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 )
 
 type Store struct {
@@ -31,10 +29,8 @@ type Store struct {
 }
 
 func Open(dir string) (*Store, error) {
-	for _, sub := range []string{"usage", "requests"} {
-		if err := os.MkdirAll(filepath.Join(dir, sub), 0o700); err != nil {
-			return nil, err
-		}
+	if err := os.MkdirAll(filepath.Join(dir, "usage"), 0o700); err != nil {
+		return nil, err
 	}
 	return &Store{dir: dir}, nil
 }
@@ -71,9 +67,18 @@ func writeJSON(path string, v any) error {
 }
 
 func readJSON(path string, v any) error {
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return err
+	}
+	defer f.Close()
+	const maxDocument = 1 << 20
+	data, err := io.ReadAll(io.LimitReader(f, maxDocument+1))
+	if err != nil {
+		return err
+	}
+	if len(data) > maxDocument {
+		return errors.New("document exceeds 1 MiB")
 	}
 	return json.Unmarshal(data, v)
 }
@@ -193,64 +198,4 @@ func (s *Store) Prune(today time.Time) error {
 		}
 	}
 	return nil
-}
-
-// OpenRequest stores a child's request; at most one is open per profile (D7).
-// An expired request no longer counts as open.
-func (s *Store) OpenRequest(r protocol.Request, now time.Time) error {
-	if !validID.MatchString(r.Profile) {
-		return ErrInvalidID
-	}
-	path := filepath.Join(s.dir, "requests", r.Profile+".json")
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var cur protocol.Request
-	if err := readJSON(path, &cur); err == nil && now.Sub(time.Unix(cur.Created, 0)) < protocol.RequestTTL {
-		if cur.RequestID == r.RequestID {
-			return nil // a retry of the same request
-		}
-		return ErrRequestOpen
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return writeJSON(path, r)
-}
-
-// OpenRequestFor returns the profile's open request, or nil if none or expired.
-func (s *Store) OpenRequestFor(profile string, now time.Time) (*protocol.Request, error) {
-	if !validID.MatchString(profile) {
-		return nil, ErrInvalidID
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var cur protocol.Request
-	err := readJSON(filepath.Join(s.dir, "requests", profile+".json"), &cur)
-	if errors.Is(err, os.ErrNotExist) || (err == nil && now.Sub(time.Unix(cur.Created, 0)) >= protocol.RequestTTL) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &cur, nil
-}
-
-// CloseRequest removes the profile's request once answered (approved or denied).
-func (s *Store) CloseRequest(profile, requestID string) error {
-	if !validID.MatchString(profile) {
-		return ErrInvalidID
-	}
-	path := filepath.Join(s.dir, "requests", profile+".json")
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var cur protocol.Request
-	if err := readJSON(path, &cur); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return err
-	}
-	if cur.RequestID != requestID {
-		return nil
-	}
-	return os.Remove(path)
 }

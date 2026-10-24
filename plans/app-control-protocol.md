@@ -4,8 +4,9 @@ Status: **draft for the first vertical slice** (LAN: child requests extra time f
 parent approves, child uses exactly the approved minutes). Built on the existing v2
 enrollment/policy channel (`plans/app-control-baseline.md`). Decisions referenced as
 "D1–D8" are the contract decisions in `app-control.md` (2026-10-21).
-Field names are proposals until the Go core implements and tests them; compatibility
-rules below are binding from the first release that ships them.
+Sections 2a–2c and the LAN request/decision/policy transport in §3–4 are implemented
+and tested. Android grant consumption, shared budgets, direct parent-to-child grants
+and off-home delivery are still proposals, not implemented authority.
 
 ## 1. Principals and keys
 
@@ -28,9 +29,8 @@ in LuCI; a child phone learns it at its next successful sync (D2 consequence).
 
 ## 2a. Wire v3 as implemented (P5, 2026-10-22)
 
-The first implemented subset of §2. Signing, enrollment and the router key stay in the
-shell plugin for now (usign, unchanged pins); moving identity into the Go core (A6) is a
-later migration, not a wire change.
+The first implemented subset of §2. Since core migration step 1, signing and enrollment
+live in the Go core; the adapter reads the unchanged router key. This was not a wire change.
 
 **Request.** A v3 phone adds two parameters to the v2 request and signs two messages
 with its enrolled key:
@@ -66,13 +66,13 @@ on (`option apps '1'`):
   with last-seen); `ubus call familywarden devices` shows `apps_applied` next to the
   expected `apps_rev`. Fetching is not applying: the app sends `-` until enforcement
   has actually applied a revision.
-- Not yet in v3: shared `budget`, `grants`, `parents`, categories and parent roles.
-  Required-feature negotiation is now implemented separately in §2b; unknown optional
-  fields remain ignorable, but unknown required features are not.
+- Parent scopes/keys are implemented (§2c). Go now emits device-bound `apps.grants`
+  (§4), gated by `grants-v1`; Android does **not** yet advertise that capability.
+  Shared budgets and categories remain unimplemented. Unknown optional fields are
+  ignorable; unknown required features are not.
 
 **Fixture.** `android/app/src/test/resources/v3-payload.{json,sig}` + `v3-router.pub`
-are a real reply from the shell plugin (jshn + usign); `WireV3FixtureTest` verifies the
-signature and parses it. Regenerate them after any wire change.
+are real Go-core-signed replies; `WireV3FixtureTest` verifies the signature and parses them. Regenerate them after any wire change.
 
 ### Compatibility and rollback matrix
 
@@ -118,6 +118,7 @@ configuration (including the pact snapshot), never from client claims:
 |---|---|
 | `apps-v1` | This profile has app control enabled |
 | `screen-time-v1` | The app policy has daily screen limits, always-allowed apps, whole-phone downtime, or today's bonus |
+| `grants-v1` | Active grants exist for this particular phone (§4); Android support is not implemented yet |
 
 `screen-time-v1` names the complete P7b semantics: union counting, ordinary-app
 downtime (including messaging unless always allowed), daily limits, unlimited
@@ -234,48 +235,118 @@ Adult profiles under a pact never accept grants (§4); their daily pool is defin
 Downtime windows use the router schedule semantics: `days` name the start day and an
 overnight window continues into the next day.
 
-## 3. Extra-time request (child phone → router)
+## 3. LAN extra-time requests and decisions (Go implemented; Android pending)
 
-Signed by the child phone key, sent on the LAN to the router (first slice); later also via
-the off-home transport (A2/P9).
+Transport: `POST /cgi-bin/app?op=request` or `?op=decision` on the existing phone
+port 7700. Body: one base64 usign signature line, newline, then exact UTF-8 JSON bytes
+(maximum whole body 16 KiB). No canonical JSON is needed between Go and Kotlin.
+Sign `familywarden-request-v1\n` or `familywarden-decision-v1\n` plus those exact bytes.
 
-```json
-{ "type": "request", "v": 1, "request_id": "uuid-v4", "device": "…", "profile": "alex",
-  "package": "com.roblox.client", "minutes": 30, "created": 1792540012 }
-```
-
-Signed message: `familywarden-request-v1\n` followed by the **exact JSON bytes sent**; the
-receiver verifies those bytes and only then parses them (no canonical JSON form, so Kotlin
-and Go never have to agree on serialization). Rules (D7):
-- At most **one open request per child profile**: a second is refused with `request_open`.
-- A request expires **1 hour** after `created` (router clock) → `request_expired`.
-- No rate limit. Denial and expiry are visible to the child.
-- `minutes` is a positive integer, max 240; the parent may approve fewer.
-
-## 4. Grant (router or parent phone → child phone)
+Child upload:
 
 ```json
-{ "type": "grant", "v": 1, "grant_id": "uuid-v4", "request_id": "uuid-v4 or null",
-  "issuer": "router | <parent device_id>", "profile": "alex",
-  "package": "com.roblox.client", "minutes": 20,
-  "not_before": 1792540100, "not_after": 1792547300 }
+{"type":"request","v":1,"request_id":"a67cc491-91c8-4d42-998c-a8b5d189d561","device":"fw-alex","profile":"alex","target":"com.roblox.client","minutes":30,"label":"Roblox","created":1792540012}
 ```
 
-Signed message: `familywarden-grant-v1\n` + the exact grant JSON bytes, by the issuer's key.
-- **Lifetime (D3):** `not_after = issue time + 2 h`; unused minutes are lost then, not at midnight.
-- **Bedtime (D3):** a valid grant permits the granted package during downtime/outside
-  windows and beyond its daily rule, for exactly `minutes` of counted use.
-- **Single use:** the child phone stores used `grant_id`s until `not_after`; a replayed
-  grant is ignored. Grants for another profile, an unknown issuer or an expired window are
-  rejected locally and reported.
-- **Network (D3):** when the router learns a grant (issued by it, relayed from a parent, or
-  presented by the child phone), it opens a profile **internet ticket** until `not_after`
-  (bounded by the existing ticket rules). Off home, the phone needs nothing from the router.
-- **Pacts:** grants never apply to an adult profile bound by a pact (no self-approval
-  beyond the daily pool, A4). The router refuses to sign them; phones refuse them.
+- `target` is an Android package name (maximum 255 bytes) or `"total"` for screen time.
+  This replaces the draft request's `package` field; there is no released client for it.
+- IDs are 8–64 ASCII letters/digits/hyphens; hash and identity, not UUID formatting,
+  protect retries. `minutes` is an integer 1–240.
+- Optional `label` (64 code points) and `note` (140) are untrusted display text; never
+  render as HTML. All fields use exact case; duplicates, nulls, missing required fields,
+  unknown fields, invalid UTF-8 and trailing data are refused.
+- One open request per **profile**. Expiry is `min(created, received) + 1 hour`; transport
+  delays cannot reset it. Timestamps over five minutes in the future are refused.
+- Exact-byte retries return recorded status; reusing an ID with different bytes is
+  `replay`. No product rate limit; bounded storage can return `unavailable` (see below).
+- Requests require app control and an approved device in the named profile; never for
+  a pact-bound captain.
 
-Clock: the phone validates `not_before/not_after` against the last signed `server_time`
-plus elapsed monotonic time since that sync, never the wall clock alone.
+Parent upload:
+
+```json
+{"type":"decision","v":1,"request_id":"a67cc491-91c8-4d42-998c-a8b5d189d561","request_sha256":"<64 lowercase hex>","device":"fw-parent","approve":true,"minutes":20,"created":1792540100}
+```
+
+The hash covers the child's **exact JSON bytes**, not its signature or a reserialization.
+It is mandatory, even for denial. Parent signatures do not directly create standalone
+grants: the router rechecks current enrollment/key/profile, effective approval scope,
+pact status, requester identity and app-control state before persisting a decision.
+The same parser bounds/strictness apply. Decision timestamps use the request TTL and
+five-minute future skew; an expired request cannot be answered. Denial uses explicit
+`approve:false, minutes:0`; approval may grant 1 through the requested minutes.
+
+**First answer wins.** Concurrent parents cannot both decide. An identical retry by the
+same issuer gets the recorded decision and the original deadline, never more minutes.
+Changed answers return `already_answered`. The local administrator may answer through
+`ubus call familywarden request_answer '{"request_id":"…","approve":true,"minutes":20}'`;
+the root-only API uses issuer `router`, not a parent scope. Pacts still forbid it.
+
+**Replies.** Usign signature line + exact router-signed JSON, containing `v:1`,
+`type:"request_reply"|"decision_reply"`, `device`, `server_time` and
+`message_sha256` (hash of the exact upload JSON). Verify the pinned key **and** that
+hash/type/device before accepting a reply. Success adds `request_id, state`;
+approval adds `granted, not_after`, and `home_internet` when the ticket is attempted.
+Authenticated refusals have `error`; malformed/unverifiable uploads have bare HTTP
+400/403. Core/platform failure is 500; core down is 503. Neither grants authority.
+
+Signed v3 sync adds optional `request` (latest profile request, including status/answer)
+for the child and `requests[]` (pending, in-scope requests with exact hash, profile,
+target, minutes, label/note and expiry) for the parent. Old clients may ignore these
+display-only fields. `ubus call familywarden requests` lists retained decisions for the
+administrator; this does not mean a Requests UI exists yet.
+
+## 4. Router-policy grants (Go implemented; Android enforcement pending)
+
+An approved request becomes a durable grant **for the requesting device and enrolled
+key only**. This deliberately prevents copying one allocation to every phone before
+shared consumption/leases exist. It does not implement the shared child budget.
+
+```json
+"apps": {"rev":"<16 hex>","grants":[
+  {"grant_id":"<32 hex>","device_id":"fw-alex","target":"com.roblox.client",
+   "minutes":20,"not_before":1792540100,"not_after":1792547300}
+]}
+```
+
+- Authority is the enclosing router-signed policy, not a separately forwarded parent
+  grant. Effective grants change the **per-device** app revision and require
+  `grants-v1`; an older client receives signed `unsupported_capabilities`, never a
+  weaker policy. Existing Android builds do not advertise this feature.
+- Lifetime: two hours **after approval**, not delivery or midnight. Expired grants are
+  finalized durably when observed. The ledger's durable time floor rejects clock
+  rollback rather than reviving expired/pruned authority; it does not age out an
+  offline phone's last trusted policy.
+- Parent revocation prevents new decisions; an already router-issued grant retains
+  its fixed expiry. Moving/deleting/rekeying the **requesting** device makes its old
+  grants ineligible. Pacts and disabled app control omit grants entirely.
+- Delivery is a signed `applied` acknowledgement of the grant-bearing revision by the
+  **requesting phone**. `requests[].delivered` is RAM-only and clears on daemon restart;
+  it is not proof of consumption, connectivity or continuous enforcement.
+- Home internet: the OpenWrt adapter ensures a profile ticket until `not_after`, never
+  shortening a longer ticket, overriding a manual block, or opening for a bound captain.
+  The app grant remains recorded if firewall application fails; identical decision
+  retries and child sync retry the **same deadline**. After reboot, sync restores lost
+  RAM tickets. The internet ticket covers the profile, not just one app.
+- One versioned `requests.json` stores requests/answers/grants. There is no second
+  experimental request store/parser. Retain entries until 24 hours after their end,
+  at most 256 entries; at most 32 simultaneously active grants per requesting device.
+  These are technical storage/payload bounds, not a per-child product rate limit.
+  Full/corrupt/unwritable state refuses new authority; pruning recovers capacity.
+  File reads are bounded to 1 MiB; signed replies to 64 KiB.
+
+**Still to implement before end-to-end acceptance:** Android request/decision/status
+screens, durable per-grant consumption/replay accounting, exactly-once enforcement,
+exhaustion and clock tests on the client. There is no authenticated consumption upload
+yet. A valid app grant must bypass downtime and the relevant exhausted limit, but never
+an explicit app block, safety exemptions or a pact. No client may advertise `grants-v1`
+until those semantics work and survive restart.
+
+**Future (P9, not an accepted wire format):** directly delivered parent-signed grants,
+offline issuance and encrypted notification/relay transport. They must reuse the same
+scope, request binding, device-bound consumption and replay rules; do not expose a second
+grant verifier or ledger as a shortcut. Shared multi-device spending needs its own
+bounded allocation/consumption design before one grant can be applied on several phones.
 
 ## 5. Usage reports (child/adult phone → router)
 

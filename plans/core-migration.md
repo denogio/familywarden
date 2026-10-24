@@ -41,6 +41,30 @@ with plain Go and only packaged by the SDK (`CORE_GO=cross`, ~3 min instead of ~
 Footprint: aarch64 apk 2.7 MB, binary 7.5 MB; idle RSS 8.2 MB measured on x86_64 — the
 aarch64 RSS must still be measured on the router (needs explicit permission).
 
+## Step 2 foundation (2026-10-24, not deployed)
+
+`familywarden` 0.11.0_rc2 / `familywarden-core` 0.3.0 adds the Go-owned LAN
+request/decision ledger and device/key-bound grants, not the complete P8 Android flow.
+See `app-control-protocol.md` §3–4 for the implemented transport, bounds, retry/expiry
+semantics and remaining consumption gates. Requests/decisions never use UCI or shell
+product handlers: the CGI and rpcd methods forward to the core; `EnsureTicket` is a
+narrow OpenWrt application bridge using the existing firewall compiler. Existing
+block/allow/reset and ticket mutations now share adapter transaction locks. Failed
+application restores prior RAM ticket intent, so retries cannot falsely claim success.
+Go owns authority; the adapter cannot mint a grant.
+
+Validation: Go vet/race suite; six security mutation probes (mandatory hash, phone binding,
+parent scope, durable clock floor/expiry and ticket repair); 363 real OpenWrt integration
+checks, including signed CGI upload, exact request/reply hash, approval, capability refusal,
+acknowledgement, real daemon restart, kernel ticket restoration, failed compilation rollback
+and concurrent manual blocks; built-package install/reinstall/removal tests; 32 Playwright
+tests against the resulting 0.11.0_rc2 / 0.3.0 packages. One package-feed fetch stalled;
+the bounded rerun passed. No Android code changed, so no emulator run was needed.
+
+Android enforcement, parent/child request screens, authenticated consumption uploads,
+shared allocations and the shared administrator UI are still unimplemented. No physical
+phone/router changes or emulator run are required for this server-only foundation.
+
 ## Step 1 in detail
 
 ### Boundary

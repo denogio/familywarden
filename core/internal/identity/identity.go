@@ -76,22 +76,25 @@ type seenPhone struct {
 }
 
 type Service struct {
-	mu       sync.Mutex
-	ad       platform.Adapter
-	st       Storage
-	Now      func() time.Time
-	devices  []Device
-	pending  map[string]pendingPhone
-	seen     map[string]seenPhone
-	removals map[string]int64
-	key      *usign.SecretKey
+	mu         sync.Mutex
+	ad         platform.Adapter
+	st         Storage
+	Now        func() time.Time
+	devices    []Device
+	pending    map[string]pendingPhone
+	seen       map[string]seenPhone
+	removals   map[string]int64
+	key        *usign.SecretKey
+	ledger     []entry          // requests/grants, loaded lazily (requests.go)
+	ledgerTime int64            // last durable lifecycle transition (clock rollback guard)
+	delivered  map[string]int64 // grant id -> first acknowledgement (RAM)
 }
 
 // New loads the registry. On first start it imports the platform's legacy phones;
 // the legacy copy is removed only after the import is persisted and re-read equal.
 func New(ad platform.Adapter, st Storage) (*Service, error) {
 	s := &Service{ad: ad, st: st, Now: time.Now, pending: map[string]pendingPhone{},
-		seen: map[string]seenPhone{}, removals: map[string]int64{}}
+		seen: map[string]seenPhone{}, removals: map[string]int64{}, delivered: map[string]int64{}}
 	var doc devicesDoc
 	found, err := st.ReadDocument(devicesFile, &doc)
 	if err != nil {

@@ -33,15 +33,23 @@ func (s *Service) Devices() Reply {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.Now().Unix()
+	if _, err := s.loadLedger(); err != nil {
+		return fail("requests unavailable")
+	}
 	devices := []Reply{}
 	for _, d := range s.devices {
 		seen := s.seen[d.ID]
 		prof := ctx.Profiles[d.Profile]
+		var grants []entry
+		if d.Profile != ctx.PactCaptain {
+			grants = s.grantsFor(d.Profile, d.ID, now)
+		}
+		rev, requires := appsView(prof, grants)
 		applied, apErr := seen.applied, seen.err
 		// An old acknowledgement must not look current for an incompatible phone.
-		if len(prof.Requires) == 0 {
+		if len(requires) == 0 {
 			apErr = ""
-		} else if applied != "" && !covers(seen.caps, 3, prof.Requires) {
+		} else if applied != "" && !covers(seen.caps, 3, requires) {
 			applied, apErr = "", "unsupported_capabilities"
 		}
 		caps := []string{}
@@ -63,7 +71,7 @@ func (s *Service) Devices() Reply {
 			"apps_applied": applied, "apps_error": apErr, "capabilities": caps,
 			"approves": strings.Join(d.Approves, " "), "approves_effective": strings.Join(effectiveApproves(d, ctx), " "),
 			"name": d.Name, "profile": d.Profile, "administrator": admin,
-			"apps_rev": prof.AppsRev, "fingerprint": fingerprint(d.PubKey),
+			"apps_rev": rev, "fingerprint": fingerprint(d.PubKey),
 			"remove_until": removal, "frozen": frozen(d, ctx),
 		})
 	}

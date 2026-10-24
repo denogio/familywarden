@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/denogio/familywarden/core/internal/protocol"
 )
 
 func open(t *testing.T) (*Store, string) {
@@ -74,36 +72,6 @@ func TestPruneKeepsThirtyDays(t *testing.T) {
 	left, _ := filepath.Glob(filepath.Join(dir, "usage", "alex", "*.json"))
 	if len(left) != 2 {
 		t.Fatalf("kept %v, want today and 29 days ago", left)
-	}
-}
-
-func TestOneOpenRequestPerChild(t *testing.T) {
-	s, _ := open(t)
-	now := time.Unix(1792540000, 0)
-	req := func(id string, created time.Time) protocol.Request {
-		return protocol.Request{Type: "request", V: 1, RequestID: id, Profile: "alex", Package: "com.roblox.client", Minutes: 30, Created: created.Unix()}
-	}
-	if err := s.OpenRequest(req("r1", now), now); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.OpenRequest(req("r1", now), now); err != nil {
-		t.Fatal("retry of the same request refused")
-	}
-	if err := s.OpenRequest(req("r2", now), now.Add(time.Minute)); err != ErrRequestOpen {
-		t.Fatalf("second open request: got %v", err)
-	}
-	later := now.Add(protocol.RequestTTL)
-	if cur, _ := s.OpenRequestFor("alex", later); cur != nil {
-		t.Fatal("expired request still open")
-	}
-	if err := s.OpenRequest(req("r2", later), later); err != nil {
-		t.Fatalf("new request after expiry refused: %v", err)
-	}
-	if err := s.CloseRequest("alex", "r2"); err != nil {
-		t.Fatal(err)
-	}
-	if cur, _ := s.OpenRequestFor("alex", later); cur != nil {
-		t.Fatal("closed request still open")
 	}
 }
 

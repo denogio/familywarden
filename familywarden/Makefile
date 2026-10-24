@@ -6,7 +6,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=familywarden
-PKG_VERSION:=0.11.0_rc1
+PKG_VERSION:=0.11.0_rc2
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=denogio <dennis@hojgaard.me>
@@ -51,6 +51,7 @@ define Package/familywarden/install
 	$(INSTALL_DATA) ./www-familywarden/index.html $(1)/www-familywarden/index.html
 	$(INSTALL_BIN) ./www-familywarden/cgi-bin/sail $(1)/www-familywarden/cgi-bin/sail
 	$(INSTALL_BIN) ./www-familywarden/cgi-bin/mast $(1)/www-familywarden/cgi-bin/mast
+	$(INSTALL_BIN) ./www-familywarden/cgi-bin/app $(1)/www-familywarden/cgi-bin/app
 
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DATA) ./usr/share/rpcd/acl.d/familywarden.json $(1)/usr/share/rpcd/acl.d/familywarden.json

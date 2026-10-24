@@ -37,7 +37,7 @@ func verify(key, sig string, msg string) bool {
 
 // Phone answers one signed sync request (v2/v3, plus authenticated capabilities).
 // The reply is the router signature line, a newline, then the exact signed payload.
-func (s *Service) Phone(query string) (int, []byte) {
+func (s *Service) Phone(query string) (status int, body []byte) {
 	dev, nonce, key, sig := param(query, "device"), param(query, "nonce"), param(query, "key"), param(query, "sig")
 	sig3, applied, caps, sigcaps := param(query, "sig3"), param(query, "applied"), param(query, "caps"), param(query, "sigcaps")
 	name := nameChars.ReplaceAllString(param(query, "name"), "")
@@ -69,6 +69,15 @@ func (s *Service) Phone(query string) (int, []byte) {
 		return StatusForbidden, nil
 	}
 
+	var tickets []ticketJob
+	// Registered before Unlock: restore lost RAM tickets after releasing the lock.
+	defer func() {
+		if status == StatusOK {
+			for _, t := range tickets {
+				s.openTicket(t)
+			}
+		}
+	}()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rk, err := s.routerKey()
@@ -84,6 +93,10 @@ func (s *Service) Phone(query string) (int, []byte) {
 		return s.sign(rk, append(base, field{"enrollment", "pending"}))
 	}
 	d := s.devices[i]
+	if _, err := s.loadLedger(); err != nil {
+		log.Printf("request ledger: %v", err)
+		return StatusError, nil
+	}
 	delete(s.pending, dev)
 	pol, err := s.ad.Policy(d.Profile, version)
 	if err != nil {
@@ -92,11 +105,19 @@ func (s *Service) Phone(query string) (int, []byte) {
 	}
 	ctx := pol.Context
 	prof, exists := ctx.Profiles[d.Profile]
+	grants := s.grantsFor(d.Profile, d.ID, now)
+	if d.Profile == ctx.PactCaptain || len(pol.Apps) == 0 || string(pol.Apps) == "null" {
+		grants = nil // no grants beyond a pact, and none without app control
+	}
+	for _, g := range grants {
+		tickets = append(tickets, ticketJob{g.Profile, g.NotAfter})
+	}
+	rev, requires := appsView(prof, grants)
 	seen := seenPhone{at: now, caps: caps}
 	if version == 3 && applied != "-" {
 		seen.applied = applied
 	}
-	if !covers(caps, version, prof.Requires) {
+	if !covers(caps, version, requires) {
 		seen.applied, seen.err = "", "unsupported_capabilities"
 	}
 	s.seen[dev] = seen
@@ -105,8 +126,11 @@ func (s *Service) Phone(query string) (int, []byte) {
 		return s.sign(rk, append(base, field{"enrollment", "pending"}))
 	}
 	out := append(base, field{"enrollment", "approved"})
-	if version == 3 || len(prof.Requires) > 0 {
-		out = append(out, field{"requires", nonNil(prof.Requires)})
+	if seen.err == "" {
+		s.noteDelivery(seen.applied, rev, grants, now)
+	}
+	if version == 3 || len(requires) > 0 {
+		out = append(out, field{"requires", nonNil(requires)})
 		if seen.err != "" {
 			// Signed, request-bound refusal: no binding and no weaker policy.
 			return s.sign(rk, append(out, field{"error", "unsupported_capabilities"}))
@@ -140,21 +164,32 @@ func (s *Service) Phone(query string) (int, []byte) {
 			}
 		}
 		out = append(out, field{"parents", parents})
+		if r := s.childRequest(d.Profile, now); r != nil && prof.AppsRev != "" {
+			out = append(out, field{"request", r})
+		}
+		if len(effectiveApproves(d, ctx)) > 0 {
+			out = append(out, field{"requests", s.parentRequests(d, ctx, now)})
+		}
 	}
 	out = append(out, field{"captain", pol.Captain}, field{"pact", raw(pol.Pact)}, field{"rules", raw(pol.Rules)})
 	if len(pol.DNS) > 0 && string(pol.DNS) != "null" {
 		out = append(out, field{"dns", raw(pol.DNS)})
 	}
 	if version == 3 && len(pol.Apps) > 0 && string(pol.Apps) != "null" {
-		out = append(out, field{"apps", raw(pol.Apps)})
+		apps, err := withGrants(pol.Apps, rev, grants)
+		if err != nil {
+			log.Printf("apps of %s: %v", d.Profile, err)
+			return StatusError, nil
+		}
+		out = append(out, field{"apps", raw(apps)})
 	}
 	return s.sign(rk, out)
 }
 
 func (s *Service) sign(rk usign.SecretKey, o object) (int, []byte) {
 	payload, err := json.Marshal(o)
-	if err != nil {
-		log.Printf("reply: %v", err)
+	if err != nil || len(payload) > 64<<10 {
+		log.Printf("reply encoding failed or exceeded 64 KiB: %v", err)
 		return StatusError, nil
 	}
 	return StatusOK, append([]byte(rk.Sign(payload)+"\n"), payload...)

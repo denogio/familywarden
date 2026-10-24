@@ -1,8 +1,8 @@
 #!/bin/bash
 # Syntax and structure tests for familywarden
 #
-# All backend logic lives in the rpcd plugin (installed as
-# /usr/libexec/rpcd/familywarden). The init script only calls "$BIN reload".
+# The rpcd plugin owns the interim firewall policy/compiler; identity and
+# requests/grants live in the Go core. The init script calls "$BIN reload".
 
 PROJECT_ROOT="$(dirname "$0")/.."
 RPCD_SCRIPT="${PROJECT_ROOT}/familywarden/usr/lib/rpcd/familywarden"
@@ -17,7 +17,8 @@ echo ""
 
 SAIL_CGI="${PROJECT_ROOT}/familywarden/www-familywarden/cgi-bin/sail"
 MAST_CGI="${PROJECT_ROOT}/familywarden/www-familywarden/cgi-bin/mast"
-for script in "$RPCD_SCRIPT" "$INIT_SCRIPT" "$SAIL_CGI" "$MAST_CGI"; do
+APP_CGI="${PROJECT_ROOT}/familywarden/www-familywarden/cgi-bin/app"
+for script in "$RPCD_SCRIPT" "$INIT_SCRIPT" "$SAIL_CGI" "$MAST_CGI" "$APP_CGI"; do
     if [ ! -f "$script" ]; then
         fail "Missing: $script"
         continue
@@ -75,7 +76,7 @@ echo ""
 echo "=== Ubus API Endpoints ==="
 
 # Each method must be both advertised (rpcd "list" JSON) and dispatched ("call").
-ubus_methods=("list" "status" "block" "allow" "reset" "ticket" "bonus" "pact" "mast" "reload" "version" "devices" "device_approve" "device_reject" "device_update" "device_delete" "device_allow_removal" "dns_status" "dns_sync" "dns_auth" "dns_services")
+ubus_methods=("list" "status" "block" "allow" "reset" "ticket" "bonus" "pact" "mast" "reload" "version" "devices" "device_approve" "device_reject" "device_update" "device_delete" "device_allow_removal" "requests" "request_answer" "dns_status" "dns_sync" "dns_auth" "dns_services")
 ACL_FILES=("${PROJECT_ROOT}/familywarden/usr/share/rpcd/acl.d/familywarden.json"
            "${PROJECT_ROOT}/luci-app-familywarden/root/usr/share/rpcd/acl.d/luci-app-familywarden.json")
 for method in "${ubus_methods[@]}"; do
@@ -153,7 +154,7 @@ grep -q 'usr/libexec/rpcd/familywarden' "$MAKEFILE" \
     && echo "✓ init.d BIN matches Makefile install path" \
     || fail "init.d BIN does not match Makefile install path"
 
-for f in www-familywarden/index.html www-familywarden/cgi-bin/sail www-familywarden/cgi-bin/mast; do
+for f in www-familywarden/index.html www-familywarden/cgi-bin/sail www-familywarden/cgi-bin/mast www-familywarden/cgi-bin/app; do
     grep -q "./$f " "$MAKEFILE" && [ -f "${PROJECT_ROOT}/familywarden/$f" ] \
         && echo "✓ sail page installed: $f" || fail "sail page file not installed: $f"
 done

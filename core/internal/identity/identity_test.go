@@ -5,9 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,6 +27,9 @@ type fakeAdapter struct {
 	key        usign.SecretKey
 	policyErr  error
 	lastPolicy string
+	ticketMu   sync.Mutex
+	tickets    []string
+	ticketOK   bool
 }
 
 func (f *fakeAdapter) Context() (platform.Context, error) { return f.ctx, f.ctxErr }
@@ -41,7 +46,13 @@ func (f *fakeAdapter) Policy(profile string, version int) (platform.Policy, erro
 }
 func (f *fakeAdapter) RouterKey() (usign.SecretKey, error)             { return f.key, nil }
 func (f *fakeAdapter) LegacyDevices() ([]platform.LegacyDevice, error) { return f.legacy, nil }
-func (f *fakeAdapter) RemoveLegacyDevices() error                      { f.removed = true; return f.removeErr }
+func (f *fakeAdapter) EnsureTicket(profile string, until int64) (bool, error) {
+	f.ticketMu.Lock()
+	defer f.ticketMu.Unlock()
+	f.tickets = append(f.tickets, fmt.Sprintf("%s@%d", profile, until))
+	return f.ticketOK, nil
+}
+func (f *fakeAdapter) RemoveLegacyDevices() error { f.removed = true; return f.removeErr }
 
 type memStore struct {
 	docs    map[string][]byte

@@ -32,7 +32,7 @@ apk add --allow-untrusted "$CORE" "$FW" "$LUCI" >/tmp/apk.log 2>&1 \
 [ -x /usr/libexec/rpcd/familywarden ] || { fail "package not actually installed"; cat /tmp/apk.log; }
 
 for f in /usr/libexec/rpcd/familywarden /etc/init.d/familywarden /usr/sbin/familywarden \
-         /www-familywarden/cgi-bin/sail; do
+         /www-familywarden/cgi-bin/sail /www-familywarden/cgi-bin/mast /www-familywarden/cgi-bin/app; do
     [ -x "$f" ] && pass "executable: $f" || fail "missing/not executable: $f"
 done
 for f in /etc/config/familywarden /usr/share/rpcd/acl.d/familywarden.json \
@@ -97,6 +97,9 @@ if [ -n "$CORE" ]; then
     out=$(QUERY_STRING="device=x&nonce=y" sh /www-familywarden/cgi-bin/mast | head -1)
     [ "$out" = "Status: 400 Bad Request" ] && pass "sync endpoint answered by the core" || fail "sync endpoint: $out"
     echo '{}' | /usr/libexec/rpcd/familywarden call devices | grep -q '"devices"' && pass "LuCI devices via the core" || fail "devices via the core"
+    echo '{}' | /usr/libexec/rpcd/familywarden call requests | grep -q '"requests"' && pass "LuCI requests via the core" || fail "requests via the core"
+    out=$(REQUEST_METHOD=POST QUERY_STRING="op=request" sh /www-familywarden/cgi-bin/app </dev/null | head -1)
+    [ "$out" = "Status: 400 Bad Request" ] && pass "upload endpoint answered by the core" || fail "upload endpoint: $out"
     kill "$CORE_PID"; wait "$CORE_PID" 2>/dev/null
     [ -e "$SOCK" ] && fail "socket left after clean stop" || pass "clean stop removes the socket"
     out=$(QUERY_STRING="device=x&nonce=y" sh /www-familywarden/cgi-bin/mast | head -1)

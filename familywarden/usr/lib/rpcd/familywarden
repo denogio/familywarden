@@ -1180,7 +1180,7 @@ EOF
 
         # Apply via fw4 reload. fw4 flushes and rebuilds the whole inet fw4
         # table, so rules are idempotent and survive reboot.
-        fw4 reload 2>/dev/null
+        fw4 reload 2>/dev/null || { echo '{"error":"firewall reload failed"}'; return 1; }
 
         echo '{"status":"ok"}'
     ) 200>"$FW_LOCK"
@@ -1328,54 +1328,34 @@ ubus_status() {
     ) 200>"$FW_LOCK"
 }
 
-ubus_block() {
-    local profile="$1"
-
-    fw_load
-    local name
-    config_get name "$profile" name ""
-    [ -z "$name" ] && { echo '{"error":"profile not found"}'; return 1; }
-
-    state_set "${profile}.override" "block"
-    state_set "${profile}.override_expires" ""
-    # compile_and_apply prints the single JSON reply (status or error)
-    compile_and_apply
+# Override changes and grant tickets share a transaction lock: an approval must
+# never replace a concurrently applied explicit block.
+_set_override() {
+    (
+        flock -x 201 || { echo '{"error":"ticket lock failed"}'; exit 1; }
+        flock -x 200 || { echo '{"error":"state lock failed"}'; exit 1; }
+        local profile="$1" override="$2" name
+        fw_load
+        config_get name "$profile" name ""
+        [ -z "$name" ] && { echo '{"error":"profile not found"}'; exit 1; }
+        if [ "$override" = allow ]; then _refuse_if_bound "$profile" && exit 1; fi
+        state_set "${profile}.override" "$override"
+        state_set "${profile}.override_expires" ""
+        flock -u 200
+        compile_and_apply
+    ) 201>"${FW_LOCK}.ticket" 200>"$FW_LOCK"
 }
 
-ubus_allow() {
-    local profile="$1"
-
-    fw_load
-    local name
-    config_get name "$profile" name ""
-    [ -z "$name" ] && { echo '{"error":"profile not found"}'; return 1; }
-    _refuse_if_bound "$profile" && return 1
-
-    state_set "${profile}.override" "allow"
-    state_set "${profile}.override_expires" ""
-    # compile_and_apply prints the single JSON reply (status or error)
-    compile_and_apply
-}
-
-ubus_reset() {
-    local profile="$1"
-
-    fw_load
-    local name
-    config_get name "$profile" name ""
-    [ -z "$name" ] && { echo '{"error":"profile not found"}'; return 1; }
-
-    state_set "${profile}.override" "none"
-    state_set "${profile}.override_expires" ""
-    # compile_and_apply prints the single JSON reply (status or error)
-    compile_and_apply
-}
+ubus_block() { _set_override "$1" block; }
+ubus_allow() { _set_override "$1" allow; }
+ubus_reset() { _set_override "$1" none; }
 
 ubus_ticket() {
     (
     # Serialize ticket read/modify/apply so simultaneous additions cannot be lost.
     # Separate from FW_LOCK: compile_and_apply acquires that lock itself.
     flock -x 201 || { echo '{"error":"ticket lock failed"}'; return 1; }
+    flock -x 200 || { echo '{"error":"state lock failed"}'; return 1; }
     local profile="$1"
     local minutes="${2:-30}"
     case "$minutes" in
@@ -1407,13 +1387,14 @@ ubus_ticket() {
 
     state_set "${profile}.override" "allow"
     state_set "${profile}.override_expires" "${expires_epoch}"
+    flock -u 200
     # Silence compile_and_apply's own {"status":"ok"} so the reply is one JSON object
     if ! compile_and_apply >/dev/null; then
         echo '{"error":"compile failed"}'
         return 1
     fi
     echo "{\"status\":\"ok\",\"profile\":\"${profile}\",\"expires\":\"${expires_iso}\"}"
-    ) 201>"${FW_LOCK}.ticket"
+    ) 201>"${FW_LOCK}.ticket" 200>"$FW_LOCK"
 }
 
 # Make (or amend) the captain's pact. until=<epoch> for a pact that ends,
@@ -1775,6 +1756,48 @@ cli_core_legacy_devices() {
         json_close_array
         json_dump
     ) 200>"$FW_LOCK"
+}
+
+# An approved grant opens the home internet until it ends (D3). Never shortens a
+# ticket, never replaces a manual block (a parent's explicit decision), never for a
+# pact-bound captain. Same lock as ubus_ticket.
+cli_core_ticket() {
+    local profile="$1" until="$2" now name override expiry
+    case "$profile" in ''|*[!A-Za-z0-9_-]*) echo '{"error":"invalid profile"}'; return 1 ;; esac
+    case "$until" in ''|*[!0-9]*) echo '{"error":"invalid time"}'; return 1 ;; esac
+    (
+        flock -x 201 || { echo '{"error":"ticket lock failed"}'; exit 1; }
+        flock -x 200 || { echo '{"error":"state lock failed"}'; exit 1; }
+        fw_load
+        config_get name "$profile" name ""
+        [ -n "$name" ] || { echo '{"error":"profile not found"}'; exit 1; }
+        now=$(date +%s)
+        override=$(state_get "${profile}.override" none)
+        expiry=$(state_get "${profile}.override_expires" 0)
+        case "$expiry" in ''|*[!0-9]*) expiry=0 ;; esac
+        if _is_captain_bound "$profile" || [ "$until" -le "$now" ] ||
+           { [ "$override" = block ]; }; then
+            echo '{"opened":false}'
+            exit 0
+        fi
+        if [ "$override" = allow ] && { [ "$expiry" = 0 ] || [ "$expiry" -ge "$until" ]; }; then
+            echo '{"opened":true}'   # already open long enough (or without end)
+            exit 0
+        fi
+        state_set "${profile}.override" allow
+        state_set "${profile}.override_expires" "$until"
+        flock -u 200
+        if ! compile_and_apply >/dev/null; then
+            # Do not let a retry mistake unapplied RAM intent for working access.
+            flock -x 200 || exit 1
+            state_set "${profile}.override" "$override"
+            state_set "${profile}.override_expires" "$expiry"
+            echo '{"error":"compile failed"}'
+            exit 1
+        fi
+        logger -t familywarden "grant opened home internet for $profile until $until"
+        echo '{"opened":true}'
+    ) 201>"${FW_LOCK}.ticket" 200>"$FW_LOCK"
 }
 
 _core_legacy_rm_cb() { uci -q delete "familywarden.$1"; }
@@ -2301,6 +2324,8 @@ case "$1" in
   "device_update": { "device": "string", "profile": "string", "name": "string", "administrator": "string", "approves": "string" },
   "device_delete": { "device": "string" },
   "device_allow_removal": { "device": "string" },
+  "requests": {},
+  "request_answer": { "request_id": "string", "approve": true, "minutes": 0 },
   "dns_status": {},
   "dns_sync": {},
   "dns_auth": { "username": "string", "password": "string" },
@@ -2329,6 +2354,10 @@ EOF
         ;;
     core-legacy-devices)
         cli_core_legacy_devices
+        ;;
+    core-ticket)
+        # $2 profile, $3 epoch: keep home internet open at least until then
+        cli_core_ticket "$2" "$3"
         ;;
     core-legacy-devices-remove)
         cli_core_legacy_devices_remove
@@ -2419,7 +2448,7 @@ EOF
             version)
                 ubus_version
                 ;;
-            devices|device_approve|device_update|device_reject|device_delete|device_allow_removal)
+            devices|device_approve|device_update|device_reject|device_delete|device_allow_removal|requests|request_answer)
                 # Phone identity lives in the Go core (A18); this is the rpcd shim.
                 read -r input
                 printf '%s' "${input:-{\}}" | "$FW_CORE_BIN" -socket "$FW_CORE_SOCK" api "$2"

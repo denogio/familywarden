@@ -79,6 +79,14 @@ func (a Adapter) LegacyDevices() ([]platform.LegacyDevice, error) {
 	return v.Devices, err
 }
 
+func (a Adapter) EnsureTicket(profile string, until int64) (bool, error) {
+	var v struct {
+		Opened bool `json:"opened"`
+	}
+	err := a.run(&v, "core-ticket", profile, strconv.FormatInt(until, 10))
+	return v.Opened, err
+}
+
 func (a Adapter) RemoveLegacyDevices() error {
 	var v struct{}
 	return a.run(&v, "core-legacy-devices-remove")

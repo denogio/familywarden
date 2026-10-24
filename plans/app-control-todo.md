@@ -348,6 +348,16 @@ Depends on P5–P7 (done for the local slice). Next pilot build: `0.10.0-pilot2`
 
 Depends on P5–P7. Start on LAN before adding the selected off-home transport.
 
+**Go foundation implemented, not end-to-end:** signed LAN requests/decisions, scoped
+parent/admin approval, durable first-answer-wins ledger, device/key-bound policy grants,
+capability gating and retryable OpenWrt internet tickets. Strict parser, concurrent-parent,
+replay, stale requester, clock rollback, expiry, capacity and failed-write tests run with
+the fake adapter; real CGI/ubus/firewall tests cover transport and application. The old
+unexposed request/grant verifier and request-store prototypes were removed, not exposed
+as competing authorities. Current contract: `app-control-protocol.md` §3–4.
+Android consumption/screens and shared accounting remain open; no released client
+advertises `grants-v1`. The checkboxes below remain unchecked until their whole flow works.
+
 - [ ] Child requests minutes for one app/day with a unique request ID and expiry.
 - [ ] Parent sees pending requests for authorized children and approves/denies in Android.
 - [ ] Verify role, scope, limits and signed authorization; never widen the weekday budget.
