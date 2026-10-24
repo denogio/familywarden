@@ -40,10 +40,6 @@ if [ -z "$nonce" ]; then
     exit 0
 fi
 
-body=$("$BIN" mast2 "$dev" "$nonce" "$(param key)" "$(param sig)" "$(param name)" "$(param sig3)" "$(param applied)" "$(param caps)" "$(param sigcaps)")
-case $? in
-    0) status "200 OK"; printf '%s' "$body" ;;
-    2) status "400 Bad Request" ;;
-    3) status "403 Forbidden" ;;
-    *) status "500 Internal Server Error" ;;
-esac
+# v2/v3: phone identity and signing live in the Go core (plans/core-migration.md).
+# It writes the complete CGI reply; core down = 503, never an unsigned reply.
+exec /usr/sbin/familywardend -socket /var/run/familywarden-core/core.sock cgi-phone

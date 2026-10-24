@@ -37,12 +37,9 @@ after)
     nft list chain inet fw4 familywarden_forward >/dev/null 2>&1 && pass "firewall unaffected by stopping the core" || fail "firewall chain gone"
     /etc/init.d/familywarden-core start
     wait_up && pass "init start" || fail "init start"
-    apk del familywarden-core >/dev/null 2>&1
-    sleep 1
-    pid >/dev/null && fail "core still running after removal" || pass "removal stops the core"
-    [ -e /etc/init.d/familywarden-core ] && fail "init script left" || pass "removal removes the init script"
-    ubus list familywarden-core >/dev/null 2>&1 && fail "ubus object left" || pass "ubus object gone"
-    nft list chain inet fw4 familywarden_forward >/dev/null 2>&1 && pass "firewall unaffected by removal" || fail "firewall chain gone"
+    # familywarden depends on the core (phone identity): it cannot be removed alone.
+    apk del familywarden-core >/dev/null 2>&1 && fail "core removed under familywarden" || pass "core removal refused while familywarden needs it"
+    pid >/dev/null && pass "core still running after refused removal" || fail "core stopped by a refused removal"
     ;;
 esac
 echo

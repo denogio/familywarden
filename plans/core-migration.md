@@ -20,6 +20,27 @@ The existing seam for step 3/5: shell enforcement already reads only the effecti
 config (`fw_load` → `/var/run/familywarden/familywarden`). The core will produce that;
 the adapter turns it into nftables. Other platforms get their own applier (pf).
 
+## Status
+
+**Step 1 done (2026-10-24), not deployed.** Packages `familywarden` 0.11.0_rc1 (depends on)
+`familywarden-core` 0.2.0. Evidence: 321 router integration checks against the core-backed
+endpoint and ubus methods (4 implementation-detail assertions that read UCI device sections
+rewritten to use the API; new checks for the import, restart and core-down); Go unit tests
+with a fake adapter (signatures v2/v3/caps, refusal, fingerprint approval, pending bound,
+pact rules incl. fail-closed, parent scope/keys, removal window, import once/verified/
+failure, save failure, policy error), mutation-checked; usign secret-key parser verified
+byte-for-byte against OpenWrt's own `usign -S`; package install/reinstall/removal tests;
+32 Playwright tests against the built packages; upgrade rehearsal (`test-pilot-upgrade.sh`)
+from rivendell's 0.10.0_rc1 with the Pixel's 0.10.0-pilot1 app: phone imported and kept
+syncing without re-pairing, app pause/ack/kill switch work through the core.
+
+Deviations from the plan below: the removal deadline stays in RAM like pending phones (as
+before); the core retries a not-ready adapter at boot instead of exiting (procd's respawn
+limit could otherwise leave phone sync down for an hour); the core apk is cross-compiled
+with plain Go and only packaged by the SDK (`CORE_GO=cross`, ~3 min instead of ~15).
+Footprint: aarch64 apk 2.7 MB, binary 7.5 MB; idle RSS 8.2 MB measured on x86_64 — the
+aarch64 RSS must still be measured on the router (needs explicit permission).
+
 ## Step 1 in detail
 
 ### Boundary

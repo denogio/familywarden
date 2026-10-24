@@ -6,7 +6,7 @@ set -e
 mkdir -p /var/lock /var/run/ubus /var/etc
 apk update >/dev/null 2>&1 || true
 apk add uhttpd-mod-ucode qrencode >/dev/null 2>&1
-apk add --allow-untrusted /apk/familywarden-[0-9]*.apk /apk/luci-app-familywarden-[0-9]*.apk >/dev/null
+apk add --allow-untrusted /apk/familywarden-core-[0-9]*.apk /apk/familywarden-[0-9]*.apk /apk/luci-app-familywarden-[0-9]*.apk >/dev/null
 printf '%s\n%s\n' "$PASSWORD" "$PASSWORD" | passwd root >/dev/null 2>&1
 
 # procd normally provides the "system" ubus object that LuCI's header needs
@@ -72,6 +72,9 @@ ubusd >/dev/null 2>&1 &
 sleep 1
 rpcd >/dev/null 2>&1 &
 sleep 2
+# No procd here: start the core (phone identity, Phones page) by hand
+mkdir -p /var/run/familywarden-core
+(familywardend >/tmp/core.log 2>&1 &)
 uhttpd -f -p 0.0.0.0:80 -h /www -x /cgi-bin -u /ubus -t 60 \
     -o /cgi-bin/luci -O /usr/share/ucode/luci/uhttpd.uc >/dev/null 2>&1 &
 sleep 1

@@ -57,10 +57,10 @@ required_functions=(
     "ubus_ticket"
     "ubus_reload"
     "ubus_version"
-    "cli_mast2"
-    "mast2_payload"
+    "cli_core_context"
+    "cli_core_policy"
+    "cli_core_legacy_devices"
     "cli_dns_sync"
-    "ubus_devices"
 )
 
 for func in "${required_functions[@]}"; do
@@ -81,7 +81,7 @@ ACL_FILES=("${PROJECT_ROOT}/familywarden/usr/share/rpcd/acl.d/familywarden.json"
 for method in "${ubus_methods[@]}"; do
     if ! grep -q "^  \"$method\":" "$RPCD_SCRIPT"; then
         fail "Not advertised in list: $method"
-    elif ! grep -qE "^ +$method\)$" "$RPCD_SCRIPT"; then
+    elif ! grep -qE "^ +([a-z_]+\|)*$method(\|[a-z_]+)*\)$" "$RPCD_SCRIPT"; then
         fail "Not dispatched in call: $method"
     else
         echo "✓ Endpoint: $method"

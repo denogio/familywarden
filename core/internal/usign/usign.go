@@ -6,8 +6,10 @@
 package usign
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -58,6 +60,50 @@ func (k PublicKey) Verify(sig string, message []byte) bool {
 func Sign(priv ed25519.PrivateKey, keyID [8]byte, message []byte) string {
 	raw := append([]byte("Ed"), keyID[:]...)
 	return base64.StdEncoding.EncodeToString(append(raw, ed25519.Sign(priv, message)...))
+}
+
+// SecretKey is an unencrypted usign secret key, as written by "usign -G".
+type SecretKey struct {
+	KeyID [8]byte
+	Key   ed25519.PrivateKey
+}
+
+// ParseSecretKey reads usign's secret key file ("untrusted comment" line plus
+// base64): "Ed" "BK" | kdf rounds (4) | salt (16) | checksum (8) | key id (8) | key (64).
+// Password-protected keys (kdf rounds > 0) and damaged keys are refused.
+func ParseSecretKey(file []byte) (SecretKey, error) {
+	var sk SecretKey
+	lines := strings.Split(strings.TrimSpace(string(file)), "\n")
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], "untrusted comment:") {
+		return sk, errors.New("not a usign secret key file")
+	}
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(lines[1]))
+	if err != nil || len(raw) != 104 || string(raw[:4]) != "EdBK" {
+		return sk, errors.New("not a usign Ed25519 secret key")
+	}
+	if !bytes.Equal(raw[4:8], []byte{0, 0, 0, 0}) {
+		return sk, errors.New("password-protected usign keys are not supported")
+	}
+	key := raw[40:104]
+	sum := sha512.Sum512(key)
+	if !bytes.Equal(sum[:8], raw[24:32]) {
+		return sk, errors.New("usign secret key checksum mismatch")
+	}
+	copy(sk.KeyID[:], raw[32:40])
+	sk.Key = ed25519.PrivateKey(append([]byte(nil), key...))
+	// The public half must match the private seed, or signatures would never verify.
+	if !bytes.Equal(ed25519.NewKeyFromSeed(sk.Key.Seed()), sk.Key) {
+		return SecretKey{}, errors.New("inconsistent usign secret key")
+	}
+	return sk, nil
+}
+
+// Sign signs message the way "usign -S" does; returns the base64 signature line.
+func (sk SecretKey) Sign(message []byte) string { return Sign(sk.Key, sk.KeyID, message) }
+
+// Public returns the matching public key in usign text form.
+func (sk SecretKey) Public() string {
+	return Format(sk.Key.Public().(ed25519.PublicKey), sk.KeyID)
 }
 
 // Format encodes a public key in usign's text form.

@@ -26,22 +26,25 @@ uci set familywarden.f_down.profile=fixture
 uci set familywarden.f_down.days='mon fri'
 uci set familywarden.f_down.start='21:30'
 uci set familywarden.f_down.stop='07:00'
-uci set familywarden.dev_fw_fixture=device
-uci set familywarden.dev_fw_fixture.id='fw-fixture'
-uci set familywarden.dev_fw_fixture.name='Example phone'
-uci set familywarden.dev_fw_fixture.profile=fixture
-uci set familywarden.dev_fw_fixture.administrator=0
-uci set "familywarden.dev_fw_fixture.pubkey=$key"
 uci commit familywarden
 "$BIN" reload >/dev/null
+MAST=/src/familywarden/www-familywarden/cgi-bin/mast
+enc() { printf '%s' "$1" | sed 's/+/%2B/g; s|/|%2F|g; s/=/%3D/g'; }
 printf 'familywarden-sync-v2\nfw-fixture\n%s\n' "$nonce" > /tmp/f-2.msg
 printf 'familywarden-sync-v3\nfw-fixture\n%s\n-\n' "$nonce" > /tmp/f-3.msg
 printf 'familywarden-sync-caps-v1\nfw-fixture\n%s\n-\napps-v1,screen-time-v1\n' "$nonce" > /tmp/f-c.msg
 for i in 2 3 c; do usign -S -m "/tmp/f-$i.msg" -s /tmp/phoneD.key -x "/tmp/f-$i.sig"; done
-"$BIN" mast2 fw-fixture "$nonce" "$key" "$(sed -n 2p /tmp/f-2.sig)" Fixture "$(sed -n 2p /tmp/f-3.sig)" - apps-v1,screen-time-v1 "$(sed -n 2p /tmp/f-c.sig)" > /tmp/f-body
+base="device=fw-fixture&nonce=$nonce&key=$(enc "$key")&sig=$(enc "$(sed -n 2p /tmp/f-2.sig)")&sig3=$(enc "$(sed -n 2p /tmp/f-3.sig)")&applied=-&name=Fixture"
+body() { QUERY_STRING="$1" sh "$MAST" | sed '1,/^$/d'; }
+# Enroll through the core like a real phone: pending -> approved with the compared fingerprint.
+body "$base" >/dev/null
+fpr=$(printf '%s' "$key" | sha256sum | cut -d' ' -f1)
+echo "{\"device\":\"fw-fixture\",\"profile\":\"fixture\",\"name\":\"Example phone\",\"administrator\":\"0\",\"fingerprint\":\"$fpr\"}" \
+    | "$BIN" call device_approve | grep -q '"ok"' || { echo "fixture approval failed" >&2; exit 1; }
+body "$base&caps=apps-v1,screen-time-v1&sigcaps=$(enc "$(sed -n 2p /tmp/f-c.sig)")" > /tmp/f-body
 sed -n 1p /tmp/f-body > /tmp/v3-payload.sig
 printf '%s' "$(sed 1d /tmp/f-body)" > /tmp/v3-payload.json
 sed -n 2p /etc/familywarden/mast.pub > /tmp/v3-router.pub
-"$BIN" mast2 fw-fixture "$nonce" "$key" "$(sed -n 2p /tmp/f-2.sig)" Fixture "$(sed -n 2p /tmp/f-3.sig)" - '' '' > /tmp/f-refused
+body "$base" > /tmp/f-refused
 sed -n 1p /tmp/f-refused > /tmp/v3-refused.sig
 printf '%s' "$(sed 1d /tmp/f-refused)" > /tmp/v3-refused.json

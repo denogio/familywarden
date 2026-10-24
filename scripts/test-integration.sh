@@ -10,8 +10,15 @@
 if [ "$1" != "--inside" ]; then
     IMAGE="${OPENWRT_IMAGE:-openwrt/rootfs:x86-64-25.12.4}"
     REPO="$(cd "$(dirname "$0")/.." && pwd)"
-    exec docker run --rm --cap-add NET_ADMIN -v "$REPO:/src:ro" "$IMAGE" \
+    # Phone identity lives in the Go core: a static linux/amd64 build runs in the rootfs.
+    CORE_DIR=$(mktemp -d)
+    trap 'rm -rf "$CORE_DIR"' EXIT
+    if [ -n "$FW_CORE_BIN" ]; then cp "$FW_CORE_BIN" "$CORE_DIR/familywardend"
+    else (cd "$REPO/core" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o "$CORE_DIR/familywardend" ./cmd/familywardend) || exit 1
+    fi
+    docker run --rm --cap-add NET_ADMIN -v "$REPO:/src:ro" -v "$CORE_DIR:/core:ro" "$IMAGE" \
         sh /src/scripts/test-integration.sh --inside
+    exit $?
 fi
 
 # ---- Inside the OpenWrt container ----
@@ -58,6 +65,17 @@ assert_json() {
 mkdir -p /var/lock /var/etc /var/run /usr/libexec/rpcd
 cp /src/familywarden/usr/lib/rpcd/familywarden "$BIN"
 chmod 755 "$BIN"
+cp /core/familywardend /usr/sbin/familywardend
+CORE_SOCK=/var/run/familywarden-core/core.sock
+
+start_core() {
+    mkdir -p /var/run/familywarden-core
+    /usr/sbin/familywardend -data /etc/familywarden/core -socket "$CORE_SOCK" >>/tmp/core.log 2>&1 &
+    CORE_PID=$!
+    for _ in $(seq 1 100); do [ -S "$CORE_SOCK" ] && return 0; sleep 0.1; done
+    fail "core did not start: $(tail -3 /tmp/core.log)"
+}
+stop_core() { kill "$CORE_PID" 2>/dev/null; wait "$CORE_PID" 2>/dev/null; }
 
 cat > /etc/config/familywarden <<'EOF'
 config global 'settings'
@@ -122,6 +140,8 @@ config profile 'guest'
     option policy 'block'
     list device 'aa:bb:cc:00:00:05'
 EOF
+
+start_core
 
 # A LAN like a real router's (the rootfs ships no network config)
 touch /etc/config/network
@@ -571,7 +591,7 @@ assert_json "approval needs an existing profile" "$(call device_approve "{\"devi
 assert_json "approval refuses an unseen fingerprint" "$(call device_approve '{"device":"fw-a1","profile":"kid","administrator":"1","fingerprint":"0000"}')" '@.error' "pending device changed; refresh and compare fingerprint"
 assert_json "a name can't inject UCI commands" "$(call device_approve "{\"device\":\"fw-a1\",\"profile\":\"kid\",\"administrator\":\"0\",\"fingerprint\":\"$(fpr phoneA)\",\"name\":\"x' \\n set familywarden.settings.enabled=0 #\"}")" '@.status' "ok"
 [ "$(uci -q get familywarden.settings.enabled)" = "1" ] && pass "settings untouched by a crafted name" || fail "UCI injection"
-uci delete familywarden.dev_fw_a1; uci commit familywarden; "$BIN" reload >/dev/null
+call device_delete '{"device":"fw-a1"}' >/dev/null
 v2payload phoneA fw-a1 "$N1" >/dev/null
 assert_json "approve the captain's phone" "$(call device_approve "{\"device\":\"fw-a1\",\"profile\":\"kid\",\"name\":\"Alex phone\",\"administrator\":\"1\",\"fingerprint\":\"$(fpr phoneA)\"}")" '@.status' "ok"
 payload=$(v2payload phoneA fw-a1 "$N2")
@@ -618,11 +638,8 @@ assert_json "captain's phone can't be moved during the pact" "$(call device_upda
 assert_json "captain's phone can't be deleted during the pact" "$(call device_delete '{"device":"fw-a1"}')" '@.error' "bound by Ulysses pact"
 assert_json "captain's phone can't be allowed removal during the pact" "$(call device_allow_removal '{"device":"fw-a1"}')" '@.error' "bound by Ulysses pact"
 assert_json "LuCI shows it frozen" "$(call devices)" '@.devices[@.id="fw-a1"].frozen' "true"
-uci delete familywarden.dev_fw_a1
-uci commit familywarden
-"$BIN" reload >/dev/null
 payload=$(v2payload phoneA fw-a1 "$N1")
-assert_json "deleting it in UCI changes nothing (snapshot)" "$payload" '@.binding.captain' "true"
+assert_json "the refused delete left the captain's phone bound" "$payload" '@.binding.captain' "true"
 assert_json "...and the pact still applies" "$payload" '@.pact.active' "true"
 newphone phoneD
 v2payload phoneD fw-d1 "$N1" >/dev/null
@@ -644,7 +661,8 @@ echo $(( $(date +%s) - 1 )) > /etc/familywarden/release
 "$BIN" tick
 [ -f /etc/familywarden/pact.dns ] && fail "DNS snapshot left after the pact" || pass "DNS snapshot removed with the pact"
 [ -f /tmp/familywarden.dns.dirty ] && pass "DNS resynced when the pact ends" || fail "no DNS resync after the pact"
-assert_json "the UCI deletion takes effect once the pact is over" "$(v2payload phoneA fw-a1 "$N1")" '@.enrollment' "pending"
+assert_json "after the pact the captain's phone can be removed" "$(call device_delete '{"device":"fw-a1"}')" '@.status' "ok"
+assert_json "...and is pending again" "$(v2payload phoneA fw-a1 "$N1")" '@.enrollment' "pending"
 assert_json "the phone that joined is free again" "$(v2payload phoneD fw-d1 "$N1")" '@.pact.active' "false"
 
 echo ""
@@ -760,11 +778,17 @@ mast3 phoneD fw-d1 "$N1" - "" screen-time-v1 screen-time-v1 "$N2" | head -1 | gr
 v3payload phoneD fw-d1 "$N1" "$rev" >/dev/null
 assert_json "successful compatible sync clears the refusal" "$(call devices)" '@.devices[@.id="fw-d1"].apps_error' ""
 assert_json "compatible signed acknowledgement restored" "$(call devices)" '@.devices[@.id="fw-d1"].apps_applied' "$rev"
-cp /tmp/familywarden.seen/fw-d1 /tmp/seen-backup
-printf '%s\n%s\n' "$(date +%s)" "$rev" > /tmp/familywarden.seen/fw-d1
-assert_json "pre-upgrade acknowledgement cannot imply P7b compatibility" "$(call devices)" '@.devices[@.id="fw-d1"].apps_applied' ""
-assert_json "pre-upgrade client is marked incompatible before another fetch" "$(call devices)" '@.devices[@.id="fw-d1"].apps_error' "unsupported_capabilities"
-cp /tmp/seen-backup /tmp/familywarden.seen/fw-d1
+# An acknowledgement from a client that lacks a feature the policy needs LATER must
+# not look current: legacy v3 phone acks the app-only policy, then downtime is added.
+prev=$(v3payload phoneC fw-c1 "$N1" - "" legacy | jsonfilter -e '@.apps.rev')
+v3payload phoneC fw-c1 "$N1" "$prev" "" legacy >/dev/null
+assert_json "legacy client acknowledged the app-only policy" "$(call devices)" '@.devices[@.id="fw-c1"].apps_applied' "$prev"
+uci set familywarden.parent_bed=app_downtime; uci set familywarden.parent_bed.profile=parent
+uci set familywarden.parent_bed.days=mon; uci set familywarden.parent_bed.start=21:00; uci set familywarden.parent_bed.stop=22:00
+uci commit familywarden; "$BIN" reload >/dev/null
+assert_json "old acknowledgement cannot imply P7b compatibility" "$(call devices)" '@.devices[@.id="fw-c1"].apps_applied' ""
+assert_json "incompatible client is marked before another fetch" "$(call devices)" '@.devices[@.id="fw-c1"].apps_error' "unsupported_capabilities"
+uci delete familywarden.parent_bed; uci commit familywarden; "$BIN" reload >/dev/null
 assert_json "basic app-only policy still works on legacy v3" "$(v3payload phoneC fw-c1 "$N1" - "" legacy)" '@.binding.profile_id' "parent"
 # Cannot merely append an unsigned assertion of support to an otherwise valid v3 request.
 mast3 phoneD fw-d1 "$N1" - >/dev/null
@@ -783,7 +807,7 @@ assert_json "cannot approve for its own profile" "$(call device_update '{"device
 assert_json "cannot approve for an unknown profile" "$(call device_update '{"device":"fw-c1","approves":"nobody"}')" '@.error' "approves: profile not found"
 assert_json "invalid profile ids refused" "$(call device_update '{"device":"fw-c1","approves":"kid;x"}')" '@.error' "invalid profile in approves"
 assert_json "parent may approve for a child" "$(call device_update '{"device":"fw-c1","approves":"teen kid kid"}')" '@.status' "ok"
-[ "$(uci -q get familywarden.dev_fw_c1.approves)" = "kid teen" ] && pass "approval scope stored sorted and unique" || fail "approves: $(uci -q get familywarden.dev_fw_c1.approves)"
+assert_json "approval scope stored sorted and unique" "$(call devices)" '@.devices[@.id="fw-c1"].approves' "kid teen"
 payload=$(v3payload phoneC fw-c1 "$N1" - "" legacy)
 assert_json "parent phone gets its signed scope" "$payload" '@.binding.approves[0].profile_id' "kid"
 assert_json "scope carries display names" "$payload" '@.binding.approves[0].profile_name' "Kid"
@@ -795,7 +819,7 @@ assert_json "child phone learns the parent's enrolled key" "$payload" '@.parents
 assert_json "devices lists the stored scope" "$(call devices)" '@.devices[@.id="fw-c1"].approves' "kid teen"
 assert_json "devices lists the signed scope" "$(call devices)" '@.devices[@.id="fw-c1"].approves_effective' "kid teen"
 assert_json "omitting approves on update keeps the scope" "$(call device_update '{"device":"fw-c1","name":"Taylor phone"}')" '@.status' "ok"
-[ "$(uci -q get familywarden.dev_fw_c1.approves)" = "kid teen" ] && pass "scope kept when not sent" || fail "scope lost on unrelated update"
+assert_json "scope kept when not sent" "$(call devices)" '@.devices[@.id="fw-c1"].approves' "kid teen"
 
 uci set familywarden.kid.apps_suspend_new='0'
 uci commit familywarden
@@ -824,7 +848,7 @@ assert_json "pact: unrelated edits keep an existing (suspended) scope" "$(call d
 assert_json "pact: LuCI sees the scope suspended" "$(call devices)" '@.devices[@.id="fw-c1"].approves_effective' "teen"
 assert_json "pact: resending the stored scope is allowed" "$(call device_update '{"device":"fw-c1","approves":"kid teen"}')" '@.status' "ok"
 assert_json "pact: scopes can always be reduced" "$(call device_update '{"device":"fw-c1","approves":""}')" '@.status' "ok"
-[ -z "$(uci -q get familywarden.dev_fw_c1.approves)" ] && pass "an empty scope clears parent power" || fail "scope not cleared"
+assert_json "an empty scope clears parent power" "$(call devices)" '@.devices[@.id="fw-c1"].approves' ""
 assert_json "pact: no new parent power over the captain" "$(call device_update '{"device":"fw-c1","approves":"kid"}')" '@.error' "bound by Ulysses pact"
 assert_json "pact: limit can't be raised live" "$payload" '@.apps.limits[@.package="com.roblox.client"].minutes' "30"
 assert_json "pact: downtime can't be deleted live" "$payload" '@.apps.downtime[0].start' "21:00"
@@ -902,6 +926,35 @@ assert_json "pact: always allowed frozen" "$payload" '@.apps.always_allowed[0]' 
 echo $(( $(date +%s) - 1 )) > /etc/familywarden/release
 "$BIN" tick
 assert_json "after the pact: live screen time" "$(v3payload phoneD fw-d1 "$N1" -)" '@.apps.screen.wed' "999"
+
+echo ""
+echo "=== Core: one-time import of UCI phones, restart, core down ==="
+stop_core
+mv /etc/familywarden/core/devices.json /tmp/devices.keep
+sec=dev_fw_legacy
+uci set "familywarden.$sec=device"; uci set "familywarden.$sec.id=fw-legacy"; uci set "familywarden.$sec.name=Old phone"
+uci set "familywarden.$sec.profile=parent"; uci set "familywarden.$sec.pubkey=$(sed -n 2p /tmp/phoneA.pub)"
+uci set "familywarden.$sec.administrator=1"; uci set "familywarden.$sec.approves=parent teen"
+uci set familywarden.dev_bad=device; uci set familywarden.dev_bad.id='bad id!'; uci set familywarden.dev_bad.pubkey=x
+uci commit familywarden; "$BIN" reload >/dev/null
+start_core
+out=$(call devices)
+assert_json "legacy phone imported" "$out" '@.devices[@.id="fw-legacy"].name' "Old phone"
+assert_json "import keeps administrator" "$out" '@.devices[@.id="fw-legacy"].administrator' "1"
+assert_json "import drops a self-approval scope" "$out" '@.devices[@.id="fw-legacy"].approves' "teen"
+[ "$(echo "$out" | jsonfilter -e '@.devices[*].id' | wc -l)" = 1 ] && pass "invalid legacy entry not imported" || fail "imported: $(echo "$out" | jsonfilter -e '@.devices[*].id')"
+[ -z "$(uci -q show familywarden | grep '=device$')" ] && pass "UCI phones removed after a verified import" || fail "UCI phones left"
+assert_json "imported phone keeps syncing with its key" "$(v3payload phoneA fw-legacy "$N1" -)" '@.enrollment' "approved"
+stop_core
+uci set familywarden.dev_late=device; uci set familywarden.dev_late.id=fw-late; uci set familywarden.dev_late.profile=parent
+uci set "familywarden.dev_late.pubkey=$(sed -n 2p /tmp/phoneB.pub)"; uci commit familywarden
+start_core
+[ -z "$(call devices | jsonfilter -e '@.devices[@.id="fw-late"].id')" ] && pass "import runs only once" || fail "re-imported after restart"
+assert_json "registry survives a core restart" "$(call devices)" '@.devices[@.id="fw-legacy"].profile' "parent"
+stop_core
+mast2 phoneA fw-legacy "$N1" | head -1 | grep -q '^Status: 503' && pass "core down: no reply, never an unsigned one" || fail "reply while the core is down"
+assert_json "core down: LuCI gets an explicit error" "$(call devices)" '@.error' "core not reachable"
+start_core
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

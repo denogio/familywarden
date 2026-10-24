@@ -109,8 +109,9 @@ test('Phones edits a parent scope without offering the phone its own profile', a
   await expect(row).toContainText('Some parent rights are not active now');
   await row.getByRole('button', { name: 'Edit…' }).click();
   const scope = page.getByRole('group', { name: 'May approve requests for' });
-  await expect(scope.getByRole('checkbox')).toHaveCount(1);
+  // Other tests may have added profiles: only the phone's own profile must be missing.
   await expect(scope.getByLabel('Dennis')).toBeChecked();
+  await expect(scope.getByRole('checkbox', { checked: true })).toHaveCount(1);
   await expect(scope.getByLabel('Alex')).toHaveCount(0);
   await scope.getByLabel('Dennis').uncheck();
   await page.getByRole('button', { name: 'Save', exact: true }).click();

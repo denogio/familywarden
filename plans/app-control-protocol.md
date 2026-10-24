@@ -95,6 +95,8 @@ This closes a compatibility hole: an old v3 client could ignore P7b fields and s
 acknowledge their revision. It is a prerequisite for adding parent roles, not an
 implementation of parent authorization.
 
+*Implementation (since core migration step 1): the Go core, `core/internal/identity`.*
+
 **Request.** Current clients additionally send `caps=apps-v1,screen-time-v1` and
 `sigcaps`, signed by the same enrolled phone key over these exact bytes:
 
@@ -167,8 +169,11 @@ Only in a disposable OpenWrt integration-test container; never on a router with 
 configuration. The helper uses the integration-generated fictional phone key; no
 private key is copied out.
 
+Since core migration step 1 the replies are signed by the Go core, so build it first:
+
 ```sh
-docker run -d --name fw-fixtures --cap-add NET_ADMIN \
+mkdir -p /tmp/fw-core && (cd core && CGO_ENABLED=0 go build -trimpath -o /tmp/fw-core/familywardend ./cmd/familywardend)
+docker run -d --name fw-fixtures --cap-add NET_ADMIN -v /tmp/fw-core:/core:ro \
   -v "$PWD:/src:ro" openwrt/rootfs:x86-64-25.12.4 sleep infinity
 docker exec fw-fixtures sh /src/scripts/test-integration.sh --inside
 docker exec -e FW_TEST_FIXTURES=1 fw-fixtures sh /src/test/android/generate-v3-fixtures.sh

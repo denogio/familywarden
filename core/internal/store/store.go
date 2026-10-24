@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -75,6 +76,31 @@ func readJSON(path string, v any) error {
 		return err
 	}
 	return json.Unmarshal(data, v)
+}
+
+// ReadDocument reads a top-level JSON document (e.g. "devices.json"); found is false
+// when it does not exist yet. Callers own the schema and its version field.
+func (s *Store) ReadDocument(name string, v any) (found bool, err error) {
+	if filepath.Base(name) != name || !strings.HasSuffix(name, ".json") {
+		return false, ErrInvalidID
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	err = readJSON(filepath.Join(s.dir, name), v)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// WriteDocument atomically replaces a top-level JSON document.
+func (s *Store) WriteDocument(name string, v any) error {
+	if filepath.Base(name) != name || !strings.HasSuffix(name, ".json") {
+		return ErrInvalidID
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return writeJSON(filepath.Join(s.dir, name), v)
 }
 
 // Report is one phone's cumulative usage for one day (protocol §5).

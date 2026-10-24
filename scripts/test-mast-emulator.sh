@@ -47,7 +47,8 @@ docker run -d --name "$ROUTER" --network "$NET" --cap-add NET_ADMIN \
 docker exec -e START=$([ -n "${LEGACY_APK_DIR:-}" ] && echo legacy || echo apk) "$ROUTER" sh -c '
     mkdir -p /var/lock /var/run /var/etc
     apk update >/dev/null 2>&1
-    apk add --allow-untrusted /$START/familywarden-[0-9]*.apk >/dev/null 2>&1 || { echo "router: apk add failed"; exit 1; }
+    # Releases before 0.11 have no core package; newer ones need it (phone identity)
+    apk add --allow-untrusted $(ls /$START/familywarden-core-[0-9]*.apk 2>/dev/null) /$START/familywarden-[0-9]*.apk >/dev/null 2>&1 || { echo "router: apk add failed"; exit 1; }
     cat > /etc/config/familywarden <<EOF
 config global settings
 	option enabled 1
@@ -64,6 +65,7 @@ EOF
     uci commit firewall
     fw4 start >/dev/null 2>&1
     familywarden reload >/dev/null
+    [ -x /usr/sbin/familywardend ] && { mkdir -p /var/run/familywarden-core; (familywardend >/tmp/core.log 2>&1 &); sleep 2; }
     (uhttpd -f -p 0.0.0.0:7700 -h /www-familywarden -x /cgi-bin >/dev/null 2>&1 &)
     echo "{\"until\":0}" | /usr/libexec/rpcd/familywarden call pact >/dev/null
 '
@@ -192,7 +194,7 @@ if [ -n "${LEGACY_APK_DIR:-}" ]; then
     ui legacy-unsupported
     ui_has 'Router setup needs an update'
     has no_config_tethering && fail "global captain policy applied to an unassociated phone" || pass "global v1 policy cannot restrict this phone"
-    docker exec "$ROUTER" sh -c 'apk add --allow-untrusted /apk/familywarden-[0-9]*.apk >/dev/null 2>&1 && familywarden reload >/dev/null' \
+    docker exec "$ROUTER" sh -c 'apk add --allow-untrusted /apk/familywarden-core-[0-9]*.apk /apk/familywarden-[0-9]*.apk >/dev/null 2>&1 && familywarden reload >/dev/null && mkdir -p /var/run/familywarden-core && (familywardend >/tmp/core.log 2>&1 &) && sleep 2' \
         && pass "router upgraded in place" || fail "router upgrade failed"
     broadcast io.github.denogio.familywarden.DEBUG_SYNC
 fi

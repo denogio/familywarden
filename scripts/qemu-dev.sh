@@ -120,13 +120,14 @@ cmd_deploy() {
     luci=$(ls "$dir"/luci-app-familywarden-[0-9]*.apk | sort -V | tail -1)
     local core
     core=$(ls "$dir"/familywarden-core-[0-9]*.apk 2>/dev/null | sort -V | tail -1)
-    echo "Installing $(basename "$fw") + $(basename "$luci")${core:+ + $(basename "$core")}"
+    [ -n "$core" ] || die "no familywarden-core apk in $dir (familywarden depends on it)"
+    echo "Installing $(basename "$fw") + $(basename "$luci") + $(basename "$core")"
     "${SSH[@]}" "cat > /tmp/fw.apk" < "$fw"
     "${SSH[@]}" "cat > /tmp/luci.apk" < "$luci"
-    [ -z "$core" ] || "${SSH[@]}" "cat > /tmp/core.apk" < "$core"
+    "${SSH[@]}" "cat > /tmp/core.apk" < "$core"
     "${SSH[@]}" sh -s <<EOF
 set -e
-apk add --allow-untrusted /tmp/fw.apk /tmp/luci.apk \$([ -f /tmp/core.apk ] && echo /tmp/core.apk) >/dev/null
+apk add --allow-untrusted /tmp/core.apk /tmp/fw.apk /tmp/luci.apk >/dev/null
 # Danish time, a known LuCI password
 uci set system.@system[0].zonename='Europe/Copenhagen'
 uci set system.@system[0].timezone='CET-1CEST,M3.5.0,M10.5.0/3'

@@ -21,11 +21,13 @@ fail() { echo "❌ $1"; FAILED=1; }
 pick() { ls /apk/"$1"-[0-9]*.apk | sort -V | tail -1; }
 FW=$(pick familywarden)
 LUCI=$(pick luci-app-familywarden)
-echo "Testing $(basename "$FW") + $(basename "$LUCI")"
+# familywarden depends on the core (phone identity, plans/core-migration.md)
+CORE=$(pick familywarden-core)
+echo "Testing $(basename "$FW") + $(basename "$LUCI") + $(basename "$CORE")"
 
 # Dependencies (qrencode, ...) come from the OpenWrt feeds
 apk update >/dev/null 2>&1
-apk add --allow-untrusted "$FW" "$LUCI" >/tmp/apk.log 2>&1 \
+apk add --allow-untrusted "$CORE" "$FW" "$LUCI" >/tmp/apk.log 2>&1 \
     && pass "apk install" || { fail "apk install"; cat /tmp/apk.log; }
 [ -x /usr/libexec/rpcd/familywarden ] || { fail "package not actually installed"; cat /tmp/apk.log; }
 
@@ -56,12 +58,10 @@ apk fix --allow-untrusted --reinstall familywarden >/dev/null 2>&1 \
 [ "$(count_includes)" = "1" ] && pass "reinstall keeps one include" || fail "firewall includes after reinstall: $(count_includes) (want 1)"
 uci -q get familywarden.marker >/dev/null && pass "reinstall keeps user config" || fail "reinstall overwrote /etc/config/familywarden"
 
-CORE=$(ls /apk/familywarden-core-[0-9]*.apk 2>/dev/null | sort -V | tail -1)
 if [ -n "$CORE" ]; then
     echo "--- $(basename "$CORE") (no procd here: the daemon is started by hand) ---"
     SOCK=/var/run/familywarden-core/core.sock
     st() { /usr/libexec/rpcd/familywarden-core call status; }
-    apk add --allow-untrusted "$CORE" >/tmp/apk.log 2>&1 && pass "core install" || { fail "core install"; cat /tmp/apk.log; }
     for f in /usr/sbin/familywardend /etc/init.d/familywarden-core /usr/libexec/rpcd/familywarden-core; do
         [ -x "$f" ] && pass "executable: $f" || fail "missing/not executable: $f"
     done
@@ -69,7 +69,7 @@ if [ -n "$CORE" ]; then
     [ "$(st)" = '{"error":"core not reachable","running":false}' ] && pass "status while down" || fail "status while down: $(st)"
 
     start_core() {
-        mkdir -p /var/run/familywarden-core
+        mkdir -p /var/run/familywarden-core /var/lock   # procd boot creates /var/lock on a router
         familywardend -data /etc/familywarden/core -socket "$SOCK" 2>>/tmp/core.log &
         CORE_PID=$!
         # Not just [ -S ]: after a crash the stale socket file already exists.
@@ -93,16 +93,22 @@ if [ -n "$CORE" ]; then
     touch /etc/familywarden/core/usage/marker
     apk fix --allow-untrusted --reinstall familywarden-core >/dev/null 2>&1 || apk add --allow-untrusted "$CORE" >/dev/null 2>&1
     [ -f /etc/familywarden/core/usage/marker ] && pass "reinstall keeps core data" || fail "reinstall removed core data"
+    # Phone sync goes through the core: CGI on :7700 forwards, core down = 503.
+    out=$(QUERY_STRING="device=x&nonce=y" sh /www-familywarden/cgi-bin/mast | head -1)
+    [ "$out" = "Status: 400 Bad Request" ] && pass "sync endpoint answered by the core" || fail "sync endpoint: $out"
+    echo '{}' | /usr/libexec/rpcd/familywarden call devices | grep -q '"devices"' && pass "LuCI devices via the core" || fail "devices via the core"
     kill "$CORE_PID"; wait "$CORE_PID" 2>/dev/null
     [ -e "$SOCK" ] && fail "socket left after clean stop" || pass "clean stop removes the socket"
-    apk del familywarden-core >/dev/null 2>&1
-    [ -e /usr/sbin/familywardend ] && fail "core binary left after removal" || pass "core removed"
-    [ -f /etc/familywarden/core/usage/marker ] && pass "removal keeps core data (user state)" || fail "removal deleted core data"
+    out=$(QUERY_STRING="device=x&nonce=y" sh /www-familywarden/cgi-bin/mast | head -1)
+    [ "$out" = "Status: 503 Service Unavailable" ] && pass "core down: 503, no reply" || fail "core down: $out"
 fi
 
 apk del luci-app-familywarden familywarden >/dev/null 2>&1
 [ "$(count_includes)" = "0" ] && pass "prerm removed firewall include" || fail "firewall includes after removal: $(count_includes) (want 0)"
 uci -q get uhttpd.familywarden >/dev/null && fail "uhttpd sail instance left after removal" || pass "prerm removed the sail page"
+apk del familywarden-core >/dev/null 2>&1
+[ -e /usr/sbin/familywardend ] && fail "core binary left after removal" || pass "core removed"
+[ -f /etc/familywarden/core/usage/marker ] && pass "removal keeps core data (user state)" || fail "removal deleted core data"
 
 echo ""
 [ "$FAILED" -eq 0 ] && echo "All apk checks passed!" || echo "Some apk checks FAILED"

@@ -5,11 +5,14 @@
 #
 #   scripts/test-pilot-upgrade.sh <old-router-apk> <new-router-apk> <old-app.apk> <new-app.apk> [user-app.apk]
 #
+# A familywarden-core-*.apk next to <new-router-apk> is installed with it (0.11+):
+# the upgrade then also rehearses the one-time import of the enrolled phone.
+#
 # user-app.apk: any ordinary app (e.g. test/android/install-probe fixture). With
 # apps_suspend_new=0 it must stay usable: that is what keeps a daily phone usable.
 # Release builds have no debug receivers, so everything goes through the real UI.
 set -u
-OLD_ROUTER=$(realpath "$1"); NEW_ROUTER=$(realpath "$2"); OLD_APP=$(realpath "$3"); NEW_APP=$(realpath "$4")
+OLD_ROUTER=$(realpath "$1"); NEW_ROUTER=$(realpath "$2"); NEW_CORE=$(ls "$(dirname "$NEW_ROUTER")"/familywarden-core-[0-9]*.apk 2>/dev/null | sort -V | tail -1); OLD_APP=$(realpath "$3"); NEW_APP=$(realpath "$4")
 USER_APP=${5:+$(realpath "$5")}
 SDK_IMAGE=ghcr.io/cirruslabs/android-sdk:35
 ID=$$; NET="pilot-net-$ID"; ROUTER="pilot-router-$ID"; EMU="pilot-emu-$ID"
@@ -22,7 +25,7 @@ trap cleanup EXIT
 docker network create "$NET" >/dev/null
 echo "=== Router on the old version ==="
 docker run -d --name "$ROUTER" --network "$NET" --cap-add NET_ADMIN \
-    -v "$OLD_ROUTER:/old.apk:ro" -v "$NEW_ROUTER:/new.apk:ro" openwrt/rootfs:x86-64-25.12.4 sleep infinity >/dev/null
+    -v "$OLD_ROUTER:/old.apk:ro" -v "$NEW_ROUTER:/new.apk:ro" ${NEW_CORE:+-v "$NEW_CORE:/core.apk:ro"} openwrt/rootfs:x86-64-25.12.4 sleep infinity >/dev/null
 docker exec "$ROUTER" sh -c '
     mkdir -p /var/lock /var/run /var/etc
     apk update >/dev/null 2>&1
@@ -96,7 +99,7 @@ ui; [ "$(dev seen)" != 0 ] && pass "old app syncs with old router" || fail "no s
 [ -n "$USER_APP" ] && { $ADB install /user.apk >/dev/null && pass "ordinary user app installed"; USER_PKG=io.github.denogio.familywarden.fixture; }
 
 echo "=== Upgrade router, then phone (in place, same key) ==="
-docker exec "$ROUTER" sh -c 'apk add --allow-untrusted /new.apk >/dev/null 2>&1 && familywarden reload >/dev/null' \
+docker exec "$ROUTER" sh -c 'apk add --allow-untrusted $([ -f /core.apk ] && echo /core.apk) /new.apk >/dev/null 2>&1 && familywarden reload >/dev/null && { [ ! -x /usr/sbin/familywardend ] || { mkdir -p /var/run/familywarden-core; (familywardend >/tmp/core.log 2>&1 &); sleep 2; }; }' \
     && pass "router upgraded: $(docker exec "$ROUTER" apk list -I familywarden | sed 's/ .*//')" || fail "router upgrade"
 ui; echo "$UI" | grep -q 'Pair with your router' && fail "old app lost pairing on router upgrade" || pass "old app still paired after router upgrade"
 $ADB install -r /new.apk >/dev/null && pass "app upgraded in place ($(version))" || fail "app upgrade (signature/version?)"

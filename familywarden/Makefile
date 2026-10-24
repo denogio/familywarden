@@ -6,7 +6,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=familywarden
-PKG_VERSION:=0.10.0_rc1
+PKG_VERSION:=0.11.0_rc1
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=denogio <dennis@hojgaard.me>
@@ -18,7 +18,7 @@ define Package/familywarden
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=OpenWrt Parental Control Daemon
-  DEPENDS:=+firewall4 +nftables +rpcd +uhttpd +qrencode +jsonfilter +uclient-fetch +ucode +ucode-mod-fs
+  DEPENDS:=+familywarden-core +firewall4 +nftables +rpcd +uhttpd +qrencode +jsonfilter +uclient-fetch +ucode +ucode-mod-fs
   URL:=https://github.com/denogio/familywarden
   PKGARCH:=all
 endef

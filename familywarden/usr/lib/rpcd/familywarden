@@ -52,11 +52,9 @@ FW_EFFECTIVE_DIR="/var/run/familywarden"
 FW_MAST_KEY="$FW_PERSIST/mast.key"
 FW_MAST_PUB="$FW_PERSIST/mast.pub"
 FW_MAST_SEEN="/tmp/familywarden.mast"
-# FamilyWarden app (v2): phones enroll with their own usign key and wait in
-# RAM until approved in LuCI; approved phones are UCI "device" sections.
-FW_PENDING="/tmp/familywarden.pending"
-FW_SEEN_DIR="/tmp/familywarden.seen"
-FW_PENDING_MAX=10
+# Go core (phone identity, plans/core-migration.md) and its local socket
+FW_CORE_BIN="/usr/sbin/familywardend"
+FW_CORE_SOCK="/var/run/familywarden-core/core.sock"
 # AdGuard Home management (see "DNS: AdGuard Home sync")
 FW_AGH_AUTH="$FW_PERSIST/agh.auth"
 FW_AGH_OWNED="$FW_PERSIST/agh.owned"
@@ -232,21 +230,6 @@ _frag_always() {
     echo "	list always_allowed $(_q "$1")"
 }
 
-# An approved phone bound to the profile being snapshotted: frozen with it, so
-# moving or deleting the captain's phone in LuCI is no way out of a pact.
-_frag_phone() {
-    local s="$1" sp o v
-    config_get sp "$s" profile ""
-    [ "$sp" = "$_frag_profile" ] || return
-    config_get v "$s" id ""
-    [ -n "$v" ] || return
-    echo "config device '$s'"
-    for o in id name profile pubkey administrator approves; do
-        config_get v "$s" "$o" ""
-        [ -n "$v" ] && echo "	option $o $(_q "$v")"
-    done
-}
-
 _frag_sched_line() {
     local s="$1" sp days start stop
     config_get sp "$s" profile ""
@@ -272,7 +255,6 @@ profile_fragment() {
     config_list_foreach "$p" always_allowed _frag_always | sort
     config_list_foreach "$p" device _frag_dev | sort
     _frag_profile="$p"
-    config_foreach _frag_phone device
     config_foreach _frag_sched_line schedule | sort | while IFS='|' read -r days start stop; do
         n=$((n + 1))
         echo "config schedule '${p}_pact${n}'"
@@ -1678,72 +1660,12 @@ ubus_mast() {
     json_dump
 }
 
-# ---- FamilyWarden app (v2): enrolled phones ----
+# ---- FamilyWarden app: enrolled phones ----
 #
-#   GET /cgi-bin/mast?device=<id>&nonce=<64 hex>&key=<usign pubkey>&sig=<usign sig>[&name=<model>]
-#
-# The phone signs "familywarden-sync-v2\n<id>\n<nonce>\n" with its own usign
-# (Ed25519) key. Unknown or re-keyed phones wait in RAM ($FW_PENDING) until an
-# administrator compares the key fingerprint in LuCI and approves them
-# (device_approve), which writes a UCI "device" section. Only an approved
-# id+key pair gets a binding and policy. The reply echoes the nonce and is
-# signed with the router's Mast key, so the phone accepts it for exactly the
-# request it made. A device id alone grants nothing.
-
-_valid_device_id() {
-    case "$1" in ''|*[!A-Za-z0-9-]*) return 1 ;; esac
-    [ "${#1}" -le 80 ]
-}
-
-# base64 of an exact length (usign public key = 56, signature = 100)
-_valid_b64() {
-    case "$1" in ''|*[!A-Za-z0-9+/=]*) return 1 ;; esac
-    [ "${#1}" -eq "$2" ]
-}
-
-# UCI section name for a device id
-_dev_section() {
-    echo "dev_$(echo "$1" | tr '-' '_')"
-}
-
-# Full-key SHA-256 for enrollment. usign -F only reports a caller-chosen key ID,
-# so it is not safe for comparing an incoming phone to the administrator's screen.
-_key_fingerprint() {
-    local t
-    t=$(mktemp) || return 1
-    printf 'untrusted comment: phone\n%s\n' "$1" > "$t"
-    if usign -F -p "$t" >/dev/null 2>&1; then
-        printf '%s' "$1" | sha256sum | cut -d' ' -f1
-    fi
-    rm -f "$t"
-}
-
-# $1 key, $2 signature, $3 device id, $4 nonce [, $5 applied revision [, $6 capabilities]]
-_phone_sig_ok() {
-    local d rc
-    d=$(mktemp -d) || return 1
-    printf 'untrusted comment: phone\n%s\n' "$1" > "$d/pub"
-    printf 'untrusted comment: phone\n%s\n' "$2" > "$d/sig"
-    if [ $# -ge 6 ]; then
-        printf 'familywarden-sync-caps-v1\n%s\n%s\n%s\n%s\n' "$3" "$4" "$5" "$6" > "$d/msg"
-    elif [ $# -ge 5 ]; then
-        printf 'familywarden-sync-v3\n%s\n%s\n%s\n' "$3" "$4" "$5" > "$d/msg"
-    else
-        printf 'familywarden-sync-v2\n%s\n%s\n' "$3" "$4" > "$d/msg"
-    fi
-    usign -V -q -m "$d/msg" -p "$d/pub" -x "$d/sig" 2>/dev/null
-    rc=$?
-    rm -rf "$d"
-    return $rc
-}
-
-# Canonical comma-separated names (or '-' for none): bounded, sorted and unique.
-_valid_caps() {
-    [ "$1" = "-" ] && return 0
-    [ "${#1}" -le 527 ] || return 1
-    printf '%s\n' "$1" | grep -qE '^[a-z][a-z0-9-]{0,31}(,[a-z][a-z0-9-]{0,31}){0,15}$' || return 1
-    [ "$1" = "$(printf '%s\n' "$1" | tr ',' '\n' | LC_ALL=C sort -u | tr '\n' ',' | sed 's/,$//')" ]
-}
+# Phone identity (enrollment, device registry, request verification and signed
+# replies) lives in the Go core since core migration step 1; cgi-bin/mast and the
+# device ubus methods forward to it. The shell only supplies the policy content
+# below (plans/core-migration.md). Remove this with step 3.
 
 # P7b semantics must never be silently ignored by pre-P7b v3 clients.
 _apps_requires() {
@@ -1756,268 +1678,6 @@ _apps_requires() {
     fi
 }
 
-_caps_cover() {
-    local required supported="$1"
-    # Legacy v3 signatures identify the original app-control implementation only.
-    [ -z "$supported" ] && [ "$3" = 3 ] && supported=apps-v1
-    for required in $2; do
-        case ",$supported," in *",$required,"*) ;; *) return 1 ;; esac
-    done
-}
-
-# Sets _dev_sec to the section of an approved device id ("" if none). Needs a
-# loaded config; in the effective config a pact-frozen phone comes from the snapshot.
-_find_dev() {
-    _dev_sec=""
-    _dev_want="$1"
-    config_foreach _find_dev_cb device
-}
-
-_find_dev_cb() {
-    local id
-    config_get id "$1" id ""
-    [ "$id" = "$_dev_want" ] && _dev_sec="$1"
-}
-
-# Device associations remain frozen for the whole pact, including amendment windows.
-# Needs fw_load.
-_dev_frozen() {
-    local p
-    config_get p "$1" profile ""
-    [ -n "$p" ] && [ "$p" = "$(pact_captain)" ]
-}
-
-# Remember an unapproved phone (RAM only, at most $FW_PENDING_MAX, oldest dropped)
-_pending_add() {
-    local f="$FW_PENDING/$1" first
-    mkdir -p "$FW_PENDING"
-    chmod 700 "$FW_PENDING"
-    if [ -f "$f" ]; then
-        first=$(sed -n 3p "$f")
-    else
-        while [ "$(ls "$FW_PENDING" | wc -l)" -ge "$FW_PENDING_MAX" ]; do
-            rm -f "$FW_PENDING/$(ls -tr "$FW_PENDING" | head -1)"
-        done
-    fi
-    printf '%s\n%s\n%s\n%s\n' "$2" "$3" "${first:-$(date +%s)}" "$(date +%s)" > "$f.new"
-    mv "$f.new" "$f"
-}
-
-# v2/v3 payload for one phone. $1 device id, $2 nonce, $3 approved section ("" =
-# pending), $4 wire version, $5 authenticated capabilities. Needs fw_load.
-mast2_payload() {
-    local dev="$1" sec="$3" ver="${4:-2}" caps="$5" required cap profile="" ptype="" pname admin captain is_cap=0 rem now tz
-    now=$(date +%s)
-    json_init
-    json_add_int "v" "$ver"
-    json_add_int "server_time" "$now"
-    json_add_string "nonce" "$2"
-    json_add_string "device" "$dev"
-    if [ -n "$sec" ]; then
-        config_get profile "$sec" profile ""
-        [ -n "$profile" ] && config_get ptype "$profile" TYPE ""
-    fi
-    if [ "$ptype" != "profile" ]; then
-        # Not approved yet, or its profile is gone: no binding, no policy
-        json_add_string "enrollment" "pending"
-        json_dump
-        return
-    fi
-    json_add_string "enrollment" "approved"
-    required=$(_apps_requires "$profile")
-    if [ "$ver" = 3 ] || [ -n "$required" ]; then
-        json_add_array "requires"
-        for cap in $required; do json_add_string "" "$cap"; done
-        json_close_array
-        if ! _caps_cover "$caps" "$required" "$ver"; then
-            # Signed refusal, bound to this nonce/device. No partially usable policy.
-            json_add_string "error" "unsupported_capabilities"
-            json_dump
-            return
-        fi
-    fi
-    tz=$(uci -q get system.@system[0].zonename)
-    case "$tz" in ''|*[!A-Za-z0-9_+/-]*) ;; *) json_add_string "timezone" "$tz" ;; esac
-    config_get pname "$profile" name "$profile"
-    config_get admin "$sec" administrator "0"
-    rem=$(state_get "${sec}.remove_until" 0)
-    case "$rem" in ''|*[!0-9]*) rem=0 ;; esac
-    captain=$(_mast_captain_now)
-    [ -n "$captain" ] && [ "$captain" = "$profile" ] && is_cap=1
-    json_add_object "binding"
-    json_add_string "device_id" "$dev"
-    json_add_string "profile_id" "$profile"
-    json_add_string "profile_name" "$pname"
-    json_add_boolean "captain" "$is_cap"
-    json_add_boolean "administrator" "$([ "$admin" = "1" ] && echo 1 || echo 0)"
-    # Administrators may remove their own app; others only within an
-    # administrator's one-hour approval (device_allow_removal). The phone still
-    # refuses while an applicable pact is active.
-    json_add_boolean "can_self_remove" "$({ [ "$admin" = "1" ] || [ "$rem" -gt "$now" ]; } && echo 1 || echo 0)"
-    # v3: profiles this phone may approve requests for (informational until grants exist)
-    if [ "$ver" = 3 ]; then
-        local p pn
-        json_add_array "approves"
-        for p in $(_effective_approves "$sec"); do
-            config_get pn "$p" name "$p"
-            json_add_object ""
-            json_add_string "profile_id" "$p"
-            json_add_string "profile_name" "$pn"
-            json_close_object
-        done
-        json_close_array
-    fi
-    json_close_object
-    # v3: parent keys a child phone may trust for grants. None while a pact binds it.
-    if [ "$ver" = 3 ]; then
-        _parents_for="$profile"
-        _parents_n=0
-        json_add_array "parents"
-        config_foreach _json_parents_cb device
-        json_close_array
-    fi
-    # Only the captain's phones are bound by the pact
-    if [ "$is_cap" = "1" ]; then
-        json_add_string "captain" "$captain"
-        _json_pact_rules "$captain"
-    else
-        json_add_string "captain" ""
-        _json_pact_rules ""
-    fi
-    _json_dns "$profile"
-    [ "$ver" = "3" ] && _json_apps "$profile"
-    json_dump
-}
-
-# Signed v2/v3 reply for the CGI. Exit 2 = malformed request, 3 = bad phone signature.
-# A v3 phone sends both signatures (sig over the v2 message, so an old router
-# still answers v2) plus sig3 over the v3 message, which also binds the app
-# policy revision it has applied ("-" = none). sigcaps separately authenticates
-# the bounded capability list without changing what older routers verify.
-cli_mast2() {
-    local dev="$1" nonce="$2" key="$3" sig="$4" sig3="$6" applied="$7" caps="$8" sigcaps="$9" ver=2 name known sec="" tmp profile required error=""
-    name=$(printf '%s' "$5" | tr -cd 'A-Za-z0-9._-' | cut -c1-40)
-    _valid_device_id "$dev" || return 2
-    case "$nonce" in *[!0-9a-f]*) return 2 ;; esac
-    [ "${#nonce}" -eq 64 ] || return 2
-    _valid_b64 "$key" 56 && _valid_b64 "$sig" 100 || return 2
-    if [ -n "$sig3" ]; then
-        _valid_b64 "$sig3" 100 || return 2
-        case "$applied" in -) ;; *[!0-9a-f]*|'') return 2 ;; *) [ "${#applied}" -eq 16 ] || return 2 ;; esac
-        _phone_sig_ok "$key" "$sig3" "$dev" "$nonce" "$applied" || return 3
-        ver=3
-    fi
-    if [ -n "$caps" ] || [ -n "$sigcaps" ]; then
-        [ "$ver" = 3 ] && _valid_caps "$caps" && _valid_b64 "$sigcaps" 100 || return 2
-        _phone_sig_ok "$key" "$sigcaps" "$dev" "$nonce" "$applied" "$caps" || return 3
-    fi
-    _phone_sig_ok "$key" "$sig" "$dev" "$nonce" || return 3
-    mast_keys || return 1
-    (
-        # Also serializes pending/seen writes against approval and other requests.
-        flock -x 200 || return 1
-        fw_load
-        _find_dev "$dev"
-        if [ -n "$_dev_sec" ]; then
-            config_get known "$_dev_sec" pubkey ""
-            [ "$known" = "$key" ] && sec="$_dev_sec"
-        fi
-        if [ -n "$sec" ]; then
-            rm -f "$FW_PENDING/$dev"
-            mkdir -p "$FW_SEEN_DIR"
-            config_get profile "$sec" profile ""
-            required=$(_apps_requires "$profile")
-            if ! _caps_cover "$caps" "$required" "$ver"; then
-                error=unsupported_capabilities
-                applied=-
-            fi
-            # Fetch, applied revision, authenticated capability names, last refusal.
-            printf '%s\n%s\n%s\n%s\n' "$(date +%s)" "$([ "$ver" = 3 ] && [ "$applied" != "-" ] && echo "$applied")" "$caps" "$error" > "$FW_SEEN_DIR/$dev"
-        else
-            _pending_add "$dev" "$key" "$name"
-        fi
-        tmp=$(mktemp) || return 1
-        mast2_payload "$dev" "$nonce" "$sec" "$ver" "$caps" | tr -d '\n' > "$tmp"
-        usign -S -m "$tmp" -s "$FW_MAST_KEY" -x "$tmp.sig" || { rm -f "$tmp" "$tmp.sig"; return 1; }
-        sed -n 2p "$tmp.sig"
-        cat "$tmp"
-        rm -f "$tmp" "$tmp.sig"
-    ) 200>"$FW_LOCK"
-}
-
-_json_device() {
-    local s="$1" v now
-    now=$(date +%s)
-    json_add_object ""
-    config_get v "$s" id ""
-    json_add_string "id" "$v"
-    json_add_string "seen" "$(sed -n 1p "$FW_SEEN_DIR/$v" 2>/dev/null | grep . || echo 0)"
-    # Derive compatibility now too: pre-upgrade two-line seen files must not make
-    # an old acknowledgement look current before the phone's next sync.
-    local caps cap applied error required profile
-    caps=$(sed -n 3p "$FW_SEEN_DIR/$v" 2>/dev/null)
-    applied=$(sed -n 2p "$FW_SEEN_DIR/$v" 2>/dev/null)
-    error=$(sed -n 4p "$FW_SEEN_DIR/$v" 2>/dev/null)
-    config_get profile "$s" profile ""
-    required=$(_apps_requires "$profile")
-    if [ -z "$required" ]; then error=""
-    elif [ -n "$applied" ] && ! _caps_cover "$caps" "$required" 3; then
-        applied=""
-        error=unsupported_capabilities
-    fi
-    json_add_string "apps_applied" "$applied"
-    json_add_string "apps_error" "$error"
-    json_add_array "capabilities"
-    for cap in $(printf '%s' "$caps" | tr ',' ' '); do [ "$cap" = "-" ] || json_add_string "" "$cap"; done
-    json_close_array
-    # Stored scope (for editing) and what is signed now (a pact suspends power over the captain)
-    config_get v "$s" approves ""
-    json_add_string "approves" "$v"
-    json_add_string "approves_effective" "$(_effective_approves "$s")"
-    for v in name profile administrator; do
-        config_get "_v" "$s" "$v" ""
-        json_add_string "$v" "$_v"
-    done
-    config_get v "$s" profile ""
-    json_add_string "apps_rev" "$(_apps_rev "$v")"
-    config_get v "$s" pubkey ""
-    json_add_string "fingerprint" "$(_key_fingerprint "$v")"
-    v=$(state_get "${s}.remove_until" 0)
-    case "$v" in ''|*[!0-9]*) v=0 ;; esac
-    [ "$v" -gt "$now" ] || v=0
-    json_add_int "remove_until" "$v"
-    json_add_boolean "frozen" "$(_dev_frozen "$s" && echo 1 || echo 0)"
-    json_close_object
-}
-
-# LuCI: approved phones (effective config, so a pact-frozen phone shows as
-# frozen with its snapshot binding) and phones waiting for approval
-ubus_devices() {
-    local f id
-    (
-        flock -s 200 || return 1
-        fw_load
-        json_init
-        json_add_array "devices"
-        config_foreach _json_device device
-        json_close_array
-        json_add_array "pending"
-        for f in "$FW_PENDING"/*; do
-            [ -f "$f" ] || continue
-            id=${f##*/}
-            json_add_object ""
-            json_add_string "id" "$id"
-            json_add_string "fingerprint" "$(_key_fingerprint "$(sed -n 1p "$f")")"
-            json_add_string "name" "$(sed -n 2p "$f")"
-            json_add_int "first_seen" "$(sed -n 3p "$f")"
-            json_add_int "last_seen" "$(sed -n 4p "$f")"
-            json_close_object
-        done
-        json_close_array
-        json_dump
-    ) 200>"$FW_LOCK"
-}
-
 _json_error() {
     json_init
     json_add_string "error" "$1"
@@ -2025,219 +1685,108 @@ _json_error() {
     return 1
 }
 
-# Append an approved phone to a running pact's snapshot (adding a phone to the
-# captain only strengthens the pact). Needs the exclusive lock.
-_snap_add_device() {
-    local sec="$1" id="$2" name="$3" profile="$4" key="$5" admin="$6" approves="$7"
-    pact_active && [ "$profile" = "$(pact_get captain)" ] && [ -s "$FW_PACT_SNAP" ] || return 0
-    {
-        echo "config device '$sec'"
-        echo "	option id $(_q "$id")"
-        [ -n "$name" ] && echo "	option name $(_q "$name")"
-        echo "	option profile $(_q "$profile")"
-        echo "	option pubkey $(_q "$key")"
-        echo "	option administrator $(_q "$admin")"
-        [ -n "$approves" ] && echo "	option approves $(_q "$approves")"
-    } >> "$FW_PACT_SNAP"
+# ---- Interim OpenWrt adapter for the Go core (plans/core-migration.md, step 1) ----
+#
+# The core owns phone identity and signs replies; these commands only report what
+# the shell still owns: profiles, the pact and the policy content. Each prints one
+# JSON object. Removed when profiles/pacts move to the core (step 3).
+
+_core_profile_cb() {
+    local name
+    config_get name "$1" name "$1"
+    json_add_object "$1"
+    json_add_string "name" "$name"
+    json_add_string "apps_rev" "$(_apps_rev "$1")"
+    _core_requires "$1"
+    json_close_object
 }
 
-# Parent approval scope: child profiles this phone may later approve requests for.
-# Prints the canonical sorted list, or an error on stderr. Needs fw_load and the lock.
-# Never the phone's own profile (no self-approval) and never a pact-bound captain:
-# adding parent power over the captain during a pact would be a way out of it.
-_valid_approves() {
-    local own="$1" list="$2" p t n=0 captain=""
-    # $3 = 1: an unchanged existing scope; it stays stored, signing suspends it (_effective_approves)
-    [ "$3" = 1 ] || captain=$(pact_captain)
-    for p in $list; do
-        n=$((n + 1))
-        case "$p" in *[!A-Za-z0-9_-]*) echo "invalid profile in approves" >&2; return 1 ;; esac
-        [ "${#p}" -le 64 ] || { echo "invalid profile in approves" >&2; return 1; }
-        config_get t "$p" TYPE ""
-        [ "$t" = profile ] || { echo "approves: profile not found" >&2; return 1; }
-        [ "$p" != "$own" ] || { echo "a phone cannot approve for its own profile" >&2; return 1; }
-        # Only NEW power over a pact-bound captain is refused; an already stored entry
-        # may be resent (LuCI saves the whole form) and stays suspended while signing.
-        case " $4 " in *" $p "*) ;; *)
-            [ -z "$captain" ] || [ "$p" != "$captain" ] || { echo "bound by Ulysses pact" >&2; return 1; } ;;
-        esac
-    done
-    [ "$n" -le 16 ] || { echo "too many approved profiles" >&2; return 1; }
-    printf '%s\n' $list | LC_ALL=C sort -u | tr '\n' ' ' | sed 's/ $//'
+_core_requires() {
+    local cap
+    json_add_array "requires"
+    for cap in $(_apps_requires "$1"); do json_add_string "" "$cap"; done
+    json_close_array
 }
 
-# Effective scope for signing now: existing profiles, not own, not the pact captain.
-_effective_approves() {
-    local sec="$1" own list p t captain out=""
-    config_get own "$sec" profile ""
-    config_get list "$sec" approves ""
-    captain=$(pact_captain)
-    for p in $list; do
-        config_get t "$p" TYPE ""
-        [ "$t" = profile ] && [ "$p" != "$own" ] && { [ -z "$captain" ] || [ "$p" != "$captain" ]; } || continue
-        out="$out $p"
-    done
-    echo $out
+_core_context_fields() {
+    local tz
+    tz=$(uci -q get system.@system[0].zonename)
+    case "$tz" in ''|*[!A-Za-z0-9_+/-]*) tz="" ;; esac
+    json_add_string "timezone" "$tz"
+    json_add_string "pact_captain" "$(pact_captain)"
+    json_add_object "profiles"
+    config_foreach _core_profile_cb profile
+    json_close_object
 }
 
-_json_parents_cb() {
-    local s="$1" id name key p
-    [ "$_parents_n" -lt 16 ] || return 0
-    for p in $(_effective_approves "$s"); do
-        [ "$p" = "$_parents_for" ] || continue
-        config_get id "$s" id ""
-        config_get name "$s" name ""
-        config_get key "$s" pubkey ""
-        [ -n "$id" ] && _valid_b64 "$key" 56 || return 0
-        json_add_object ""
-        json_add_string "device_id" "$id"
-        json_add_string "name" "${name:-$id}"
-        json_add_string "pubkey" "$key"
-        json_close_object
-        _parents_n=$((_parents_n + 1))
-    done
-}
-
-# Shared by approve/update: write a device section unless the phone is frozen
-# by a pact. $1 id, $2 profile, $3 name, $4 administrator, $5 key ("" = keep),
-# $6 fingerprint, $7 approves (space-separated profiles), $8 1 = keep current approves
-_dev_write() {
-    local id="$1" profile="$2" name="$3" admin="$4" key="$5" approves="$7" sec ptype old err
-    _valid_device_id "$id" || { _json_error "invalid device"; return 1; }
-    case "$admin" in 0|1) ;; *) _json_error "administrator must be 0 or 1"; return 1 ;; esac
-    name=$(printf '%s' "$name" | tr -d '\r\n' | cut -c1-64)
-    case "$profile" in ''|*[!A-Za-z0-9_-]*) _json_error "invalid profile"; return 1 ;; esac
-    [ "${#profile}" -le 64 ] || { _json_error "invalid profile"; return 1; }
-    config_load familywarden
-    config_get ptype "$profile" TYPE ""
-    [ "$ptype" = "profile" ] || { _json_error "profile not found"; return 1; }
+cli_core_context() {
     (
-        flock -x 200 || return 1
+        flock -s 200 || exit 1
         fw_load
-        _find_dev "$id"
-        if [ -n "$_dev_sec" ] && _dev_frozen "$_dev_sec"; then
-            _json_error "bound by Ulysses pact"
-            return 1
-        fi
-        sec=$(_dev_section "$id")
-        if [ -n "$key" ]; then
-            if [ "$6" != "$(_key_fingerprint "$key")" ] ||
-               [ "$(sed -n 1p "$FW_PENDING/$id" 2>/dev/null)" != "$key" ]; then
-                _json_error "pending device changed; refresh and compare fingerprint"
-                return 1
-            fi
-        fi
-        if [ -z "$key" ]; then
-            key=$(uci -q get "familywarden.$sec.pubkey")
-            [ -n "$key" ] || { _json_error "device not found"; return 1; }
-        fi
-        old=$(uci -q get "familywarden.$sec.approves")
-        [ "$8" = 1 ] && approves=$old
-        approves=$(_valid_approves "$profile" "$approves" "$8" "$old" 2>/tmp/familywarden.approves.err) || {
-            err=$(cat /tmp/familywarden.approves.err); rm -f /tmp/familywarden.approves.err
-            _json_error "$err"
-            return 1
-        }
-        rm -f /tmp/familywarden.approves.err
-        # Values are arguments, never interpolated as UCI batch commands.
-        uci set "familywarden.$sec=device" &&
-        uci set "familywarden.$sec.id=$id" &&
-        uci set "familywarden.$sec.name=$name" &&
-        uci set "familywarden.$sec.profile=$profile" &&
-        uci set "familywarden.$sec.pubkey=$key" &&
-        uci set "familywarden.$sec.administrator=$admin" &&
-        if [ -n "$approves" ]; then uci set "familywarden.$sec.approves=$approves"
-        else uci -q delete "familywarden.$sec.approves" || true; fi &&
-        uci commit familywarden || { _json_error "saving device failed"; return 1; }
-        _snap_add_device "$sec" "$id" "$name" "$profile" "$key" "$admin" "$approves"
-        rm -f "$FW_PENDING/$id"
-        logger -t familywarden "device $id approved for profile $profile (administrator=$admin, approves=${approves:-none})"
-    ) 200>"$FW_LOCK" || return 1
-    compile_and_apply >/dev/null || { _json_error "compile failed"; return 1; }
-    json_init
-    json_add_string "status" "ok"
-    json_dump
-}
-
-# Approve a pending phone, or replace an approved phone's key with the pending one
-ubus_device_approve() {
-    local id="$1" key
-    _valid_device_id "$id" && [ -f "$FW_PENDING/$id" ] || { _json_error "no pending device"; return 1; }
-    key=$(sed -n 1p "$FW_PENDING/$id")
-    _valid_b64 "$key" 56 || { _json_error "invalid key"; return 1; }
-    _dev_write "$id" "$2" "$3" "${4:-0}" "$key" "$5" "$6" 0
-}
-
-# $5 approves, $6 1 when the caller sent approves (an empty list clears it)
-ubus_device_update() {
-    local id="$1" profile="$2" name="$3" admin="$4" sec
-    _valid_device_id "$id" || { _json_error "invalid device"; return 1; }
-    sec=$(_dev_section "$id")
-    [ -n "$profile" ] || profile=$(uci -q get "familywarden.$sec.profile")
-    [ -n "$name" ] || name=$(uci -q get "familywarden.$sec.name")
-    [ -n "$admin" ] || admin=$(uci -q get "familywarden.$sec.administrator")
-    _dev_write "$id" "$profile" "$name" "${admin:-0}" "" "" "$5" "$([ "$6" = 1 ] && echo 0 || echo 1)"
-}
-
-# Rejecting a pending key must never delete an approved device with the same ID.
-ubus_device_reject() {
-    _valid_device_id "$1" || { _json_error "invalid device"; return 1; }
-    (
-        flock -x 200 || return 1
-        rm -f "$FW_PENDING/$1"
         json_init
-        json_add_string "status" "ok"
+        _core_context_fields
         json_dump
     ) 200>"$FW_LOCK"
 }
 
-# Delete an approved phone (refused while pact-frozen).
-ubus_device_delete() {
-    local id="$1" sec
-    _valid_device_id "$id" || { _json_error "invalid device"; return 1; }
-    rm -f "$FW_PENDING/$id"
-    sec=$(_dev_section "$id")
+# Policy content of one profile for a phone reply, plus the context it was
+# computed with (one consistent snapshot under one lock).
+cli_core_policy() {
+    local profile="$1" ver="$2" captain
+    case "$profile" in ''|*[!A-Za-z0-9_-]*) echo '{"error":"invalid profile"}'; return 1 ;; esac
+    case "$ver" in 2|3) ;; *) echo '{"error":"invalid version"}'; return 1 ;; esac
     (
-        flock -x 200 || return 1
+        flock -s 200 || exit 1
         fw_load
-        _find_dev "$id"
-        if [ -n "$_dev_sec" ] && _dev_frozen "$_dev_sec"; then
-            _json_error "bound by Ulysses pact"
-            return 1
-        fi
-        if uci -q get "familywarden.$sec" >/dev/null; then
-            uci delete "familywarden.$sec"
-            uci commit familywarden
-            logger -t familywarden "device $id removed"
-        fi
-        state_set "${sec}.remove_until" ""
-    ) 200>"$FW_LOCK" || return 1
-    compile_and_apply >/dev/null
-    json_init
-    json_add_string "status" "ok"
-    json_dump
+        json_init
+        json_add_object "context"
+        _core_context_fields
+        json_close_object
+        captain=$(_mast_captain_now)
+        [ -n "$captain" ] && [ "$captain" = "$profile" ] || captain=""
+        json_add_string "captain" "$captain"
+        _json_pact_rules "$captain"
+        _json_dns "$profile"
+        [ "$ver" = "3" ] && _json_apps "$profile"
+        json_dump
+    ) 200>"$FW_LOCK"
 }
 
-# Let one managed phone remove FamilyWarden itself within the next hour
-ubus_device_allow_removal() {
-    local id="$1" until
-    _valid_device_id "$id" || { _json_error "invalid device"; return 1; }
+_core_legacy_cb() {
+    local o v
+    config_get v "$1" id ""
+    [ -n "$v" ] || return 0
+    json_add_object ""
+    for o in id name profile pubkey administrator approves; do
+        config_get v "$1" "$o" ""
+        json_add_string "$o" "$v"
+    done
+    json_close_object
+}
+
+# Approved phones still in UCI (effective config: a pact keeps frozen bindings).
+cli_core_legacy_devices() {
     (
-        flock -x 200 || return 1
+        flock -s 200 || exit 1
         fw_load
-        _find_dev "$id"
-        [ -n "$_dev_sec" ] || { _json_error "device not found"; return 1; }
-        if _dev_frozen "$_dev_sec"; then
-            _json_error "bound by Ulysses pact"
-            return 1
-        fi
-        until=$(( $(date +%s) + 3600 ))
-        state_set "${_dev_sec}.remove_until" "$until"
-        logger -t familywarden "device $id may remove FamilyWarden until $until"
         json_init
-        json_add_string "status" "ok"
-        json_add_int "remove_until" "$until"
+        json_add_array "devices"
+        config_foreach _core_legacy_cb device
+        json_close_array
         json_dump
+    ) 200>"$FW_LOCK"
+}
+
+_core_legacy_rm_cb() { uci -q delete "familywarden.$1"; }
+
+# Only after the core has persisted and verified its import.
+cli_core_legacy_devices_remove() {
+    (
+        flock -x 200 || exit 1
+        config_load familywarden
+        config_foreach _core_legacy_rm_cb device
+        uci commit familywarden
+        echo '{"status":"ok"}'
     ) 200>"$FW_LOCK"
 }
 
@@ -2771,10 +2320,18 @@ EOF
     mast)
         cli_mast "$2"
         ;;
-    mast2)
-        # $2 device, $3 nonce, $4 phone key, $5 phone signature, $6 model name,
-        # $7 v3 signature, $8 applied revision, $9 capabilities, $10 capability signature
-        cli_mast2 "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}"
+    core-context)
+        cli_core_context
+        ;;
+    core-policy)
+        # $2 profile, $3 wire version (2 or 3)
+        cli_core_policy "$2" "$3"
+        ;;
+    core-legacy-devices)
+        cli_core_legacy_devices
+        ;;
+    core-legacy-devices-remove)
+        cli_core_legacy_devices_remove
         ;;
     dns-sync)
         cli_dns_sync
@@ -2862,48 +2419,10 @@ EOF
             version)
                 ubus_version
                 ;;
-            devices)
-                ubus_devices
-                ;;
-            device_approve)
+            devices|device_approve|device_update|device_reject|device_delete|device_allow_removal)
+                # Phone identity lives in the Go core (A18); this is the rpcd shim.
                 read -r input
-                json_load "$input"
-                json_get_var device device
-                json_get_var profile profile
-                json_get_var name name
-                json_get_var administrator administrator
-                json_get_var fingerprint fingerprint
-                json_get_var approves approves
-                ubus_device_approve "$device" "$profile" "$name" "$administrator" "$fingerprint" "$approves"
-                ;;
-            device_update)
-                read -r input
-                json_load "$input"
-                json_get_var device device
-                json_get_var profile profile
-                json_get_var name name
-                json_get_var administrator administrator
-                json_get_var approves approves
-                json_get_type approves_type approves
-                ubus_device_update "$device" "$profile" "$name" "$administrator" "$approves" "$([ -n "$approves_type" ] && echo 1 || echo 0)"
-                ;;
-            device_reject)
-                read -r input
-                json_load "$input"
-                json_get_var device device
-                ubus_device_reject "$device"
-                ;;
-            device_delete)
-                read -r input
-                json_load "$input"
-                json_get_var device device
-                ubus_device_delete "$device"
-                ;;
-            device_allow_removal)
-                read -r input
-                json_load "$input"
-                json_get_var device device
-                ubus_device_allow_removal "$device"
+                printf '%s' "${input:-{\}}" | "$FW_CORE_BIN" -socket "$FW_CORE_SOCK" api "$2"
                 ;;
             dns_status)
                 ubus_dns_status

@@ -18,7 +18,7 @@ func TestHealthAndVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := handler(st)
+	h := handler(st, nil)
 	for path, want := range map[string]string{"/health": `"status":"ok"`, "/version": `"core":"dev"`} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
@@ -100,7 +100,7 @@ func TestStatusBridge(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer l.Close()
-	go http.Serve(l, handler(st))
+	go http.Serve(l, handler(st, nil))
 	out.Reset()
 	status(sock, &out)
 	if got := out.String(); got != `{"core":"dev","running":true}`+"\n" {

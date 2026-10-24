@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,17 +16,25 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	_ "time/tzdata" // OpenWrt ships no zoneinfo; day boundaries need the router's timezone (D8)
 
+	"github.com/denogio/familywarden/core/internal/identity"
+	"github.com/denogio/familywarden/core/internal/openwrt"
 	"github.com/denogio/familywarden/core/internal/store"
 )
 
 var version = "dev" // set with -ldflags "-X main.version=..."
 
-func handler(st *store.Store) http.Handler {
+const (
+	maxQuery = 8 << 10
+	maxAPI   = 64 << 10
+)
+
+func handler(st *store.Store, id *identity.Service) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"status": "ok"})
@@ -33,7 +42,55 @@ func handler(st *store.Store) http.Handler {
 	mux.HandleFunc("GET /version", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"core": version})
 	})
-	_ = st // endpoints using the store arrive with the first vertical slice (P8)
+	_ = st // request/usage endpoints arrive with P8
+	if id == nil {
+		return mux
+	}
+	// Phone sync: body = the CGI query string; reply = status + signed body.
+	mux.HandleFunc("POST /phone", func(w http.ResponseWriter, r *http.Request) {
+		q, err := io.ReadAll(io.LimitReader(r.Body, maxQuery+1))
+		if err != nil || len(q) > maxQuery {
+			w.WriteHeader(identity.StatusMalformed)
+			return
+		}
+		code, body := id.Phone(string(q))
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(code)
+		_, _ = w.Write(body)
+	})
+	// Administrator API (LuCI via the rpcd shim): always one JSON object.
+	mux.HandleFunc("POST /api/{method}", func(w http.ResponseWriter, r *http.Request) {
+		var c identity.Change
+		b, err := io.ReadAll(io.LimitReader(r.Body, maxAPI+1))
+		if err == nil && len(b) > maxAPI {
+			err = errors.New("too large")
+		}
+		if err == nil && len(bytes.TrimSpace(b)) > 0 {
+			err = json.Unmarshal(b, &c)
+		}
+		if err != nil {
+			writeJSON(w, identity.Reply{"error": "malformed request"})
+			return
+		}
+		var reply identity.Reply
+		switch r.PathValue("method") {
+		case "devices":
+			reply = id.Devices()
+		case "device_approve":
+			reply = id.Approve(c)
+		case "device_update":
+			reply = id.Update(c)
+		case "device_reject":
+			reply = id.Reject(c.Device)
+		case "device_delete":
+			reply = id.Delete(c.Device)
+		case "device_allow_removal":
+			reply = id.AllowRemoval(c.Device)
+		default:
+			reply = identity.Reply{"error": "unknown method"}
+		}
+		writeJSON(w, reply)
+	})
 	return mux
 }
 
@@ -72,6 +129,51 @@ func listen(socket string) (net.Listener, error) {
 	return l, nil
 }
 
+func client(socket string) *http.Client {
+	return &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", socket)
+		},
+	}}
+}
+
+// cgiPhone is the OpenWrt transport (uhttpd CGI on port 7700): it forwards
+// QUERY_STRING and prints the CGI reply. Core down = 503 and no body: phones keep
+// their last trusted policy, never get an unsigned or weaker one.
+func cgiPhone(socket string, out io.Writer) {
+	status := map[int]string{200: "200 OK", 400: "400 Bad Request", 403: "403 Forbidden", 500: "500 Internal Server Error"}
+	code, body := 503, []byte(nil)
+	resp, err := client(socket).Post("http://core/phone", "text/plain", strings.NewReader(os.Getenv("QUERY_STRING")))
+	if err == nil {
+		body, err = io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		resp.Body.Close()
+		if err == nil {
+			code = resp.StatusCode
+		}
+	}
+	line, known := status[code]
+	if !known {
+		line, body = "503 Service Unavailable", nil
+	}
+	fmt.Fprintf(out, "Status: %s\nContent-Type: text/plain\nCache-Control: no-store\n\n", line)
+	_, _ = out.Write(body)
+}
+
+// api is the rpcd shim: JSON on stdin, one JSON object on stdout.
+func api(socket, method string, in io.Reader, out io.Writer) {
+	b, _ := io.ReadAll(io.LimitReader(in, maxAPI+1))
+	resp, err := client(socket).Post("http://core/api/"+method, "application/json", bytes.NewReader(b))
+	if err == nil {
+		defer resp.Body.Close()
+		var v map[string]any
+		if err = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&v); err == nil {
+			_ = json.NewEncoder(out).Encode(v)
+			return
+		}
+	}
+	_ = json.NewEncoder(out).Encode(map[string]any{"error": "core not reachable"})
+}
+
 // status is the rpcd bridge (`ubus call familywarden-core status`): always one JSON
 // object, also when the core is down, so LuCI can show "not running" truthfully.
 func status(socket string, out io.Writer) {
@@ -100,9 +202,18 @@ func status(socket string, out io.Writer) {
 func main() {
 	dataDir := flag.String("data", "/etc/familywarden/core", "directory for durable state")
 	socket := flag.String("socket", "/var/run/familywarden-core/core.sock", "unix socket to listen on")
+	shell := flag.String("shell", "/usr/libexec/rpcd/familywarden", "OpenWrt adapter: the familywarden shell plugin")
+	routerKey := flag.String("router-key", "/etc/familywarden/mast.key", "OpenWrt adapter: router usign secret key")
 	flag.Parse()
-	if flag.Arg(0) == "status" {
+	switch flag.Arg(0) {
+	case "status":
 		status(*socket, os.Stdout)
+		return
+	case "cgi-phone":
+		cgiPhone(*socket, os.Stdout)
+		return
+	case "api":
+		api(*socket, flag.Arg(1), os.Stdin, os.Stdout)
 		return
 	}
 
@@ -110,12 +221,23 @@ func main() {
 	if err != nil {
 		log.Fatalf("data directory %s: %v", *dataDir, err)
 	}
+	// The adapter may not be ready yet at boot: retry instead of exiting, so procd's
+	// respawn limit can never leave phone sync down. Until then nothing listens and
+	// phones get 503, keeping their last trusted policy.
+	var id *identity.Service
+	for wait := time.Second; ; wait = min(2*wait, time.Minute) {
+		if id, err = identity.New(openwrt.Adapter{Shell: *shell, KeyFile: *routerKey}, st); err == nil {
+			break
+		}
+		log.Printf("identity not ready (retrying in %v): %v", wait, err)
+		time.Sleep(wait)
+	}
 	l, err := listen(*socket)
 	if err != nil {
 		log.Fatalf("listen: %v", err)
 	}
 
-	srv := &http.Server{Handler: handler(st), ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: handler(st, id), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go func() {

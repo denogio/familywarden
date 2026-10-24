@@ -37,11 +37,13 @@ before choosing this setup. We do not recommend providing a false date of birth.
 
 ## Installation
 
-Download both `.apk` files from the latest [release](https://github.com/denogio/familywarden/releases)
-(OpenWrt 25.12+, architecture-independent):
+Download the packages from the latest [release](https://github.com/denogio/familywarden/releases)
+(OpenWrt 25.12+): `familywarden` and `luci-app-familywarden` are architecture-independent;
+`familywarden-core` (the Go core, required since 0.11) exists per architecture. Pick the one
+matching `DISTRIB_ARCH` in `/etc/openwrt_release`, e.g. on an `aarch64_cortex-a53` router:
 
 ```sh
-apk add --allow-untrusted ./familywarden-*.apk ./luci-app-familywarden-*.apk
+apk add --allow-untrusted ./familywarden-core-*-aarch64_cortex-a53.apk ./familywarden-[0-9]*.apk ./luci-app-familywarden-*.apk
 ```
 
 Then open **Services → FamilyWarden** in LuCI.
