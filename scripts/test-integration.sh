@@ -753,6 +753,71 @@ echo $(( $(date +%s) - 1 )) > /etc/familywarden/release
 [ -z "$(v3payload phoneD fw-d1 "$N1" - | jsonfilter -e '@.apps')" ] && pass "after the pact the live config applies (app control off)" || fail "stale apps after the pact"
 
 echo ""
+echo "=== Total screen time, always allowed and bonus (D9) ==="
+uci set familywarden.kid.apps='1'
+uci set familywarden.kid.screen_minutes='120'
+uci set familywarden.kid.screen_weekend='180'
+uci add_list familywarden.kid.always_allowed='com.example.school'
+uci add_list familywarden.kid.always_allowed='not a package'
+uci commit familywarden
+"$BIN" reload >/dev/null
+payload=$(v3payload phoneD fw-d1 "$N1" -)
+assert_json "all-days value on a weekday" "$payload" '@.apps.screen.mon' "120"
+assert_json "weekend value overrides" "$payload" '@.apps.screen.sun' "180"
+assert_json "always allowed app" "$payload" '@.apps.always_allowed[0]' "com.example.school"
+[ "$(count "$payload" '@.apps.always_allowed[*]')" = 1 ] && pass "invalid always-allowed entry ignored" || fail "always_allowed: $(echo "$payload" | jsonfilter -e '@.apps.always_allowed')"
+[ -z "$(echo "$payload" | jsonfilter -e '@.apps.bonus')" ] && pass "no bonus object without bonus" || fail "unexpected bonus"
+rev1=$(echo "$payload" | jsonfilter -e '@.apps.rev')
+uci set familywarden.kid.screen_weekday='60'
+uci set familywarden.kid.screen_minutes='abc'
+uci commit familywarden
+"$BIN" reload >/dev/null
+payload=$(v3payload phoneD fw-d1 "$N1" -)
+assert_json "weekday value overrides all days" "$payload" '@.apps.screen.wed' "60"
+assert_json "weekend still set" "$payload" '@.apps.screen.sat' "180"
+[ "$(echo "$payload" | jsonfilter -e '@.apps.rev')" != "$rev1" ] && pass "screen time change gives a new revision" || fail "revision unchanged"
+uci set familywarden.kid.screen_minutes='120'
+uci commit familywarden
+
+assert_json "bonus: minutes are bounded" "$(call bonus '{"profile":"kid","minutes":241}')" '@.error' "minutes must be 1..240"
+assert_json "bonus: zero refused" "$(call bonus '{"profile":"kid","minutes":0}')" '@.error' "minutes must be 1..240"
+assert_json "bonus: unknown profile" "$(call bonus '{"profile":"nobody","minutes":15}')" '@.error' "profile not found"
+assert_json "bonus: needs app control" "$(call bonus '{"profile":"teen","minutes":15}')" '@.error' "app control is off for this profile"
+assert_json "bonus: invalid package" "$(call bonus '{"profile":"kid","minutes":15,"package":"../x"}')" '@.error' "invalid package"
+assert_json "bonus +30 on the total" "$(call bonus '{"profile":"kid","minutes":30}')" '@.minutes_today' "30"
+assert_json "bonus adds up" "$(call bonus '{"profile":"kid","minutes":15}')" '@.minutes_today' "45"
+assert_json "bonus for one app" "$(call bonus '{"profile":"kid","minutes":20,"package":"com.roblox.client"}')" '@.target' "com.roblox.client"
+payload=$(v3payload phoneD fw-d1 "$N1" -)
+assert_json "bonus in the signed policy: day" "$payload" '@.apps.bonus.day' "$(date +%F)"
+assert_json "bonus in the signed policy: total" "$payload" '@.apps.bonus.total' "45"
+assert_json "bonus in the signed policy: app" "$payload" '@.apps.bonus.apps[0].minutes' "20"
+assert_json "bonus leaves the standing limit alone" "$payload" '@.apps.screen.mon' "60"
+rev2=$(echo "$payload" | jsonfilter -e '@.apps.rev')
+assert_json "devices: expected revision includes the bonus" "$(call devices)" '@.devices[@.id="fw-d1"].apps_rev' "$rev2"
+grep -q "^kid|$(date +%F)|total|45$" /etc/familywarden/bonus && pass "bonus persisted (survives a router reboot)" || fail "bonus file: $(cat /etc/familywarden/bonus)"
+echo "kid|2000-01-01|total|99" >> /etc/familywarden/bonus
+call bonus '{"profile":"kid","minutes":1}' >/dev/null
+grep -q '2000-01-01' /etc/familywarden/bonus && fail "old bonus days kept" || pass "old bonus days dropped"
+sed -i "s/|$(date +%F)|/|2000-01-02|/" /etc/familywarden/bonus
+[ -z "$(v3payload phoneD fw-d1 "$N1" - | jsonfilter -e '@.apps.bonus')" ] && pass "yesterday's bonus is not sent" || fail "stale bonus sent"
+
+# Captain: screen time and always-allowed apps freeze with the pact; no self-bonus.
+call pact "{\"until\":0,\"window_day\":\"$tomorrow\",\"window_start\":\"10:00\",\"window_stop\":\"11:00\"}" >/dev/null
+assert_json "no bonus for a captain under a pact" "$(call bonus '{"profile":"kid","minutes":15}')" '@.error' "bound by Ulysses pact"
+uci set familywarden.kid.screen_minutes='999'
+uci set familywarden.kid.screen_weekday='999'
+uci del_list familywarden.kid.always_allowed='com.example.school'
+uci add_list familywarden.kid.always_allowed='com.example.games'
+uci commit familywarden
+"$BIN" reload >/dev/null
+payload=$(v3payload phoneD fw-d1 "$N1" -)
+assert_json "pact: screen time frozen" "$payload" '@.apps.screen.wed' "60"
+assert_json "pact: always allowed frozen" "$payload" '@.apps.always_allowed[0]' "com.example.school"
+echo $(( $(date +%s) - 1 )) > /etc/familywarden/release
+"$BIN" tick
+assert_json "after the pact: live screen time" "$(v3payload phoneD fw-d1 "$N1" -)" '@.apps.screen.wed' "999"
+
+echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All integration checks passed!"
 else

@@ -228,6 +228,10 @@ _frag_dev() {
     echo "	list device $(_q "$1")"
 }
 
+_frag_always() {
+    echo "	list always_allowed $(_q "$1")"
+}
+
 # An approved phone bound to the profile being snapshotted: frozen with it, so
 # moving or deleting the captain's phone in LuCI is no way out of a pact.
 _frag_phone() {
@@ -261,10 +265,11 @@ profile_fragment() {
     config_get type "$p" TYPE ""
     [ "$type" = "profile" ] || return 0
     echo "config profile '$p'"
-    for o in enabled policy block_router apps apps_suspend_new; do
+    for o in enabled policy block_router apps apps_suspend_new screen_minutes screen_weekday screen_weekend; do
         config_get v "$p" "$o" ""
         [ -n "$v" ] && echo "	option $o $(_q "$v")"
     done
+    config_list_foreach "$p" always_allowed _frag_always | sort
     config_list_foreach "$p" device _frag_dev | sort
     _frag_profile="$p"
     config_foreach _frag_phone device
@@ -361,6 +366,8 @@ _apps_canon() {
         echo "new|$susp||"
         config_foreach _apps_line_cb app
         config_foreach _apps_down_cb app_downtime
+        _apps_screen_lines "$1"
+        config_list_foreach "$1" always_allowed _apps_always_cb
     } | awk -F'|' '
         $1 == "app" {
             if (!($2 in seen)) { seen[$2] = 1; min[$2] = $3; blk[$2] = $4; next }
@@ -372,10 +379,46 @@ _apps_canon() {
         END { for (p in seen) print "app|" p "|" min[p] "|" blk[p] }' | sort -u
 }
 
+# Daily total screen time (D9): one value for all days, or weekday/weekend values
+# that override it. Expanded per weekday so the phone decides offline.
+_valid_minutes() {
+    case "$1" in ''|*[!0-9]*) return 1 ;; esac
+    [ "${#1}" -le 4 ] && [ "$1" -le 1440 ]
+}
+
+_apps_screen_lines() {
+    local all wd we d v
+    config_get all "$1" screen_minutes ""
+    config_get wd "$1" screen_weekday ""
+    config_get we "$1" screen_weekend ""
+    for d in mon tue wed thu fri sat sun; do
+        case "$d" in sat|sun) v=${we:-$all} ;; *) v=${wd:-$all} ;; esac
+        [ -n "$v" ] || continue
+        if _valid_minutes "$v"; then echo "screen|$d|$v|"
+        else logger -t familywarden "screen time of $1: invalid minutes '$v' ignored"; fi
+    done
+}
+
+_apps_always_cb() {
+    _valid_package "$1" && echo "always|$1||" || logger -t familywarden "always_allowed: invalid package ignored"
+}
+
+# Bonus for today (D9): "profile|day|target|minutes" lines, target = total or a package.
+# Persistent (a router reboot must not take back given time); old days are dropped.
+FW_BONUS="$FW_PERSIST/bonus"
+
+_bonus_today() {
+    local today
+    today=$(date +%F)
+    [ -s "$FW_BONUS" ] || return 0
+    awk -F'|' -v p="$1" -v d="$today" '$1 == p && $2 == d { print "bonus|" $3 "|" $4 "|" d }' "$FW_BONUS" | sort
+}
+
+# Revision of what the phone must apply: the rules plus today's bonus.
 _apps_rev() {
     local lines
     lines=$(_apps_canon "$1")
-    [ -n "$lines" ] && printf '%s\n' "$lines" | sha256sum | cut -c1-16
+    [ -n "$lines" ] && printf '%s\n%s\n' "$lines" "$(_bonus_today "$1")" | sha256sum | cut -c1-16
 }
 
 # Add the "apps" object for a profile (nothing when app control is off). Loops read
@@ -386,7 +429,7 @@ _json_apps() {
     lines=$(_apps_canon "$1")
     [ -n "$lines" ] || return 0
     json_add_object "apps"
-    json_add_string "rev" "$(printf '%s\n' "$lines" | sha256sum | cut -c1-16)"
+    json_add_string "rev" "$(_apps_rev "$1")"
     json_add_boolean "suspend_new" "$(echo "$lines" | sed -n 's/^new|\([01]\)||$/\1/p')"
     json_add_array "limits"
     while IFS='|' read -r kind a b c; do
@@ -426,7 +469,84 @@ EOF
 $lines
 EOF
     json_close_array
+    if echo "$lines" | grep -q '^screen|'; then
+        json_add_object "screen"
+        while IFS='|' read -r kind a b c; do
+            [ "$kind" = "screen" ] && json_add_int "$a" "$b"
+        done <<EOF
+$lines
+EOF
+        json_close_object
+    fi
+    json_add_array "always_allowed"
+    while IFS='|' read -r kind a b c; do
+        [ "$kind" = "always" ] && json_add_string "" "$a"
+    done <<EOF
+$lines
+EOF
+    json_close_array
+    local bonus
+    bonus=$(_bonus_today "$1")
+    if [ -n "$bonus" ]; then
+        json_add_object "bonus"
+        json_add_string "day" "$(date +%F)"
+        json_add_int "total" "$(echo "$bonus" | awk -F'|' '$2 == "total" { print $3 }' | head -1 | grep . || echo 0)"
+        json_add_array "apps"
+        while IFS='|' read -r kind a b c; do
+            [ "$kind" = "bonus" ] && [ "$a" != "total" ] || continue
+            json_add_object ""
+            json_add_string "package" "$a"
+            json_add_int "minutes" "$b"
+            json_close_object
+        done <<EOF
+$bonus
+EOF
+        json_close_array
+        json_close_object
+    fi
     json_close_object
+}
+
+# Bonus time for today (Family Link "Bonus time"), total or one app. Adds up; at most
+# 240 minutes per call and 1440 per target and day. Never changes the standing limits.
+# Refused for a Ulysses captain under a pact: adults get no self-approval (A4).
+ubus_bonus() {
+    local profile="$1" minutes="$2" target="${3:-total}" on name today total
+    case "$minutes" in ''|*[!0-9]*) _json_error "minutes must be 1..240"; return 1 ;; esac
+    minutes=$(echo "$minutes" | sed 's/^0*//')
+    [ "${minutes:-0}" -ge 1 ] 2>/dev/null && [ "$minutes" -le 240 ] || { _json_error "minutes must be 1..240"; return 1; }
+    [ "$target" = "total" ] || _valid_package "$target" || { _json_error "invalid package"; return 1; }
+    (
+        flock -x 201 || { _json_error "bonus lock failed"; return 1; }
+        fw_load
+        config_get name "$profile" name ""
+        [ -n "$name" ] || { _json_error "profile not found"; return 1; }
+        config_get on "$profile" apps "0"
+        [ "$on" = "1" ] || { _json_error "app control is off for this profile"; return 1; }
+        _refuse_if_bound "$profile" && return 1
+        today=$(date +%F)
+        mkdir -p "$FW_PERSIST"
+        # Keep other entries of today and later; drop old days; add up this target.
+        if [ -f "$FW_BONUS" ]; then
+            total=$(awk -F'|' -v p="$profile" -v d="$today" -v t="$target" -v m="$minutes" '
+                $1 == p && $2 == d && $3 == t { m += $4 } END { print m }' "$FW_BONUS")
+            awk -F'|' -v p="$profile" -v d="$today" -v t="$target" '
+                $2 >= d && !($1 == p && $2 == d && $3 == t)' "$FW_BONUS" > "$FW_BONUS.new"
+        else
+            total=$minutes
+            : > "$FW_BONUS.new"
+        fi
+        [ "$total" -le 1440 ] || total=1440
+        echo "$profile|$today|$target|$total" >> "$FW_BONUS.new"
+        mv "$FW_BONUS.new" "$FW_BONUS"
+        logger -t familywarden "bonus: $profile +$minutes min ($target), $total min today"
+        json_init
+        json_add_string "status" "ok"
+        json_add_string "profile" "$profile"
+        json_add_string "target" "$target"
+        json_add_int "minutes_today" "$total"
+        json_dump
+    ) 201>"${FW_LOCK}.bonus"
 }
 
 pact_get() {
@@ -2452,6 +2572,7 @@ case "$1" in
   "allow": { "profile": "string" },
   "reset": { "profile": "string" },
   "ticket": { "profile": "string", "minutes": 0 },
+  "bonus": { "profile": "string", "minutes": 0, "package": "string" },
   "pact": { "until": 0, "window_day": "string", "window_start": "string", "window_stop": "string" },
   "reload": {},
   "mast": { "host": "string" },
@@ -2542,6 +2663,14 @@ EOF
                 json_get_var profile profile
                 json_get_var minutes minutes 30
                 ubus_ticket "$profile" "$minutes"
+                ;;
+            bonus)
+                read -r input
+                json_load "$input"
+                json_get_var profile profile
+                json_get_var minutes minutes
+                json_get_var package package
+                ubus_bonus "$profile" "$minutes" "$package"
                 ;;
             pact)
                 read -r input
