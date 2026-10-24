@@ -15,6 +15,8 @@ class WireV3FixtureTest {
         val payload = text("v3-payload.json")
         val router = Usign.parsePublicKey(text("v3-router.pub").trim())
         assertTrue(Usign.verify(router, text("v3-payload.sig").trim(), payload.toByteArray(Charsets.UTF_8)))
+        assertEquals("apps-v1", org.json.JSONObject(payload).getJSONArray("requires").getString(0))
+        assertEquals("screen-time-v1", org.json.JSONObject(payload).getJSONArray("requires").getString(1))
         val s = Payload.parse(payload)
         assertTrue(s.appliesTo("fw-fixture"))
         assertTrue(Sync.responseMatches(s, "fw-fixture", "c".repeat(64)))
@@ -24,6 +26,19 @@ class WireV3FixtureTest {
         assertEquals(setOf("com.zhiliaoapp.musically"), apps.blocked)
         assertEquals(setOf("com.roblox.client", "com.spotify.music"), apps.approved)
         assertEquals(1, apps.downtime.size)
+    }
+
+    @Test fun routerSignedCapabilityRefusalIsVerifiedButNeverBecomesPolicy() {
+        val payload = text("v3-refused.json")
+        assertTrue(Usign.verify(Usign.parsePublicKey(text("v3-router.pub").trim()),
+            text("v3-refused.sig").trim(), payload.toByteArray(Charsets.UTF_8)))
+        try { Payload.parse(payload); fail("capability refusal became policy") }
+        catch (_: PolicyCapabilities.Unsupported) { }
+    }
+
+    @Test fun capabilityMessageHasItsOwnDomainAndExactRouterByteLayout() {
+        assertEquals("familywarden-sync-caps-v1\nfw-fixture\n${"c".repeat(64)}\n-\nscreen-time-v1\n",
+            Sync.requestCapabilitiesMessage("fw-fixture", "c".repeat(64), "-", "screen-time-v1").toString(Charsets.UTF_8))
     }
 
     @Test fun v3RequestMessageIsByteForByteWhatTheRouterVerifies() {

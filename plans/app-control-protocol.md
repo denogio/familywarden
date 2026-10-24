@@ -66,8 +66,9 @@ on (`option apps '1'`):
   with last-seen); `ubus call familywarden devices` shows `apps_applied` next to the
   expected `apps_rev`. Fetching is not applying: the app sends `-` until enforcement
   has actually applied a revision.
-- Not yet in v3: shared `budget`, `grants`, `parents`, categories, `requires` capabilities.
-  They are optional fields to add; phones ignore unknown fields.
+- Not yet in v3: shared `budget`, `grants`, `parents`, categories and parent roles.
+  Required-feature negotiation is now implemented separately in §2b; unknown optional
+  fields remain ignorable, but unknown required features are not.
 
 **Fixture.** `android/app/src/test/resources/v3-payload.{json,sig}` + `v3-router.pub`
 are a real reply from the shell plugin (jshn + usign); `WireV3FixtureTest` verifies the
@@ -77,7 +78,7 @@ signature and parses it. Regenerate them after any wire change.
 
 | Phone app \ Router | 0.9.2 (v2 only) | with v3 |
 |---|---|---|
-| 0.9.0 pilot (v2, no `sig3`) | v2 | v2 (unchanged behaviour) |
+| 0.9.0 pilot (v2, no `sig3`) | v2 | v2 only if app control is off; otherwise signed refusal (§2b) |
 | v3 app, never accepted a v3 reply | v2 accepted; no app control | v3 |
 | v3 app, has accepted v3 | **refused as "downgraded reply"**; keeps the last trusted policy offline, shows a sync error | v3 |
 
@@ -87,6 +88,97 @@ signature and parses it. Regenerate them after any wire change.
 - Upgrading the router during a pact: existing snapshots have no app sections, so the
   captain gets app control only after the amendment window or the next pact. Nothing is
   loosened, because there were no app rules before.
+
+## 2b. Authenticated feature support (implemented 2026-10-24)
+
+This closes a compatibility hole: an old v3 client could ignore P7b fields and still
+acknowledge their revision. It is a prerequisite for adding parent roles, not an
+implementation of parent authorization.
+
+**Request.** Current clients additionally send `caps=apps-v1,screen-time-v1` and
+`sigcaps`, signed by the same enrolled phone key over these exact bytes:
+
+```text
+familywarden-sync-caps-v1\n<id>\n<nonce>\n<applied>\n<caps>\n
+```
+
+Here `\n` denotes a single newline. `caps` is a sorted, unique comma-separated list
+of at most 16 names matching `[a-z][a-z0-9-]{0,31}`, or `-` for no features.
+Both parameters must be present together and require the existing valid v3
+signature. The signature binds the list to this device, nonce and applied revision;
+it is not interchangeable with `sig` or `sig3`. Bad syntax is HTTP 400, signature
+substitution is HTTP 403. Old routers ignore the extra parameters.
+
+**Requirements.** The router derives root-level `requires` from the **effective**
+configuration (including the pact snapshot), never from client claims:
+
+| Feature | Required when |
+|---|---|
+| `apps-v1` | This profile has app control enabled |
+| `screen-time-v1` | The app policy has daily screen limits, always-allowed apps, whole-phone downtime, or today's bonus |
+
+`screen-time-v1` names the complete P7b semantics: union counting, ordinary-app
+downtime (including messaging unless always allowed), daily limits, unlimited
+exceptions and dated bonus. Capability claims are **not remote attestation** and
+confer no parent/admin authority.
+
+Legacy v3 requests without `caps` have implicit `apps-v1` support only. Thus basic
+per-app limits still work, but P7b policy is refused. A v2 request cannot accept an
+app-controlled binding at all: stripping `sig3/caps/sigcaps` cannot obtain an approved,
+weaker v2 policy. Profiles without app control retain v2 compatibility.
+
+**Signed refusal.** Missing support returns a normally router-signed response with
+`v`, `server_time`, `nonce`, `device`, `enrollment: "approved"`, `requires` and
+`error: "unsupported_capabilities"`. It contains **no binding, DNS, pact/rules or app
+policy**. It is not an accepted enrollment/policy transition. Even old parsers reject
+it because mandatory binding/rules are absent. The current app verifies the signature
+and request binding, reports the unsupported policy, and retains its last trusted
+policy. It never grants removal from this error response.
+
+Phone-side applied acknowledgements are stored with the implementation capability
+set. An older/missing set makes `appsApplied` read as absent after an APK upgrade,
+even if the revision hash is unchanged; enforcement must successfully apply the
+policy before the new app acknowledges it. Future incompatible semantic changes
+must use a new feature name, not silently reuse an existing capability.
+
+Android strictly validates `requires` before parsing either approved or pending
+policy: bounded array, string names, no duplicates, no unknown required features.
+Unknown root-level errors are also refused. No arbitrary cache expiry or automatic
+loosening is introduced.
+
+**Reporting.** The router clears incompatible signed acknowledgements, records the
+authenticated list and last refusal, and returns `capabilities` / `apps_error` in
+`devices`. Compatibility is also checked when reading old two-line seen files, so
+an old matching revision is not displayed as current between a router upgrade and
+the next phone fetch. With app control off, obsolete capability errors are suppressed.
+LuCI distinguishes upgrade-needed, waiting, not configured, missing reporting and
+"Current revision acknowledged" (not a perpetual enforcement/online attestation).
+
+**Rollout.** Update phones to a build with this capability handshake **before**
+upgrading the router or enabling P7b requirements. Older P7b builds without the
+handshake are also refused where `screen-time-v1` is required. While refused, an old
+phone keeps its cached policy and cannot use that refusal as fresh removal authority.
+Pact-bound app rules cannot be disabled as a workaround outside their normal amendment
+or release rules. This change has not been deployed to the production router/phone.
+
+### Regenerate interoperability fixtures
+
+Only in a disposable OpenWrt integration-test container; never on a router with real
+configuration. The helper uses the integration-generated fictional phone key; no
+private key is copied out.
+
+```sh
+docker run -d --name fw-fixtures --cap-add NET_ADMIN \
+  -v "$PWD:/src:ro" openwrt/rootfs:x86-64-25.12.4 sleep infinity
+docker exec fw-fixtures sh /src/scripts/test-integration.sh --inside
+docker exec -e FW_TEST_FIXTURES=1 fw-fixtures sh /src/test/android/generate-v3-fixtures.sh
+for file in v3-payload.json v3-payload.sig v3-router.pub v3-refused.json v3-refused.sig; do
+  docker cp "fw-fixtures:/tmp/$file" "android/app/src/test/resources/$file"
+done
+docker rm -f fw-fixtures
+```
+
+JVM fixtures verify both the exact signed accepted policy and the signed refusal.
 
 ## 2. Policy v3 (router → phone, signed reply as today)
 
@@ -214,7 +306,8 @@ the issuing phone and the router-anchored clock.
 
 ## 8. Compatibility
 
-- v2 phones keep working: the router answers v2 unless the phone asks for v3.
+- v2 phones keep working on profiles without app control. An app-controlled profile
+  refuses unsupported clients rather than returning a weaker approved policy (§2b).
 - An enrolled phone that has received v3 refuses later v2/v1 replies (no downgrade), as today.
 - Unknown fields are ignored. If a reply contains `"requires": ["feature", …]` that the phone
   does not implement, it keeps enforcing its last trusted policy and reports `unsupported_version`.

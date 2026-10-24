@@ -73,10 +73,12 @@ object Sync {
         val requestSignature = phoneKey.sign(requestMessage(deviceId, nonce))
         val applied = appliedRev?.takeIf { it.matches(Regex("[0-9a-f]{16}")) } ?: "-"
         val v3Signature = phoneKey.sign(requestMessageV3(deviceId, nonce, applied))
+        val caps = PolicyCapabilities.advertised
+        val capsSignature = phoneKey.sign(requestCapabilitiesMessage(deviceId, nonce, applied, caps))
         val name = model.map { if (it.isLetterOrDigit() && it.code < 128 || it in "._-") it else '-' }.joinToString("").take(40)
         val body = try {
             get("${base(host)}/cgi-bin/mast?device=$deviceId&nonce=$nonce&key=${enc(phoneKey.publicKey)}&sig=${enc(requestSignature)}" +
-                "&sig3=${enc(v3Signature)}&applied=$applied&name=$name")
+                "&sig3=${enc(v3Signature)}&applied=$applied&name=$name&caps=$caps&sigcaps=${enc(capsSignature)}")
         } catch (e: ReplyRejected) {
             return Result.Failed(e.reason)
         } catch (e: Exception) {
@@ -89,6 +91,10 @@ object Sync {
         if (!Usign.verify(pub, signature, payload.toByteArray(Charsets.UTF_8))) return Result.Failed("bad signature")
         val state = try {
             Payload.parse(payload)
+        } catch (e: PolicyCapabilities.Unsupported) {
+            val envelope = org.json.JSONObject(payload)
+            return Result.Failed(if (envelope.optString("device") == deviceId && envelope.optString("nonce") == nonce)
+                "unsupported capabilities" else "response mismatch")
         } catch (e: Exception) {
             return Result.Failed("unreadable payload")
         }
@@ -165,6 +171,10 @@ object Sync {
     /** v3: also binds the applied app policy revision ("-" = none) to this request. */
     internal fun requestMessageV3(deviceId: String, nonce: String, applied: String): ByteArray =
         "familywarden-sync-v3\n$deviceId\n$nonce\n$applied\n".toByteArray(Charsets.UTF_8)
+
+    /** Separate signature: legacy routers still verify sig/sig3 and ignore these parameters. */
+    internal fun requestCapabilitiesMessage(deviceId: String, nonce: String, applied: String, caps: String): ByteArray =
+        "familywarden-sync-caps-v1\n$deviceId\n$nonce\n$applied\n$caps\n".toByteArray(Charsets.UTF_8)
 
     private fun enc(b64: String) = b64.replace("+", "%2B").replace("/", "%2F").replace("=", "%3D")
 

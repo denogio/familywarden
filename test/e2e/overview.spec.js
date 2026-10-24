@@ -12,18 +12,19 @@ async function login(page) {
   await page.waitForLoadState('networkidle');
 }
 
-// Only replace the profile-list reply; the rest of LuCI and its CSS are real.
-async function mockProfiles(page, reply) {
+// Only replace one FamilyWarden reply; the rest of LuCI and its CSS are real.
+async function mockProfiles(page, reply) { return mockFamilyWarden(page, 'list', reply); }
+async function mockFamilyWarden(page, method, reply) {
   await page.route(/\/ubus(?:\/|$)/, async route => {
     const body = route.request().postDataJSON();
     const calls = Array.isArray(body) ? body : [body];
-    if (!calls.some(c => c.params?.[1] === 'familywarden' && c.params?.[2] === 'list'))
+    if (!calls.some(c => c.params?.[1] === 'familywarden' && c.params?.[2] === method))
       return route.continue();
     const response = await route.fetch();
     const json = await response.json();
     const results = Array.isArray(json) ? json : [json];
     for (const call of calls) {
-      if (call.params?.[1] === 'familywarden' && call.params?.[2] === 'list') {
+      if (call.params?.[1] === 'familywarden' && call.params?.[2] === method) {
         const result = results.find(r => r.id === call.id);
         result.result = [0, reply(result.result[1])];
       }
@@ -69,6 +70,27 @@ test('Overview uses truthful access labels and preserves pact tightening', async
   await expect(captain.getByRole('button', { name: 'Allow', exact: true })).toHaveCount(0);
   await expect(captain.locator('.fw-ticket')).toHaveCount(0);
   await expect(page.locator('.cbi-page-actions')).toHaveCount(0);
+});
+
+test('Phones distinguishes incompatible clients from waiting and acknowledgements', async ({ page }) => {
+  const base = { profile: 'alex', administrator: '0', fingerprint: 'a'.repeat(64), seen: 0, frozen: false };
+  await mockFamilyWarden(page, 'devices', () => ({ pending: [], devices: [
+    { ...base, id: 'fw-one', name: 'Alex phone', apps_rev: '0123456789abcdef', apps_applied: '0123456789abcdef' },
+    { ...base, id: 'fw-two', name: 'Sam phone', apps_rev: '0123456789abcdef', apps_applied: '' },
+    { ...base, id: 'fw-three', name: 'Robin phone', apps_rev: '0123456789abcdef', apps_applied: '', apps_error: 'unsupported_capabilities' },
+    { ...base, id: 'fw-four', name: 'Kim phone' },
+    { ...base, id: 'fw-five', name: 'Alex tablet', apps_rev: '' },
+    { ...base, id: 'fw-six', name: 'Sam tablet', apps_rev: null, apps_applied: null }
+  ] }));
+  await page.goto(`${URL}/devices`);
+  const row = name => page.locator('tbody tr').filter({ has: page.getByText(name, { exact: true }) });
+  await expect(row('Alex phone')).toContainText('Current revision acknowledged');
+  await expect(row('Sam phone')).toContainText('Not applied yet');
+  await expect(row('Robin phone')).toContainText('Update FamilyWarden on this phone');
+  await expect(row('Robin phone')).not.toContainText('Current revision acknowledged');
+  await expect(row('Kim phone')).toContainText('Not reported by this router');
+  await expect(row('Alex tablet')).toContainText('Not configured');
+  await expect(row('Sam tablet')).toContainText('Not reported by this router');
 });
 
 test('native actions block and reset a real profile', async ({ page }) => {

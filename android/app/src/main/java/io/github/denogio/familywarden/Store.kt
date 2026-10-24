@@ -84,8 +84,14 @@ class Store(context: Context) {
      * Set only by enforcement after applying it, never merely on fetching.
      */
     var appsApplied: String?
-        get() = prefs.getString("apps_applied", null)
-        set(v) { prefs.edit().putString("apps_applied", v).commit() }
+        get() = PolicyCapabilities.acknowledgedRevision(prefs.getString("apps_applied", null),
+            prefs.getString("apps_applied_caps", null))
+        set(v) {
+            check(prefs.edit().putString("apps_applied", v)
+                .putString("apps_applied_caps", if (v == null) null else PolicyCapabilities.advertised).commit()) {
+                "app acknowledgement persistence failed"
+            }
+        }
 
     /** Last app-control state for the UI: "ok", "usage_access_missing", "suspend_failed", ... */
     var appsStatus: String?
@@ -105,7 +111,7 @@ class Store(context: Context) {
         prefs.edit().putString("host", address).putString("pubkey", key)
             .putString("payload", reply.payload)
             .putBoolean("provisioned", reply.state.appliesTo(deviceId))
-            .putInt("wire_seen", reply.state.wireVersion).remove("apps_applied")
+            .putInt("wire_seen", reply.state.wireVersion).remove("apps_applied").remove("apps_applied_caps")
             .putBoolean("ulysses", false).putLong("last_sync", System.currentTimeMillis() / 1000)
             .remove("last_error").apply()
     }
@@ -120,6 +126,6 @@ class Store(context: Context) {
     fun unpair() {
         prefs.edit().remove("host").remove("pubkey").remove("payload").remove("last_sync")
             .remove("last_error").remove("ulysses").remove("dns_error").remove("provisioned")
-            .remove("wire_seen").remove("apps_applied").apply()
+            .remove("wire_seen").remove("apps_applied").remove("apps_applied_caps").apply()
     }
 }

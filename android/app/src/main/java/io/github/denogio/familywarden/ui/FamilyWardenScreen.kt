@@ -231,6 +231,7 @@ private fun Facts(s: FamilyWardenState) {
         s.syncError == "router unreachable" -> stringResource(R.string.fw_router_offline)
         s.syncError == "bad signature" -> stringResource(R.string.fw_sync_bad_signature)
         s.syncError == "device not approved" -> stringResource(R.string.fw_sync_not_approved)
+        s.syncError == "unsupported capabilities" -> stringResource(R.string.fw_sync_upgrade_required)
         s.syncError != null -> stringResource(R.string.fw_sync_failed)
         s.lastSync > 0 -> formatWhenCapitalized(s.lastSync * 1000, s.nowMillis)
         else -> stringResource(R.string.details_never)

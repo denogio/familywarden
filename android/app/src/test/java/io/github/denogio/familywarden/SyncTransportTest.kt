@@ -74,7 +74,7 @@ class SyncTransportTest {
     }
 
     /** A signed approved reply of [version] bound to the request in [uri]. */
-    private fun signedReply(uri: URI, version: Int): String {
+    private fun signedReply(uri: URI, version: Int, change: (org.json.JSONObject) -> Unit = {}): String {
         val q = params(uri)
         val json = """{"v":$version,"server_time":1800000000,"nonce":"${q["nonce"]}","device":"${q["device"]}",
           "enrollment":"approved","binding":{"device_id":"${q["device"]}","profile_id":"kid","profile_name":"Kid",
@@ -82,7 +82,8 @@ class SyncTransportTest {
           "pact":{"active":false,"type":"","until":0,"release_at":0},
           "rules":{"enabled":"0","policy":"allow","override":"none","windows":[]}
           ${if (version == 3) ""","apps":{"rev":"0123456789abcdef","suspend_new":true,"limits":[],"blocked":[],"approved":[],"downtime":[]}""" else ""}}"""
-        return router.sign(json.toByteArray(Charsets.UTF_8)) + "\n" + json
+        val payload = org.json.JSONObject(json).also(change).toString()
+        return router.sign(payload.toByteArray(Charsets.UTF_8)) + "\n" + payload
     }
 
     @Test fun v3RequestSignsTheAppliedRevisionAndAcceptsAV3Reply() {
@@ -97,6 +98,13 @@ class SyncTransportTest {
                 Sync.requestMessageV3("fw-example", q.getValue("nonce"), "0123456789abcdef")))
             assertFalse(Usign.verify(phoneKey, q.getValue("sig3"),
                 Sync.requestMessageV3("fw-example", q.getValue("nonce"), "-")))
+            assertEquals("apps-v1,screen-time-v1", q["caps"])
+            assertTrue(Usign.verify(phoneKey, q.getValue("sigcaps"),
+                Sync.requestCapabilitiesMessage("fw-example", q.getValue("nonce"), "0123456789abcdef", q.getValue("caps"))))
+            assertFalse(Usign.verify(phoneKey, q.getValue("sigcaps"),
+                Sync.requestCapabilitiesMessage("fw-example", q.getValue("nonce"), "-", q.getValue("caps"))))
+            assertFalse(Usign.verify(phoneKey, q.getValue("sigcaps"),
+                Sync.requestCapabilitiesMessage("fw-example", q.getValue("nonce"), "0123456789abcdef", "-")))
             reply(out, signedReply(uri, 3))
         }) { endpoint ->
             val r = Sync.fetch(endpoint, router.publicKey, "fw-example", phone, requireDevicePolicy = true,
@@ -120,6 +128,39 @@ class SyncTransportTest {
             assertTrue(Sync.fetch(endpoint, router.publicKey, "fw-example", phone, requireDevicePolicy = true, minWire = 2) is Sync.Result.Ok)
             assertEquals(Sync.Result.Failed("downgraded reply"),
                 Sync.fetch(endpoint, router.publicKey, "fw-example", phone, requireDevicePolicy = true, minWire = 3))
+        }
+    }
+
+    @Test fun signedUnknownRequirementsAreReportedWithoutAcceptingANewPolicy() {
+        server({ uri, out -> reply(out, signedReply(uri, 3) {
+            it.put("requires", org.json.JSONArray().put("future-parent-approval"))
+        }) }) { endpoint ->
+            assertEquals(Sync.Result.Failed("unsupported capabilities"),
+                Sync.fetch(endpoint, router.publicKey, "fw-example", phone, requireDevicePolicy = true))
+        }
+    }
+
+    @Test fun signedCapabilityRefusalsMustMatchThisRequestAndCannotAuthorizeRemoval() {
+        val wrongNonce = java.util.concurrent.atomic.AtomicBoolean(false)
+        server({ uri, out -> reply(out, signedReply(uri, 3) {
+            it.put("requires", org.json.JSONArray().put("screen-time-v1"))
+            it.put("error", "unsupported_capabilities")
+            it.remove("binding")
+            if (wrongNonce.get()) it.put("nonce", "b".repeat(64))
+        }) }) { endpoint ->
+            assertEquals(Sync.Result.Failed("unsupported capabilities"),
+                Sync.fetch(endpoint, router.publicKey, "fw-example", phone, requireDevicePolicy = true))
+            wrongNonce.set(true)
+            assertEquals(Sync.Result.Failed("response mismatch"),
+                Sync.fetch(endpoint, router.publicKey, "fw-example", phone, requireDevicePolicy = true))
+        }
+    }
+
+    @Test fun understoodRequirementsRemainCompatibleWithNormalV3Policy() {
+        server({ uri, out -> reply(out, signedReply(uri, 3) {
+            it.put("requires", org.json.JSONArray().put("screen-time-v1"))
+        }) }) { endpoint ->
+            assertTrue(Sync.fetch(endpoint, router.publicKey, "fw-example", phone, requireDevicePolicy = true) is Sync.Result.Ok)
         }
     }
 

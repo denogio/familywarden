@@ -17,6 +17,40 @@ class DevicePolicyTest {
     }""")
     private fun parsed(o: JSONObject = payload()) = Payload.parse(o.toString())
 
+    @Test(expected = IllegalArgumentException::class)
+    fun unknownRequiredFeatureCannotBeSilentlyIgnored() {
+        parsed(payload().put("v", 3).put("requires", org.json.JSONArray().put("future-parent-approval")))
+    }
+
+    @Test fun understoodAndAbsentRequirementsKeepLegacyCompatibility() {
+        assertTrue(parsed(payload().put("v", 3).put("requires", org.json.JSONArray().put("screen-time-v1"))).appliesTo("fw-example"))
+        assertTrue(parsed().appliesTo("fw-example"))
+    }
+
+    @Test fun requirementsAreStrictBoundedUniqueStringsEvenOnPendingReplies() {
+        val invalid = listOf<Any>(JSONObject.NULL, "screen-time-v1", org.json.JSONArray().put(42),
+            org.json.JSONArray().put("screen-time-v1").put("screen-time-v1"),
+            org.json.JSONArray().put("SCREEN-TIME-V1"), org.json.JSONArray((1..17).map { "feature-$it" }))
+        invalid.forEach { value ->
+            val o = payload().put("v", 3).put("enrollment", "pending").put("requires", value)
+            try { parsed(o); fail("accepted invalid requirements: $value") } catch (_: IllegalArgumentException) { }
+        }
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun signedCapabilityRefusalIsNotAnApprovedOrPendingPolicy() {
+        parsed(payload().put("v", 3).put("error", "unsupported_capabilities"))
+    }
+
+    @Test fun acknowledgementsFromOlderImplementationsMustBeReappliedNotReused() {
+        val revision = "0123456789abcdef"
+        assertNull(PolicyCapabilities.acknowledgedRevision(revision, null))
+        assertNull(PolicyCapabilities.acknowledgedRevision(revision, "apps-v1"))
+        assertNull(PolicyCapabilities.acknowledgedRevision(null, PolicyCapabilities.advertised))
+        assertNull(PolicyCapabilities.acknowledgedRevision("bad", PolicyCapabilities.advertised))
+        assertEquals(revision, PolicyCapabilities.acknowledgedRevision(revision, PolicyCapabilities.advertised))
+    }
+
     @Test fun pendingReplyIsBoundToRequestButNeverGrantsPolicyOrRemoval() {
         val o = JSONObject().put("v", 2).put("server_time", 1800000000)
             .put("device", "fw-example").put("nonce", nonce).put("enrollment", "pending")

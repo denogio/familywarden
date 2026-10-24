@@ -233,7 +233,10 @@ Depends on P3/P4 and P1 protocol decisions.
       No key, pin or enrollment change; signing stays in the shell (usign) for now.
 - [ ] Add scoped roles, app rules, schema/capability negotiation and policy revisions.
       Done: app rules + revision in wire v3, version negotiation by dual signature.
-      Deferred to P8 (first user): parent role/`approves`/`parents` keys; `requires` capabilities.
+      Added 2026-10-24: authenticated `caps`/`sigcaps`, strict `requires` and signed refusals;
+      no false current ack from incompatible/legacy clients (protocol §2b). 285 integration
+      checks, 149 JVM tests, lint/debug build/release compilation and 13 browser tests pass;
+      no emulator was needed. Parent role/`approves`/`parents` keys remain deferred to P8.
 - [x] Bound payloads, verify signed fields before parsing into trusted state, and reject
       unknown unsafe versions, mismatched devices, replay and downgrade.
       Signature over exact bytes before parsing (unchanged); strict apps validation;

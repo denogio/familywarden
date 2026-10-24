@@ -650,13 +650,20 @@ assert_json "the phone that joined is free again" "$(v2payload phoneD fw-d1 "$N1
 echo ""
 echo "=== App control: wire v3 (apps policy, acknowledgement, pact freeze) ==="
 # Both signatures, as a v3 phone sends them: $1 phone key, $2 device id, $3 nonce,
-# $4 applied revision ("-" = none) [, $5 revision actually signed in the v3 message]
+# $4 applied revision ("-" = none), $5 signed revision, $6 caps ("legacy" omits them),
+# $7 caps actually signed, $8 capability-signature nonce (tampering tests).
 mast3() {
+    local caps="${6-apps-v1,screen-time-v1}" extra=""
     printf 'familywarden-sync-v2\n%s\n%s\n' "$2" "$3" > /tmp/m3.msg2
     printf 'familywarden-sync-v3\n%s\n%s\n%s\n' "$2" "$3" "${5:-$4}" > /tmp/m3.msg3
     usign -S -m /tmp/m3.msg2 -s "/tmp/$1.key" -x /tmp/m3.sig2
     usign -S -m /tmp/m3.msg3 -s "/tmp/$1.key" -x /tmp/m3.sig3
-    REQUEST_METHOD=GET QUERY_STRING="device=$2&nonce=$3&key=$(enc "$(sed -n 2p "/tmp/$1.pub")")&sig=$(enc "$(sed -n 2p /tmp/m3.sig2)")&sig3=$(enc "$(sed -n 2p /tmp/m3.sig3)")&applied=$4&name=Pixel-9" sh "$MAST"
+    if [ "$caps" != legacy ]; then
+        printf 'familywarden-sync-caps-v1\n%s\n%s\n%s\n%s\n' "$2" "${8:-$3}" "$4" "${7-$caps}" > /tmp/m3.capsmsg
+        usign -S -m /tmp/m3.capsmsg -s "/tmp/$1.key" -x /tmp/m3.capssig
+        extra="&caps=$caps&sigcaps=$(enc "$(sed -n 2p /tmp/m3.capssig)")"
+    fi
+    REQUEST_METHOD=GET QUERY_STRING="device=$2&nonce=$3&key=$(enc "$(sed -n 2p "/tmp/$1.pub")")&sig=$(enc "$(sed -n 2p /tmp/m3.sig2)")&sig3=$(enc "$(sed -n 2p /tmp/m3.sig3)")&applied=$4&name=Pixel-9$extra" sh "$MAST"
 }
 v3payload() { mast3 "$@" | sed '1,/^$/d' | sed 1d; }
 count() { echo "$1" | jsonfilter -e "$2" 2>/dev/null | grep -c .; }
@@ -722,7 +729,51 @@ mast3 phoneD fw-d1 "$N1" "$rev" "0000000000000000" | head -1 | grep -q '^Status:
 mast3 phoneD fw-d1 "$N1" "not-a-rev" | head -1 | grep -q '^Status: 400' \
     && pass "malformed acknowledgement refused" || fail "malformed acknowledgement accepted"
 assert_json "forged acknowledgement not recorded" "$(call devices)" '@.devices[@.id="fw-d1"].apps_applied' "$rev"
+
+echo "=== Authenticated capabilities and fail-closed policy requirements ==="
+assert_json "app policy requires app-control support" "$payload" '@.requires[0]' "apps-v1"
+assert_json "whole-phone downtime requires P7b support" "$payload" '@.requires[1]' "screen-time-v1"
+assert_json "device reports authenticated feature support" "$(call devices)" '@.devices[@.id="fw-d1"].capabilities[1]' "screen-time-v1"
+mast3 phoneD fw-d1 "$N1" "$rev" "" legacy > /tmp/caps-refused.out
+sed '1,/^$/d' /tmp/caps-refused.out > /tmp/caps-refused.body
+printf 'untrusted comment: test\n%s\n' "$(head -1 /tmp/caps-refused.body)" > /tmp/caps-refused.sig
+sed 1d /tmp/caps-refused.body > /tmp/caps-refused.json
+usign -V -q -m /tmp/caps-refused.json -p /tmp/mast.pub -x /tmp/caps-refused.sig \
+    && pass "capability refusal is signed by the router" || fail "unsigned refusal"
+refused=$(cat /tmp/caps-refused.json)
+assert_json "old v3 client gets a refusal, not weaker rules" "$refused" '@.error' "unsupported_capabilities"
+assert_json "refusal is request-bound" "$refused" '@.nonce' "$N1"
+[ -z "$(echo "$refused" | jsonfilter -e '@.binding')" ] && pass "refusal grants no binding" || fail "refusal has binding"
+[ -z "$(echo "$refused" | jsonfilter -e '@.apps')" ] && pass "refusal grants no partial app policy" || fail "refusal has apps"
+assert_json "incompatible phone cannot acknowledge current rules" "$(call devices)" '@.devices[@.id="fw-d1"].apps_applied' ""
+assert_json "LuCI can distinguish upgrade-needed from waiting" "$(call devices)" '@.devices[@.id="fw-d1"].apps_error' "unsupported_capabilities"
+assert_json "signed empty capability set is insufficient" "$(v3payload phoneD fw-d1 "$N1" - "" -)" '@.error' "unsupported_capabilities"
+assert_json "unknown capability is not authorization" "$(v3payload phoneD fw-d1 "$N1" - "" future-parent)" '@.error' "unsupported_capabilities"
+for caps in 'screen-time-v1,screen-time-v1' 'screen-time-v1,apps-v1' 'SCREEN-TIME-V1' ''; do
+    mast3 phoneD fw-d1 "$N1" - "" "$caps" | head -1 | grep -q '^Status: 400' \
+        && pass "malformed capabilities refused: '$caps'" || fail "invalid caps accepted: '$caps'"
+done
+mast3 phoneD fw-d1 "$N1" - "" screen-time-v1 future-parent | head -1 | grep -q '^Status: 403' \
+    && pass "capability names must be signed" || fail "capability substitution accepted"
+mast3 phoneD fw-d1 "$N1" - "" screen-time-v1 screen-time-v1 "$N2" | head -1 | grep -q '^Status: 403' \
+    && pass "capability signature is nonce-bound" || fail "capability signature replayed"
+v3payload phoneD fw-d1 "$N1" "$rev" >/dev/null
+assert_json "successful compatible sync clears the refusal" "$(call devices)" '@.devices[@.id="fw-d1"].apps_error' ""
+assert_json "compatible signed acknowledgement restored" "$(call devices)" '@.devices[@.id="fw-d1"].apps_applied' "$rev"
+cp /tmp/familywarden.seen/fw-d1 /tmp/seen-backup
+printf '%s\n%s\n' "$(date +%s)" "$rev" > /tmp/familywarden.seen/fw-d1
+assert_json "pre-upgrade acknowledgement cannot imply P7b compatibility" "$(call devices)" '@.devices[@.id="fw-d1"].apps_applied' ""
+assert_json "pre-upgrade client is marked incompatible before another fetch" "$(call devices)" '@.devices[@.id="fw-d1"].apps_error' "unsupported_capabilities"
+cp /tmp/seen-backup /tmp/familywarden.seen/fw-d1
+assert_json "basic app-only policy still works on legacy v3" "$(v3payload phoneC fw-c1 "$N1" - "" legacy)" '@.binding.profile_id' "parent"
+# Cannot merely append an unsigned assertion of support to an otherwise valid v3 request.
+mast3 phoneD fw-d1 "$N1" - >/dev/null
+REQUEST_METHOD=GET QUERY_STRING="device=fw-d1&nonce=$N1&key=$(enc "$(sed -n 2p /tmp/phoneD.pub)")&sig=$(enc "$(sed -n 2p /tmp/m3.sig2)")&sig3=$(enc "$(sed -n 2p /tmp/m3.sig3)")&applied=-&caps=screen-time-v1" sh "$MAST" | head -1 | grep -q '^Status: 400' \
+    && pass "unsigned feature claims refused" || fail "unsigned capabilities trusted"
+assert_json "multiple sorted feature names accepted" "$(v3payload phoneD fw-d1 "$N1" - "" apps-v1,screen-time-v1)" '@.binding.profile_id' "kid"
 [ -z "$(v2payload phoneD fw-d1 "$N1" | jsonfilter -e '@.apps')" ] && pass "v2 replies never carry apps" || fail "apps in a v2 reply"
+assert_json "stripping v3 negotiation cannot obtain a weaker v2 binding" "$(v2payload phoneD fw-d1 "$N1")" '@.error' "unsupported_capabilities"
+[ -z "$(v2payload phoneD fw-d1 "$N1" | jsonfilter -e '@.binding')" ] && pass "v2 cannot bind an app-controlled profile" || fail "v2 binding bypasses app rules"
 assert_json "pending phone gets v3 but nothing else" "$(v3payload phoneB fw-p1 "$N1" -)" '@.enrollment' "pending"
 [ -z "$(v3payload phoneB fw-p1 "$N1" - | jsonfilter -e '@.apps')" ] && pass "no apps before approval" || fail "pending phone got apps"
 
@@ -748,8 +799,10 @@ assert_json "pact: app rules frozen (revision)" "$payload" '@.apps.rev' "$rev"
 assert_json "pact: block can't be removed live" "$payload" '@.apps.blocked[0]' "com.zhiliaoapp.musically"
 assert_json "pact: limit can't be raised live" "$payload" '@.apps.limits[@.package="com.roblox.client"].minutes' "30"
 assert_json "pact: downtime can't be deleted live" "$payload" '@.apps.downtime[0].start' "21:00"
+assert_json "pact: required features also use frozen policy" "$(v3payload phoneD fw-d1 "$N1" - "" legacy)" '@.error' "unsupported_capabilities"
 echo $(( $(date +%s) - 1 )) > /etc/familywarden/release
 "$BIN" tick
+assert_json "disabling app control clears stale capability errors" "$(call devices)" '@.devices[@.id="fw-d1"].apps_error' ""
 [ -z "$(v3payload phoneD fw-d1 "$N1" - | jsonfilter -e '@.apps')" ] && pass "after the pact the live config applies (app control off)" || fail "stale apps after the pact"
 
 echo ""
@@ -765,6 +818,7 @@ payload=$(v3payload phoneD fw-d1 "$N1" -)
 assert_json "all-days value on a weekday" "$payload" '@.apps.screen.mon' "120"
 assert_json "weekend value overrides" "$payload" '@.apps.screen.sun' "180"
 assert_json "always allowed app" "$payload" '@.apps.always_allowed[0]' "com.example.school"
+assert_json "daily screen-time policy refuses legacy v3" "$(v3payload phoneD fw-d1 "$N1" - "" legacy)" '@.error' "unsupported_capabilities"
 [ "$(count "$payload" '@.apps.always_allowed[*]')" = 1 ] && pass "invalid always-allowed entry ignored" || fail "always_allowed: $(echo "$payload" | jsonfilter -e '@.apps.always_allowed')"
 [ -z "$(echo "$payload" | jsonfilter -e '@.apps.bonus')" ] && pass "no bonus object without bonus" || fail "unexpected bonus"
 rev1=$(echo "$payload" | jsonfilter -e '@.apps.rev')

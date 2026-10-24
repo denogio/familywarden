@@ -23,6 +23,7 @@ object Payload {
         val device = if (scoped) o.getString("device").also {
             require(it.matches(Regex("[A-Za-z0-9-]{1,80}"))) { "invalid device ID" }
         } else null
+        PolicyCapabilities.check(o)
         if (scoped) when (o.getString("enrollment")) {
             // Signed "not approved (yet)": nothing about pacts, roles, DNS or apps
             "pending" -> return MastState(

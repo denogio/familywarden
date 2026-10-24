@@ -57,7 +57,11 @@ internal fun ScreenTimeContent(state: FamilyWardenState, actions: FamilyWardenAc
             localTime(time.resetsAt)), night.onNightMuted)
     }
     Text(stringResource(R.string.fw_time_this_phone), style = MaterialTheme.typography.bodySmall)
-    if (state.syncError != null) InfoNote(Icons.Outlined.CloudOff, stringResource(R.string.fw_time_offline))
+    if (state.syncError != null) InfoNote(Icons.Outlined.Info, stringResource(when (state.syncError) {
+        "router unreachable" -> R.string.fw_time_offline
+        "unsupported capabilities" -> R.string.fw_sync_upgrade_required
+        else -> R.string.fw_sync_failed
+    }))
     if (time.usedMillis == null) {
         InfoNote(Icons.Outlined.Info, stringResource(if (time.usageAccessMissing)
             R.string.fw_apps_usage_missing else R.string.fw_time_unavailable))

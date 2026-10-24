@@ -214,7 +214,7 @@ return view.extend({
 		var self = this;
 		if (!devices.length)
 			return E('p', { 'class': 'fw-muted' }, _('No phone approved yet.'));
-		var heads = [ _('Phone'), _('Profile'), _('Role'), _('Key fingerprint (SHA-256)'), _('Last policy fetch'), _('Actions') ];
+		var heads = [ _('Phone'), _('Profile'), _('Role'), _('Key fingerprint (SHA-256)'), _('Last policy fetch'), _('App policy'), _('Actions') ];
 		return E('table', { 'class': 'fw-table' }, [
 			E('thead', {}, E('tr', {}, heads.map(function(h) { return E('th', {}, h); }))),
 			E('tbody', {}, devices.map(function(d) {
@@ -232,7 +232,12 @@ return view.extend({
 					E('td', { 'data-label': heads[2] }, d.administrator === '1' ? _('Administrator') : _('Member')),
 					E('td', { 'data-label': heads[3] }, fingerprint(d.fingerprint)),
 					E('td', { 'data-label': heads[4] }, fmtTime(d.seen)),
-					E('td', { 'data-label': heads[5] }, actions)
+					E('td', { 'data-label': heads[5] }, d.apps_error === 'unsupported_capabilities'
+						? _('Update FamilyWarden on this phone: required features are missing. Cached rules remain.')
+						: typeof d.apps_rev !== 'string' || (d.apps_rev !== '' && !/^[0-9a-f]{16}$/.test(d.apps_rev)) ? _('Not reported by this router')
+						: !d.apps_rev ? _('Not configured')
+						: d.apps_applied === d.apps_rev ? _('Current revision acknowledged') : _('Not applied yet')),
+					E('td', { 'data-label': heads[6] }, actions)
 				]);
 			}))
 		]);
