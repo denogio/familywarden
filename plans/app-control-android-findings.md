@@ -185,6 +185,19 @@ native mode, and a provider still executed despite activity blocking. Home/Direc
 experiments expose a readiness interval and phone-UX/recovery gates. No production
 architecture decision or physical deployment follows yet.
 
+## Pixel 10 pilot (2026-10-24, release 0.10.0-pilot1, Android 17)
+
+Router rivendell on `familywarden 0.10.0_rc1`; profile `dennis` with `apps=1`,
+`apps_suspend_new=0`, YouTube and Spotify 10 min/day. Upgrade in place kept Device Owner,
+pairing and keys; signed acknowledgement matched the revision; no other app was paused.
+
+- **Picture-in-picture counts** (user test): normal + PiP YouTube time both counted.
+- **Limit enforcement works:** YouTube was paused at the limit. Android's dialog title is
+  "Blokeret af virksomhedspolitik" (fixed); the body is still Android's default because
+  no short support message is set yet. No warning before the pause: missing feature.
+- **Spotify with the screen off does not count** (user test); counted only with screen on.
+- Still open: reboot persistence on hardware, battery cost, blocked-app test.
+
 ## Still to verify on the user's Pixel 10 (needs a separate OK each time)
 
 Battery/Doze cost of counting and syncing, Spotify with the screen off, YouTube
