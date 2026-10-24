@@ -315,6 +315,28 @@ precedence/grants/shared quotas, signed policy activation, release/removal integ
 UI and physical-device safety remain open. Post-install suspension is **not** strict
 pre-execution app approval (P2 round 3).
 
+## P7b — Total screen time, bonus and warnings (decisions D9/D10)
+
+Depends on P5–P7 (done for the local slice). Next pilot build: `0.10.0-pilot2`.
+
+- [ ] UCI: profile `screen_minutes` (all days) or `screen_weekday` + `screen_weekend`;
+      list `always_allowed` packages. Router expands to a per-weekday map in wire v3
+      (`apps.screen.{mon..sun}`), part of the revision and the pact snapshot.
+- [ ] Bonus: `ubus call familywarden bonus '{"profile":..,"minutes":30[,"package":..]}'`
+      adds to today's total (or one app); router-local day, gone at midnight; in the signed
+      policy as `apps.bonus` with its day; never changes the standing limit. Bounded and
+      additive like tickets; refused for an adult profile bound by a pact.
+- [ ] Phone: count the union of visible ordinary apps (not essential/always-allowed); when
+      total (+ bonus) is used up, pause every ordinary app; lift at midnight or on bonus.
+- [ ] Notifications: 5 minutes left (per limited app and total, once per day) and paused.
+- [ ] Pause dialog body via `setShortSupportMessage` (EN/DA), cleared on removal.
+- [ ] LuCI: one place to set all days / weekdays + weekend and always-allowed apps; bonus
+      buttons (+15/+30/+60) on the overview card. HA via the same ubus method.
+- [ ] Tests: router expansion/revision/pact freeze/bonus expiry; JVM union counting,
+      weekday lookup in router zone, midnight with bonus; emulator total exhaustion keeps
+      dialer/launcher/Settings usable; pilot rehearsal; then Pixel pilot2.
+- [ ] Decide (open): should app downtime pause all ordinary apps for children?
+
 ## P8 — Deliver the first end-to-end extra-time slice
 
 Depends on P5–P7. Start on LAN before adding the selected off-home transport.

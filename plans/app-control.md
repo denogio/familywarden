@@ -99,6 +99,32 @@ follow-ups recorded with them, not additional decisions.
 7. **Requests (A7):** no rate limit; a child has at most **one open request** at a time;
    an unanswered request **expires after 1 hour**.
 
+## Contract decisions (2026-10-24, after the Pixel 10 pilot)
+
+9. **Total daily screen time for children.** Besides per-app limits, a child profile has a
+   daily limit on total screen time. When it is used up, every ordinary app is paused.
+   - **What counts:** screen on and unlocked while an ordinary app is visible. Time is the
+     *union* over apps, never a sum (PiP over another app counts once). Essential apps
+     (phone, SMS, launcher, Settings, keyboard, FamilyWarden) and the profile's
+     **always-allowed** apps neither count nor get paused. Emergency calls always work.
+   - **Setting it must be easy:** one value for **all days**, or one for **weekdays** and one
+     for **weekend**, set in one place (LuCI now, parent app later). The router expands
+     it to a per-weekday value in the signed policy, so the phone decides offline and a
+     later per-day override needs no wire change.
+   - **Bonus must be easy:** a parent gives extra minutes for *today* in one action (e.g.
+     +15/+30/+60 on the total, optionally for one app), without changing the standing
+     limit. A bonus lasts until midnight in the router's timezone. It reaches the phone at
+     its next sync (LAN now, off-home with P9). This is a parent-initiated top-up, distinct
+     from the child's request/grant flow (D2/D3, P8), which keeps its 2-hour lifetime.
+   - Shared across a child's devices like the per-app budgets (D4); until P8 the limit is
+     enforced per phone.
+   - *Open (proposed, not decided):* whether app **downtime** for children should also pause
+     all ordinary apps (bedtime for the whole phone) with the same exceptions.
+10. **Warnings and pause text** (pilot finding): the phone notifies "5 minutes left" (once
+    per app/day and for the total) and "paused: daily limit reached". Android's pause
+    dialog title ("Blocked by work policy") cannot be changed by a Device Owner; its body is
+    set to a FamilyWarden text (EN/DA) via the short support message.
+
 ## Open decisions
 
 | ID | Question | Proposal | State |
