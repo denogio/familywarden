@@ -12,6 +12,8 @@ not permission to silently decide product behavior.
 
 - Go core, OpenWrt first; preserve a boundary for future OPNsense/pfSense adapters.
   Do not implement speculative FreeBSD adapters now.
+- Router-agnostic by design (A18): new product logic goes in the Go core, never in the
+  shell plugin or behind OpenWrt-only assumptions; the shell plugin only shrinks.
 - One Android app: managed child, parent approver, and adult self-limiter roles.
   Being an administrator and being subject to a pact remain independent.
 - Separate ordinary Google accounts on children's phones; preserve the README warning

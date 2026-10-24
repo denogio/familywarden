@@ -21,7 +21,7 @@ Per-app time control on Android phones, self-hosted by each household on its own
 
 1. **Self-hosted per household.** No hosted service run by the maintainer. Requiring
    OpenWrt is fine, but router-specific parts must sit behind an adapter so OPNsense and
-   pfSense can be added later.
+   pfSense can be added later. Strengthened 2026-10-24 by A18: router-agnostic by design.
 2. **New backend in Go** for app control, enrollment/policy and requests. Router
    features (firewall per MAC, lockdown, Ulysses hotspot) remain router adapters.
 3. **Replaces Family Link** on the children's phones, with extended functionality; no
@@ -175,6 +175,9 @@ app** (D2/D3, parent phone may approve offline); a shared budget across a child'
 | A15 | Largest extra time per request | 240 minutes | **Decided** (2026-10-24) |
 | A16 | App categories | **Yes:** needed so Ulysses rules can target a group (e.g. all productivity apps) easily. Source: Android `ApplicationInfo.category`, overridable per app on the router. A deliberate addition beyond Family Link | **Decided** (2026-10-24) |
 | A17 | Adult daily pool size (P11) | **Adjustable** per adult profile; during a pact it changes only like other pact rules (amendment window) | **Decided** (2026-10-24) |
+| A18 | Router-agnostic foundation | **FamilyWarden is fundamentally router-agnostic.** All product logic (identity, signing, roles, pacts, schedules, app rules, requests/grants, DNS sync) lives in the Go core and must not assume OpenWrt. Platform specifics sit in an adapter with a narrow boundary: firewall enforcement (nftables now, pf later), service lifecycle, platform config/UI integration, time zone and LAN/lease discovery. Core code may not call `uci`, `fw4`, `ubus` or OpenWrt paths directly; the OpenWrt adapter does. A fake adapter in tests is the second consumer of that boundary, so it is not speculative. No FreeBSD adapter is built until needed. The shell plugin is the interim OpenWrt implementation and shrinks as logic moves to Go | **Decided** (2026-10-24) |
+| A19 | Where configuration is stored | Proposal: core-owned versioned store (portable, same on every platform; backups export one file). OpenWrt adapter migrates existing UCI once and LuCI talks to the core API instead of UCI. Alternative: keep each platform's native config (UCI, OPNsense XML) behind the adapter — native backups, but every platform needs a mapping | Open |
+| A20 | Administrator UI | Proposal: platform plugins (LuCI now, OPNsense later) as thin clients of one core HTTP/JSON API, so features are implemented once. Alternative: a web UI served by the core itself, the same everywhere but outside the router's own admin interface | Open |
 
 ## Research: what is possible without Device Owner (2026-10-19)
 
