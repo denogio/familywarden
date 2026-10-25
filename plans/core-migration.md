@@ -54,6 +54,13 @@ firewall chains and the AdGuard Home sync were intact; the phone advertised
 DNS and uploaded usage. **Measured aarch64 core RSS: 7.4 MB** (overlay use 6.9 → 10.1 MB).
 Usage totals for the upgrade day start at the phone update (pilot1 did not count totals).
 
+Follow-up the same day: Approve in LuCI failed with "malformed request" because uhttpd adds
+`ubus_rpc_session` to JSON-RPC calls and the strict core decoder refused the unknown field
+(CLI calls have no session, so tests missed it). The rpcd shim now drops that field
+(`d27e27e`, integration check sends it). `familywarden-core` 0.5.0 (also shared-v1) was
+installed after a fresh backup; its postinst did not restart the daemon, so 0.4.0 kept
+running until a manual restart. 0.5.0-r2 restarts it on upgrade. Measured RSS 7.2 MB.
+
 ## Step 2 foundation (2026-10-24)
 
 `familywarden` 0.11.0_rc2 / `familywarden-core` 0.3.0 adds the Go-owned LAN

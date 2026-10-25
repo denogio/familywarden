@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=familywarden-core
 PKG_VERSION:=0.5.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_MAINTAINER:=denogio <dennis@hojgaard.me>
 PKG_LICENSE:=Apache-2.0
@@ -68,10 +68,13 @@ define Package/familywarden-core/install
 endef
 
 # rpcd only scans exec plugins at (re)load: without this the ubus object is
-# missing after install and lingers after removal.
+# missing after install and lingers after removal. An upgrade must also restart
+# the daemon, or the old binary keeps serving until the next reboot.
 define Package/familywarden-core/postinst
 #!/bin/sh
-[ -n "$${IPKG_INSTROOT}" ] || /etc/init.d/rpcd reload
+[ -n "$${IPKG_INSTROOT}" ] && exit 0
+/etc/init.d/rpcd reload
+/etc/init.d/familywarden-core enabled && /etc/init.d/familywarden-core restart
 exit 0
 endef
 
