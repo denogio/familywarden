@@ -785,10 +785,46 @@ assert_json "compatible signed acknowledgement restored" "$(call devices)" '@.de
 # Adapter protocol changes must refuse an old daemon, never hide app restrictions.
 assert_json "old core context format is refused" "$("$BIN" core-context)" '@.error' "incompatible core: upgrade required"
 assert_json "old core policy format is refused" "$("$BIN" core-policy kid 3)" '@.error' "incompatible core: upgrade required"
-assert_json "new adapter format is explicit" "$("$BIN" core-context go-apps-v1)" '@.app_format' "go-apps-v1"
-raw_policy=$("$BIN" core-policy kid 3 go-apps-v1)
+assert_json "old canonical-input adapter is refused" "$("$BIN" core-context go-apps-v1)" '@.error' "incompatible core: upgrade required"
+assert_json "new adapter format is explicit" "$("$BIN" core-context go-apps-v2)" '@.app_format' "go-apps-v2"
+raw_policy=$("$BIN" core-policy kid 3 go-apps-v2)
 [ -z "$(echo "$raw_policy" | jsonfilter -e '@.apps')" ] && pass "shell no longer builds signed app policy" || fail "shell still supplies apps"
-[ -n "$(echo "$raw_policy" | jsonfilter -e '@.context.profiles.kid.app_input.rules')" ] && pass "shell supplies effective compiler inputs" || fail "missing app inputs"
+assert_json "shell supplies raw versioned app configuration" "$raw_policy" '@.context.profiles.kid.app_input.version' "1"
+# Compare the actual stateless Go compiler with a frozen pre-migration oracle.
+# The reference runs separately, so its shell helpers cannot affect production code.
+assert_legacy_app_canonical() {
+    expected=$(UCI_CONFIG_DIR=/var/run/familywarden sh -c '
+        . /lib/functions.sh
+        . /src/test/app-canon-legacy.sh
+        config_load familywarden
+        _legacy_apps_canon "$1"
+    ' _ "$1")
+    actual=$("$BIN" core-context go-apps-v2 | jsonfilter -e "@.profiles.$1.app_input" | /usr/sbin/familywardend app-canon)
+    [ "$actual" = "$expected" ] && pass "Go normalization preserves legacy canonical bytes ($1: $2)" || fail "canonical normalization changed ($1: $2)"
+}
+assert_legacy_app_canonical kid "app limits and downtime"
+assert_legacy_app_canonical parent "app-only policy"
+assert_legacy_app_canonical teen "app control off"
+uci set familywarden.canonical_probe=profile
+uci set familywarden.canonical_probe.apps=1
+uci set familywarden.canonical_probe.screen_minutes=1440
+uci set familywarden.canonical_probe.screen_weekday=060
+uci set familywarden.canonical_probe.screen_weekend=0
+uci add_list familywarden.canonical_probe.always_allowed=com.example.calls
+for spec in 'first:com.example.video:0015:0' 'second:com.example.video:15:0' 'third:com.example.video:99:1' 'bad:com.example.bad:invalid:0' 'huge:com.example.huge:99999:0' 'zero:com.example.zero:0000:0'; do
+    old_ifs=$IFS; IFS=:; set -- $spec; IFS=$old_ifs
+    uci set "familywarden.probe_$1=app"
+    uci set "familywarden.probe_$1.profile=canonical_probe"
+    uci set "familywarden.probe_$1.package=$2"
+    uci set "familywarden.probe_$1.minutes=$3"
+    uci set "familywarden.probe_$1.blocked=$4"
+done
+uci commit familywarden
+"$BIN" reload >/dev/null
+assert_legacy_app_canonical canonical_probe "duplicates, leading zeroes, malformed and oversized limits"
+for section in canonical_probe probe_first probe_second probe_third probe_bad probe_huge probe_zero; do uci delete "familywarden.$section"; done
+uci commit familywarden
+"$BIN" reload >/dev/null
 # An acknowledgement from a client that lacks a feature the policy needs LATER must
 # not look current: legacy v3 phone acks the app-only policy, then downtime is added.
 prev=$(v3payload phoneC fw-c1 "$N1" - "" legacy | jsonfilter -e '@.apps.rev')
@@ -893,6 +929,7 @@ uci commit familywarden
 payload=$(v3payload phoneD fw-d1 "$N1" -)
 assert_json "weekday value overrides all days" "$payload" '@.apps.screen.wed' "60"
 assert_json "weekend still set" "$payload" '@.apps.screen.sat' "180"
+assert_legacy_app_canonical kid "weekday and weekend overrides"
 [ "$(echo "$payload" | jsonfilter -e '@.apps.rev')" != "$rev1" ] && pass "screen time change gives a new revision" || fail "revision unchanged"
 uci set familywarden.kid.screen_minutes='120'
 uci commit familywarden
@@ -922,6 +959,22 @@ grep -q '2000-01-01' /etc/familywarden/bonus && fail "old bonus days kept" || pa
 sed -i "s/|$(date +%F)|/|2000-01-02|/" /etc/familywarden/bonus
 [ -z "$(v3payload phoneD fw-d1 "$N1" - | jsonfilter -e '@.apps.bonus')" ] && pass "yesterday's bonus is not sent" || fail "stale bonus sent"
 
+# Compiler failures must not create partial pact snapshots or erase frozen rules.
+break_app_compiler() {
+    mv /usr/sbin/familywardend /usr/sbin/familywardend.real
+    cat > /usr/sbin/familywardend <<'EOF'
+#!/bin/sh
+[ "$1" != app-canon ] || exit 1
+exec /usr/sbin/familywardend.real "$@"
+EOF
+    chmod 755 /usr/sbin/familywardend
+}
+restore_app_compiler() { mv /usr/sbin/familywardend.real /usr/sbin/familywardend; }
+break_app_compiler
+assert_json "pact refuses a failed app snapshot compiler" "$(call pact '{"until":0}')" '@.error' "app policy compilation failed"
+[ ! -f /etc/familywarden/pact ] && pass "failed snapshot cannot activate a pact" || fail "pact activated with missing app rules"
+restore_app_compiler
+
 # Captain: screen time and always-allowed apps freeze with the pact; no self-bonus.
 call pact "{\"until\":0,\"window_day\":\"$tomorrow\",\"window_start\":\"10:00\",\"window_stop\":\"11:00\"}" >/dev/null
 assert_json "no bonus for a captain under a pact" "$(call bonus '{"profile":"kid","minutes":15}')" '@.error' "bound by Ulysses pact"
@@ -934,6 +987,21 @@ uci commit familywarden
 payload=$(v3payload phoneD fw-d1 "$N1" -)
 assert_json "pact: screen time frozen" "$payload" '@.apps.screen.wed' "60"
 assert_json "pact: always allowed frozen" "$payload" '@.apps.always_allowed[0]' "com.example.school"
+assert_legacy_app_canonical kid "frozen app snapshot"
+cp /etc/familywarden/pact /tmp/pact-original
+cp /etc/familywarden/pact.snap /tmp/pact-snapshot-before
+cp /var/run/familywarden/familywarden /tmp/pact-effective-before
+cp /var/etc/familywarden.include /tmp/pact-include-before
+# Force an amendment window on this disposable fixture to exercise replacement.
+sed -i "s/^window_day=.*/window_day=$(date +%a | tr A-Z a-z)/; s/^window_start=.*/window_start=00:00/; s/^window_stop=.*/window_stop=24:00/" /etc/familywarden/pact
+break_app_compiler
+assert_json "failed amendment compiler is reported" "$(call reload)" '@.error' "effective policy compilation failed"
+cmp -s /etc/familywarden/pact.snap /tmp/pact-snapshot-before && pass "failed amendment preserves the frozen snapshot" || fail "snapshot changed after compiler failure"
+cmp -s /var/run/familywarden/familywarden /tmp/pact-effective-before && pass "failed amendment preserves effective policy" || fail "effective policy changed after compiler failure"
+cmp -s /var/etc/familywarden.include /tmp/pact-include-before && pass "failed amendment preserves the firewall include" || fail "include changed after compiler failure"
+restore_app_compiler
+mv /tmp/pact-original /etc/familywarden/pact
+assert_json "reload recovers after compiler repair" "$(call reload)" '@.status' "ok"
 echo $(( $(date +%s) - 1 )) > /etc/familywarden/release
 "$BIN" tick
 assert_json "after the pact: live screen time" "$(v3payload phoneD fw-d1 "$N1" -)" '@.apps.screen.wed' "999"

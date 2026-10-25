@@ -133,6 +133,66 @@ rules, reject stale edits, fail-closed state corruption, and safe firewall apply
 No Android change or physical-device/emulator run was needed for this wire-compatible
 compiler move. Off-home transport and adult-pool semantics remain separate open gates.
 
+## Step 3b: raw app configuration and safe snapshot compilation (2026-10-25)
+
+`rules.AppConfig` now owns legacy normalization, including strictest duplicate app rules,
+blocked precedence, malformed/oversized minute handling, daily/weekday/weekend expansion,
+package/downtime validation and sorted canonical bytes. The OpenWrt shell exports raw
+configuration only (`go-apps-v2`); both phone/context paths compile it in Go.
+A stateless `familywardend app-canon` command supplies the canonical app portion of the
+platform's pact snapshot. It reads bounded JSON and never touches the socket or store,
+avoiding reentrant calls while the shell holds its firewall/pact lock.
+
+Snapshot compilation fails before emitting a fragment. Creating a pact checks the compiler
+before activation; replacing a snapshot uses a temporary file and propagates failure all
+the way out of reload. A failed amendment leaves the previous frozen snapshot, effective
+configuration and firewall include intact. Core 0.8.0 / backend 0.11.0_rc6 are prepared,
+not deployed. App configuration and pact state are **still stored in UCI/shell files**;
+this is not the authoritative-store cutover.
+
+Evidence: 404 router integration checks, including six byte-for-byte comparisons against
+a frozen pre-migration normalizer (`test/app-canon-legacy.sh`) and injected compiler failures
+on pact creation/amendment. Unit tests cover raw configuration, zero vs unset limits,
+leading zeros, duplicate blocks, invalid overrides, format versions and bounded CLI input.
+Five normalization mutation probes are caught (lost blocks, wrong duplicate minimum,
+malformed-to-unlimited conversion, ignored weekday override, zero treated as unset).
+Long checks/builds run from immutable temporary snapshots, not the editing checkout.
+Snapshot browser checks need their own `npm ci` from the pinned lockfile; a clean source
+archive intentionally contains no `node_modules` from the editing checkout.
+
+### Authoritative configuration cutover: traced callers and required transaction
+
+Do not import only the Profiles form and leave competing UCI consumers behind:
+
+| Existing caller/writer | Cutover responsibility |
+|---|---|
+| `profiles.js` | Replace CBI profile, schedule, app/downtime and delete-cascade writes with the core API/shared UI |
+| `settings.js` | Move enable/default policy, captain/delay, DNS domain/AGH URL writes and profile selectors together |
+| `overview.js` | Replace the UCI profile/device enumeration used to distinguish unassigned MACs |
+| `devices.js` | Replace UCI profile selectors (including disabled profiles) with the core registry |
+| `cli_dns_sync` | Replace lazy `dns_client_id` UCI writes with a core-owned allocation; preserve existing IDs exactly |
+| `profile_fragment` / `ulysses_sync` | Project one core-owned effective snapshot; no socket call back into a service waiting for this adapter |
+| `pact`, `pact.snap`, `pact.dns`, `release` | Import one consistent active pact, frozen policy/DNS and release deadline, not just current UCI |
+| `block/allow/reset/ticket`, sail authentication | Keep platform enforcement/authentication behind the adapter; reconcile with core-owned pact/config transactions |
+
+The next vertical slice must include a versioned configuration document and its real
+readers/writers, not an unused parallel JSON store. Save/read-back must succeed before
+marking import complete. Preserve profile IDs (and anonymous section identity where
+referenced), MACs, existing DNS ClientIDs, disabled profiles, current vs frozen settings,
+and any active release deadline. A corrupt or future-version document must refuse both
+mutations and policy rather than fall back to stale UCI. Re-import must never overwrite
+subsequent core edits.
+
+Configuration writes need compare-and-swap against the read revision. Pact creation,
+amendment, DNS allocation and configuration writes must share one transaction owner;
+checking `PactCaptain()` and later writing a separate document is not sufficient. The
+core must render/apply the candidate through the adapter, handle apply/save failures,
+and retain a durable prior state for changes requiring connection confirmation (A20).
+On crash/restart an unconfirmed change must reconcile/roll back; a browser timeout is
+not confirmation. Validate this on a disposable real-procd router before replacing the
+UCI UI or enabling cutover in production. The existing shell-to-core-to-shell policy
+cycle must be removed or reduced to a stateless projection before this transaction is wired.
+
 ## Step 1 in detail
 
 ### Boundary

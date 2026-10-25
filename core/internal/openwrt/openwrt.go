@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/denogio/familywarden/core/internal/platform"
-	"github.com/denogio/familywarden/core/internal/rules"
 	"github.com/denogio/familywarden/core/internal/usign"
 )
 
@@ -46,7 +45,7 @@ func (a Adapter) run(v any, args ...string) error {
 	return json.Unmarshal(out.Bytes(), v)
 }
 
-const appFormat = "go-apps-v1"
+const appFormat = "go-apps-v2"
 
 // compileContext is shared by policy and administrator/request paths, so they
 // agree on revisions and requirements even before a phone fetches its policy.
@@ -58,7 +57,7 @@ func compileContext(c *platform.Context) error {
 		if prof.AppInput == nil {
 			return fmt.Errorf("missing app input for %s", id)
 		}
-		apps, requires, err := rules.CompileApps(*prof.AppInput)
+		apps, requires, err := prof.AppInput.Compile()
 		if err != nil {
 			return fmt.Errorf("apps of %s: %w", id, err)
 		}
@@ -92,7 +91,7 @@ func (a Adapter) Policy(profile string, version int) (platform.Policy, error) {
 	}
 	p.Apps = nil // only the portable compiler may supply an app policy
 	if prof, ok := p.Context.Profiles[profile]; ok && version == 3 {
-		apps, _, err := rules.CompileApps(*prof.AppInput)
+		apps, _, err := prof.AppInput.Compile()
 		if err != nil {
 			return p, err
 		}

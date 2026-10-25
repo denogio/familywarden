@@ -307,6 +307,11 @@ func main() {
 	routerKey := flag.String("router-key", "/etc/familywarden/mast.key", "OpenWrt adapter: router usign secret key")
 	flag.Parse()
 	switch flag.Arg(0) {
+	case "app-canon":
+		if err := appCanon(os.Stdin, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
 	case "status":
 		status(*socket, os.Stdout)
 		return

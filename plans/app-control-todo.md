@@ -198,10 +198,13 @@ Depends on P3 and ownership decisions from P1.
 **Accept:** disposable OpenWrt installation and reboot work without DNS/pact/firewall regressions.
 
 **Migration checkpoint (2026-10-25):** signed app-policy compilation/revision/features
-now live in Go (390 integration checks, 36 Playwright tests, forced-package reinstall
-checks daemon PID/version). Profiles, schedules, raw app configuration and pacts still
-belong to UCI/shell. See `core-migration.md` step 3a for evidence and remaining gates.
-This checkpoint is tested but not deployed; production remains rc4 / core 0.6.0.
+and raw app-rule normalization now live in Go. Latest integration suite: 404 checks,
+including a frozen legacy-normalizer oracle and fail-closed pact snapshot compilation.
+Profiles, schedules, authoritative app configuration and pacts are still stored in
+UCI/shell. See `core-migration.md` steps 3a/3b for evidence and the traced cutover callers.
+The previous 3a checkpoint also has 36 passing Playwright tests and forced-package
+reinstall checks of daemon PID/version. These migration changes are not deployed;
+production remains rc4 / core 0.6.0.
 
 ### Core on OpenWrt: ownership and lifecycle (historical baseline, 2026-10-22)
 

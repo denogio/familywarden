@@ -12,10 +12,10 @@ import (
 
 // Profile is what the core needs to know about a profile it does not own yet.
 type Profile struct {
-	Name     string          `json:"name"`
-	AppsRev  string          `json:"apps_rev"`            // computed by the core, "" = app control off
-	Requires []string        `json:"requires"`            // computed by the core
-	AppInput *rules.AppInput `json:"app_input,omitempty"` // interim effective configuration
+	Name     string           `json:"name"`
+	AppsRev  string           `json:"apps_rev"`            // computed by the core, "" = app control off
+	Requires []string         `json:"requires"`            // computed by the core
+	AppInput *rules.AppConfig `json:"app_input,omitempty"` // interim effective configuration
 }
 
 // Context is one consistent snapshot of platform state.
