@@ -63,3 +63,16 @@ func TestCGIAppIsAnExactBoundedPOSTForwarder(t *testing.T) {
 		t.Fatal("core outage produced authority", out.String())
 	}
 }
+
+func TestAPIShimDropsOnlyTheLuCISession(t *testing.T) {
+	in := `{"request_id":"r-00000001","approve":true,"minutes":30,"ubus_rpc_session":"895e0d5bf88a61c99762d778a4b7682b"}`
+	got := string(withoutSession([]byte(in)))
+	if strings.Contains(got, "ubus_rpc_session") || !strings.Contains(got, `"approve":true`) || !strings.Contains(got, `"minutes":30`) {
+		t.Fatalf("session not stripped or fields lost: %s", got)
+	}
+	for _, raw := range []string{`{"request_id":"r-00000001","approve":true}`, `not json`, `[]`, ``} {
+		if string(withoutSession([]byte(raw))) != raw {
+			t.Fatalf("changed input without a session: %q", raw)
+		}
+	}
+}

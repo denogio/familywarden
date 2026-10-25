@@ -985,7 +985,7 @@ call reset '{"profile":"kid"}' >/dev/null
 req2=$(echo "$req" | sed 's/req-int-0001/req-int-0002/')
 upbody phoneD request "$req2" >/dev/null
 call block '{"profile":"kid"}' >/dev/null
-out=$(call request_answer '{"request_id":"req-int-0002","approve":true,"minutes":10}')
+out=$(call request_answer '{"request_id":"req-int-0002","approve":true,"minutes":10,"ubus_rpc_session":"00000000000000000000000000000000"}')
 assert_json "administrator can approve from LuCI" "$out" '@.state' "approved"
 assert_json "a manual block is not overridden by a grant" "$out" '@.home_internet' "false"
 assert_json "...and stays in force" "$(call status '{"profile":"kid"}')" '@.override' "block"

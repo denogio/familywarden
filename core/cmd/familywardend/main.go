@@ -211,9 +211,29 @@ func cgiApp(socket string, in io.Reader, out io.Writer) {
 	_, _ = out.Write(body)
 }
 
+// withoutSession drops the ubus_rpc_session that uhttpd adds to calls from LuCI.
+// rpcd has already authorized that session; the core API never sees transport fields,
+// so its strict decoders stay strict. Anything that is not an object passes unchanged.
+func withoutSession(b []byte) []byte {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(b, &m) != nil || m == nil {
+		return b
+	}
+	if _, ok := m["ubus_rpc_session"]; !ok {
+		return b
+	}
+	delete(m, "ubus_rpc_session")
+	out, err := json.Marshal(m)
+	if err != nil {
+		return b
+	}
+	return out
+}
+
 // api is the rpcd shim: JSON on stdin, one JSON object on stdout.
 func api(socket, method string, in io.Reader, out io.Writer) {
 	b, _ := io.ReadAll(io.LimitReader(in, maxAPI+1))
+	b = withoutSession(b)
 	resp, err := client(socket).Post("http://core/api/"+method, "application/json", bytes.NewReader(b))
 	if err == nil {
 		defer resp.Body.Close()
