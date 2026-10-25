@@ -3,8 +3,33 @@
 Branch: `feature/app-control`, based on `v0.9.1` (`dce92f4`).
 Status (2026-10-25): LAN app control, requests/grants, usage and new-app approval are
 implemented and deployed. Go configuration/pact migration is in progress; off-home
-transport remains undecided. Older phase evidence below describes historical checkpoints;
+transport remains undecided. Phase evidence below includes historical checkpoints;
 see [core-migration.md](core-migration.md) for current ownership and deployment.
+
+## Current work and remaining scope (reconciled 2026-10-25)
+
+Checkboxes track the stated implementation or validation item, not the whole product.
+An implemented feature is not automatically physically verified, deployed or released.
+Historical test counts are evidence at that checkpoint, not current suite totals.
+
+| Workstream | Implemented | Still open |
+|---|---|---|
+| P2 Android capabilities | Usage collection, suspension, package lifecycle, signed activation | Physical PiP/split-screen accuracy, Doze/battery/latency and remaining lifecycle gates |
+| P3–P5 Go/OpenWrt identity and policy | Packaged daemon, enrollment/roles/scopes, signing, capabilities, applied revisions; deployed | Minimum resource guidance, remaining address-repair/compatibility validation; not full product migration |
+| P6 usage | Durable local counters, signed sequenced uploads, router-local 30-day app summaries, scoped views | Physical accuracy/battery validation, domain history; shared cached offsets do not bound offline overspend |
+| P7/P7b child enforcement | Signed app/total limits, bonus, downtime, warnings, safe exceptions and new-app approval | Remaining physical/lifecycle validation; full future policy editors are separate UI work |
+| P8 LAN requests | Child/parent/admin flow, device/key-bound grants, consumption, first-answer-wins and new-app decisions; deployed | Focused physical request/approval run and bounded multi-phone allocation |
+| P9 off-home | LAN notifications only | Transport decision, encryption/key distribution and off-home implementation/testing |
+| P10 Android | Child/adult status/history, scoped parent decisions and usage | Parent presentation split is in verification (#94); child selector and full parent controls remain |
+| P10 shared web | Existing LuCI pages and shared Requests module; new control prototype reviewed | Production-wide shared presentation layer, core API integration, host adapter and EN/DA; prototype is not shipped code |
+| Core migration | Identity, requests, usage, new-apps, signed app compilation and profile directory | Authoritative configuration/pact ownership, CAS edits, safe apply/rollback, remaining UCI cutover (#91); DNS sync remains in adapter/shell |
+| P11 adult pool | Existing pact enforcement, not the proposed pool | Final consumption/reset rules, ledger and pact-safe self-service |
+| P13 release validation | Same-key rc3/rc4 router+phone pilot and rc5 phone update | Release-wide security/compatibility/lifecycle acceptance for remaining scope; no blanket production rollout approval |
+
+Current session task titles should name the **remaining** work rather than imply
+that an implemented feature has not started. A legacy phase task remains pending
+when its remaining validation or scope is incomplete; it must not block unrelated
+implementation merely because the original broad task was never closed.
 Product decisions and research: [app-control.md](app-control.md).
 
 This is the durable checklist. Complete a box only after its acceptance evidence is
@@ -64,10 +89,10 @@ Selected before feature implementation; visual changes must preserve current beh
 - [x] After Overview acceptance, apply the shared visual language to other existing pages
       (all pages; released in LuCI 0.7.0 / v0.9.2 and deployed on rivendell).
 
-User-supplied design is archived; Overview and its follow-up refinements are implemented
-and visually accepted. Next: Profiles, then Phones, Settings and Info. Playwright is
-paused at the user's request; latest refinements have syntax checks and manual preview,
-not a completed final browser suite. App-control enforcement is still not implemented.
+The legacy LuCI visual refresh is complete and deployed on all pages. Its original
+Overview-only notes are historical. App control is implemented; the separate shared
+control-interface prototype is reviewed but not yet a production-wide replacement.
+See [the prototype review](../docs/design/control-prototype-review.md).
 
 ## P0 — Establish the implementation baseline
 
@@ -248,13 +273,14 @@ Depends on P3/P4 and P1 protocol decisions.
 - [x] Reuse current full-key fingerprint approval and per-device request authentication.
       v3 adds a second signature by the same enrolled phone key; nothing new to approve.
 - [x] Preserve pinned router identity and existing phone keys during migration.
-      No key, pin or enrollment change; signing stays in the shell (usign) for now.
-- [ ] Add scoped roles, app rules, schema/capability negotiation and policy revisions.
+      No key, pin or enrollment change; the Go core now owns reply signing (core migration step 1).
+- [x] Add scoped roles, app rules, schema/capability negotiation and policy revisions.
       Done: app rules + revision in wire v3, version negotiation by dual signature.
       Added 2026-10-24: authenticated `caps`/`sigcaps`, strict `requires` and signed refusals;
       no false current ack from incompatible/legacy clients (protocol §2b). 285 integration
       checks, 149 JVM tests, lint/debug build/release compilation and 13 browser tests pass;
-      no emulator was needed. Parent role/`approves`/`parents` keys remain deferred to P8.
+      no emulator was needed at that checkpoint. Parent role/`approves`/`parents` keys
+      subsequently shipped with P8; see protocol §3–4 and core identity tests.
 - [x] Bound payloads, verify signed fields before parsing into trusted state, and reject
       unknown unsafe versions, mismatched devices, replay and downgrade.
       Signature over exact bytes before parsing (unchanged); strict apps validation;
@@ -270,11 +296,13 @@ Depends on P3/P4 and P1 protocol decisions.
       pinned key -> only the address changes, after a fresh request-bound signed reply from
       the new address (`Mast.repairAddress`). Another key still needs removal authority.
       Unit-tested rule; not yet exercised on a device with a real address change.
-- [ ] Test pending enrollment, changed pending keys, revoked roles and old Android clients.
+- [x] Test pending enrollment, changed pending keys, revoked roles and old Android clients.
       Done: pending/foreign-key v3, v2-only phones, router-rollback downgrade (integration
       + JVM), and the real debug app against a real v3 router on the Android 15 emulator
       (CI run 39820424952: pairing, approval, pact, DNS, offline cache, signed removal).
-      Open: revoked parent roles — the parent role itself is deferred to P8.
+      Subsequently: current parent scope/requester state is rechecked in core request
+      security and usage tests; parent roles are implemented, not deferred. This does
+      not close every physical-device lifecycle/compatibility gate.
 
 Wire v3 as built, with the compatibility/rollback matrix: `app-control-protocol.md` §2a.
 Evidence 2026-10-22: 224 integration checks (32 new, pact-freeze tests fail when the
@@ -286,85 +314,98 @@ snapshot omits app rules), 121 JVM tests incl. a real router-signed v3 fixture.
 
 Depends on P2/P5 and chosen accounting rules.
 
-- [ ] Implement Android usage-event ingestion with persisted cursor and bounded overlap
-      to handle duplicate events, process death and reboot without double counting.
-- [ ] Track per-app/day locally, reconcile active sessions and handle missing history
+- [x] Implement Android usage-event ingestion with an atomic cursor/counter checkpoint
+      and half-open event intervals; tested process-death/restart and duplicate handling.
+- [x] Track per-app/day locally, reconcile active sessions and handle missing history
       honestly; missing permission is not zero usage.
-- [ ] Keep local counters/enforcement usable offline; throttle writes for flash/battery.
-- [ ] Upload signed, sequenced summary updates idempotently; prevent duplicates and
+- [x] Keep local counters/enforcement usable offline with the last trusted policy.
+- [ ] Measure/review checkpoint write frequency and battery cost; throttle safely without
+      making persisted grant consumption refill after a crash.
+- [x] Upload signed, sequenced summary updates idempotently; prevent duplicates and
       out-of-order retries from increasing/decreasing totals incorrectly.
-- [ ] Enforce per-device ownership and reject impossible or oversized usage submissions.
+- [x] Enforce per-device ownership and reject impossible or oversized usage submissions.
       A signed report authenticates its source, not truth on a compromised device.
-- [ ] Apply chosen retention, deletion and access controls on phone and router.
-      No browsing history, account identifiers or raw event streams by default.
-- [ ] Test midnight/DST, clock changes, offline days, reinstall, gaps and queue overflow.
+- [x] Bound app summaries to 30 router-local days, with authenticated/scoped access;
+      do not upload account identifiers or raw usage events.
+- [ ] Implement domain history and its retention/visibility rules (A8/A14); verify
+      explicit deletion/backup behavior separately from automatic app-data retention.
+- [ ] Finish the complete lifecycle matrix: synthetic midnight/DST, clock/gap and
+      bounded-input tests exist; physical event accuracy, offline/reinstall coverage
+      and battery behavior are not a blanket completed gate.
 
 **Accept:** known synthetic event traces yield exact expected summaries and retries do not drift.
 
-Local foundation implemented/tested 2026-10-21: `UsageCounter`, `UsageJournal` and
-`UsageMonitor` in Android main sources; debug-only fixture activation. 110 JVM tests and
-the emulator usage/restart/update/revocation/reboot smoke test pass. This does **not**
-complete the checkboxes: public class identity cannot distinguish same-class instances,
-PiP remains unverified, clock/history recovery and throttling need work, and signed
-activation/uploads/router retention await P5. See capability findings and
-`test/android/install-probe/README.md`.
+Initial evidence (2026-10-21): `UsageCounter`, `UsageJournal`, `UsageMonitor` and
+110 JVM tests plus emulator usage/restart/update/revocation/reboot checks. Subsequent
+production-path evidence: `a2f4e30`, `dca5fc2`, `e8670f9`, core `usage_test.go`, Android
+usage/grant tests and `scripts/test-requests-emulator.sh`. Signed activation, uploads,
+router retention and shared offsets are now implemented. Public activity-class identity,
+physical PiP/split-screen accuracy, checkpoint cost and the remaining lifecycle matrix
+stay open. Shared offsets are reconciliation, not bounded offline allocation.
 
 ## P7 — Enforce child app rules locally
 
 Depends on P2/P5/P6.
 
-- [ ] Add app inventory and stable package identity; treat labels/icons as untrusted UI data.
-- [ ] Implement a pure evaluator for schedules, quotas and precedence from P1.
-- [ ] Suspend/unsuspend only managed packages, record failures and reconcile at boot,
+- [x] Add app inventory and stable package identity; treat labels/icons as untrusted UI data.
+- [x] Implement a pure evaluator for schedules, quotas and precedence from P1.
+- [x] Suspend/unsuspend only managed packages, record failures and reconcile at boot,
       package changes, policy updates and budget/schedule boundaries.
-- [ ] Handle package replacement/uninstall, newly installed apps and essential-app exceptions.
+- [x] Handle package replacement/uninstall, newly installed apps and essential-app exceptions.
       Model decided (A12): suspend new user apps on the dynamic package event (needs
       package visibility) plus boot/periodic reconcile; Play installs/updates stay on.
       UI and docs must state the brief first-launch window, never "blocked before use".
-- [ ] Protect relevant configuration, time, uninstall and user/profile changes where supported.
-- [ ] Restore only FamilyWarden-owned restrictions on approved removal; never erase another
+- [x] Protect relevant configuration, time, uninstall and user/profile changes where supported.
+- [x] Restore only FamilyWarden-owned restrictions on approved removal; never erase another
       administrator's policy. Preserve the existing signed removal and pact guards.
-- [ ] Show exhausted quota, reason, remaining time and unavailable usage access honestly.
+- [x] Show exhausted quota, reason, remaining time and unavailable usage access honestly.
+- [ ] Finish physical essential-app, package/OEM and lifecycle safety validation; an
+      accepted post-install first-launch window is not pre-execution protection.
 
 **Accept:** targeted runtime evidence for exhaustion, offline restart and essential-app safety;
 unit tests cover precedence. No claim of root/recovery-proof enforcement.
 
-Local foundation implemented/tested 2026-10-21: pure `appAction` and `AppEnforcer`
-(main sources), exercising a local per-app quota with essential-package safety and
-owned-only suspension tracking. Debug fixture exhaustion/update/reboot passes. Full
-precedence/grants/shared quotas, signed policy activation, release/removal integration,
-UI and physical-device safety remain open. Post-install suspension is **not** strict
-pre-execution app approval (P2 round 3).
+The initial 2026-10-21 debug foundation is historical. The production path now uses
+router-signed policy, pure `appAction`, tracked suspension ownership, persisted grants
+and shared offsets; removal retains the signed/pact guards. Evidence includes the
+P7/P8 emulator runs, the rc3/rc4 same-key pilot and `73b921b` for new-app approval.
+No claim is made that shared offline overspend is bounded or physical safety validation
+is complete. Post-install suspension retains the accepted first-launch race (A12).
 
 ## P7b — Total screen time, bonus and warnings (decisions D9/D10)
 
-Depends on P5–P7 (done for the local slice). Next pilot build: `0.10.0-pilot2`.
+Implemented and included in the later rc3/rc4 pilot. The original `0.10.0-pilot2`
+label is historical; remaining physical validation is tracked separately.
 
-- [ ] UCI: profile `screen_minutes` (all days) or `screen_weekday` + `screen_weekend`;
+- [x] UCI: profile `screen_minutes` (all days) or `screen_weekday` + `screen_weekend`;
       list `always_allowed` packages. Router expands to a per-weekday map in wire v3
       (`apps.screen.{mon..sun}`), part of the revision and the pact snapshot.
-- [ ] Bonus: `ubus call familywarden bonus '{"profile":..,"minutes":30[,"package":..]}'`
+- [x] Bonus: `ubus call familywarden bonus '{"profile":..,"minutes":30[,"package":..]}'`
       adds to today's total (or one app); router-local day, gone at midnight; in the signed
       policy as `apps.bonus` with its day; never changes the standing limit. Bounded and
       additive like tickets; refused for an adult profile bound by a pact.
-- [ ] Phone: count the union of visible ordinary apps (not essential/always-allowed); when
+- [x] Phone: count the union of visible ordinary apps (not essential/always-allowed); when
       total (+ bonus) is used up, pause every ordinary app; lift at midnight or on bonus.
-- [ ] Notifications: 5 minutes left (per limited app and total, once per day) and paused.
-- [ ] Pause dialog body via `setShortSupportMessage` (EN/DA), cleared on removal.
-- [ ] LuCI: one place to set all days / weekdays + weekend and always-allowed apps; bonus
+- [x] Notifications: 5 minutes left (per limited app and total, once per day) and paused.
+- [x] Pause dialog body via `setShortSupportMessage` (EN/DA), cleared on removal.
+- [x] LuCI: one place to set all days / weekdays + weekend and always-allowed apps; bonus
       buttons (+15/+30/+60) on the overview card. HA via the same ubus method.
 - [ ] Tests: router expansion/revision/pact freeze/bonus expiry; JVM union counting,
       weekday lookup in router zone, midnight with bonus; emulator total exhaustion keeps
-      dialer/launcher/Settings usable; pilot rehearsal; then Pixel pilot2.
-- [ ] Downtime pauses all ordinary apps (Family Link), except always-allowed apps marked
-      for downtime; drop SMS from the built-in essential set (only if always-allowed).
-- [ ] Wording and flow follow Family Link (product principle in `app-control.md`).
+      dialer/launcher/Settings usable exist. Remaining: close the full physical safety
+      matrix; the original pilot2 target was superseded by the rc3/rc4 deployments.
+- [x] Downtime pauses ordinary apps; essential and configured always-allowed apps remain
+      usable. SMS is not a built-in essential exception.
+- [ ] Reconcile the original separate “allowed in downtime” option with the current
+      single `alwaysAllowed` set before claiming separate per-app downtime controls.
+- [ ] Finish Family Link-aligned parent presentation and editors (P10); do not treat
+      the implemented child status/request flow as completion of all design screens.
 
 ## P8 — Deliver the first end-to-end extra-time slice
 
 Depends on P5–P7. Start on LAN before adding the selected off-home transport.
 
-**LAN slice implemented end to end (2026-10-25, emulator-verified; not deployed).** Go:
+**LAN slice implemented end to end (2026-10-25, emulator-verified and subsequently deployed).** Go:
 signed LAN requests/decisions, scoped
 parent/admin approval, durable first-answer-wins ledger, device/key-bound policy grants,
 capability gating and retryable OpenWrt internet tickets. Strict parser, concurrent-parent,
@@ -418,21 +459,31 @@ Develop incrementally with P5–P9; no separate web dashboard framework.
 First child/adult UI slice (2026-10-24): Today, reliable local counts, daily/app limits,
 bonus-aware remaining time, downtime, always-allowed apps, local history totals and
 captain pact status implemented. EN/DA, 139 JVM tests and focused light/dark/200%-text
-emulator render checks pass. Parent roles/requests/pools and full history are still
-pending. Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
+emulator render checks pass at that checkpoint. Parent roles, requests, new-app
+approval and uploaded usage views subsequently shipped. The parent navigation split
+is in verification; pools, full parent editors and extended history remain open.
+Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
 
-- [ ] Parent Android: children/devices, app inventory, rules, pending requests, usage/day
-      summaries and connection/applied-policy status.
-- [ ] Child Android: remaining budgets, blocked reasons, request status and usage visibility.
-- [ ] LuCI: configure rules/roles, view usage and requests, inspect capability/failure states.
+- [x] Parent Android: scoped time/new-app decisions and reported per-child usage summaries.
+- [ ] Parent Android: finish verification of the Screen time / Controls / Requests and
+      My phone / Family presentation split (#94); this does not add policy-edit APIs.
+- [ ] Parent Android: child selector, full app inventory/rule editors and truthful
+      per-device connection/applied-policy views.
+- [x] Child Android: remaining budgets, pause reasons, request status/remaining extra
+      and local usage/history totals. Domain history remains P6 work.
+- [x] Existing LuCI: configure rules/roles, view usage/requests and inspect app revisions,
+      capabilities and application failures.
       (2026-10-25: Requests page = first shared administrator UI module (A20): answer
       requests, see today per phone/app, 7-day totals, reported grant use. Parent Android
-      shows "Screen time today" per scoped child.)
+      shows reported usage per scoped child; #94 moves it from Requests to Screen time.)
 - [x] Include new-app approval (2026-10-25, protocol §5b; LuCI Requests page and parent phone).
 - [ ] Essential-app warnings and removal/revocation workflows.
-- [ ] Add all English/Danish Android strings/plurals, accessibility labels, large-text,
-      dark/light themes and sanitized previews/screenshots.
-- [ ] Add mapper/unit tests and focused Playwright coverage for actual backend responses.
+- [x] Existing Android views: EN/DA strings/plurals, accessibility labels, large-text,
+      dark/light themes and fictional previews/screenshots. New screens must preserve this.
+- [x] Existing slices: mapper/unit tests and focused Playwright coverage of real backend
+      requests/responses (`b3ded32`, `37a0146` and current Android verification).
+- [ ] Implement the production-wide shared control web presentation, real API wiring,
+      native host adapter and EN/DA; test loading/stale/error/authorization states (#96).
 
 **Accept:** UI reflects server authority and applied state, and has loading/error/offline states.
 
@@ -482,9 +533,11 @@ Depends on the implemented feature paths; no production rollout implied.
       incompatible versions without erasing last trusted protection.
 - [ ] Document setup, ordinary-account warning, supported Android versions, permission
       recovery, backup/restore, known limitations and a safe uninstall path.
-- [ ] Produce a signed candidate using the existing Android signing key and package ID.
-- [ ] Get explicit approval for a one-device pilot and separate router/AGH deployment;
-      take private backups, verify active pacts and agree on rollback first.
+- [x] Produce same-key signed candidates for the implemented LAN slice (rc3/rc4/rc5).
+      This does not approve a final release of all remaining product scope.
+- [x] Obtain explicit approval/backups and perform the recorded own-phone/router pilot
+      (rc3/rc4; rc5 phone-only). See core-migration.md. This is historical authorization,
+      not permission to deploy newer development packages or future UI changes.
 - [ ] Record pilot evidence, remaining blockers and acceptance before merge/tag/release.
 
 **Accept:** no unresolved safety/security failures, green required CI and explicit rollout consent.
@@ -494,7 +547,9 @@ Depends on the implemented feature paths; no production rollout implied.
 - Accessibility/light tier without Device Owner; never describe it as equally strong.
 - Wireless-debugging self-provisioning, verified QR provisioning and distribution-policy work.
 - OPNsense/pfSense adapters, iPhone, Home Assistant and unrelated traffic/i18n backlog.
-- Per-site history, a maintainer-hosted service and a new web dashboard.
+- A maintainer-hosted service and an unrelated parallel web-dashboard implementation.
+  Domain history remains planned under A8/A14. The shared administrator web interface
+  under A20 is current scope, not a deferred second dashboard.
 
 ## Progress evidence
 

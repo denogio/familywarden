@@ -39,7 +39,8 @@ before); the core retries a not-ready adapter at boot instead of exiting (procd'
 limit could otherwise leave phone sync down for an hour); the core apk is cross-compiled
 with plain Go and only packaged by the SDK (`CORE_GO=cross`, ~3 min instead of ~15).
 Footprint: aarch64 apk 2.7 MB, binary 7.5 MB; idle RSS 8.2 MB measured on x86_64 — the
-aarch64 RSS must still be measured on the router (needs explicit permission).
+aarch64 RSS was still unmeasured at this initial checkpoint. The subsequently
+  authorized measurements and deployments are recorded below.
 
 ## Deployment (2026-10-25, explicitly authorized)
 
