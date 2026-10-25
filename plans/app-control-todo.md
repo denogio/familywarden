@@ -22,7 +22,7 @@ Historical test counts are evidence at that checkpoint, not current suite totals
 | P9 off-home | LAN notifications only | Transport decision, encryption/key distribution and off-home implementation/testing |
 | P10 Android | Child/adult status/history, scoped parent decisions and usage | Parent presentation split is implemented and preview-tested (#94); scoped child selection is implemented and preview-tested (#97); full parent controls remain |
 | P10 shared web | Existing LuCI pages and shared Requests module; new control prototype reviewed | Production-wide shared presentation layer, core API integration, host adapter and EN/DA; prototype is not shipped code |
-| Core migration | Identity, requests, usage, new-apps, signed app compilation and profile directory | Authoritative configuration/pact ownership, CAS edits, safe apply/rollback, remaining UCI cutover (#91); DNS sync remains in adapter/shell |
+| Core migration | Identity, requests, usage, new-apps, signed app compilation and profile directory (Phones/Settings readers) | Authoritative configuration/pact ownership, CAS edits, safe apply/rollback, remaining UCI cutover (#91); DNS sync remains in adapter/shell |
 | P11 adult pool | Existing pact enforcement, not the proposed pool | Final consumption/reset rules, ledger and pact-safe self-service |
 | P13 release validation | Same-key rc3/rc4 router+phone pilot and rc5 phone update | Release-wide security/compatibility/lifecycle acceptance for remaining scope; no blanket production rollout approval |
 

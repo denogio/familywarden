@@ -189,6 +189,27 @@ UCI and verifies labels/options and zero direct FamilyWarden UCI reads. The full
 browser pipeline is running on an immutable snapshot at this checkpoint. These versions
 are development packages, not production installs.
 
+### Settings profile reads and unavailable-state guard (2026-10-25)
+
+Settings now gets captain choices and DNS profile display names through the existing
+core `profiles` directory, including profiles absent from UCI. The global settings
+form remains UCI-backed; `form.Map.render()` performs its own configuration load.
+This is reader preparation, not a new store, writer migration or authority switch.
+
+Both policy-status and directory response envelopes are preserved and validated.
+An error/missing/malformed response rejects the view before constructing editable
+fields, rather than treating unavailable pact state as an empty, unfrozen household.
+Valid empty directories still work, and a reported active pact keeps global fields
+read-only. LuCI displays the rejected-load error and reports that exact error to the
+browser; error tests explicitly assert it rather than suppress unexpected failures.
+
+Evidence: syntax checks, five Node view-model tests, 24 focused real-LuCI browser
+checks and the full disposable OpenWrt suite (45 passed, one existing skip). A regression
+probe restores the previous Settings source and confirms that the core-only profile
+selector test fails. Tests used an immutable source snapshot and matching existing
+development packages with the Settings source overlaid; no new package deployment,
+physical-phone change or live-router change occurred.
+
 ### Authoritative configuration cutover: traced callers and required transaction
 
 Do not import only the Profiles form and leave competing UCI consumers behind:
@@ -196,7 +217,7 @@ Do not import only the Profiles form and leave competing UCI consumers behind:
 | Existing caller/writer | Cutover responsibility |
 |---|---|
 | `profiles.js` | Replace CBI profile, schedule, app/downtime and delete-cascade writes with the core API/shared UI |
-| `settings.js` | Move enable/default policy, captain/delay, DNS domain/AGH URL writes and profile selectors together |
+| `settings.js` | **Profile read path moved:** captain choices/DNS labels use core `profiles`; global form fields still use UCI and need the future atomic writer cutover |
 | `overview.js` | Replace the UCI profile/device enumeration used to distinguish unassigned MACs |
 | `devices.js` | **Read path moved:** labels/selectors (including disabled profiles) use the core `profiles` directory |
 | `cli_dns_sync` | Replace lazy `dns_client_id` UCI writes with a core-owned allocation; preserve existing IDs exactly |

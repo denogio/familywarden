@@ -15,18 +15,19 @@ async function login(page) {
 // Only replace one FamilyWarden reply; the rest of LuCI and its CSS are real.
 async function mockProfiles(page, reply) { return mockFamilyWarden(page, 'list', reply); }
 async function mockFamilyWarden(page, method, reply) {
+  const methods = Array.isArray(method) ? method : [method];
   await page.route(/\/ubus(?:\/|$)/, async route => {
     const body = route.request().postDataJSON();
     const calls = Array.isArray(body) ? body : [body];
-    if (!calls.some(c => c.params?.[1] === 'familywarden' && c.params?.[2] === method))
+    if (!calls.some(c => c.params?.[1] === 'familywarden' && methods.includes(c.params?.[2])))
       return route.continue();
     const response = await route.fetch();
     const json = await response.json();
     const results = Array.isArray(json) ? json : [json];
     for (const call of calls) {
-      if (call.params?.[1] === 'familywarden' && call.params?.[2] === method) {
+      if (call.params?.[1] === 'familywarden' && methods.includes(call.params?.[2])) {
         const result = results.find(r => r.id === call.id);
-        result.result = [0, reply(result.result[1])];
+        result.result = [0, reply(result.result[1], call.params[2])];
       }
     }
     await route.fulfill({ response, json: Array.isArray(json) ? results : results[0] });
@@ -157,6 +158,52 @@ test('Phones gets profile labels and enrollment choices from the core, not UCI',
   await expect(scope.getByLabel('Sam API profile')).toHaveCount(0);
   expect(configReads).toEqual([]);
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+});
+
+test('Settings gets captain choices and DNS profile names from the core directory', async ({ page }) => {
+  const replies = {
+    list: { profiles: {} },
+    profiles: { profiles: [{ id: 'api_only', name: 'Sam API profile' }] },
+    dns_status: { profiles: { api_only: { hostname: 'sam.dns.example.net' } } }
+  };
+  await mockFamilyWarden(page, Object.keys(replies), (_, method) => replies[method]);
+  await page.goto(`${URL}/settings`);
+  const root = page.locator('#fw-settings');
+  await expect(root.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(root.locator('[data-name="ulysses_profile"]')).toContainText('Sam API profile');
+  await expect(root.locator('.fw-dns-table')).toContainText('Sam API profile');
+  await expect(root.locator('.fw-dns-table')).toContainText('sam.dns.example.net');
+  const choices = root.locator('[data-name="ulysses_profile"]');
+  await expect(choices).not.toContainText('Dennis');
+  await expect(choices).not.toContainText('Alex');
+});
+
+for (const broken of [
+  { method: 'list', reply: { error: 'core unavailable' }, message: 'Profile status unavailable' },
+  { method: 'list', reply: {}, message: 'Profile status unavailable' },
+  { method: 'list', reply: { profiles: [] }, message: 'Profile status unavailable' },
+  { method: 'list', reply: { profiles: { alex: null } }, message: 'Profile status unavailable' },
+  { method: 'profiles', reply: { error: 'core unavailable' }, message: 'Could not load profiles from FamilyWarden.' },
+  { method: 'profiles', reply: {}, message: 'Could not load profiles from FamilyWarden.' },
+  { method: 'profiles', reply: { profiles: [null] }, message: 'Could not load profiles from FamilyWarden.' }
+]) test(`Settings refuses ${broken.method} failure: ${JSON.stringify(broken.reply)}`, async ({ page }) => {
+  const replies = { list: { profiles: {} }, profiles: { profiles: [] }, [broken.method]: broken.reply };
+  await mockFamilyWarden(page, Object.keys(replies), (_, method) => replies[method]);
+  await page.goto(`${URL}/settings`);
+  await expect(page.getByText(broken.message, { exact: true })).toBeVisible();
+  await expect(page.locator('#fw-settings')).toHaveCount(0);
+  // LuCI renders rejected view loads and also reports that exact error to the browser.
+  await expect.poll(() => pageErrors.get(page)).toEqual([broken.message]);
+  pageErrors.set(page, []);
+});
+
+test('Settings keeps global fields frozen for a reported active pact', async ({ page }) => {
+  await mockProfiles(page, () => ({ profiles: fixtures }));
+  await page.goto(`${URL}/settings`);
+  const root = page.locator('#fw-settings');
+  await expect(root.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(root.locator('[data-name="enabled"] input')).toBeDisabled();
+  await expect(root.locator('[data-name="ulysses_delay"] input')).toBeDisabled();
 });
 
 test('native actions block and reset a real profile', async ({ page }) => {

@@ -2,7 +2,6 @@
 'require view';
 'require form';
 'require rpc';
-'require uci';
 'require ui';
 'require familywarden.ulysses as ulysses';
 'require familywarden.ui as fwui';
@@ -36,10 +35,17 @@ var callDnsAuth = rpc.declare({
 	params: [ 'username', 'password' ]
 });
 
+// Keep error envelopes: unavailable policy is not an empty, unfrozen household.
 var callList = rpc.declare({
 	object: 'familywarden',
 	method: 'list',
-	expect: { profiles: {} }
+	expect: { '': {} }
+});
+
+var callProfiles = rpc.declare({
+	object: 'familywarden',
+	method: 'profiles',
+	expect: { '': {} }
 });
 
 return view.extend({
@@ -50,13 +56,31 @@ return view.extend({
 				ui.addNotification(null, E('p', {}, _('Could not reload FamilyWarden: %s').format(error.message)), 'error');
 			});
 		});
-		return Promise.all([ callList(), uci.load('familywarden'), callMast(window.location.hostname),
-			L.resolveDefault(callDnsStatus(), {}) ]);
+		return Promise.all([ callList(), callProfiles(), callMast(window.location.hostname),
+			L.resolveDefault(callDnsStatus(), {}) ]).then(function(data) {
+			var status = data[0], directory = data[1];
+			if (!status || status.error || !status.profiles || typeof status.profiles !== 'object' || Array.isArray(status.profiles) ||
+				Object.keys(status.profiles).some(function(id) {
+					var profile = status.profiles[id];
+					return !profile || typeof profile !== 'object' || Array.isArray(profile);
+				}))
+				throw new Error(_('Profile status unavailable'));
+			if (!directory || directory.error || !Array.isArray(directory.profiles) || directory.profiles.some(function(profile) {
+				return !profile || typeof profile.id !== 'string' || !profile.id || typeof profile.name !== 'string';
+			}))
+				throw new Error(_('Could not load profiles from FamilyWarden.'));
+			return data;
+		});
 	},
 
 	render: function(data) {
 		var m, s, o;
-		var profiles = data[0] || {};
+		var profiles = data[0].profiles;
+		var directory = data[1].profiles;
+		function profileName(id) {
+			var profile = directory.find(function(p) { return p.id === id; });
+			return profile ? profile.name || id : id;
+		}
 		var bound = Object.keys(profiles).some(function(id) { return ulysses.isBound(profiles[id]); });
 		var mast = data[2] || {};
 		var dns = data[3] || {};
@@ -199,7 +223,7 @@ return view.extend({
 						E('thead', {}, E('tr', {}, [ E('th', {}, _('Profile')), E('th', {}, _('DNS identity')) ])),
 						E('tbody', {}, ids.map(function(p) {
 							return E('tr', {}, [
-								E('td', { 'data-label': _('Profile') }, uci.get('familywarden', p, 'name') || p),
+								E('td', { 'data-label': _('Profile') }, profileName(p)),
 								E('td', { 'data-label': _('DNS identity') }, E('code', { 'class': 'fw-mono' }, st.profiles[p].hostname))
 							]);
 						}))
@@ -228,8 +252,8 @@ return view.extend({
 		o = s.option(form.ListValue, 'ulysses_profile', _('Ulysses profile'),
 			_('The captain: the only profile that can make a pact. Usually your own.'));
 		o.value('', _('None'));
-		uci.sections('familywarden', 'profile').forEach(function(p) {
-			o.value(p['.name'], p.name || p['.name']);
+		directory.forEach(function(p) {
+			o.value(p.id, p.name || p.id);
 		});
 		o.readonly = bound;
 
