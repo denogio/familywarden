@@ -23,12 +23,17 @@ fun usageDiscontinuity(wall: Long, elapsed: Long, boot: Int,
     else -> null
 }
 
+/** Inputs come only from the verified cache; not from UI commands or upload replies. */
+data class GrantInput(val scope: String, val device: String, val appsJson: String,
+    val clock: PolicyClock?, val userApps: Set<String>)
+
 /** Local, durable collector. No networking, grants, shared-budget allocation or v3 activation.
  * One service owns this instance on one worker thread. Persist before enforcing decisions.
  */
 class UsageMonitor(private val context: Context, private val zone: ZoneId) {
     data class Sample(val day: String, val millis: Map<String, Long>, val sequence: Long,
-        val status: String, val reliable: Boolean, val gaps: Long)
+        val status: String, val reliable: Boolean, val gaps: Long,
+        val grantRemaining: Map<String, Long> = emptyMap(), val grantReliable: Boolean = false)
     private val journal = UsageJournal(context)
     private val state = journal.load() ?: UsageCheckpoint(
         UsageCounter(System.currentTimeMillis(), screenOn(), unlocked()), zone.id,
@@ -37,8 +42,9 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
     init { require(state.zone == zone.id) { "usage timezone change needs explicit migration" } }
 
     /** [excluded]: apps that do not count towards the daily total (see [UsageCounter.excluded]). */
-    fun sample(excluded: Set<String> = emptySet()): Sample {
-        state.counter.excluded = excluded
+    fun sample(excluded: Set<String> = emptySet(), grants: GrantInput? = null): Sample {
+        state.counter.excluded = state.grants.previousExclusions(excluded)
+        state.counter.onInterval = state.grants::charge
         val wall = System.currentTimeMillis()
         val elapsed = SystemClock.elapsedRealtime()
         val boot = boot()
@@ -76,20 +82,31 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
             }
         }
         if (problem != null) {
+            state.grants.gap()
             val previousDay = Instant.ofEpochMilli(state.counter.cursor).atZone(zone).toLocalDate().toString()
             state.uncertainThroughDay = maxOf(state.uncertainThroughDay, previousDay, day)
             state.gaps = Math.addExact(state.gaps, 1)
             state.counter.gap(wall, screenOn(), unlocked())
-        } else state.counter.consume(events, wall, zone)
+        } else {
+            state.counter.consume(events, wall, zone)
+            state.grants.finishInterval(elapsed - state.elapsed)
+        }
         state.elapsed = elapsed
         state.boot = boot
         state.sequence = Math.addExact(state.sequence, 1)
         // Never delete old history immediately on an uncertain clock jump.
         if (problem == null && day > state.uncertainThroughDay) state.counter.prune(wall, zone)
+        val server = grants?.clock?.now(elapsed, boot)
+        val grantReady = if (grants != null && server != null) state.grants.configure(GrantLedger.Context(
+            grants.scope, grants.device, grants.appsJson, zone, wall, server, excluded, grants.userApps,
+            problem == null && day > state.uncertainThroughDay, state.uncertainThroughDay))
+            else { state.grants.gap(); false }
+        val extra = if (problem == null && grantReady && grants != null)
+            state.grants.available(grants.scope, server) else emptyMap()
         journal.save(state)
         return Sample(day, state.counter.days[day]?.toMap() ?: emptyMap(), state.sequence,
             problem ?: if (day <= state.uncertainThroughDay) "usage_gap" else "ok",
-            problem == null && day > state.uncertainThroughDay, state.gaps)
+            problem == null && day > state.uncertainThroughDay, state.gaps, extra, problem == null && grantReady)
     }
 
     /** Recorded local totals only; gaps are not reconstructed or presented as complete history. */

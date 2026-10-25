@@ -20,9 +20,11 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
 @Composable
-internal fun ScreenTimeContent(state: FamilyWardenState, actions: FamilyWardenActions) {
+internal fun ScreenTimeContent(state: FamilyWardenState, actions: FamilyWardenActions, onRequests: () -> Unit = {}) {
     val time = state.screenTime ?: return
     val night = MastThemeExt.colors
+    val extra = time.grantRemaining.filter { (target, amount) -> amount > 0 &&
+        (target == "total" || (target in state.requestTargets.map { it.pkg })) }
     NightCard {
         val title = when (time.kind) {
             TodayKind.Downtime -> R.string.fw_time_downtime
@@ -30,16 +32,17 @@ internal fun ScreenTimeContent(state: FamilyWardenState, actions: FamilyWardenAc
             TodayKind.NearLimit -> R.string.fw_time_almost
             else -> if (time.limitMillis != null) R.string.fw_time_left else R.string.fw_time_recorded
         }
-        Text(stringResource(title), style = MaterialTheme.typography.labelLarge, color = night.nightAccent)
+        Text(stringResource(if (extra.isNotEmpty()) R.string.fw_request_approved else title), style = MaterialTheme.typography.labelLarge, color = night.nightAccent)
         Spacer(Modifier.height(12.dp))
-        HeroTitle(when (time.kind) {
+        HeroTitle(if (extra.isNotEmpty()) stringResource(R.string.fw_request_extra_title) else when (time.kind) {
             TodayKind.Downtime -> stringResource(R.string.fw_time_downtime_title)
             TodayKind.TimesUp -> stringResource(R.string.fw_time_up_title)
             else -> (time.remainingMillis ?: time.usedMillis)?.let { minutes(it, time.limitMillis != null) } ?: "—"
         }, night.onNight)
         val used = time.usedMillis
         val limit = time.limitMillis
-        if (time.kind == TodayKind.TimesUp || time.kind == TodayKind.Downtime) {
+        if (extra.isNotEmpty()) HeroBody(stringResource(R.string.fw_request_extra_body), night.onNightMuted)
+        else if (time.kind == TodayKind.TimesUp || time.kind == TodayKind.Downtime) {
             HeroBody(stringResource(R.string.fw_time_still_work), night.onNightMuted)
         } else if (used == null) {
             HeroBody(stringResource(R.string.fw_time_not_counted), night.onNightMuted)
@@ -57,6 +60,18 @@ internal fun ScreenTimeContent(state: FamilyWardenState, actions: FamilyWardenAc
             localTime(time.resetsAt)), night.onNightMuted)
     }
     Text(stringResource(R.string.fw_time_this_phone), style = MaterialTheme.typography.bodySmall)
+    if (extra.isNotEmpty()) SectionCard {
+        extra.forEach { (target, amount) ->
+            Text(if (target == "total") stringResource(R.string.fw_request_screen)
+                else state.requestTargets.firstOrNull { it.pkg == target }?.label ?: target,
+                style = MaterialTheme.typography.titleMedium)
+            val min = ((amount + 59_999) / 60_000).toInt()
+            Text(pluralStringResource(R.plurals.fw_request_remaining, min, min))
+        }
+    }
+    if (!state.bound) FilledTonalButton(onClick = onRequests, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+        Text(stringResource(R.string.fw_request_ask))
+    }
     if (state.syncError != null) InfoNote(Icons.Outlined.Info, stringResource(when (state.syncError) {
         "router unreachable" -> R.string.fw_time_offline
         "unsupported capabilities" -> R.string.fw_sync_upgrade_required

@@ -6,7 +6,7 @@ import org.json.JSONObject
 /** Feature names describe implemented semantics, never roles or permission grants. */
 object PolicyCapabilities {
     // P7b: whole-phone downtime, daily union screen time, always-allowed apps and dated bonus.
-    val supported: Set<String> = setOf("apps-v1", "screen-time-v1")
+    val supported: Set<String> = setOf("apps-v1", "grants-v1", "screen-time-v1")
     val advertised: String = supported.sorted().joinToString(",")
 
     class Unsupported : IllegalArgumentException("unsupported capabilities")

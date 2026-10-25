@@ -348,24 +348,32 @@ Depends on P5–P7 (done for the local slice). Next pilot build: `0.10.0-pilot2`
 
 Depends on P5–P7. Start on LAN before adding the selected off-home transport.
 
-**Go foundation implemented, not end-to-end:** signed LAN requests/decisions, scoped
+**LAN slice implemented end to end (2026-10-25, emulator-verified; not deployed).** Go:
+signed LAN requests/decisions, scoped
 parent/admin approval, durable first-answer-wins ledger, device/key-bound policy grants,
 capability gating and retryable OpenWrt internet tickets. Strict parser, concurrent-parent,
 replay, stale requester, clock rollback, expiry, capacity and failed-write tests run with
 the fake adapter; real CGI/ubus/firewall tests cover transport and application. The old
 unexposed request/grant verifier and request-store prototypes were removed, not exposed
 as competing authorities. Current contract: `app-control-protocol.md` §3–4.
-Android consumption/screens and shared accounting remain open; no released client
-advertises `grants-v1`. The checkboxes below remain unchecked until their whole flow works.
+Android: strict grant parsing, consumption in the usage checkpoint, grant-aware
+enforcement, `PolicyClock`, exact-byte durable outbox, child request and parent approval
+screens (EN/DA), parent-only mode without Device Owner, LAN request notifications.
+Evidence: 185 JVM tests; `scripts/test-requests-emulator.sh` (Android 15 + OpenWrt) and
+`scripts/test-requests-ui.sh` (previews, dark, Danish 200%). Contract: protocol §3–4.
 
-- [ ] Child requests minutes for one app/day with a unique request ID and expiry.
-- [ ] Parent sees pending requests for authorized children and approves/denies in Android.
-- [ ] Verify role, scope, limits and signed authorization; never widen the weekday budget.
-- [ ] Persist grants and consumption; make double taps, retries, concurrent parents and
+- [x] Child requests minutes for one app/day with a unique request ID and expiry.
+- [x] Parent sees pending requests for authorized children and approves/denies in Android.
+- [x] Verify role, scope, limits and signed authorization; never widen the weekday budget.
+- [x] Persist grants and consumption; make double taps, retries, concurrent parents and
       duplicate delivery idempotent. Expired/revoked requests must not revive.
-- [ ] Apply one grant exactly once on the intended phone; report received vs applied states.
-- [ ] Enforce request abuse limits and show expired/denied/offline states clearly.
-- [ ] Test wrong child/parent/day/app, replay, tampering, restart and grant exhaustion.
+- [x] Apply one grant exactly once on the intended phone; report received vs applied states.
+      (Received = signed ack of the grant revision; spending stays on the phone.)
+- [x] Enforce request abuse limits and show expired/denied/offline states clearly.
+      (One open request per child; storage bounds; no product rate limit, per A15.)
+- [x] Test wrong child/parent/day/app, replay, tampering, restart and grant exhaustion.
+- [ ] Physical-device run (Pixel test phone only, never a child's daily phone).
+- [ ] Authenticated consumption upload and shared multi-phone allocation (P6/P7 follow-up).
 
 **Accept:** child exhausts an app, requests extra time, parent approves, only the approved
 minutes become usable, and the standing rule remains unchanged.

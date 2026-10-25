@@ -62,7 +62,11 @@ object Payload {
             })
         }
         // Only v3 carries app policy; an "apps" field in an older version is not trusted.
-        val apps = if (version == 3 && o.has("apps") && !o.isNull("apps")) parseApps(o.getJSONObject("apps")) else null
+        val apps = if (version == 3 && o.has("apps") && !o.isNull("apps")) parseApps(o.getJSONObject("apps"), requireNotNull(binding).deviceId) else null
+        if (!apps?.grants.isNullOrEmpty()) {
+            val requires = o.getJSONArray("requires")
+            require((0 until requires.length()).any { requires.get(it) == "grants-v1" }) { "undeclared grant feature" }
+        }
         // Optional: routers without a valid IANA zone name leave it out (phone zone is used)
         val zone = if (scoped) o.optString("timezone").takeIf { it.isNotEmpty() }?.also { ZoneId.of(it) } else null
         val pact = if (scoped) o.getJSONObject("pact") else o.optJSONObject("pact") ?: JSONObject()
@@ -91,12 +95,16 @@ object Payload {
             binding = binding, dns = dns, requestNonce = nonce, wireVersion = version, timeZone = zone,
             device = device, apps = apps,
             parents = if (version == 3 && binding != null) parents(o, binding.deviceId) else emptyList(),
+            request = if (version == 3 && o.has("request")) RequestProtocol.child(o.getJSONObject("request")) else null,
+            requests = if (version == 3 && o.has("requests"))
+                RequestProtocol.parents(o.getJSONArray("requests"), binding?.approves ?: emptyList()) else emptyList(),
         )
         // Bounded epoch seconds (through year 9999), not milliseconds/overflowing alarm times.
         require(listOf(state.serverTime, state.pactUntil, state.releaseAt).all {
             it in 0..MAX_EPOCH
         }) { "invalid epoch" }
         if (scoped) {
+            require(state.apps?.grants.orEmpty().all { it.notBefore <= state.serverTime && state.serverTime < it.notAfter }) { "inactive grant in policy" }
             require(r.getString("enabled") in setOf("0", "1")) { "invalid enabled flag" }
             require(r.getString("policy") in setOf("allow", "block", "scheduled")) { "invalid policy" }
             require(r.getString("override") in setOf("none", "allow", "block")) { "invalid override" }
@@ -108,6 +116,7 @@ object Payload {
                 require(state.pactType != "until" || state.pactUntil > 0) { "invalid pact end" }
                 // No grants beyond the pact (A4/A17): a bound captain trusts no parent keys.
                 require(state.parents.isEmpty()) { "parent keys for a pact-bound phone" }
+                require(state.apps?.grants.isNullOrEmpty()) { "grants for a pact-bound phone" }
             }
         }
         return state
@@ -158,7 +167,7 @@ object Payload {
      * Rejects rather than repairs: a contradictory or oversized policy keeps the
      * last trusted one in force (the reply is refused as unreadable).
      */
-    private fun parseApps(a: JSONObject): AppsPolicy {
+    internal fun parseApps(a: JSONObject, device: String): AppsPolicy {
         fun packages(name: String, max: Int): List<String> {
             val arr = a.getJSONArray(name)
             require(arr.length() <= max) { "too many $name" }
@@ -206,6 +215,6 @@ object Payload {
         require(bonusTotal in 0..1440) { "invalid bonus minutes" }
         return AppsPolicy(rev, a.getBoolean("suspend_new"), limits, blocked, approved,
             (0 until down.length()).map { window(down.getJSONObject(it)) },
-            screen, always, bonusDay, bonusTotal, bonusApps)
+            screen, always, bonusDay, bonusTotal, bonusApps, RequestProtocol.grants(a, device))
     }
 }

@@ -98,7 +98,7 @@ class SyncTransportTest {
                 Sync.requestMessageV3("fw-example", q.getValue("nonce"), "0123456789abcdef")))
             assertFalse(Usign.verify(phoneKey, q.getValue("sig3"),
                 Sync.requestMessageV3("fw-example", q.getValue("nonce"), "-")))
-            assertEquals("apps-v1,screen-time-v1", q["caps"])
+            assertEquals("apps-v1,grants-v1,screen-time-v1", q["caps"])
             assertTrue(Usign.verify(phoneKey, q.getValue("sigcaps"),
                 Sync.requestCapabilitiesMessage("fw-example", q.getValue("nonce"), "0123456789abcdef", q.getValue("caps"))))
             assertFalse(Usign.verify(phoneKey, q.getValue("sigcaps"),
@@ -184,4 +184,21 @@ class SyncTransportTest {
     @Test fun malformedStoredKeyIsAReportedFailureNotAnUncaughtWorkerException() {
         assertEquals(Sync.Result.Failed("bad paired key"), Sync.fetch("127.0.0.1", "not-a-key", "fw-example", phone))
     }
+    @Test fun parentOnlyClientAuthenticatesThatItDoesNotEnforceManagedApps() {
+        server({ uri, out ->
+            val q = params(uri)
+            assertEquals("-", q["caps"])
+            assertTrue(Usign.verify(Usign.parsePublicKey(phone.publicKey), q.getValue("sigcaps"),
+                Sync.requestCapabilitiesMessage("fw-parent", q.getValue("nonce"), "-", "-")))
+            reply(out, signedReply(uri, 3) {
+                it.remove("apps")
+                it.getJSONObject("binding").put("profile_id", "parent").put("profile_name", "Taylor")
+                    .put("approves", org.json.JSONArray().put(org.json.JSONObject().put("profile_id", "kid").put("profile_name", "Alex")))
+            })
+        }) { endpoint ->
+            val result = Sync.fetch(endpoint, router.publicKey, "fw-parent", phone, capabilities = "-")
+            assertTrue(result is Sync.Result.Ok && result.state.parentOnlyCompatible())
+        }
+    }
+
 }

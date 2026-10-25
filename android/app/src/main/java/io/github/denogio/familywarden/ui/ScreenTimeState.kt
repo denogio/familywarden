@@ -15,6 +15,9 @@ data class AppUsageReport(
     val labels: Map<String, String> = emptyMap(),
     val historyTotals: Map<String, Long> = emptyMap(),
     val essential: Set<String> = emptySet(),
+    val grantRemaining: Map<String, Long> = emptyMap(),
+    val grantReliable: Boolean = false,
+    val installed: Set<String> = emptySet(),
 )
 
 enum class TodayKind { Allowed, NearLimit, TimesUp, Downtime, Unknown }
@@ -29,6 +32,7 @@ data class ScreenTimeState(
     val alwaysAllowed: List<String>,
     val historyTotals: Map<String, Long>,
     val usageAccessMissing: Boolean = false,
+    val grantRemaining: Map<String, Long> = emptyMap(),
 ) {
     val remainingMillis: Long? get() = usedMillis?.let { used -> limitMillis?.let { (it - used).coerceAtLeast(0) } }
 }
@@ -64,7 +68,7 @@ fun screenTimeState(apps: AppsPolicy, report: AppUsageReport?, now: ZonedDateTim
         rows.filter { it.unlimited }.map { it.label }, matching?.historyTotals.orEmpty().filterKeys {
             val date = LocalDate.parse(it)
             date <= now.toLocalDate() && date > now.toLocalDate().minusDays(30)
-        }, !usageAccess)
+        }, !usageAccess, if (current?.grantReliable == true && usageAccess) current.grantRemaining else emptyMap())
 }
 
 /** Skip overlapping window boundaries that do not actually change downtime. */

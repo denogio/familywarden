@@ -39,7 +39,7 @@ object Sync {
     }
 
     sealed class Result {
-        data class Ok(val payload: String, val state: MastState) : Result()
+        data class Ok(val payload: String, val state: MastState, val requestStartedElapsed: Long? = null) : Result()
         data class Failed(val reason: String) : Result()
     }
 
@@ -49,7 +49,7 @@ object Sync {
      */
     fun fetch(store: Store, model: String = ""): Result {
         return fetch(store.host, store.publicKey, store.deviceId, store.phoneKey, model, store.state, store.provisioned,
-            store.appsApplied, store.wireSeen)
+            store.appsApplied, store.wireSeen, if (store.parentMode) "-" else PolicyCapabilities.advertised)
     }
 
     /**
@@ -64,7 +64,7 @@ object Sync {
      */
     internal fun fetch(host: String?, key: String?, deviceId: String, phoneKey: PhoneKey, model: String = "",
         previous: MastState? = null, requireDevicePolicy: Boolean = false,
-        appliedRev: String? = null, minWire: Int = 0): Result {
+        appliedRev: String? = null, minWire: Int = 0, capabilities: String = PolicyCapabilities.advertised): Result {
         if (host == null || key == null) return Result.Failed("not paired")
         val pub = try { Usign.parsePublicKey(key) } catch (_: IllegalArgumentException) {
             return Result.Failed("bad paired key")
@@ -73,9 +73,10 @@ object Sync {
         val requestSignature = phoneKey.sign(requestMessage(deviceId, nonce))
         val applied = appliedRev?.takeIf { it.matches(Regex("[0-9a-f]{16}")) } ?: "-"
         val v3Signature = phoneKey.sign(requestMessageV3(deviceId, nonce, applied))
-        val caps = PolicyCapabilities.advertised
+        val caps = capabilities
         val capsSignature = phoneKey.sign(requestCapabilitiesMessage(deviceId, nonce, applied, caps))
         val name = model.map { if (it.isLetterOrDigit() && it.code < 128 || it in "._-") it else '-' }.joinToString("").take(40)
+        val startedElapsed = android.os.SystemClock.elapsedRealtime()
         val body = try {
             get("${base(host)}/cgi-bin/mast?device=$deviceId&nonce=$nonce&key=${enc(phoneKey.publicKey)}&sig=${enc(requestSignature)}" +
                 "&sig3=${enc(v3Signature)}&applied=$applied&name=$name&caps=$caps&sigcaps=${enc(capsSignature)}")
@@ -108,7 +109,7 @@ object Sync {
         if (requireDevicePolicy && state.wireVersion >= 2 && state.pending) return Result.Failed("device not approved")
         if (requireDevicePolicy && !state.appliesTo(deviceId)) return Result.Failed("unsupported device policy")
         if (previous != null && state.serverTime < previous.serverTime) return Result.Failed("stale reply")
-        return Result.Ok(payload, state)
+        return Result.Ok(payload, state, startedElapsed)
     }
 
     /** "host" or "host:port" (e.g. an emulator reaching a test router on another port). */

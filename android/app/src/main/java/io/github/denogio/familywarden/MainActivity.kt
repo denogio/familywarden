@@ -34,6 +34,8 @@ class MainActivity : ComponentActivity() {
     private var dialog: MastDialog? = null
     private var pendingPairing: Sync.PairingInfo? = null
     private var busy = false
+    private var uploadReply: UploadReply? = null
+    private var nextParentSyncElapsed = 0L
     // A resolver test only describes the network (and policy) it ran on. Every
     // default-network change starts a new generation, so an old result reads as
     // "not tested" even after returning to the same network.
@@ -77,18 +79,38 @@ class MainActivity : ComponentActivity() {
         openUsageAccess = {
             runCatching { startActivity(Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
         },
+        askTime = { target, minutes -> upload { AppRequestClient.request(this, target, minutes) } },
+        answerTime = { request, approve, minutes -> upload { AppRequestClient.answer(this, request, approve, minutes) } },
+        retryUpload = { upload { AppRequestClient.retry(this) } },
+        forgetUpload = { AppRequestClient.forgetRetry(this); uploadReply = null; render() },
+        chooseParentMode = {
+            if (!Mast.isDeviceOwner(this) && !Store(this).provisioned) {
+                Store(this).parentMode = true
+                if (android.os.Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 77)
+                render()
+            }
+        },
+        parentSignOut = {
+            if (!busy && !Mast.isDeviceOwner(this) && Store(this).parentMode)
+                background({ Mast.unpairParent(this) }) { uploadReply = null }
+        },
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         render()
-        setContent { MastTheme { FamilyWardenScreen(ui, actions) } }
+        setContent { MastTheme { FamilyWardenScreen(ui, actions, initialRequests = intent.getBooleanExtra("requests", false)) } }
         getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(networkCallback)
         handlePairingLink(intent)
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
-                while (true) { render(); delay(1_000) }
+                while (true) {
+                    render()
+                    if (ui.paired && (ui.parentMode || ui.binding?.approves?.isNotEmpty() == true) && !busy &&
+                        android.os.SystemClock.elapsedRealtime() >= nextParentSyncElapsed) refresh()
+                    delay(1_000)
+                }
             }
         }
     }
@@ -127,13 +149,13 @@ class MainActivity : ComponentActivity() {
 
     private fun canPair(): Boolean {
         val store = Store(this)
-        return Mast.isDeviceOwner(this) && (!store.provisioned ||
+        return (Mast.isDeviceOwner(this) || (store.parentMode && !store.provisioned)) && (!store.provisioned ||
             (store.effectiveState?.binding?.administrator == true &&
                 store.effectiveState?.canSelfRemove(store.deviceId, System.currentTimeMillis() / 1000) == true))
     }
 
     /** An enrolled phone may always follow its own router (same pinned key) to a new address. */
-    private fun canRepair(): Boolean = Mast.isDeviceOwner(this) && Store(this).provisioned
+    private fun canRepair(): Boolean = Store(this).let { it.provisioned && (Mast.isDeviceOwner(this) || it.parentMode) }
 
     private fun scan() {
         if (!(canPair() || canRepair()) || busy) return
@@ -186,7 +208,8 @@ class MainActivity : ComponentActivity() {
                 check(canPair())
                 val store = Store(this)
                 val result = Sync.fetch(endpoint, info.publicKey, store.deviceId, store.phoneKey,
-                    android.os.Build.MODEL.orEmpty(), requireDevicePolicy = store.provisioned)
+                    android.os.Build.MODEL.orEmpty(), requireDevicePolicy = store.provisioned,
+                    capabilities = if (store.parentMode) "-" else PolicyCapabilities.advertised)
                 check(result is Sync.Result.Ok)
                 // A new pact or revoked authority must invalidate an already-open pairing sheet.
                 if (store.provisioned) check(Mast.checkRelease(this))
@@ -196,7 +219,17 @@ class MainActivity : ComponentActivity() {
         }) { if (it.isFailure) message(R.string.fw_error_pairing) }
     }
 
+    private fun upload(work: () -> UploadReply) {
+        if (busy) return
+        uploadReply = null
+        background(work) { result ->
+            uploadReply = result.getOrNull()
+            if (result.isFailure) message(R.string.fw_request_action_failed)
+        }
+    }
+
     private fun refresh() {
+        nextParentSyncElapsed = android.os.SystemClock.elapsedRealtime() + 30_000
         if (!busy) background({ Mast.refresh(this, sync = true) }) {
             if (it.isFailure) message(R.string.fw_sync_failed)
         }
@@ -218,6 +251,7 @@ class MainActivity : ComponentActivity() {
         )
         ui = FamilyWardenState(
             nowMillis = now.toInstant().toEpochMilli(), owner = Mast.isDeviceOwner(this),
+            parentMode = store.parentMode && !Mast.isDeviceOwner(this),
             paired = store.paired, provisioned = store.provisioned, binding = state?.binding,
             policyUnsupported = raw?.wireVersion == 1,
             awaitingApproval = store.awaitingApproval,
@@ -232,6 +266,16 @@ class MainActivity : ComponentActivity() {
             appliedDnsHost = applied.hostname, dnsLocked = applied.locked, dnsError = store.dnsError,
             networkId = getSystemService(ConnectivityManager::class.java).activeNetwork?.networkHandle,
             dialog = dialog,
+            childRequest = state?.request, parentRequests = state?.requests.orEmpty(),
+            uploadPending = store.hasPendingUpload, uploadReply = uploadReply,
+            canRequestTotal = state?.apps?.let { it.screenMinutes.isNotEmpty() || it.downtime.isNotEmpty() } == true,
+            requestEpoch = state?.let { store.policyClock(it)?.now(android.os.SystemClock.elapsedRealtime(),
+                android.provider.Settings.Global.getInt(contentResolver, android.provider.Settings.Global.BOOT_COUNT, -1)) }?.div(1000),
+            requestTargets = state?.apps?.let { apps ->
+                (apps.approved.intersect(AppControl.usageReport?.installed.orEmpty()) - apps.blocked - apps.alwaysAllowed - AppControl.usageReport?.essential.orEmpty()).map {
+                    RequestTarget(it, AppControl.usageReport?.labels?.get(it) ?: it)
+                }.sortedBy { it.label.lowercase() }
+            }.orEmpty(),
             appsActive = state?.apps != null && Mast.isDeviceOwner(this), appsStatus = store.appsStatus,
             screenTime = state?.apps?.takeIf { Mast.isDeviceOwner(this) }?.let {
                 screenTimeState(it, AppControl.usageReport, now.withZoneSameInstant(AppControl.zone(state)),

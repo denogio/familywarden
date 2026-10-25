@@ -32,6 +32,7 @@ import java.time.ZoneId
 private enum class Page(val title: Int, val icon: ImageVector) {
     Overview(R.string.fw_overview, Icons.Outlined.Explore),
     History(R.string.fw_history, Icons.Outlined.History),
+    Requests(R.string.fw_requests, Icons.Outlined.Inbox),
     Dns(R.string.fw_dns, Icons.Outlined.Shield),
     Ulysses(R.string.fw_ulysses, MastIcons.Mast),
     Settings(R.string.fw_settings, Icons.Outlined.Tune),
@@ -39,21 +40,23 @@ private enum class Page(val title: Int, val icon: ImageVector) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions) {
-    var selected by rememberSaveable { mutableStateOf(Page.Overview.name) }
+fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, initialRequests: Boolean = false) {
+    var selected by rememberSaveable { mutableStateOf(if (initialRequests) Page.Requests.name else Page.Overview.name) }
     var featureSheet by rememberSaveable { mutableStateOf(false) }
     var enableConfirmation by rememberSaveable { mutableStateOf(false) }
     val childNavigation = state.appsActive && state.binding?.captain == false
     val pages = Page.entries.filter {
         when (it) {
+            Page.Overview -> !state.parentMode
+            Page.Requests -> state.parentMode || state.binding?.approves?.isNotEmpty() == true || state.appsActive
             Page.History -> childNavigation
-            Page.Dns -> !childNavigation
+            Page.Dns -> !childNavigation && !state.parentMode
             Page.Ulysses -> state.showUlysses
             else -> true
         }
     }
-    val page = pages.firstOrNull { it.name == selected } ?: Page.Overview
-    val readyForNavigation = state.owner && state.paired
+    val page = pages.firstOrNull { it.name == selected } ?: pages.first()
+    val readyForNavigation = (state.owner || state.parentMode) && state.paired
     val largeText = LocalDensity.current.fontScale >= 1.5f
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -102,9 +105,11 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions) {
             verticalArrangement = Arrangement.spacedBy(MastSpacing.m),
         ) {
             when {
-                !state.owner -> OwnerSetup(actions)
-                !state.paired -> PairSetup(actions)
-                page == Page.Overview && state.screenTime != null -> ScreenTimeContent(state, actions)
+                !state.owner && !state.parentMode -> OwnerSetup(actions, !state.provisioned)
+                !state.paired -> PairSetup(actions, state.parentMode)
+                page == Page.Requests -> RequestsContent(state, actions)
+                page == Page.Settings && state.parentMode -> ParentSettings(state, actions)
+                page == Page.Overview && state.screenTime != null -> ScreenTimeContent(state, actions) { selected = Page.Requests.name }
                 page == Page.History -> ScreenTimeHistory(state.screenTime)
                 page == Page.Overview -> {
                     DnsHero(state)
@@ -362,7 +367,7 @@ private fun SettingsContent(s: FamilyWardenState, actions: FamilyWardenActions, 
 }
 
 @Composable
-private fun OwnerSetup(actions: FamilyWardenActions) {
+private fun OwnerSetup(actions: FamilyWardenActions, allowParent: Boolean) {
     HeroCard {
         HeroTitle(stringResource(R.string.setup_title))
         HeroBody(stringResource(R.string.setup_body))
@@ -376,10 +381,13 @@ private fun OwnerSetup(actions: FamilyWardenActions) {
         CommandBlock(stringResource(R.string.setup_command))
     }
     WideAction(R.string.action_check_again, Icons.Outlined.Refresh, actions.sync)
+    if (allowParent) FilledTonalButton(onClick = actions.chooseParentMode, modifier = Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.fw_parent_setup))
+    }
 }
 
 @Composable
-private fun PairSetup(actions: FamilyWardenActions) {
+private fun PairSetup(actions: FamilyWardenActions, parentMode: Boolean = false) {
     HeroCard {
         HeroBadge(Icons.Outlined.Router, MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface)
         HeroTitle(stringResource(R.string.pair_title))
@@ -387,7 +395,9 @@ private fun PairSetup(actions: FamilyWardenActions) {
     }
     WideAction(R.string.action_scan, Icons.Outlined.QrCodeScanner, actions.scan)
     TextButton(onClick = actions.manualPair, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.action_pair_manually)) }
-    TextButton(onClick = actions.remove, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.action_remove)) }
+    TextButton(onClick = if (parentMode) actions.parentSignOut else actions.remove, modifier = Modifier.fillMaxWidth()) {
+        Text(stringResource(if (parentMode) R.string.fw_parent_disconnect else R.string.action_remove))
+    }
 }
 
 @Composable

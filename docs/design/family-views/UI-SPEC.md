@@ -48,15 +48,17 @@ Downtime comes from the trusted weekly policy independently of usage access.
 Its next change skips overlapping boundaries; midnight/reset and all schedule times
 use the router timezone. A new budget does not imply that downtime has ended.
 
-The protocol does not yet have signed child/adult/parent roles. Navigation currently
-uses only the existing signed captain flag and the presence of app rules. This is
-presentation, not new authorization: no parent mode, local role picker, self-grant,
-request approval or administrator privilege is added.
+Navigation uses the signed captain flag, the presence of app rules and the signed
+`approves` scope. **Requests** (2026-10-25): children ask for app or screen time from
+Today/Requests and see pending/approved/declined/expired status and remaining extra
+minutes; phones with `approves` scope list pending requests and approve fewer minutes or
+decline. "Use this phone as a parent" pairs an ordinary phone without Device Owner; it shows
+only Requests and Settings. Local mode never grants authority: the router rechecks scope.
 
 ## Explicitly deferred
 
-- Ask for more time, request statuses and parent approval/delivery tracking (P8).
-- Parent mode, child switching, parent controls and native parent notifications.
+- Off-home parent notifications (P9); LAN-only notifications exist while syncing.
+- Child switching, parent controls (rules, lock now) and usage views on the parent phone.
 - Adult categories and daily discretionary pool (P11).
 - Shared child budgets, authenticated usage upload and domain history.
 - Lock now, Tonight and School time.

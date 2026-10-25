@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_requests">Requests</string>
+    <string name="fw_request_notification">%1$s asked for more time</string>
+    <string name="fw_parent_setup">Use this phone as a parent</string>
+    <string name="fw_parent_disconnect">Disconnect parent phone</string>
+    <string name="fw_parent_disconnect_body">This app will discard its signing key. Rules and issued approvals stay unchanged. Delete this phone in the router to revoke its old approval key.</string>
+    <string name="fw_parent_settings">Parent phone</string>
+    <string name="fw_parent_settings_body">Approve requests only for children assigned to this phone in the router. Device Owner is not required. LAN delivery works while the router is reachable; off-home notifications are not available yet.</string>
+    <string name="fw_request_waiting_approval">Waiting for phone approval</string>
+    <string name="fw_request_waiting_body">Approve this fingerprint in the router, then assign the children this phone may approve for.</string>
+    <string name="fw_request_ask">Ask for more time</string>
+    <string name="fw_request_intro">Ask for extra minutes for this phone. A parent can approve fewer; unused minutes expire two hours after approval. Standing rules stay unchanged.</string>
+    <string name="fw_request_screen">Screen time</string>
+    <string name="fw_request_minutes">Minutes</string>
+    <string name="fw_request_range">Choose 1–%1$d minutes.</string>
+    <string name="fw_request_send">Send request</string>
+    <string name="fw_request_approve">Approve</string>
+    <string name="fw_request_deny">Decline</string>
+    <string name="fw_request_approve_title">Approve extra time</string>
+    <string name="fw_request_deny_title">Decline this request?</string>
+    <string name="fw_request_subject">%1$s · %2$s</string>
+    <string name="fw_request_pending">Waiting for a parent</string>
+    <string name="fw_request_approved">Extra time approved</string>
+    <string name="fw_request_extra_title">A little more time</string>
+    <string name="fw_request_extra_body">Your extra time has its own limit. Other apps and rules may still be paused.</string>
+    <string name="fw_request_denied">Not approved this time</string>
+    <string name="fw_request_expired">This request has expired</string>
+    <string name="fw_request_apply_pending">This phone has not confirmed the extra time yet. Refresh to check.</string>
+    <string name="fw_request_time_unavailable">Extra time cannot be verified right now. Check usage access and refresh after a restart.</string>
+    <string name="fw_request_empty">No requests waiting</string>
+    <string name="fw_request_empty_body">New requests appear here when your assigned children ask for extra time. Refresh to check the router.</string>
+    <string name="fw_request_no_scope">No children assigned</string>
+    <string name="fw_request_no_scope_body">Choose which children this phone may approve for in the router’s Phones page. Parent access never grants router administration.</string>
+    <string name="fw_request_pact">Extra time cannot bypass an active pact.</string>
+    <string name="fw_request_retry_title">An action needs confirmation</string>
+    <string name="fw_request_retry_body">The router may already have received it. Retry sends exactly the same signed action, not another request or another allocation.</string>
+    <string name="fw_request_retry">Retry action</string>
+    <string name="fw_request_forget">Dismiss local retry</string>
+    <string name="fw_request_forget_body">This only discards the local retry. It does not cancel a request or reverse an approval already received by the router.</string>
+    <string name="fw_request_action_failed">The action could not be verified. Check the connection; a saved action can be retried safely.</string>
+    <string name="fw_request_action_rejected">The router could not accept this action. Refresh to check scope, expiry and current request status.</string>
+    <string name="fw_request_sent">Request sent</string>
+    <string name="fw_request_approval_sent">Approved. Extra time becomes usable when the child phone applies the policy.</string>
+    <string name="fw_request_denial_sent">Request declined</string>
+    <string name="fw_request_phone_check">Only a fresh router response can confirm an approval. Offline or stale screens never grant access.</string>
+    <plurals name="fw_request_amount"><item quantity="one">%1$d minute</item><item quantity="other">%1$d minutes</item></plurals>
+    <plurals name="fw_request_remaining"><item quantity="one">About %1$d extra minute left</item><item quantity="other">About %1$d extra minutes left</item></plurals>
+</resources>

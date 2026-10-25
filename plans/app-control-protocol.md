@@ -67,7 +67,7 @@ on (`option apps '1'`):
   expected `apps_rev`. Fetching is not applying: the app sends `-` until enforcement
   has actually applied a revision.
 - Parent scopes/keys are implemented (§2c). Go now emits device-bound `apps.grants`
-  (§4), gated by `grants-v1`; Android does **not** yet advertise that capability.
+  (§4), gated by `grants-v1`; Android development builds since 2026-10-25 advertise it.
   Shared budgets and categories remain unimplemented. Unknown optional fields are
   ignorable; unknown required features are not.
 
@@ -118,7 +118,7 @@ configuration (including the pact snapshot), never from client claims:
 |---|---|
 | `apps-v1` | This profile has app control enabled |
 | `screen-time-v1` | The app policy has daily screen limits, always-allowed apps, whole-phone downtime, or today's bonus |
-| `grants-v1` | Active grants exist for this particular phone (§4); Android support is not implemented yet |
+| `grants-v1` | Active grants exist for this particular phone (§4) |
 
 `screen-time-v1` names the complete P7b semantics: union counting, ordinary-app
 downtime (including messaging unless always allowed), daily limits, unlimited
@@ -235,7 +235,7 @@ Adult profiles under a pact never accept grants (§4); their daily pool is defin
 Downtime windows use the router schedule semantics: `days` name the start day and an
 overnight window continues into the next day.
 
-## 3. LAN extra-time requests and decisions (Go implemented; Android pending)
+## 3. LAN extra-time requests and decisions (implemented: Go and Android)
 
 Transport: `POST /cgi-bin/app?op=request` or `?op=decision` on the existing phone
 port 7700. Body: one base64 usign signature line, newline, then exact UTF-8 JSON bytes
@@ -296,7 +296,7 @@ target, minutes, label/note and expiry) for the parent. Old clients may ignore t
 display-only fields. `ubus call familywarden requests` lists retained decisions for the
 administrator; this does not mean a Requests UI exists yet.
 
-## 4. Router-policy grants (Go implemented; Android enforcement pending)
+## 4. Router-policy grants (implemented: Go and Android)
 
 An approved request becomes a durable grant **for the requesting device and enrolled
 key only**. This deliberately prevents copying one allocation to every phone before
@@ -312,7 +312,7 @@ shared consumption/leases exist. It does not implement the shared child budget.
 - Authority is the enclosing router-signed policy, not a separately forwarded parent
   grant. Effective grants change the **per-device** app revision and require
   `grants-v1`; an older client receives signed `unsupported_capabilities`, never a
-  weaker policy. Existing Android builds do not advertise this feature.
+  weaker policy. Released Android builds before 0.11 do not advertise this feature.
 - Lifetime: two hours **after approval**, not delivery or midnight. Expired grants are
   finalized durably when observed. The ledger's durable time floor rejects clock
   rollback rather than reviving expired/pruned authority; it does not age out an
@@ -335,12 +335,40 @@ shared consumption/leases exist. It does not implement the shared child budget.
   Full/corrupt/unwritable state refuses new authority; pruning recovers capacity.
   File reads are bounded to 1 MiB; signed replies to 64 KiB.
 
-**Still to implement before end-to-end acceptance:** Android request/decision/status
-screens, durable per-grant consumption/replay accounting, exactly-once enforcement,
-exhaustion and clock tests on the client. There is no authenticated consumption upload
-yet. A valid app grant must bypass downtime and the relevant exhausted limit, but never
-an explicit app block, safety exemptions or a pact. No client may advertise `grants-v1`
-until those semantics work and survive restart.
+**Android client (implemented 2026-10-25).**
+
+- Parsing: `apps.grants` is accepted only in v3 with `grants-v1` in `requires`, for this
+  device id, with exact 7200 s lifetime, active at the signed `server_time`; never for a
+  pact-bound captain. Strict request/parent-list/child-status parsers bound every field.
+- Consumption lives in the **same atomic checkpoint** as the usage cursor
+  (`UsageJournal`/`GrantLedger`): restart, process death or repeated delivery of the same
+  grant cannot refill spent minutes. Grant terms that change under the same id are refused.
+- Spending starts only when ordinary rules would deny use: an app grant covers that app's
+  exhausted limit, daily total and downtime; a `total` grant extends the daily total and
+  downtime but never an exhausted per-app limit. Blocked, unapproved and safety-excluded
+  apps never spend grants. PiP/split-screen counts once against `total`. Overlapping grants
+  spend earliest expiry first.
+- Time authority: request-bound server time plus `elapsedRealtime` within one boot
+  (`PolicyClock`), upper-bounded by the full request round trip, never moved backwards by
+  a faster later reply. Reboots, clock jumps and usage gaps make extra time unavailable
+  (not zero use); a gap is charged as possible use up to each grant's overlap. A monotonic
+  high-water mark per router/key/device/profile scope prevents rollback revival.
+- An exact alarm closes the grant window while the screen is off. Formerly granted apps
+  are re-paused when usage becomes unknown rather than left running.
+- Uploads: one durable outbox entry of exact bytes; retry after an uncertain response or
+  process death resends the same signed action; only a reply verified against the pinned
+  key, device, type and `message_sha256` clears it. Dismissing it locally cancels nothing.
+- Parent-only phones need no Device Owner: they sign `caps=-`, accept only policies with no
+  apps, DNS, captain role or pact, receive scoped `requests[]` via LAN sync (30 s while open,
+  WorkManager otherwise) and post decisions. Disconnecting deletes the signing key.
+- Verified on Android 15 (`scripts/test-requests-emulator.sh`): exhausted 1-minute limit,
+  child UI request, dropped reply + process death + exact retry (one ledger entry), approval,
+  unpause only after policy sync, persisted spending across process death, re-pause at
+  exactly 60 s spent, repeated sync without refill, authorized removal, non-owner parent
+  pairing, scoped approval and decline.
+
+Still open: authenticated consumption upload (router does not see spending), shared
+multi-phone allocation, off-home delivery/notifications (P9), and physical-device tests.
 
 **Future (P9, not an accepted wire format):** directly delivered parent-signed grants,
 offline issuance and encrypted notification/relay transport. They must reuse the same

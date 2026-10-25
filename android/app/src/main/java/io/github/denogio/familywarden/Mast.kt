@@ -77,10 +77,12 @@ object Mast {
     @Synchronized
     fun refresh(context: Context, sync: Boolean) {
         val store = Store(context)
+        if (isDeviceOwner(context) && store.parentMode) store.parentMode = false
         if (sync && store.paired) {
             when (val r = Sync.fetch(store, android.os.Build.MODEL.orEmpty())) {
                 is Sync.Result.Ok -> {
-                    accept(store, r)
+                    if (!store.parentMode || r.state.parentOnlyCompatible()) accept(store, r)
+                    else store.lastError = "managed policy requires device owner"
                 }
                 is Sync.Result.Failed -> store.lastError = r.reason
             }
@@ -90,11 +92,12 @@ object Mast {
         // A damaged enrolled cache is not authorization to clear existing restrictions.
         if (!store.provisioned || state != null) {
             enforce(context, state != null, decision.block)
-            scheduleNext(context, store)
+            if (isDeviceOwner(context)) scheduleNext(context, store)
             AppControl.sync(context, state)
         }
         // DNS is always on while the verified policy has it, independent of Ulysses
         if (state != null) PrivateDns.apply(context, store, state.dns)
+        if (sync && store.lastError == null && state != null) RequestNotifications.update(context, state)
         schedulePeriodic(context)
         Log.i(TAG, "decision=${decision.reason} block=${decision.block} lastSync=${store.lastSync} error=${store.lastError}")
     }
@@ -142,7 +145,7 @@ object Mast {
 
     private fun schedulePeriodic(context: Context) {
         val store = Store(context)
-        if (!isDeviceOwner(context) || (!store.paired && !store.provisioned)) {
+        if ((!isDeviceOwner(context) && !store.parentMode) || (!store.paired && !store.provisioned)) {
             WorkManager.getInstance(context).cancelUniqueWork("mast-sync")
             return
         }
@@ -162,11 +165,20 @@ object Mast {
         val store = Store(context)
         if (!store.provisioned) return false
         val r = Sync.fetch(address, store.publicKey, store.deviceId, store.phoneKey, android.os.Build.MODEL.orEmpty(),
-            store.state, requireDevicePolicy = true, appliedRev = store.appsApplied, minWire = store.wireSeen)
+            store.state, requireDevicePolicy = true, appliedRev = store.appsApplied, minWire = store.wireSeen,
+            capabilities = if (store.parentMode) "-" else PolicyCapabilities.advertised)
         if (r !is Sync.Result.Ok) return false
         store.repairAddress(address, r)
         refresh(context, sync = false)
         return true
+    }
+
+    /** Logging out of an ordinary parent app changes no child policy or approval. */
+    @Synchronized
+    fun unpairParent(context: Context) {
+        check(!isDeviceOwner(context) && Store(context).parentMode)
+        Store(context).unpair(forgetSigningKey = true)
+        WorkManager.getInstance(context).cancelUniqueWork("mast-sync")
     }
 
     /** Cached eligibility is for presenting an action, never final authorization. */

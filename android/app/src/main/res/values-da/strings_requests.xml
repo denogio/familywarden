@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_requests">Anmodninger</string>
+    <string name="fw_request_notification">%1$s har bedt om mere tid</string>
+    <string name="fw_parent_setup">Brug telefonen som forælder</string>
+    <string name="fw_parent_disconnect">Frakobl forældertelefon</string>
+    <string name="fw_parent_disconnect_body">Appen sletter sin signeringsnøgle. Regler og allerede givne godkendelser ændres ikke. Slet telefonen i routeren for at tilbagekalde dens gamle godkendelsesnøgle.</string>
+    <string name="fw_parent_settings">Forældertelefon</string>
+    <string name="fw_parent_settings_body">Godkend kun anmodninger for børn, der er knyttet til telefonen i routeren. Device Owner er ikke nødvendigt. Levering på lokalnettet virker, når routeren kan nås; notifikationer uden for hjemmet er endnu ikke tilgængelige.</string>
+    <string name="fw_request_waiting_approval">Afventer godkendelse af telefonen</string>
+    <string name="fw_request_waiting_body">Godkend dette fingeraftryk i routeren, og vælg derefter de børn, telefonen må godkende for.</string>
+    <string name="fw_request_ask">Bed om mere tid</string>
+    <string name="fw_request_intro">Bed om ekstra minutter til denne telefon. En forælder kan godkende færre; ubrugte minutter udløber to timer efter godkendelsen. De faste regler ændres ikke.</string>
+    <string name="fw_request_screen">Skærmtid</string>
+    <string name="fw_request_minutes">Minutter</string>
+    <string name="fw_request_range">Vælg 1–%1$d minutter.</string>
+    <string name="fw_request_send">Send anmodning</string>
+    <string name="fw_request_approve">Godkend</string>
+    <string name="fw_request_deny">Afslå</string>
+    <string name="fw_request_approve_title">Godkend ekstra tid</string>
+    <string name="fw_request_deny_title">Afslå denne anmodning?</string>
+    <string name="fw_request_subject">%1$s · %2$s</string>
+    <string name="fw_request_pending">Afventer en forælder</string>
+    <string name="fw_request_approved">Ekstra tid godkendt</string>
+    <string name="fw_request_extra_title">Lidt mere tid</string>
+    <string name="fw_request_extra_body">Din ekstra tid har sin egen grænse. Andre apps og regler kan stadig være sat på pause.</string>
+    <string name="fw_request_denied">Ikke godkendt denne gang</string>
+    <string name="fw_request_expired">Anmodningen er udløbet</string>
+    <string name="fw_request_apply_pending">Telefonen har endnu ikke bekræftet den ekstra tid. Opdater for at tjekke.</string>
+    <string name="fw_request_time_unavailable">Ekstra tid kan ikke bekræftes lige nu. Tjek brugsadgang, og opdater efter en genstart.</string>
+    <string name="fw_request_empty">Ingen ventende anmodninger</string>
+    <string name="fw_request_empty_body">Nye anmodninger vises her, når dine tilknyttede børn beder om mere tid. Opdater for at tjekke routeren.</string>
+    <string name="fw_request_no_scope">Ingen børn tilknyttet</string>
+    <string name="fw_request_no_scope_body">Vælg i routerens side Telefoner, hvilke børn telefonen må godkende for. Forældreadgang giver aldrig routeradministration.</string>
+    <string name="fw_request_pact">Ekstra tid kan ikke omgå en aktiv pagt.</string>
+    <string name="fw_request_retry_title">En handling mangler bekræftelse</string>
+    <string name="fw_request_retry_body">Routeren kan allerede have modtaget den. Et nyt forsøg sender præcis den samme signerede handling, ikke en ny anmodning eller mere tid.</string>
+    <string name="fw_request_retry">Prøv handlingen igen</string>
+    <string name="fw_request_forget">Fjern lokalt genforsøg</string>
+    <string name="fw_request_forget_body">Dette fjerner kun det lokale genforsøg. Det annullerer ikke en anmodning eller en godkendelse, som routeren allerede har modtaget.</string>
+    <string name="fw_request_action_failed">Handlingen kunne ikke bekræftes. Tjek forbindelsen; en gemt handling kan prøves igen sikkert.</string>
+    <string name="fw_request_action_rejected">Routeren kunne ikke acceptere handlingen. Opdater for at tjekke rettigheder, udløb og anmodningens aktuelle status.</string>
+    <string name="fw_request_sent">Anmodning sendt</string>
+    <string name="fw_request_approval_sent">Godkendt. Den ekstra tid kan bruges, når barnets telefon har anvendt politikken.</string>
+    <string name="fw_request_denial_sent">Anmodning afslået</string>
+    <string name="fw_request_phone_check">Kun et nyt svar fra routeren kan bekræfte en godkendelse. Offline eller forældede skærmbilleder giver aldrig adgang.</string>
+    <plurals name="fw_request_amount"><item quantity="one">%1$d minut</item><item quantity="other">%1$d minutter</item></plurals>
+    <plurals name="fw_request_remaining"><item quantity="one">Cirka %1$d ekstra minut tilbage</item><item quantity="other">Cirka %1$d ekstra minutter tilbage</item></plurals>
+</resources>

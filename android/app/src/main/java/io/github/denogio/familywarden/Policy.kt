@@ -32,6 +32,8 @@ data class MastState(
     val apps: AppsPolicy? = null,
     /** v3: parent phones whose keys may later sign grants for this phone's profile. */
     val parents: List<ParentKey> = emptyList(),
+    val request: ChildRequest? = null,
+    val requests: List<ParentRequest> = emptyList(),
 )
 
 data class Rules(

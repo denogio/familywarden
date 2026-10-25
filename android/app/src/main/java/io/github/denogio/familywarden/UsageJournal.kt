@@ -20,9 +20,11 @@ data class UsageCheckpoint(
     var sequence: Long = 0,
     var gaps: Long = 0,
     var uncertainThroughDay: String = "",
+    val grants: GrantLedger = GrantLedger(),
 ) {
     fun encode(): String = JSONObject().apply {
         put("schema", 1); put("zone", zone); put("cursor", counter.cursor)
+        put("grants", grants.encode())
         put("elapsed", elapsed); put("boot", boot); put("seq", sequence); put("gaps", gaps); put("uncertain_through_day", uncertainThroughDay)
         put("interactive", counter.interactive); put("unlocked", counter.unlocked)
         put("visible", JSONObject().apply { counter.visible.forEach { (pkg, ids) -> put(pkg, JSONArray(ids.toList())) } })
@@ -63,7 +65,8 @@ data class UsageCheckpoint(
             return UsageCheckpoint(c, zone, o.getLong("elapsed").also { require(it >= 0) },
                 o.getInt("boot").also { require(it >= 0) },
                 o.getLong("seq").also { require(it >= 0) }, o.getLong("gaps").also { require(it >= 0) },
-                o.getString("uncertain_through_day").also { require(it.isEmpty() || LocalDate.parse(it).toString() == it) })
+                o.getString("uncertain_through_day").also { require(it.isEmpty() || LocalDate.parse(it).toString() == it) },
+                if (o.has("grants")) GrantLedger.decode(o.getJSONObject("grants")) else GrantLedger())
         }
     }
 }

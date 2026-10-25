@@ -86,6 +86,7 @@ object AppControl {
     /** No (more) app policy, or removal: stop and lift only FamilyWarden's own suspensions. */
     fun stop(context: Context, zone: ZoneId) {
         usageReport = null
+        scheduleGrantExpiry(context, null, null)
         context.stopService(Intent(context, AppControlService::class.java))
         if (Mast.isDeviceOwner(context)) synchronized(AppEnforcer::class.java) {
             stopped = true
@@ -98,6 +99,22 @@ object AppControl {
         if (store.appsStatus != null) store.appsStatus = null
     }
 
+    /** Native exact alarm closes an expired window even when the screen stays off. */
+    fun scheduleGrantExpiry(context: Context, state: MastState?, clock: PolicyClock?): Boolean = runCatching {
+        val am = context.getSystemService(android.app.AlarmManager::class.java)
+        val pi = PendingIntent.getBroadcast(context, 77,
+            Intent(context, EventReceiver::class.java).setAction(EventReceiver.ACTION_TICK),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val elapsed = SystemClock.elapsedRealtime()
+        val boot = android.provider.Settings.Global.getInt(context.contentResolver,
+            android.provider.Settings.Global.BOOT_COUNT, -1)
+        val now = clock?.now(elapsed, boot)
+        val end = if (now == null) null else state?.apps?.grants?.map { it.notAfter * 1000 }?.filter { it > now }?.minOrNull()
+        if (end == null) am.cancel(pi)
+        else am.setExactAndAllowWhileIdle(android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP, elapsed + end - requireNotNull(now), pi)
+        true
+    }.onFailure { Log.w(TAG, "grant expiry alarm unavailable", it) }.getOrDefault(false)
+
     private const val TAG = "UlyssesMast"
 }
 
@@ -106,9 +123,14 @@ class AppControlService : Service() {
     private lateinit var handler: Handler
     private var monitor: UsageMonitor? = null
     private var monitorZone: ZoneId? = null
+    private val labelCache = mutableMapOf<String, String>()
+    private val launchableCache = mutableMapOf<String, Boolean>()
     private val tick = Runnable { tick() }
     private val receiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) { handler.post(tick) }
+        override fun onReceive(context: Context, intent: Intent) {
+            intent.data?.schemeSpecificPart?.let { labelCache.remove(it); launchableCache.remove(it) }
+            handler.post(tick)
+        }
     }
 
     override fun onCreate() {
@@ -124,7 +146,7 @@ class AppControlService : Service() {
         // Protected system broadcasts only: other apps cannot send these.
         register(IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED); addAction(Intent.ACTION_PACKAGE_REPLACED)
-            addAction(Intent.ACTION_PACKAGE_REMOVED); addDataScheme("package")
+            addAction(Intent.ACTION_PACKAGE_REMOVED); addAction(Intent.ACTION_PACKAGE_CHANGED); addDataScheme("package")
         })
         register(IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT)
@@ -152,17 +174,41 @@ class AppControlService : Service() {
             if (apps == null || !Mast.isDeviceOwner(this)) { AppControl.stop(this, AppControl.zone(state)); stopSelf(); return }
             val zone = AppControl.zone(state)
             val today = LocalDate.now(zone)
-            val policy = apps.toLocal(zone, today)
+            val basePolicy = apps.toLocal(zone, today)
             val enforcer = AppEnforcer(this)
             // A changed router timezone needs a journal migration; until then limits hold.
             if (monitorZone != zone) { monitor = null; monitorZone = zone }
             if (monitor == null) monitor = runCatching { UsageMonitor(this, zone) }
                 .onFailure { Log.w(TAG, "usage journal unavailable: ${it.message}") }.getOrNull()
-            val essential = enforcer.essentialPackages()
+            val installed = packageManager.getInstalledApplications(0)
+            val nonLaunchableSystem = installed.filter {
+                it.flags and (android.content.pm.ApplicationInfo.FLAG_SYSTEM or android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0 &&
+                    !launchableCache.getOrPut(it.packageName) { packageManager.getLaunchIntentForPackage(it.packageName) != null }
+            }.map { it.packageName }.toSet()
+            val essential = enforcer.essentialPackages() + nonLaunchableSystem
+            val input = runCatching {
+                val payload = org.json.JSONObject(requireNotNull(store.payload))
+                check(payload.getString("nonce") == state.requestNonce)
+                val binding = requireNotNull(state.binding)
+                val pin = Usign.parsePublicKey(requireNotNull(store.publicKey)).fingerprint
+                val users = installed.filter {
+                    it.flags and (android.content.pm.ApplicationInfo.FLAG_SYSTEM or android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0
+                }.map { it.packageName }.toSet()
+                GrantInput("$pin|${store.phoneKey.fingerprint}|${binding.deviceId}|${binding.profileId}", binding.deviceId,
+                    payload.getJSONObject("apps").toString(), store.policyClock(state), users)
+            }.getOrNull()
             val sample = monitor?.let { m ->
-                runCatching { m.sample(essential + policy.alwaysAllowed) }
-                    .onFailure { Log.w(TAG, "usage sample failed", it) }.getOrNull()
+                runCatching { m.sample(essential + basePolicy.alwaysAllowed, input) }
+                    .onFailure {
+                        // Reload the last atomic checkpoint after a failed write, never
+                        // continue with an advanced RAM cursor or unpersisted spending.
+                        monitor = null
+                        Log.w(TAG, "usage sample failed", it)
+                    }.getOrNull()
             }
+            val expiryReady = AppControl.scheduleGrantExpiry(this, state, input?.clock)
+            val policy = basePolicy.copy(grantRemaining = sample?.grantRemaining.orEmpty(),
+                grantReliable = sample?.grantReliable == true && expiryReady)
             val reliable = sample?.reliable == true
             val used = sample?.millis ?: emptyMap()
             val result = synchronized(AppEnforcer::class.java) {
@@ -173,13 +219,15 @@ class AppControlService : Service() {
             val status = when {
                 result.failures.isNotEmpty() -> "suspend_failed"
                 sample == null -> "usage_unavailable"
+                apps.grants.isNotEmpty() && !policy.grantReliable -> "grant_unavailable"
                 else -> sample.status
             }
-            val labels = (policy.limitsMillis.keys + policy.blocked + policy.alwaysAllowed).associateWith(::label)
+            val labels = (policy.limitsMillis.keys + policy.blocked + policy.alwaysAllowed + policy.approved).associateWith(::label)
             AppControl.publish(AppUsageReport(apps.rev, zone.id, today, SystemClock.elapsedRealtime(),
-                reliable, used.toMap(), labels, monitor?.historyTotals() ?: emptyMap(), essential))
+                reliable, used.toMap(), labels, monitor?.historyTotals() ?: emptyMap(), essential,
+                sample?.grantRemaining.orEmpty(), policy.grantReliable && result.failures.isEmpty(), installed.map { it.packageName }.toSet()))
             if (store.appsStatus != status) store.appsStatus = status
-            if (AppControl.acknowledges(result.failures, reliable) && store.appsApplied != apps.rev) store.appsApplied = apps.rev
+            if (AppControl.acknowledges(result.failures, reliable && expiryReady) && store.appsApplied != apps.rev) store.appsApplied = apps.rev
         } catch (e: Exception) {
             AppControl.publish(null)
             Log.e(TAG, "app control tick failed", e)
@@ -218,9 +266,9 @@ class AppControlService : Service() {
         }
     }
 
-    private fun label(pkg: String): String = runCatching {
-        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
-    }.getOrDefault(pkg)
+    private fun label(pkg: String): String = labelCache.getOrPut(pkg) {
+        runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 

@@ -22,6 +22,9 @@ class UsageCounter(
      */
     var excluded: Set<String> = emptySet()
 
+    /** Same-writer accounting hook; invoked before adding each daily foreground slice. */
+    var onInterval: ((Long, Long, Set<String>, Map<String, Long>) -> Unit)? = null
+
     enum class Kind { RESUME, STOP, SCREEN_ON, SCREEN_OFF, UNLOCK, LOCK, STARTUP, SHUTDOWN }
     data class Event(val at: Long, val kind: Kind, val pkg: String = "", val activity: String = "")
 
@@ -76,6 +79,7 @@ class UsageCounter(
                 val local = Instant.ofEpochMilli(start).atZone(zone)
                 val stop = minOf(until, local.toLocalDate().plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli())
                 val totals = days.getOrPut(local.toLocalDate().toString()) { mutableMapOf() }
+                onInterval?.invoke(start, stop, visible.keys.toSet(), totals.toMap())
                 for (pkg in visible.keys) totals[pkg] = Math.addExact(totals[pkg] ?: 0, stop - start)
                 // Daily total (D9): the union, so PiP over another app counts once.
                 if (visible.keys.any { it !in excluded }) totals[TOTAL] = Math.addExact(totals[TOTAL] ?: 0, stop - start)

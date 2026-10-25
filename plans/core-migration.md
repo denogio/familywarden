@@ -61,9 +61,9 @@ and concurrent manual blocks; built-package install/reinstall/removal tests; 32 
 tests against the resulting 0.11.0_rc2 / 0.3.0 packages. One package-feed fetch stalled;
 the bounded rerun passed. No Android code changed, so no emulator run was needed.
 
-Android enforcement, parent/child request screens, authenticated consumption uploads,
-shared allocations and the shared administrator UI are still unimplemented. No physical
-phone/router changes or emulator run are required for this server-only foundation.
+Android grant enforcement and request screens followed (protocol §4, 2026-10-25).
+Authenticated consumption uploads, shared allocations and the shared administrator UI are
+still unimplemented.
 
 ## Step 1 in detail
 

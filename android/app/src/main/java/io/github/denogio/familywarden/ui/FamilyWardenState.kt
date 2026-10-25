@@ -6,6 +6,7 @@ import io.github.denogio.familywarden.*
 data class FamilyWardenState(
     val nowMillis: Long,
     val owner: Boolean = false,
+    val parentMode: Boolean = false,
     val paired: Boolean = false,
     val provisioned: Boolean = false,
     val binding: DeviceBinding? = null,
@@ -37,12 +38,19 @@ data class FamilyWardenState(
     /** Last app-control state ("ok", "usage_access_missing", "suspend_failed", ...). */
     val appsStatus: String? = null,
     val screenTime: ScreenTimeState? = null,
+    val childRequest: ChildRequest? = null,
+    val parentRequests: List<ParentRequest> = emptyList(),
+    val requestTargets: List<RequestTarget> = emptyList(),
+    val uploadPending: Boolean = false,
+    val uploadReply: UploadReply? = null,
+    val requestEpoch: Long? = null,
+    val canRequestTotal: Boolean = true,
 ) {
     val bound: Boolean get() = pact is PactStatus.Bound
     val showUlysses: Boolean get() = bound || (binding?.captain == true && ulyssesEnabled)
     val canRePair: Boolean get() = canRequestRemoval && (!provisioned || binding?.administrator == true)
     /** Scanning the router's code again only moves to a new address when the key matches. */
-    val canScan: Boolean get() = canRePair || (owner && provisioned)
+    val canScan: Boolean get() = canRePair || ((owner || parentMode) && provisioned)
     // This exposes an action only. Final removal ALWAYS needs a fresh request-bound response.
     val canRequestRemoval: Boolean get() = !bound && (!provisioned || binding?.selfRemoval == true)
     val currentCheck: ResolverCheck? get() = resolverCheck?.takeIf {
@@ -82,6 +90,8 @@ fun removalRefusal(state: MastState?, syncError: String?): RemovalRefusal = when
 data class ResolverCheck(val policy: DnsPolicy, val networkId: Long, val testedAt: Long,
     val result: ProbeResult, val generation: Long = 0)
 
+data class RequestTarget(val pkg: String, val label: String)
+
 class FamilyWardenActions(
     val sync: () -> Unit,
     val scan: () -> Unit,
@@ -96,4 +106,10 @@ class FamilyWardenActions(
     val openSail: () -> Unit,
     val copyDiagnostics: () -> Unit,
     val openUsageAccess: () -> Unit,
+    val askTime: (String, Int) -> Unit = { _, _ -> },
+    val answerTime: (ParentRequest, Boolean, Int) -> Unit = { _, _, _ -> },
+    val retryUpload: () -> Unit = {},
+    val forgetUpload: () -> Unit = {},
+    val chooseParentMode: () -> Unit = {},
+    val parentSignOut: () -> Unit = {},
 )

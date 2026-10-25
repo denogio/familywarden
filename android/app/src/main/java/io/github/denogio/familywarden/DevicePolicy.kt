@@ -55,6 +55,7 @@ data class AppsPolicy(
     val bonusDay: java.time.LocalDate? = null,
     val bonusTotalMinutes: Int = 0,
     val bonusAppMinutes: Map<String, Int> = emptyMap(),
+    val grants: List<AppGrant> = emptyList(),
 ) {
     /** The rules for [today] (a date in the router's zone), bonus included only on its own day. */
     fun toLocal(zone: java.time.ZoneId, today: java.time.LocalDate): LocalAppPolicy {
@@ -71,6 +72,10 @@ data class AppsPolicy(
 /** No v1/global captain state may silently become this phone's authorization. */
 fun MastState.appliesTo(deviceId: String): Boolean =
     wireVersion >= 2 && !pending && binding?.deviceId == deviceId
+
+/** Parent-only clients must not pretend to enforce child/adult policy without Device Owner. */
+fun MastState.parentOnlyCompatible(): Boolean = wireVersion >= 3 &&
+    (pending || (binding != null && !binding.captain && apps == null && dns == null && !pactActive))
 
 /** Explicit signed authority plus no active applicable pact; "no pact" alone is not permission. */
 fun MastState.canSelfRemove(deviceId: String, nowEpoch: Long): Boolean =

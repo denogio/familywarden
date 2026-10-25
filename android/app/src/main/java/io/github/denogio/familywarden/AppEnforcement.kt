@@ -10,7 +10,7 @@ import android.view.inputmethod.InputMethodManager
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
-/** Today's local form of the signed v3 app policy (`AppsPolicy.toLocal`); no grants or shared budget yet. */
+/** Today's signed rules plus durably checkpointed grant remainder; no shared allocation yet. */
 data class LocalAppPolicy(
     val zone: ZoneId,
     val limitsMillis: Map<String, Long> = emptyMap(),
@@ -22,6 +22,8 @@ data class LocalAppPolicy(
     val dailyLimitMillis: Long? = null,
     /** Family Link "Unlimited time": never counted, usable after the limit and in downtime. */
     val alwaysAllowed: Set<String> = emptySet(),
+    val grantRemaining: Map<String, Long> = emptyMap(),
+    val grantReliable: Boolean = false,
 ) {
     init {
         require(limitsMillis.size <= 256 && blocked.size <= 256 && approved.size <= 512 && alwaysAllowed.size <= 256)
@@ -32,7 +34,7 @@ data class LocalAppPolicy(
 
 /** What to do with one app now, and why (the reason drives notifications). */
 enum class AppAction(val block: Boolean) {
-    ALLOW(false), HOLD(false),
+    ALLOW(false), GRANT(false), HOLD(false), GRANT_UNAVAILABLE(true),
     BLOCKED(true), NOT_APPROVED(true), DOWNTIME(true), DAILY_LIMIT(true), APP_LIMIT(true),
 }
 
@@ -43,6 +45,17 @@ enum class AppAction(val block: Boolean) {
  * limit that is already known to be used up still blocks.
  */
 fun appAction(policy: LocalAppPolicy, pkg: String, essential: Boolean, userApp: Boolean,
+    usedMillis: Long, totalUsedMillis: Long, now: ZonedDateTime, usageReliable: Boolean): AppAction {
+    val base = baseAppAction(policy, pkg, essential, userApp, usedMillis, totalUsedMillis, now, usageReliable)
+    if (base in setOf(AppAction.ALLOW, AppAction.BLOCKED, AppAction.NOT_APPROVED) || !policy.grantReliable) return base
+    if ((policy.grantRemaining[pkg] ?: 0) > 0) return AppAction.GRANT
+    val appLimit = policy.limitsMillis[pkg]
+    if ((policy.grantRemaining["total"] ?: 0) > 0 &&
+        (appLimit == null || (usageReliable && usedMillis < appLimit))) return AppAction.GRANT
+    return base
+}
+
+private fun baseAppAction(policy: LocalAppPolicy, pkg: String, essential: Boolean, userApp: Boolean,
     usedMillis: Long, totalUsedMillis: Long, now: ZonedDateTime, usageReliable: Boolean): AppAction {
     if (essential) return AppAction.ALLOW
     if (pkg in policy.blocked) return AppAction.BLOCKED
@@ -72,6 +85,8 @@ class AppEnforcer(private val context: Context) {
         val dpm = Mast.dpm(context)
         val admin = Mast.admin(context)
         val owned = prefs.getStringSet("suspended", emptySet())!!.toMutableSet()
+        val granted = prefs.getStringSet("granted", emptySet())!!.toMutableSet()
+        fun saveGranted() { check(prefs.edit().putStringSet("granted", granted.toSet()).commit()) { "grant enforcement persistence failed" } }
         val safe = essentialPackages()
         val failures = mutableSetOf<String>()
         val paused = mutableMapOf<String, AppAction>()
@@ -81,8 +96,12 @@ class AppEnforcer(private val context: Context) {
             val userApp = info.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0
             // Non-launchable system components are never targets, even if misconfigured.
             val essential = pkg in safe || (!userApp && pm.getLaunchIntentForPackage(pkg) == null)
-            val action = appAction(policy, pkg, essential, userApp, used[pkg] ?: 0, totalUsedMillis, now, usageReliable)
+            var action = appAction(policy, pkg, essential, userApp, used[pkg] ?: 0, totalUsedMillis, now, usageReliable)
+            // Unknown usage must not leave a former grant unpaused indefinitely.
+            if (action == AppAction.HOLD && pkg in granted) action = AppAction.GRANT_UNAVAILABLE
             if (action == AppAction.HOLD) continue
+            if (action == AppAction.GRANT && granted.add(pkg)) saveGranted()
+            if (action == AppAction.ALLOW && granted.remove(pkg)) saveGranted()
             val block = action.block
             if (!block && pkg !in owned) continue
             if (block && pkg in owned && dpm.isPackageSuspended(admin, pkg)) continue
@@ -99,6 +118,7 @@ class AppEnforcer(private val context: Context) {
             } else if (block) paused[pkg] = action
             else owned.remove(pkg)
             check(prefs.edit().putStringSet("suspended", owned.toSet()).commit()) { "suspension persistence failed" }
+            if (!failed && block && granted.remove(pkg)) saveGranted()
         }
         Result(failures, paused)
     }
