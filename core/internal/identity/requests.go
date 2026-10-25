@@ -195,7 +195,7 @@ func (s *Service) uploadLocked(op, sig string, raw []byte, device string) (int, 
 	if i >= 0 {
 		d = s.devices[i]
 	}
-	kind := map[string]string{"request": "request", "decision": "decision", "usage": "usage"}[op]
+	kind := map[string]string{"request": "request", "decision": "decision", "usage": "usage", "app": "app"}[op]
 	if i < 0 || kind == "" {
 		return StatusForbidden, nil, nil
 	}
@@ -217,6 +217,8 @@ func (s *Service) uploadLocked(op, sig string, raw []byte, device string) (int, 
 		reply = s.submit(d, raw, ctx)
 	case "usage":
 		reply = s.usage(d, raw, ctx)
+	case "app":
+		reply = s.appDecision(d, raw, ctx)
 	default:
 		reply, ticket = s.decide(d, raw, ctx)
 	}
@@ -465,8 +467,9 @@ func (s *Service) grantsFor(profile, device string, now int64) []entry {
 // appsView is the profile's app revision and requirements including its active
 // grants: a grant changes what the phone must apply, so it changes the revision
 // (and acknowledging it shows delivery).
-func appsView(prof platform.Profile, grants []entry) (string, []string) {
-	if prof.AppsRev == "" || len(grants) == 0 {
+// Core-approved new apps (newapps.go) change it too; they need no new feature.
+func appsView(prof platform.Profile, grants []entry, approved []string) (string, []string) {
+	if prof.AppsRev == "" || (len(grants) == 0 && len(approved) == 0) {
 		return prof.AppsRev, prof.Requires
 	}
 	h := sha256.New()
@@ -474,27 +477,39 @@ func appsView(prof platform.Profile, grants []entry) (string, []string) {
 	for _, g := range grants {
 		fmt.Fprintf(h, "grant|%s|%s|%d|%d|%d\n", g.GrantID, g.Target, g.Granted, g.DecidedAt, g.NotAfter)
 	}
-	req := append(append([]string{}, prof.Requires...), grantsFeature)
-	sort.Strings(req)
+	for _, p := range approved {
+		fmt.Fprintf(h, "approve|%s\n", p)
+	}
+	req := prof.Requires
+	if len(grants) > 0 {
+		req = append(append([]string{}, prof.Requires...), grantsFeature)
+		sort.Strings(req)
+	}
 	return hex.EncodeToString(h.Sum(nil))[:16], req
 }
 
 // withGrants adds active grants to the shell's apps object and replaces its revision.
-func withGrants(apps json.RawMessage, rev string, grants []entry) (json.RawMessage, error) {
-	if len(grants) == 0 {
+func withGrants(apps json.RawMessage, rev string, grants []entry, approved []string) (json.RawMessage, error) {
+	apps, err := withApprovals(apps, approved)
+	if err != nil {
+		return nil, err
+	}
+	if len(grants) == 0 && len(approved) == 0 {
 		return apps, nil
 	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(apps, &m); err != nil {
 		return nil, err
 	}
-	list := []object{}
-	for _, g := range grants {
-		list = append(list, object{{"grant_id", g.GrantID}, {"device_id", g.Device}, {"target", g.Target}, {"minutes", g.Granted},
-			{"not_before", g.DecidedAt}, {"not_after", g.NotAfter}})
-	}
 	m["rev"], _ = json.Marshal(rev)
-	m["grants"], _ = json.Marshal(list)
+	if len(grants) > 0 {
+		list := []object{}
+		for _, g := range grants {
+			list = append(list, object{{"grant_id", g.GrantID}, {"device_id", g.Device}, {"target", g.Target}, {"minutes", g.Granted},
+				{"not_before", g.DecidedAt}, {"not_after", g.NotAfter}})
+		}
+		m["grants"], _ = json.Marshal(list)
+	}
 	return json.Marshal(m)
 }
 

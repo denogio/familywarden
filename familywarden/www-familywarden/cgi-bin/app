@@ -1,8 +1,8 @@
 #!/bin/sh
 # Signed uploads from FamilyWarden phones (port 7700): extra-time requests and usage
-# reports from a child's phone, decisions from a parent's phone.
+# reports from a child's phone, decisions (time and new apps) from a parent's phone.
 #
-#   POST /cgi-bin/app?op=request|decision|usage   body: usign signature line + exact JSON
+#   POST /cgi-bin/app?op=request|decision|usage|app   body: usign signature line + exact JSON
 #
 # Verification, the request ledger and grants live in the Go core
 # (plans/core-migration.md); this only forwards. Core down = 503.

@@ -36,6 +36,9 @@ func (s *Service) Devices() Reply {
 	if _, err := s.loadLedger(); err != nil {
 		return fail("requests unavailable")
 	}
+	if _, err := s.loadNewApps(); err != nil {
+		return fail("new apps unavailable")
+	}
 	devices := []Reply{}
 	for _, d := range s.devices {
 		seen := s.seen[d.ID]
@@ -44,7 +47,11 @@ func (s *Service) Devices() Reply {
 		if d.Profile != ctx.PactCaptain {
 			grants = s.grantsFor(d.Profile, d.ID, now)
 		}
-		rev, requires := appsView(prof, grants)
+		var approved []string
+		if prof.AppsRev != "" {
+			approved = s.approvedFor(d.Profile)
+		}
+		rev, requires := appsView(prof, grants, approved)
 		if shared, _ := s.sharedUsage(d, ctx); shared != nil {
 			requires = withFeature(requires, sharedFeature)
 		}

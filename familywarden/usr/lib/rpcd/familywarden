@@ -2326,6 +2326,8 @@ case "$1" in
   "device_allow_removal": { "device": "string" },
   "requests": {},
   "usage": {},
+  "new_apps": {},
+  "app_decision": { "profile": "string", "package": "string", "action": "string" },
   "request_answer": { "request_id": "string", "approve": true, "minutes": 0 },
   "dns_status": {},
   "dns_sync": {},
@@ -2449,7 +2451,7 @@ EOF
             version)
                 ubus_version
                 ;;
-            devices|device_approve|device_update|device_reject|device_delete|device_allow_removal|requests|request_answer|usage)
+            devices|device_approve|device_update|device_reject|device_delete|device_allow_removal|requests|request_answer|usage|new_apps|app_decision)
                 # Phone identity lives in the Go core (A18); this is the rpcd shim.
                 read -r input
                 printf '%s' "${input:-{\}}" | "$FW_CORE_BIN" -socket "$FW_CORE_SOCK" api "$2"

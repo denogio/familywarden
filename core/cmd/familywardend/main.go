@@ -73,6 +73,7 @@ func handler(st *store.Store, id *identity.Service) http.Handler {
 	mux.HandleFunc("POST /api/{method}", func(w http.ResponseWriter, r *http.Request) {
 		var c identity.Change
 		var a identity.Answer
+		var ad identity.AppDecisionInput
 		b, err := io.ReadAll(io.LimitReader(r.Body, maxAPI+1))
 		if err == nil && len(b) > maxAPI {
 			err = errors.New("too large")
@@ -81,6 +82,8 @@ func handler(st *store.Store, id *identity.Service) http.Handler {
 		if err == nil && len(bytes.TrimSpace(b)) > 0 {
 			if method == "request_answer" {
 				a, err = identity.DecodeAnswer(b)
+			} else if method == "app_decision" {
+				ad, err = identity.DecodeAppDecision(b)
 			} else {
 				err = json.Unmarshal(b, &c)
 			}
@@ -95,6 +98,10 @@ func handler(st *store.Store, id *identity.Service) http.Handler {
 			reply = id.Requests()
 		case "usage":
 			reply = id.UsageReport()
+		case "new_apps":
+			reply = id.NewApps()
+		case "app_decision":
+			reply = id.AppDecision(ad)
 		case "request_answer":
 			reply = id.AnswerRequest(a)
 		case "devices":
@@ -187,7 +194,7 @@ func cgiApp(socket string, in io.Reader, out io.Writer) {
 	status := map[int]string{200: "200 OK", 400: "400 Bad Request", 403: "403 Forbidden", 500: "500 Internal Server Error"}
 	code, body := 400, []byte(nil)
 	op, hasPrefix := strings.CutPrefix(os.Getenv("QUERY_STRING"), "op=")
-	if os.Getenv("REQUEST_METHOD") == "POST" && hasPrefix && (op == "request" || op == "decision" || op == "usage") {
+	if os.Getenv("REQUEST_METHOD") == "POST" && hasPrefix && (op == "request" || op == "decision" || op == "usage" || op == "app") {
 		b, err := io.ReadAll(io.LimitReader(in, maxAPI+1))
 		code = 503
 		if err == nil && len(b) <= maxAPI {

@@ -97,6 +97,10 @@ func (s *Service) Phone(query string) (status int, body []byte) {
 		log.Printf("request ledger: %v", err)
 		return StatusError, nil
 	}
+	if _, err := s.loadNewApps(); err != nil {
+		log.Printf("new apps: %v", err)
+		return StatusError, nil
+	}
 	delete(s.pending, dev)
 	pol, err := s.ad.Policy(d.Profile, version)
 	if err != nil {
@@ -112,7 +116,11 @@ func (s *Service) Phone(query string) (status int, body []byte) {
 	for _, g := range grants {
 		tickets = append(tickets, ticketJob{g.Profile, g.NotAfter})
 	}
-	rev, requires := appsView(prof, grants)
+	var approved []string
+	if len(pol.Apps) > 0 && string(pol.Apps) != "null" {
+		approved = s.approvedFor(d.Profile)
+	}
+	rev, requires := appsView(prof, grants, approved)
 	var shared object
 	if exists && version == 3 && len(pol.Apps) > 0 && string(pol.Apps) != "null" {
 		if shared, err = s.sharedUsage(d, ctx); err != nil {
@@ -179,6 +187,7 @@ func (s *Service) Phone(query string) (status int, body []byte) {
 		}
 		if len(effectiveApproves(d, ctx)) > 0 {
 			out = append(out, field{"requests", s.parentRequests(d, ctx, now)})
+			out = append(out, field{"new_apps", s.parentNewApps(d, ctx, now)})
 			if u := s.parentUsage(d, ctx); u != nil {
 				out = append(out, field{"usage", u})
 			}
@@ -189,7 +198,7 @@ func (s *Service) Phone(query string) (status int, body []byte) {
 		out = append(out, field{"dns", raw(pol.DNS)})
 	}
 	if version == 3 && len(pol.Apps) > 0 && string(pol.Apps) != "null" {
-		apps, err := withGrants(pol.Apps, rev, grants)
+		apps, err := withGrants(pol.Apps, rev, grants, approved)
 		if err != nil {
 			log.Printf("apps of %s: %v", d.Profile, err)
 			return StatusError, nil

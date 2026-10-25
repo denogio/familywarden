@@ -33,6 +33,7 @@ type usageMsg struct {
 	Labels     map[string]string `json:"labels"`
 	Grants     map[string]int    `json:"grants_used"`
 	Incomplete bool              `json:"incomplete"`
+	NewApps    map[string]string `json:"new_apps"`
 }
 
 func usageKey(d Device) string { return d.ID + "@" + fingerprint(d.PubKey)[:16] }
@@ -47,7 +48,7 @@ func routerZone(ctx platform.Context) *time.Location {
 // usage handles op=usage under s.mu (see uploadLocked).
 func (s *Service) usage(d Device, raw []byte, ctx platform.Context) object {
 	var m usageMsg
-	if !decodeStrict(raw, &m, "type v device profile day seq total apps", "labels grants_used incomplete") ||
+	if !decodeStrict(raw, &m, "type v device profile day seq total apps", "labels grants_used incomplete new_apps") ||
 		m.Type != "usage" || m.V != 1 || m.Device != d.ID {
 		return refuse("malformed")
 	}
@@ -76,6 +77,23 @@ func (s *Service) usage(d Device, raw []byte, ctx platform.Context) object {
 			e := s.grantByID(ledger, id)
 			if e == nil || e.Device != d.ID || e.DeviceKey != d.PubKey || secs > e.Granted*60 {
 				return append(out, refuse("unknown_grant")...)
+			}
+		}
+	}
+	if m.NewApps != nil {
+		if len(m.NewApps) > maxNewPending {
+			return append(out, refuse("malformed")...)
+		}
+		for pkg, label := range m.NewApps {
+			if _, ok := cleanText(label, 64); !ok || !validTarget(pkg) || pkg == targetTotal {
+				return append(out, refuse("malformed")...)
+			}
+		}
+		// Today's report only: yesterday's report must not resurrect apps.
+		if m.Day == today.Format(time.DateOnly) {
+			if err := s.reportNewApps(d, m.NewApps); err != nil {
+				log.Printf("new apps from %s: %v", d.ID, err)
+				return append(out, refuse("unavailable")...)
 			}
 		}
 	}

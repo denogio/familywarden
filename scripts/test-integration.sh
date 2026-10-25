@@ -1017,6 +1017,17 @@ assert_json "...per app" "$payload" '@.shared.apps["com.roblox.client"]' "600"
 echo "$payload" | jsonfilter -e '@.requires[*]' | grep -qx shared-v1 && pass "shared usage is a required feature" || fail "shared-v1 not required"
 assert_json "the reporting phone does not count itself twice" "$(v3payload phoneD fw-d1 "$N1" - "" apps-v1,grants-v1,screen-time-v1,shared-v1)" '@.shared' ""
 assert_json "an app without shared budgets is refused, not given a weaker policy" "$(v3payload phoneE fw-e1 "$N1" - "" apps-v1,grants-v1,screen-time-v1)" '@.error' "unsupported_capabilities"
+usage_new="{\"type\":\"usage\",\"v\":1,\"device\":\"fw-d1\",\"profile\":\"kid\",\"day\":\"$day\",\"seq\":3,\"total\":900,\"apps\":{\"com.roblox.client\":600},\"labels\":{\"com.roblox.client\":\"Roblox\"},\"grants_used\":{\"$gid\":300},\"new_apps\":{\"com.example.newgame\":\"New Game\"}}"
+assert_json "phone reports a paused new app" "$(upbody phoneD usage "$usage_new")" '@.state' "unchanged"
+assert_json "administrator sees it waiting" "$(call new_apps)" '@.profiles[@.id="kid"].pending[0].package' "com.example.newgame"
+assert_json "parent phone sees it waiting" "$(v3payload phoneC fw-c1 "$N1" - "" apps-v1,screen-time-v1)" '@.new_apps[0].label' "New Game"
+before=$(v3payload phoneD fw-d1 "$N1" - "" apps-v1,grants-v1,screen-time-v1,shared-v1 | jsonfilter -e '@.apps.rev')
+dec="{\"type\":\"app_decision\",\"v\":1,\"device\":\"fw-c1\",\"profile\":\"kid\",\"package\":\"com.example.newgame\",\"action\":\"approve\",\"created\":$(date +%s)}"
+assert_json "parent phone allows it (signed)" "$(upbody phoneC app "$dec")" '@.state' "approved"
+payload=$(v3payload phoneD fw-d1 "$N1" - "" apps-v1,grants-v1,screen-time-v1,shared-v1)
+echo "$payload" | jsonfilter -e '@.apps.approved[*]' | grep -qx com.example.newgame && pass "allowed app is in the child's signed policy" || fail "approval missing: $payload"
+[ "$(echo "$payload" | jsonfilter -e '@.apps.rev')" != "$before" ] && pass "approval changes the app revision" || fail "revision unchanged"
+assert_json "LuCI removal goes through the shim with a session" "$(call app_decision '{"profile":"kid","package":"com.example.newgame","action":"revoke","ubus_rpc_session":"00000000000000000000000000000000"}')" '@.state' "revoked"
 # The syncs above correctly restored the active grant ticket; start the next case clean.
 call reset '{"profile":"kid"}' >/dev/null
 

@@ -76,7 +76,7 @@ echo ""
 echo "=== Ubus API Endpoints ==="
 
 # Each method must be both advertised (rpcd "list" JSON) and dispatched ("call").
-ubus_methods=("list" "status" "block" "allow" "reset" "ticket" "bonus" "pact" "mast" "reload" "version" "devices" "device_approve" "device_reject" "device_update" "device_delete" "device_allow_removal" "requests" "request_answer" "usage" "dns_status" "dns_sync" "dns_auth" "dns_services")
+ubus_methods=("list" "status" "block" "allow" "reset" "ticket" "bonus" "pact" "mast" "reload" "version" "devices" "device_approve" "device_reject" "device_update" "device_delete" "device_allow_removal" "requests" "request_answer" "usage" "new_apps" "app_decision" "dns_status" "dns_sync" "dns_auth" "dns_services")
 ACL_FILES=("${PROJECT_ROOT}/familywarden/usr/share/rpcd/acl.d/familywarden.json"
            "${PROJECT_ROOT}/luci-app-familywarden/root/usr/share/rpcd/acl.d/luci-app-familywarden.json")
 for method in "${ubus_methods[@]}"; do
