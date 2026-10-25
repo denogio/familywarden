@@ -14,6 +14,28 @@ class FamilyWardenStateTest {
         resolverCheck = ResolverCheck(policy, 12, 1800000000000, ProbeResult.ANSWERED),
     )
 
+    @Test fun familyPresentationNeedsApprovalScopeNotAdministratorOrCaptain() {
+        val state = healthy()
+        assertFalse(state.canManageFamily)
+        assertTrue(state.copy(parentMode = true, owner = false).canManageFamily)
+        val parent = state.copy(binding = binding.copy(approves = listOf(ProfileRef("sam", "Sam"))))
+        assertTrue(parent.canManageFamily)
+        assertTrue(parent.copy(pact = PactStatus.Bound(true, null, Pact(null, null, null))).canManageFamily)
+        assertFalse(parent.copy(binding = binding.copy(approves = emptyList())).canManageFamily)
+    }
+
+    @Test fun pendingBadgeCountsOnlyCurrentScopedRequestsAndNewApps() {
+        val sam = ProfileRef("sam", "Sam")
+        val alex = ProfileRef("alex", "Alex")
+        val request = ParentRequest("request-001", "a".repeat(64), sam, "total", 30, 10, 100, "")
+        val state = healthy().copy(binding = binding.copy(approves = listOf(sam)), requestEpoch = 99,
+            parentRequests = listOf(request, request.copy(id = "request-002", profile = alex)),
+            parentNewApps = listOf(NewAppRequest(sam, "com.example.draw", "Draw", 10)))
+        assertEquals(2, state.familyPendingCount)
+        assertEquals(1, state.copy(requestEpoch = 100).familyPendingCount)
+        assertEquals(0, state.copy(binding = null).familyPendingCount)
+    }
+
     @Test fun positiveHeadlineRequiresAllIndependentFacts() {
         val s = healthy()
         assertEquals(DnsHeadline.AppliedAndTested, s.headline)

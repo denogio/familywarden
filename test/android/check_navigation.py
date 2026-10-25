@@ -37,7 +37,9 @@ def check(root, labels, selected, density):
     assert len({bounds(n) for n in nav}) == len(labels), 'Navigation items overlap'
     for n in root.iter('node'):
         if bounds(n)[1] >= top:
-            assert n.get('text', '') == '', f'Visible navigation label: {n.get("text")}'
+            text = n.get('text', '')
+            # Pending-count badges are allowed; destination labels are not.
+            assert not text or (text.isdecimal() and len(text) <= 3), f'Visible navigation label: {text}'
     assert any(n.get('text') == selected and bounds(n)[3] < top for n in root.iter('node')), \
         f'Visible page heading missing: {selected}'
 

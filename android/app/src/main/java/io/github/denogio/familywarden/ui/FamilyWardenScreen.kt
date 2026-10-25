@@ -31,6 +31,8 @@ import java.time.ZoneId
 
 private enum class Page(val title: Int, val icon: ImageVector) {
     Overview(R.string.fw_overview, Icons.Outlined.Explore),
+    FamilyTime(R.string.fw_family_screen_time, Icons.Outlined.BarChart),
+    Controls(R.string.fw_family_controls, Icons.Outlined.Tune),
     History(R.string.fw_history, Icons.Outlined.History),
     Requests(R.string.fw_requests, Icons.Outlined.Inbox),
     Dns(R.string.fw_dns, Icons.Outlined.Shield),
@@ -42,20 +44,24 @@ private enum class Page(val title: Int, val icon: ImageVector) {
 @Composable
 fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, initialRequests: Boolean = false) {
     var selected by rememberSaveable { mutableStateOf(if (initialRequests) Page.Requests.name else Page.Overview.name) }
+    var familySelected by rememberSaveable { mutableStateOf(if (initialRequests) Page.Requests.name else Page.FamilyTime.name) }
+    var familyMode by rememberSaveable { mutableStateOf(initialRequests) }
+    val showFamily = state.canManageFamily && (state.parentMode || familyMode)
     var featureSheet by rememberSaveable { mutableStateOf(false) }
     var enableConfirmation by rememberSaveable { mutableStateOf(false) }
     val childNavigation = state.appsActive && state.binding?.captain == false
-    val pages = Page.entries.filter {
+    val pages = if (showFamily) listOf(Page.FamilyTime, Page.Controls, Page.Requests) else Page.entries.filter {
         when (it) {
+            Page.FamilyTime, Page.Controls -> false
             Page.Overview -> !state.parentMode
-            Page.Requests -> state.parentMode || state.binding?.approves?.isNotEmpty() == true || state.appsActive
+            Page.Requests -> state.appsActive
             Page.History -> childNavigation
             Page.Dns -> !childNavigation && !state.parentMode
             Page.Ulysses -> state.showUlysses
             else -> true
         }
     }
-    val page = pages.firstOrNull { it.name == selected } ?: pages.first()
+    val page = pages.firstOrNull { it.name == (if (showFamily) familySelected else selected) } ?: pages.first()
     val readyForNavigation = (state.owner || state.parentMode) && state.paired
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -69,8 +75,16 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
                             Spacer(Modifier.width(10.dp))
                         }
                         Text(stringResource(if (!readyForNavigation) R.string.fw_name
+                            else if (showFamily && page == Page.Requests) R.string.fw_family_requests
                             else if (page == Page.Overview && state.screenTime != null) R.string.fw_today else page.title),
                             style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
+                    }
+                    if (readyForNavigation && state.canManageFamily && !state.parentMode) {
+                        TextButton(onClick = { familyMode = !showFamily }) {
+                            BadgedBox(badge = { if (!showFamily && state.familyPendingCount > 0) Badge { Text(state.familyPendingCount.toString()) } }) {
+                                Text(stringResource(if (showFamily) R.string.fw_my_phone else R.string.fw_family))
+                            }
+                        }
                     }
                     if (state.paired) IconButton(onClick = actions.sync, enabled = !state.syncing) {
                         if (state.syncing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -83,10 +97,14 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
             if (readyForNavigation) NavigationBar {
                 pages.forEach { p -> NavigationBarItem(
                     selected = p == page,
-                    onClick = { selected = p.name },
+                    onClick = { if (showFamily) familySelected = p.name else selected = p.name },
                     // Keep localized screen-reader names without visible labels, at every font scale.
-                    icon = { Icon(p.icon, stringResource(if (p == Page.Overview && state.screenTime != null)
-                        R.string.fw_today else p.title)) },
+                    icon = {
+                        BadgedBox(badge = { if (showFamily && p == Page.Requests && state.familyPendingCount > 0) Badge { Text(state.familyPendingCount.toString()) } }) {
+                            Icon(p.icon, stringResource(if (showFamily && p == Page.Requests) R.string.fw_family_requests
+                                else if (p == Page.Overview && state.screenTime != null) R.string.fw_today else p.title))
+                        }
+                    },
                 ) }
             }
         },
@@ -100,7 +118,9 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
             when {
                 !state.owner && !state.parentMode -> OwnerSetup(actions, !state.provisioned)
                 !state.paired -> PairSetup(actions, state.parentMode)
-                page == Page.Requests -> RequestsContent(state, actions)
+                page == Page.FamilyTime -> FamilyTimeContent(state)
+                page == Page.Controls -> FamilyControlsContent(state, actions)
+                page == Page.Requests -> RequestsContent(state, actions, family = showFamily)
                 page == Page.Settings && state.parentMode -> ParentSettings(state, actions)
                 page == Page.Overview && state.screenTime != null -> ScreenTimeContent(state, actions) { selected = Page.Requests.name }
                 page == Page.History -> ScreenTimeHistory(state.screenTime)

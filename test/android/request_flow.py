@@ -310,12 +310,16 @@ touch /tmp/drop-next-app-response
     adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', "'" + uri + "'", PKG)
     time.sleep(2)
     tap('It matches, pair')
-    wait('ordinary parent is paired without Device Owner', lambda: bool(nodes('No requests waiting')))
+    wait('ordinary parent is paired without Device Owner', lambda: bool(nodes('Screen time')))
+    tap('Requests')
+    wait('parent inbox starts empty', lambda: bool(nodes('No requests waiting')))
     assert 'DeviceOwner' not in adb('shell', 'dpm', 'list-owners')
     synthetic_request('request-native-parent-001')
     sync()
     wait('parent receives the scoped request', lambda: bool(nodes('Approve')))
+    tap('Screen time')
     wait('parent sees the child\'s screen time today', lambda: bool(nodes('Screen time today')))
+    tap('Requests')
     out = synthetic_upload('usage', {'type': 'usage', 'v': 1, 'device': 'fw-test-kid', 'profile': 'alex',
         'day': router('date +%F').strip(), 'seq': 2, 'total': 60, 'apps': {FIXTURE: 60},
         'new_apps': {'com.example.draw': 'Draw'}})

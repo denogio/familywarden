@@ -68,13 +68,23 @@ reveal() {
     done
     contains "$1" "$2"
 }
+render ParentAwaitingPreview parent-awaiting
+contains parent-awaiting 'Waiting for phone approval'
+if grep -Fq 'No children assigned' "$OUT/parent-awaiting.xml"; then echo 'Pending enrollment reported as an empty scope'; exit 1; fi
 render ParentRequestsPreview parent-light
-check_nav parent-light Requests Requests Settings
+check_nav parent-light Requests 'Screen time' Controls Requests
 contains parent-light Alex
 if grep -Fq 'Set up device owner' "$OUT/parent-light.xml"; then echo 'Parent-only view requires Device Owner'; exit 1; fi
-tap parent-light Settings
+tap parent-light 'Screen time'
+capture parent-screen-time
+check_nav parent-screen-time 'Screen time' 'Screen time' Controls Requests
+contains parent-screen-time '82 min'
+contains parent-screen-time 'No screen time reported today yet.'
+if grep -Fq 'text="Approve"' "$OUT/parent-screen-time.xml"; then echo 'Approvals leaked into screen time'; exit 1; fi
+tap parent-screen-time Controls
 capture parent-settings
-check_nav parent-settings Settings Requests Settings
+check_nav parent-settings Controls 'Screen time' Controls Requests
+contains parent-settings 'Managed on the router'
 tap parent-settings Requests
 reveal parent-time-request Approve
 tap parent-time-request Approve
@@ -86,6 +96,14 @@ reveal parent-after-dismiss Decline
 tap parent-after-dismiss Decline
 capture parent-decline-dialog
 contains parent-decline-dialog 'Decline this request?'
+render ManagedParentPreview managed-parent
+tap managed-parent Family
+capture managed-family
+check_nav managed-family 'Screen time' 'Screen time' Controls Requests
+contains managed-family 'My phone'
+tap managed-family 'My phone'
+capture managed-own
+contains managed-own Overview
 render ChildRequestPreview child-pending
 contains child-pending 'Waiting for a parent'
 render ChildRetryPreview child-retry
@@ -99,7 +117,7 @@ contains child-extra-light 'About 20 extra minutes left'
 "${ADB[@]}" shell cmd uimode night yes >/dev/null
 sleep 2
 render ParentRequestsDarkPreview parent-dark
-check_nav parent-dark Requests Requests Settings
+check_nav parent-dark Requests 'Screen time' Controls Requests
 reveal parent-dark-request Approve
 contains parent-dark-request Approve
 render ChildExtraDarkPreview child-extra-dark
@@ -108,8 +126,8 @@ contains child-extra-dark 'About 20 extra minutes left'
 "${ADB[@]}" shell settings put system font_scale 2.0 >/dev/null
 sleep 2
 render ParentRequestsLargePreview parent-danish-large
-contains parent-danish-large Anmodninger
-check_nav parent-danish-large Anmodninger Anmodninger Indstillinger
+contains parent-danish-large Godkendelser
+check_nav parent-danish-large Godkendelser Skærmtid Kontrol Godkendelser
 for _ in 1 2 3 4; do
     capture parent-danish-large-scrolled
     grep -Fq Godkend "$OUT/parent-danish-large-scrolled.xml" && break

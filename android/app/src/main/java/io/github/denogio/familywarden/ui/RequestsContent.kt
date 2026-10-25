@@ -21,11 +21,14 @@ import io.github.denogio.familywarden.ui.components.*
 private data class DecisionChoice(val request: ParentRequest, val approve: Boolean)
 
 @Composable
-fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions) {
+fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions, family: Boolean = state.canManageFamily) {
     var target by rememberSaveable { mutableStateOf<String?>(null) }
     var decision by remember { mutableStateOf<DecisionChoice?>(null) }
     var forget by rememberSaveable { mutableStateOf(false) }
     val ready = !state.syncing && !state.uploadPending
+    val scope = state.binding?.approves.orEmpty().map { it.id }.toSet()
+    val requests = state.parentRequests.filter { it.profile.id in scope }
+    val newApps = state.parentNewApps.filter { it.profile.id in scope }
     if (state.binding == null) {
         HeroCard {
             HeroTitle(stringResource(R.string.fw_request_waiting_approval))
@@ -51,30 +54,12 @@ fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions) {
             else -> R.string.fw_request_sent
         }))
     } }
-    if (state.binding.approves.isNotEmpty()) {
+    if (family && state.binding.approves.isNotEmpty()) {
         HeroCard {
-            HeroTitle(stringResource(R.string.fw_requests))
+            HeroTitle(stringResource(R.string.fw_family_requests))
             HeroBody(state.binding.approves.joinToString(" · ") { it.name })
         }
-        for (u in state.familyUsage) SectionCard {
-            Overline(stringResource(R.string.fw_usage_today_title))
-            Text(u.profile.name, style = MaterialTheme.typography.titleLarge)
-            val total = u.totalSeconds / 60
-            Text(pluralStringResource(R.plurals.fw_time_minutes, total, total), style = MaterialTheme.typography.headlineSmall)
-            for (d in u.devices) {
-                val m = d.totalSeconds / 60
-                Text(stringResource(R.string.fw_request_subject, d.name, pluralStringResource(R.plurals.fw_time_minutes, m, m)),
-                    style = MaterialTheme.typography.bodyMedium)
-            }
-            for (a in u.apps.filter { it.seconds >= 60 }) {
-                val m = a.seconds / 60
-                Text(stringResource(R.string.fw_request_subject, a.label.ifEmpty { a.pkg }, pluralStringResource(R.plurals.fw_time_minutes, m, m)),
-                    style = MaterialTheme.typography.bodySmall)
-            }
-            if (u.devices.isEmpty()) Text(stringResource(R.string.fw_usage_none))
-            if (u.devices.any { it.incomplete }) Text(stringResource(R.string.fw_usage_incomplete), style = MaterialTheme.typography.bodySmall)
-        }
-        for (app in state.parentNewApps) SectionCard {
+        for (app in newApps) SectionCard {
             Overline(stringResource(R.string.fw_app_new_title))
             Text(app.profile.name, style = MaterialTheme.typography.titleLarge)
             Text(app.label.ifEmpty { app.pkg }, style = MaterialTheme.typography.titleMedium)
@@ -87,11 +72,11 @@ fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions) {
                 Text(stringResource(R.string.fw_app_deny))
             }
         }
-        if (state.parentRequests.isEmpty() && state.parentNewApps.isEmpty()) SectionCard {
+        if (requests.isEmpty() && newApps.isEmpty()) SectionCard {
             Text(stringResource(R.string.fw_request_empty), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(R.string.fw_request_empty_body))
         }
-        for (r in state.parentRequests) SectionCard {
+        for (r in requests) SectionCard {
             val label = if (r.target == "total") stringResource(R.string.fw_request_screen) else r.label.ifEmpty { r.target }
             Text(r.profile.name, style = MaterialTheme.typography.titleLarge)
             Text(label, style = MaterialTheme.typography.titleMedium)
@@ -110,7 +95,7 @@ fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions) {
         Text(stringResource(R.string.fw_request_no_scope), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(R.string.fw_request_no_scope_body))
     }
-    if (state.appsActive) {
+    if (!family && state.appsActive) {
         HeroCard {
             HeroTitle(stringResource(R.string.fw_request_ask))
             HeroBody(stringResource(if (state.bound) R.string.fw_request_pact else R.string.fw_request_intro))
@@ -157,7 +142,7 @@ fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions) {
     }
     decision?.let { selected ->
         val r = selected.request
-        val exists = state.parentRequests.any { it.id == r.id && it.hash == r.hash }
+        val exists = family && requests.any { it.id == r.id && it.hash == r.hash }
         if (exists) {
             val label = if (r.target == "total") stringResource(R.string.fw_request_screen) else r.label.ifEmpty { r.target }
             val subject = stringResource(R.string.fw_request_subject, r.profile.name, label)

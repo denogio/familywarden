@@ -50,6 +50,13 @@ data class FamilyWardenState(
     val requestEpoch: Long? = null,
     val canRequestTotal: Boolean = true,
 ) {
+    /** Presentation only; the core still authorizes every family action. */
+    val canManageFamily: Boolean get() = parentMode || binding?.approves?.isNotEmpty() == true
+    val familyPendingCount: Int get() {
+        val scope = binding?.approves.orEmpty().map { it.id }.toSet()
+        return parentRequests.count { it.profile.id in scope && (requestEpoch == null || requestEpoch < it.expires) } +
+            parentNewApps.count { it.profile.id in scope }
+    }
     val bound: Boolean get() = pact is PactStatus.Bound
     val showUlysses: Boolean get() = bound || (binding?.captain == true && ulyssesEnabled)
     val canRePair: Boolean get() = canRequestRemoval && (!provisioned || binding?.administrator == true)

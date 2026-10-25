@@ -32,15 +32,27 @@ private val child = FamilyWardenState(epoch * 1000, owner = true, paired = true,
 
 @Preview(name = "Parent — requests", widthDp = 400, heightDp = 840)
 @Composable
-private fun ParentRequestsPreview() { MastTheme { FamilyWardenScreen(parent, actions) } }
+private fun ParentRequestsPreview() { MastTheme { FamilyWardenScreen(parent, actions, initialRequests = true) } }
+
+@Preview(name = "Parent — screen time", widthDp = 400, heightDp = 840)
+@Composable
+private fun ParentScreenTimePreview() { MastTheme { FamilyWardenScreen(parent, actions) } }
+
+@Preview(name = "Parent — awaiting enrollment", widthDp = 400, heightDp = 840)
+@Composable
+private fun ParentAwaitingPreview() { MastTheme { FamilyWardenScreen(parent.copy(binding = null, awaitingApproval = true), actions) } }
+
+@Preview(name = "Managed parent — mode switch", widthDp = 400, heightDp = 840)
+@Composable
+private fun ManagedParentPreview() { MastTheme { FamilyWardenScreen(parent.copy(owner = true, parentMode = false), actions) } }
 
 @Preview(name = "Parent — requests, dark", uiMode = Configuration.UI_MODE_NIGHT_YES, widthDp = 400, heightDp = 840)
 @Composable
-private fun ParentRequestsDarkPreview() { MastTheme { FamilyWardenScreen(parent, actions) } }
+private fun ParentRequestsDarkPreview() { MastTheme { FamilyWardenScreen(parent, actions, initialRequests = true) } }
 
 @Preview(name = "Parent — Danish 200 percent", locale = "da", fontScale = 2f, widthDp = 360, heightDp = 800)
 @Composable
-private fun ParentRequestsLargePreview() { MastTheme { FamilyWardenScreen(parent, actions) } }
+private fun ParentRequestsLargePreview() { MastTheme { FamilyWardenScreen(parent, actions, initialRequests = true) } }
 
 @Preview(name = "Child — request pending", widthDp = 400, heightDp = 840)
 @Composable

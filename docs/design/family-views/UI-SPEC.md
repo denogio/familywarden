@@ -55,15 +55,41 @@ Navigation uses the signed captain flag, the presence of app rules and the signe
 `approves` scope. **Requests** (2026-10-25): children ask for app or screen time from
 Today/Requests and see pending/approved/declined/expired status and remaining extra
 minutes; phones with `approves` scope list pending requests and approve fewer minutes or
-decline. "Use this phone as a parent" pairs an ordinary phone without Device Owner; it shows
-only Requests and Settings. Local mode never grants authority: the router rechecks scope.
+decline. "Use this phone as a parent" pairs an ordinary phone without Device Owner.
+Local mode never grants authority: the router rechecks scope.
+
+### Parent presentation split (2026-10-25)
+
+The updated Android board `FamilyWarden (5).html` is the presentation reference;
+its labeled tabs remain superseded by the user's icon-only navigation decision.
+
+- Parent-only phones open **Screen time**, with **Controls / Requests** alongside it.
+  Requests notifications open the Requests page instead.
+- A managed phone with signed `approves` scope has a **Family / My phone** switch.
+  Own pages and family pages retain separate selections. Family never shows own
+  request buttons or pact controls; My phone never lists children's approvals.
+  Being an administrator or captain alone does not enable Family mode.
+- Screen time renders signed summaries for assigned profiles, with report dates,
+  incomplete-data notes and an explicit last-sync/not-live disclaimer. Missing
+  reports are text, not an invented zero-minute count.
+- Requests contains time and new-app decisions only. Its badge counts scoped
+  pending time requests (excluding known-expired ones) plus pending new apps.
+  The Family button carries the same badge while viewing My phone.
+- Controls honestly explains that rule, schedule, home-internet and DNS editing
+  still happens on the router. Parent-only connection settings remain here;
+  no unsupported Lock, Bonus or policy-edit action is made clickable.
+- Danish family headings are **Skærmtid / Kontrol / Godkendelser**; the child's
+  own request page retains its existing wording. Every destination has a visible
+  heading and localized accessible icon name.
+
+This is a presentation split, not a grant, authorization, pact or transport change.
 
 ## Explicitly deferred
 
 - Off-home parent notifications (P9); LAN-only notifications exist while syncing.
-- Child switching and full parent controls (rules, lock now). Parent usage summaries
-  and new-app approvals already exist on the Requests page; the design's separate
-  Screen time / Controls layout is not yet implemented.
+- Child switching and full parent controls (rules, lock now). Screen time currently
+  lists all assigned profiles; the design's child selector and policy editors are
+  not implemented. New-app approvals stay on Requests; usage is on Screen time.
 - Adult categories and daily discretionary pool (P11).
 - Bounded shared-budget allocations and domain history. Authenticated usage uploads
   and shared usage offsets exist; cached offsets do not bound offline overspend.
@@ -74,6 +100,18 @@ decisions remain: request grants expire two hours after approval; the pool's day
 boundary is router-local midnight, not the export's proposed 04:00/delivery assumptions.
 
 ## Verification
+
+Parent split checkpoint (2026-10-25): 197 JVM tests, lint, debug APK and release
+Kotlin compilation pass on an immutable source snapshot. Six offline navigation
+validator tests pass and run in Android CI. The grouped Android 15 preview checks
+pass for parent requests/controls/usage, managed My phone ↔ Family, child/adult
+navigation, light/dark themes and Danish at 200% font. The final pending-enrollment
+fixture separately confirms that a parent awaiting approval sees neither a false
+empty scope nor cached child usage. Test emulators were removed after completion;
+no physical device, production router or enforcement rule changed. These are UI
+checks, not a repeated full native request/enforcement lifecycle run.
+
+Earlier checkpoints:
 
 - 139 JVM tests pass (8 new mapper tests: unknown/stale/revoked counts, bonus/day
   handling, overlaps, overnight/DST boundaries, essential exceptions and history bounds).

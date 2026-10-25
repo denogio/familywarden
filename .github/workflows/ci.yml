@@ -176,6 +176,7 @@ jobs:
             echo "$MAST_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/mast.jks"
             export MAST_KEYSTORE="$RUNNER_TEMP/mast.jks"
           fi
+          python3 ../test/android/test_check_navigation.py
           ./gradlew --no-daemon testDebugUnitTest lintDebug assembleRelease assembleDebug
           mkdir -p "$RUNNER_TEMP/mast"
           cp app/build/outputs/apk/release/app-release*.apk "$RUNNER_TEMP/mast/ulysses-mast-$MAST_VERSION_NAME.apk"
