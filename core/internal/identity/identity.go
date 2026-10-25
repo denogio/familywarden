@@ -88,6 +88,8 @@ type Service struct {
 	ledger     []entry          // requests/grants, loaded lazily (requests.go)
 	ledgerTime int64            // last durable lifecycle transition (clock rollback guard)
 	delivered  map[string]int64 // grant id -> first acknowledgement (RAM)
+	// Usage stores phone usage reports; nil disables them (set by main before serving).
+	Usage UsageStore
 }
 
 // New loads the registry. On first start it imports the platform's legacy phones;

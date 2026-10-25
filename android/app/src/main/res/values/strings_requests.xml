@@ -46,4 +46,7 @@
     <string name="fw_request_phone_check">Only a fresh router response can confirm an approval. Offline or stale screens never grant access.</string>
     <plurals name="fw_request_amount"><item quantity="one">%1$d minute</item><item quantity="other">%1$d minutes</item></plurals>
     <plurals name="fw_request_remaining"><item quantity="one">About %1$d extra minute left</item><item quantity="other">About %1$d extra minutes left</item></plurals>
+    <string name="fw_usage_today_title">Screen time today</string>
+    <string name="fw_usage_none">No screen time reported today yet.</string>
+    <string name="fw_usage_incomplete">Some time may be missing: a phone restarted or could not read usage for a while.</string>
 </resources>

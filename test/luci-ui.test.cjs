@@ -47,3 +47,36 @@ test('shared stylesheet loading is deduplicated across Overview and Profiles', (
   assert.equal(head.children[0].attrs.href, '/resources/familywarden/overview.css');
   assert.equal(head.children[1].attrs.href, '/resources/familywarden/pages.css');
 });
+
+// Shared administrator UI (A20): pure view model and EN/DA strings, no browser needed.
+const familyModule = () => import('../luci-app-familywarden/htdocs/luci-static/resources/familywarden/shared/family.js');
+
+test('family view model separates pending, recent and usage without inventing data', async () => {
+  const { viewModel } = await familyModule();
+  const now = 1800000000;
+  const vm = viewModel({ requests: [
+    { request_id: 'r-pending-1', profile: 'alex', profile_name: 'Alex', target: 'com.example.video', label: 'Video', minutes: 30, received: now - 60, expires: now + 3540, state: 'pending' },
+    { request_id: 'r-stale-0001', profile: 'alex', target: 'total', minutes: 15, received: now - 4000, expires: now - 400, state: 'pending' },
+    { request_id: 'r-approved-1', profile: 'sam', profile_name: 'Sam', target: 'total', minutes: 30, received: now - 900, answered_at: now - 800, answered_by: 'Jordan\'s phone', state: 'approved', granted: 20, used: 605, delivered: true },
+    { request_id: 'r-old-00001', profile: 'sam', target: 'total', minutes: 10, received: now - 90000, answered_at: now - 89000, state: 'denied' }
+  ] }, { day: '2027-01-15', profiles: [{ id: 'alex', name: 'Alex', total: 4920,
+    devices: [{ name: 'Alex\'s phone', total: 4920, incomplete: true }], apps: [{ package: 'com.example.video', label: 'Video', seconds: 1800 }],
+    week: [{ day: '2027-01-15', total: 4920 }] }] }, now);
+  assert.deepEqual(vm.pending.map((r) => r.id), ['r-pending-1']);
+  assert.equal(vm.pending[0].expires, now + 3540);
+  assert.deepEqual(vm.recent.map((r) => [r.id, r.granted, r.used]), [['r-approved-1', 20, 10]]);
+  assert.equal(vm.profiles[0].total, 82);
+  assert.equal(vm.profiles[0].devices[0].incomplete, true);
+  assert.equal(vm.profiles[0].apps[0].name, 'Video');
+  assert.deepEqual(viewModel({}, {}, now), { pending: [], recent: [], profiles: [], day: '' });
+});
+
+test('family strings have complete English and Danish tables', async () => {
+  const { strings } = await familyModule();
+  const src = readFileSync('luci-app-familywarden/htdocs/luci-static/resources/familywarden/shared/family.js', 'utf8');
+  const keys = (lang) => [...src.split(`${lang}: {`)[1].split('\n  }')[0].matchAll(/(\w+): '/g)].map((m) => m[1]).sort();
+  assert.deepEqual(keys('da'), keys('en'));
+  assert.equal(strings('da-DK')('approve'), 'Godkend');
+  assert.equal(strings('fr')('approve'), 'Approve');
+  assert.equal(strings('en')('range', { max: 30 }), 'Approve 1–30 minutes.');
+});

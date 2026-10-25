@@ -40,6 +40,7 @@ data class FamilyWardenState(
     val screenTime: ScreenTimeState? = null,
     val childRequest: ChildRequest? = null,
     val parentRequests: List<ParentRequest> = emptyList(),
+    val familyUsage: List<FamilyUsage> = emptyList(),
     val requestTargets: List<RequestTarget> = emptyList(),
     val uploadPending: Boolean = false,
     val uploadReply: UploadReply? = null,

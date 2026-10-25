@@ -267,6 +267,7 @@ class MainActivity : ComponentActivity() {
             networkId = getSystemService(ConnectivityManager::class.java).activeNetwork?.networkHandle,
             dialog = dialog,
             childRequest = state?.request, parentRequests = state?.requests.orEmpty(),
+            familyUsage = state?.familyUsage.orEmpty(),
             uploadPending = store.hasPendingUpload, uploadReply = uploadReply,
             canRequestTotal = state?.apps?.let { it.screenMinutes.isNotEmpty() || it.downtime.isNotEmpty() } == true,
             requestEpoch = state?.let { store.policyClock(it)?.now(android.os.SystemClock.elapsedRealtime(),

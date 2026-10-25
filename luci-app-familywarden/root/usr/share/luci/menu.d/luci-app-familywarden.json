@@ -23,6 +23,14 @@
 			"path": "familywarden/overview"
 		}
 	},
+	"admin/services/familywarden/family": {
+		"title": "Requests",
+		"order": 15,
+		"action": {
+			"type": "view",
+			"path": "familywarden/family"
+		}
+	},
 	"admin/services/familywarden/profiles": {
 		"title": "Profiles",
 		"order": 20,

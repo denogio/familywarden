@@ -55,6 +55,24 @@ fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions) {
             HeroTitle(stringResource(R.string.fw_requests))
             HeroBody(state.binding.approves.joinToString(" · ") { it.name })
         }
+        for (u in state.familyUsage) SectionCard {
+            Overline(stringResource(R.string.fw_usage_today_title))
+            Text(u.profile.name, style = MaterialTheme.typography.titleLarge)
+            val total = u.totalSeconds / 60
+            Text(pluralStringResource(R.plurals.fw_time_minutes, total, total), style = MaterialTheme.typography.headlineSmall)
+            for (d in u.devices) {
+                val m = d.totalSeconds / 60
+                Text(stringResource(R.string.fw_request_subject, d.name, pluralStringResource(R.plurals.fw_time_minutes, m, m)),
+                    style = MaterialTheme.typography.bodyMedium)
+            }
+            for (a in u.apps) {
+                val m = a.seconds / 60
+                Text(stringResource(R.string.fw_request_subject, a.label.ifEmpty { a.pkg }, pluralStringResource(R.plurals.fw_time_minutes, m, m)),
+                    style = MaterialTheme.typography.bodySmall)
+            }
+            if (u.devices.isEmpty()) Text(stringResource(R.string.fw_usage_none))
+            if (u.devices.any { it.incomplete }) Text(stringResource(R.string.fw_usage_incomplete), style = MaterialTheme.typography.bodySmall)
+        }
         if (state.parentRequests.isEmpty()) SectionCard {
             Text(stringResource(R.string.fw_request_empty), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(R.string.fw_request_empty_body))

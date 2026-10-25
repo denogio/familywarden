@@ -76,7 +76,7 @@ echo ""
 echo "=== Ubus API Endpoints ==="
 
 # Each method must be both advertised (rpcd "list" JSON) and dispatched ("call").
-ubus_methods=("list" "status" "block" "allow" "reset" "ticket" "bonus" "pact" "mast" "reload" "version" "devices" "device_approve" "device_reject" "device_update" "device_delete" "device_allow_removal" "requests" "request_answer" "dns_status" "dns_sync" "dns_auth" "dns_services")
+ubus_methods=("list" "status" "block" "allow" "reset" "ticket" "bonus" "pact" "mast" "reload" "version" "devices" "device_approve" "device_reject" "device_update" "device_delete" "device_allow_removal" "requests" "request_answer" "usage" "dns_status" "dns_sync" "dns_auth" "dns_services")
 ACL_FILES=("${PROJECT_ROOT}/familywarden/usr/share/rpcd/acl.d/familywarden.json"
            "${PROJECT_ROOT}/luci-app-familywarden/root/usr/share/rpcd/acl.d/luci-app-familywarden.json")
 for method in "${ubus_methods[@]}"; do
@@ -140,7 +140,8 @@ done
 
 # Every view/module in the source tree must be installed by the luci Makefile
 for f in "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/*.js \
-         "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/familywarden/*.js; do
+         "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/familywarden/*.js \
+         "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/familywarden/shared/*.js; do
     rel="${f#*/htdocs/luci-static/resources/}"
     grep -q "resources/$rel " "${PROJECT_ROOT}/luci-app-familywarden/Makefile" \
         || fail "Not installed by luci Makefile: $rel"

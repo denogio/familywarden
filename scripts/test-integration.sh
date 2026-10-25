@@ -992,6 +992,25 @@ assert_json "...and stays in force" "$(call status '{"profile":"kid"}')" '@.over
 call reset '{"profile":"kid"}' >/dev/null
 
 echo ""
+echo ""
+echo "=== Usage reports (cumulative, authenticated, monotonic) ==="
+day=$(date +%F)
+gid=$(v3payload phoneD fw-d1 "$N1" - "" apps-v1,grants-v1,screen-time-v1 | jsonfilter -e '@.apps.grants[0].grant_id')
+usage1="{\"type\":\"usage\",\"v\":1,\"device\":\"fw-d1\",\"profile\":\"kid\",\"day\":\"$day\",\"seq\":1,\"total\":900,\"apps\":{\"com.roblox.client\":600},\"labels\":{\"com.roblox.client\":\"Roblox\"},\"grants_used\":{\"$gid\":300}}"
+out=$(upbody phoneD usage "$usage1")
+assert_json "usage report stored" "$out" '@.state' "stored"
+assert_json "usage retry is idempotent" "$(upbody phoneD usage "$usage1")" '@.state' "unchanged"
+assert_json "usage can never decrease" "$(upbody phoneD usage "$(echo "$usage1" | sed 's/"seq":1/"seq":2/; s/"total":900/"total":800/')")" '@.error' "usage_regressed"
+assert_json "usage for another profile refused" "$(upbody phoneD usage "$(echo "$usage1" | sed 's/"profile":"kid"/"profile":"teen"/')")" '@.error' "wrong_profile"
+upload phoneC usage "$usage1" | head -1 | grep -q '^Status: 403' && pass "usage signed by another phone refused" || fail "foreign usage accepted"
+assert_json "parent phone sees today's usage of its child" "$(v3payload phoneC fw-c1 "$N1" - "" apps-v1,screen-time-v1)" '@.usage[0].total' "900"
+assert_json "...with app labels" "$(v3payload phoneC fw-c1 "$N1" - "" apps-v1,screen-time-v1)" '@.usage[0].apps[0].label' "Roblox"
+assert_json "administrator usage view" "$(call usage)" '@.profiles[@.id="kid"].total' "900"
+call requests | jsonfilter -e '@.requests[*].used' | grep -qx 300 && pass "reported grant use shown with the request" || fail "grant use missing: $(call requests)"
+ls /etc/familywarden/core/usage/kid/"$day".json >/dev/null 2>&1 && pass "usage persisted in the core store" || fail "usage file missing"
+# The syncs above correctly restored the active grant ticket; start the next case clean.
+call reset '{"profile":"kid"}' >/dev/null
+
 # An invalid compiler input must not leave RAM intent that a retry mistakes for
 # a working ticket. The last valid nft rules must remain in place.
 parent_policy=$(uci -q get familywarden.parent.policy)

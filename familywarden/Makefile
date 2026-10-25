@@ -6,7 +6,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=familywarden
-PKG_VERSION:=0.11.0_rc2
+PKG_VERSION:=0.11.0_rc3
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=denogio <dennis@hojgaard.me>

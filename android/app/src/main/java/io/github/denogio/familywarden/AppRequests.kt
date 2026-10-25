@@ -30,11 +30,11 @@ data class UploadReply(val state: String?, val error: String?, val granted: Int?
 /** Kept byte-for-byte across retries, including the original creation timestamp and request id. */
 data class RequestUpload(val op: String, val raw: String, val routerKey: String, val device: String) {
     init {
-        require(op in setOf("request", "decision"))
+        require(op in setOf("request", "decision", "usage"))
         require(raw.toByteArray(Charsets.UTF_8).size < 16 * 1024 - 101)
         val o = JSONObject(raw)
         require(o.getString("type") == op && o.getString("device") == device)
-        require(o.getString("request_id").matches(RequestProtocol.requestId))
+        if (op != "usage") require(o.getString("request_id").matches(RequestProtocol.requestId))
         Usign.parsePublicKey(routerKey)
     }
     fun encode(): String = JSONObject().put("op", op).put("raw", raw)
@@ -61,7 +61,7 @@ object RequestProtocol {
     private val states = setOf("pending", "approved", "denied", "expired")
     private val errors = setOf("malformed", "wrong_profile", "unknown_package", "invalid_minutes", "request_expired",
         "decision_expired", "app_control_off", "pact_forbids", "not_parent", "not_enrolled", "unknown_request",
-        "replay", "request_open", "unavailable", "already_answered")
+        "replay", "request_open", "unavailable", "already_answered", "usage_regressed", "day_out_of_range", "unknown_grant")
 
     private fun string(o: JSONObject, key: String): String = (o.get(key) as? String)
         ?: throw IllegalArgumentException("invalid $key")
@@ -157,6 +157,7 @@ object RequestProtocol {
         require(string(o, "device") == upload.device && epoch(o, "server_time") >= minimumServerTime)
         require(string(o, "message_sha256") == digest(upload.raw.toByteArray(Charsets.UTF_8))) { "reply mismatch" }
         if (o.has("error")) return UploadReply(null, string(o, "error").also { require(it in errors) })
+        if (upload.op == "usage") return UploadReply(string(o, "state").also { require(it in setOf("stored", "unchanged")) }, null)
         require(id(o) == JSONObject(upload.raw).getString("request_id"))
         val state = string(o, "state").also { require(it in states) }
         if (upload.op == "decision") {

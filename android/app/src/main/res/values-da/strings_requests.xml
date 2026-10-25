@@ -46,4 +46,7 @@
     <string name="fw_request_phone_check">Kun et nyt svar fra routeren kan bekræfte en godkendelse. Offline eller forældede skærmbilleder giver aldrig adgang.</string>
     <plurals name="fw_request_amount"><item quantity="one">%1$d minut</item><item quantity="other">%1$d minutter</item></plurals>
     <plurals name="fw_request_remaining"><item quantity="one">Cirka %1$d ekstra minut tilbage</item><item quantity="other">Cirka %1$d ekstra minutter tilbage</item></plurals>
+    <string name="fw_usage_today_title">Skærmtid i dag</string>
+    <string name="fw_usage_none">Ingen skærmtid rapporteret i dag endnu.</string>
+    <string name="fw_usage_incomplete">Noget tid kan mangle: en telefon er genstartet eller kunne ikke læse brug i et stykke tid.</string>
 </resources>

@@ -77,6 +77,11 @@ class GrantLedger {
 
     fun previousExclusions(fallback: Set<String>): Set<String> = context?.excluded ?: fallback
 
+    /** Spent milliseconds of this phone's grants still relevant at [sinceServerMillis] (usage reports). */
+    fun reported(scope: String, device: String, sinceServerMillis: Long): Map<String, Long> =
+        records.values.filter { it.scope == scope && it.grant.deviceId == device && end(it.grant) > sinceServerMillis }
+            .associate { it.grant.id to it.millis }
+
     fun spent(scope: String, id: String): Long = records[key(scope, id)]?.millis ?: 0
     fun uncertain(scope: String, id: String): Long = records[key(scope, id)]?.uncertainMillis ?: 0
 

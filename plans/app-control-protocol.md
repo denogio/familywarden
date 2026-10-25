@@ -376,20 +376,38 @@ scope, request binding, device-bound consumption and replay rules; do not expose
 grant verifier or ledger as a shortcut. Shared multi-device spending needs its own
 bounded allocation/consumption design before one grant can be applied on several phones.
 
-## 5. Usage reports (child/adult phone → router)
+## 5. Usage reports (child/adult phone → router) — implemented 2026-10-25
+
+Transport: `POST /cgi-bin/app?op=usage`, signed `familywarden-usage-v1\n` + exact JSON,
+same envelope and verified reply (`type:"usage_reply"`, `message_sha256`) as §3.
 
 ```json
-{ "type": "usage", "v": 1, "device": "…", "day": "2026-10-21", "seq": 17,
-  "apps": { "com.roblox.client": 1260, "com.spotify.music": 0 }, "grants_used": { "uuid": 600 } }
+{"type":"usage","v":1,"device":"fw-alex","profile":"alex","day":"2026-10-21","seq":17,
+ "total":4920,"apps":{"com.roblox.client":1260},"labels":{"com.roblox.client":"Roblox"},
+ "grants_used":{"<grant_id>":600},"incomplete":false}
 ```
 
-- **What counts (D5):** seconds with the screen on and the app visible in the foreground,
-  including picture-in-picture for the PiP app. Screen-off background audio does not count.
-- **Day (D8):** midnight in the router's `timezone`, regardless of the phone's timezone.
-- Reports are **cumulative per (device, day)**; `seq` increases. The router keeps the
-  highest `seq` per device and day, so retries and duplicates cannot double count.
-- The router sums all of a child's devices into the shared budget (D4) and returns the new
-  `budget.remaining` in the next policy reply. Offline overspend is shown, not hidden.
+- **Information, not authority.** No phone decision reads these reports; a phone can
+  only misreport itself. Shared budgets (`budget.remaining`) are still not implemented.
+- **What counts (D5):** whole seconds with the screen on and unlocked, app visible
+  (PiP included). `total` is the union (PiP counts once), not the sum of `apps`.
+  Always-allowed/essential apps are excluded from `total`.
+- **Day (D8):** router-local midnight; accepted for today and the previous 29 days only.
+- **Cumulative per (phone key, day):** stored under `device@<16 hex of key fingerprint>`,
+  so a re-enrolled phone starts a separate record. Only a higher `seq` can change the
+  record; `total`, every app and every grant counter may never decrease
+  (`usage_regressed`). Identical values are not rewritten (flash wear). Bounds: 25 h per
+  counter, 256 apps, 32 grants (each ≤ its granted minutes, and only grants issued to
+  this phone and key: `unknown_grant`), 16 phones per profile and day, 64-character labels.
+- Strict decoding as §3 (exact keys, no duplicates/nulls/trailing data). Other refusals:
+  `wrong_profile`, `app_control_off`, `day_out_of_range`, `unavailable`.
+- **Android** sends today's and yesterday's reports after a successful sync, at most once
+  a minute; no outbox (the next cumulative report supersedes a lost one). `incomplete`
+  marks days with usage gaps (restart, clock change, revoked access).
+- **Readers:** v3 sync for phones with `approves` scope adds `usage[]` (today per scoped
+  profile with app control: total, phones, top 5 apps; never for pact-bound profiles).
+  `ubus call familywarden usage` returns today per phone and app plus 7 daily totals.
+  `requests[].used` shows reported grant use. Totals are summed across phones.
 
 ## 6. Storage and retention (D6)
 

@@ -169,6 +169,9 @@ func (s *Service) Phone(query string) (status int, body []byte) {
 		}
 		if len(effectiveApproves(d, ctx)) > 0 {
 			out = append(out, field{"requests", s.parentRequests(d, ctx, now)})
+			if u := s.parentUsage(d, ctx); u != nil {
+				out = append(out, field{"usage", u})
+			}
 		}
 	}
 	out = append(out, field{"captain", pol.Captain}, field{"pact", raw(pol.Pact)}, field{"rules", raw(pol.Rules)})

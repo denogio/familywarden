@@ -34,6 +34,7 @@ data class MastState(
     val parents: List<ParentKey> = emptyList(),
     val request: ChildRequest? = null,
     val requests: List<ParentRequest> = emptyList(),
+    val familyUsage: List<FamilyUsage> = emptyList(),
 )
 
 data class Rules(

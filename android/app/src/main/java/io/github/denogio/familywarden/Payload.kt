@@ -98,6 +98,8 @@ object Payload {
             request = if (version == 3 && o.has("request")) RequestProtocol.child(o.getJSONObject("request")) else null,
             requests = if (version == 3 && o.has("requests"))
                 RequestProtocol.parents(o.getJSONArray("requests"), binding?.approves ?: emptyList()) else emptyList(),
+            familyUsage = if (version == 3 && o.has("usage"))
+                UsageUpload.parse(o.getJSONArray("usage"), binding?.approves ?: emptyList()) else emptyList(),
         )
         // Bounded epoch seconds (through year 9999), not milliseconds/overflowing alarm times.
         require(listOf(state.serverTime, state.pactUntil, state.releaseAt).all {

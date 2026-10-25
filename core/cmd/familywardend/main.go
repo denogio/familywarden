@@ -42,7 +42,6 @@ func handler(st *store.Store, id *identity.Service) http.Handler {
 	mux.HandleFunc("GET /version", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"core": version})
 	})
-	_ = st // authenticated usage upload is not implemented yet
 	if id == nil {
 		return mux
 	}
@@ -94,6 +93,8 @@ func handler(st *store.Store, id *identity.Service) http.Handler {
 		switch method {
 		case "requests":
 			reply = id.Requests()
+		case "usage":
+			reply = id.UsageReport()
 		case "request_answer":
 			reply = id.AnswerRequest(a)
 		case "devices":
@@ -181,12 +182,12 @@ func cgiPhone(socket string, out io.Writer) {
 	_, _ = out.Write(body)
 }
 
-// cgiApp forwards a signed upload (POST body) for ?op=request|decision.
+// cgiApp forwards a signed upload (POST body) for ?op=request|decision|usage.
 func cgiApp(socket string, in io.Reader, out io.Writer) {
 	status := map[int]string{200: "200 OK", 400: "400 Bad Request", 403: "403 Forbidden", 500: "500 Internal Server Error"}
 	code, body := 400, []byte(nil)
 	op, hasPrefix := strings.CutPrefix(os.Getenv("QUERY_STRING"), "op=")
-	if os.Getenv("REQUEST_METHOD") == "POST" && hasPrefix && (op == "request" || op == "decision") {
+	if os.Getenv("REQUEST_METHOD") == "POST" && hasPrefix && (op == "request" || op == "decision" || op == "usage") {
 		b, err := io.ReadAll(io.LimitReader(in, maxAPI+1))
 		code = 503
 		if err == nil && len(b) <= maxAPI {
@@ -286,6 +287,7 @@ func main() {
 		log.Printf("identity not ready (retrying in %v): %v", wait, err)
 		time.Sleep(wait)
 	}
+	id.Usage = st
 	l, err := listen(*socket)
 	if err != nil {
 		log.Fatalf("listen: %v", err)

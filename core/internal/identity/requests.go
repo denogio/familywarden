@@ -158,7 +158,7 @@ func cleanText(s string, max int) (string, bool) {
 	return s, true
 }
 
-// App handles a signed upload ("request" or "decision"). Unauthenticated input
+// App handles a signed upload ("request", "decision" or "usage"). Unauthenticated input
 // gets a bare status; everything after authentication gets a signed reply.
 func (s *Service) App(op string, body []byte) (int, []byte) {
 	sig, raw, ok := splitUpload(body)
@@ -195,7 +195,7 @@ func (s *Service) uploadLocked(op, sig string, raw []byte, device string) (int, 
 	if i >= 0 {
 		d = s.devices[i]
 	}
-	kind := map[string]string{"request": "request", "decision": "decision"}[op]
+	kind := map[string]string{"request": "request", "decision": "decision", "usage": "usage"}[op]
 	if i < 0 || kind == "" {
 		return StatusForbidden, nil, nil
 	}
@@ -212,9 +212,12 @@ func (s *Service) uploadLocked(op, sig string, raw []byte, device string) (int, 
 	}
 	var reply object
 	var ticket *ticketJob
-	if op == "request" {
+	switch op {
+	case "request":
 		reply = s.submit(d, raw, ctx)
-	} else {
+	case "usage":
+		reply = s.usage(d, raw, ctx)
+	default:
 		reply, ticket = s.decide(d, raw, ctx)
 	}
 	h := sha256.Sum256(raw)
@@ -564,13 +567,16 @@ func (s *Service) Requests() Reply {
 		e := ledger[i]
 		r := Reply{"request_id": e.ID, "profile": e.Profile, "profile_name": ctx.Profiles[e.Profile].Name,
 			"device": e.Device, "target": e.Target, "label": e.Label, "note": e.Note, "minutes": e.Minutes,
-			"received": e.Received, "state": e.status(now)}
+			"received": e.Received, "expires": e.Expires, "state": e.status(now)}
 		if e.DecidedBy != "" {
 			r["answered_by"], r["answered_at"] = s.nameOf(e.DecidedBy), e.DecidedAt
 		}
 		if e.State == "approved" {
 			r["granted"], r["not_after"] = e.Granted, e.NotAfter
 			r["delivered"] = s.delivered[e.GrantID] > 0
+			if used, ok := s.grantUse(e, ctx); ok {
+				r["used"] = used
+			}
 		}
 		list = append(list, r)
 	}

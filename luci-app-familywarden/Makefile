@@ -9,7 +9,7 @@ LUCI_TITLE:=LuCI support for FamilyWarden Parental Control
 LUCI_DEPENDS:=+familywarden +luci-base
 LUCI_PKGARCH:=all
 
-PKG_VERSION:=0.7.0
+PKG_VERSION:=0.8.0
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=denogio <dennis@hojgaard.me>
@@ -25,6 +25,7 @@ define Package/luci-app-familywarden/install
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/familywarden/settings.js $(1)/www/luci-static/resources/view/familywarden/settings.js
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/familywarden/devices.js $(1)/www/luci-static/resources/view/familywarden/devices.js
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/familywarden/info.js $(1)/www/luci-static/resources/view/familywarden/info.js
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/familywarden/family.js $(1)/www/luci-static/resources/view/familywarden/family.js
 	$(SED) 's/@@VERSION@@/$(PKG_VERSION)-r$(PKG_RELEASE)/' $(1)/www/luci-static/resources/view/familywarden/info.js
 
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/familywarden
@@ -32,6 +33,9 @@ define Package/luci-app-familywarden/install
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/overview.css $(1)/www/luci-static/resources/familywarden/overview.css
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/pages.css $(1)/www/luci-static/resources/familywarden/pages.css
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/ui.js $(1)/www/luci-static/resources/familywarden/ui.js
+	# Shared administrator UI (A20): platform-neutral ES modules
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/familywarden/shared
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/shared/family.js $(1)/www/luci-static/resources/familywarden/shared/family.js
 
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/luci-app-familywarden.json $(1)/usr/share/luci/menu.d/luci-app-familywarden.json
