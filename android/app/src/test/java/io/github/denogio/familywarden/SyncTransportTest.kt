@@ -98,7 +98,7 @@ class SyncTransportTest {
                 Sync.requestMessageV3("fw-example", q.getValue("nonce"), "0123456789abcdef")))
             assertFalse(Usign.verify(phoneKey, q.getValue("sig3"),
                 Sync.requestMessageV3("fw-example", q.getValue("nonce"), "-")))
-            assertEquals("apps-v1,grants-v1,screen-time-v1", q["caps"])
+            assertEquals("apps-v1,grants-v1,screen-time-v1,shared-v1", q["caps"])
             assertTrue(Usign.verify(phoneKey, q.getValue("sigcaps"),
                 Sync.requestCapabilitiesMessage("fw-example", q.getValue("nonce"), "0123456789abcdef", q.getValue("caps"))))
             assertFalse(Usign.verify(phoneKey, q.getValue("sigcaps"),

@@ -18,6 +18,7 @@
     <string name="fw_time_downtime_ends">Downtime ends %1$s</string>
     <string name="fw_time_reset">A new daily budget starts %1$s. Downtime may still apply.</string>
     <string name="fw_time_still_work">Calls, alarms and the always-allowed apps below still work.</string>
+    <string name="fw_time_other_devices">Includes %1$s on other devices</string>
     <string name="fw_time_this_phone">Recorded on this phone</string>
     <string name="fw_time_offline">The router could not be reached. Your saved rules still apply.</string>
     <string name="fw_time_unavailable">A reliable time count is not available right now. Saved rules and downtime still apply; remaining time is not estimated.</string>

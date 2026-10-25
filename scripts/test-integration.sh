@@ -1008,6 +1008,15 @@ assert_json "...with app labels" "$(v3payload phoneC fw-c1 "$N1" - "" apps-v1,sc
 assert_json "administrator usage view" "$(call usage)" '@.profiles[@.id="kid"].total' "900"
 call requests | jsonfilter -e '@.requests[*].used' | grep -qx 300 && pass "reported grant use shown with the request" || fail "grant use missing: $(call requests)"
 ls /etc/familywarden/core/usage/kid/"$day".json >/dev/null 2>&1 && pass "usage persisted in the core store" || fail "usage file missing"
+usign -G -p /tmp/phoneE.pub -s /tmp/phoneE.key >/dev/null
+v2payload phoneE fw-e1 "$N1" >/dev/null
+call device_approve "{\"device\":\"fw-e1\",\"profile\":\"kid\",\"name\":\"Alex tablet\",\"administrator\":\"0\",\"fingerprint\":\"$(fpr phoneE)\"}" >/dev/null
+payload=$(v3payload phoneE fw-e1 "$N1" - "" apps-v1,grants-v1,screen-time-v1,shared-v1)
+assert_json "sibling phone gets the other phone's usage today (shared budget)" "$payload" '@.shared.total' "900"
+assert_json "...per app" "$payload" '@.shared.apps["com.roblox.client"]' "600"
+echo "$payload" | jsonfilter -e '@.requires[*]' | grep -qx shared-v1 && pass "shared usage is a required feature" || fail "shared-v1 not required"
+assert_json "the reporting phone does not count itself twice" "$(v3payload phoneD fw-d1 "$N1" - "" apps-v1,grants-v1,screen-time-v1,shared-v1)" '@.shared' ""
+assert_json "an app without shared budgets is refused, not given a weaker policy" "$(v3payload phoneE fw-e1 "$N1" - "" apps-v1,grants-v1,screen-time-v1)" '@.error' "unsupported_capabilities"
 # The syncs above correctly restored the active grant ticket; start the next case clean.
 call reset '{"profile":"kid"}' >/dev/null
 

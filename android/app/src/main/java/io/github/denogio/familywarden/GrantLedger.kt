@@ -12,7 +12,9 @@ class GrantLedger {
     data class Spend(val scope: String, val grant: AppGrant, var millis: Long = 0, var uncertainMillis: Long = 0)
     data class Context(val scope: String, val device: String, val appsJson: String, val zone: ZoneId,
         val wall: Long, val server: Long, val excluded: Set<String>, val userApps: Set<String>, val baselineReliable: Boolean,
-        val uncertainThroughDay: String = "") {
+        val uncertainThroughDay: String = "",
+        /** Other phones' usage on [sharedDay] (D4): added, never subtracted. */
+        val sharedDay: String = "", val shared: Map<String, Long> = emptyMap()) {
         val apps: AppsPolicy = Payload.parseApps(JSONObject(appsJson), device)
     }
     private val records = linkedMapOf<String, Spend>()
@@ -89,9 +91,13 @@ class GrantLedger {
      * App grants spend only when ordinary rules would deny use. PiP total use is a
      * union; two visible apps cannot spend a total grant twice at the same instant.
      */
-    fun charge(wallStart: Long, wallStop: Long, visible: Set<String>, usedBefore: Map<String, Long>) {
+    fun charge(wallStart: Long, wallStop: Long, visible: Set<String>, localBefore: Map<String, Long>) {
         val c = context ?: return
         if (gapFrom != null || wallStop <= wallStart) return
+        // UsageCounter splits slices at midnight, so one call is one router-local day.
+        val sliceDay = Instant.ofEpochMilli(wallStart).atZone(c.zone).toLocalDate().toString()
+        val usedBefore = if (sliceDay != c.sharedDay) localBefore
+            else localBefore + c.shared.mapValues { (k, v) -> (localBefore[k] ?: 0) + v }
         val serverStart = c.server + (wallStart - c.wall)
         require(serverStart >= (floors[c.scope] ?: 0)) { "grant clock moved backwards" }
         val eligible = visible - c.excluded
@@ -173,6 +179,7 @@ class GrantLedger {
             put("wall", c.wall); put("server", c.server); put("excluded", JSONArray(c.excluded.toList()))
             put("users", JSONArray(c.userApps.toList())); put("reliable", c.baselineReliable)
             put("uncertain_day", c.uncertainThroughDay)
+            put("shared_day", c.sharedDay); put("shared", JSONObject(c.shared as Map<*, *>))
         }) }
         gapFrom?.let { put("gap", it) }
     }
@@ -210,7 +217,15 @@ class GrantLedger {
                 val ctx = Context(c.getString("scope"), c.getString("device"), c.getString("apps"), ZoneId.of(c.getString("zone")),
                     RequestProtocol.integer(c, "wall"), RequestProtocol.integer(c, "server"),
                     packages("excluded", 512), packages("users", 4096), c.getBoolean("reliable"),
-                    c.optString("uncertain_day", "").also { require(it.isEmpty() || java.time.LocalDate.parse(it).toString() == it) })
+                    c.optString("uncertain_day", "").also { require(it.isEmpty() || java.time.LocalDate.parse(it).toString() == it) },
+                    c.optString("shared_day", "").also { require(it.isEmpty() || java.time.LocalDate.parse(it).toString() == it) },
+                    c.optJSONObject("shared")?.let { o ->
+                        require(o.length() <= 65)
+                        o.keys().asSequence().associateWith { k ->
+                            require(k == UsageCounter.TOTAL || validPackage(k))
+                            RequestProtocol.integer(o, k).also { require(it in 0..16L * 25 * 3_600_000) }
+                        }
+                    } ?: emptyMap())
                 require(ctx.scope in floors && ctx.wall in 0..253402300799000L && ctx.server in 1..floors.getValue(ctx.scope))
                 for (g in ctx.apps.grants) require(records[key(ctx.scope, g.id)]?.grant == g || end(g) <= floors.getValue(ctx.scope))
                 context = ctx

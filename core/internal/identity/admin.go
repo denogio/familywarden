@@ -45,6 +45,9 @@ func (s *Service) Devices() Reply {
 			grants = s.grantsFor(d.Profile, d.ID, now)
 		}
 		rev, requires := appsView(prof, grants)
+		if shared, _ := s.sharedUsage(d, ctx); shared != nil {
+			requires = withFeature(requires, sharedFeature)
+		}
 		applied, apErr := seen.applied, seen.err
 		// An old acknowledgement must not look current for an incompatible phone.
 		if len(requires) == 0 {

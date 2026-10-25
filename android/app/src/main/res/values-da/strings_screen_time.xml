@@ -18,6 +18,7 @@
     <string name="fw_time_downtime_ends">Pausetiden slutter %1$s</string>
     <string name="fw_time_reset">Et nyt dagsbudget starter %1$s. Pausetid kan stadig gælde.</string>
     <string name="fw_time_still_work">Opkald, alarmer og de altid tilladte apps nedenfor virker stadig.</string>
+    <string name="fw_time_other_devices">Inklusive %1$s på andre enheder</string>
     <string name="fw_time_this_phone">Registreret på denne telefon</string>
     <string name="fw_time_offline">Routeren kunne ikke nås. Dine gemte regler gælder stadig.</string>
     <string name="fw_time_unavailable">Der er ingen pålidelig tidsmåling lige nu. Gemte regler og pausetid gælder stadig; den resterende tid bliver ikke gættet.</string>

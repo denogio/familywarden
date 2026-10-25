@@ -63,10 +63,9 @@ object Payload {
         }
         // Only v3 carries app policy; an "apps" field in an older version is not trusted.
         val apps = if (version == 3 && o.has("apps") && !o.isNull("apps")) parseApps(o.getJSONObject("apps"), requireNotNull(binding).deviceId) else null
-        if (!apps?.grants.isNullOrEmpty()) {
-            val requires = o.getJSONArray("requires")
-            require((0 until requires.length()).any { requires.get(it) == "grants-v1" }) { "undeclared grant feature" }
-        }
+        fun declared(feature: String) = o.getJSONArray("requires").let { r -> (0 until r.length()).any { r.get(it) == feature } }
+        if (!apps?.grants.isNullOrEmpty()) require(declared("grants-v1")) { "undeclared grant feature" }
+        if (version == 3 && apps != null && o.has("shared")) require(declared("shared-v1")) { "undeclared shared feature" }
         // Optional: routers without a valid IANA zone name leave it out (phone zone is used)
         val zone = if (scoped) o.optString("timezone").takeIf { it.isNotEmpty() }?.also { ZoneId.of(it) } else null
         val pact = if (scoped) o.getJSONObject("pact") else o.optJSONObject("pact") ?: JSONObject()
@@ -98,6 +97,7 @@ object Payload {
             request = if (version == 3 && o.has("request")) RequestProtocol.child(o.getJSONObject("request")) else null,
             requests = if (version == 3 && o.has("requests"))
                 RequestProtocol.parents(o.getJSONArray("requests"), binding?.approves ?: emptyList()) else emptyList(),
+            shared = if (version == 3 && apps != null && o.has("shared")) SharedUsage.parse(o.getJSONObject("shared")) else null,
             familyUsage = if (version == 3 && o.has("usage"))
                 UsageUpload.parse(o.getJSONArray("usage"), binding?.approves ?: emptyList()) else emptyList(),
         )

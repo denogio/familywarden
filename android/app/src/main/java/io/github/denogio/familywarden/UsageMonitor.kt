@@ -25,7 +25,8 @@ fun usageDiscontinuity(wall: Long, elapsed: Long, boot: Int,
 
 /** Inputs come only from the verified cache; not from UI commands or upload replies. */
 data class GrantInput(val scope: String, val device: String, val appsJson: String,
-    val clock: PolicyClock?, val userApps: Set<String>)
+    val clock: PolicyClock?, val userApps: Set<String>,
+    val sharedDay: String = "", val shared: Map<String, Long> = emptyMap())
 
 /** Local, durable collector. No networking, grants, shared-budget allocation or v3 activation.
  * One service owns this instance on one worker thread. Persist before enforcing decisions.
@@ -99,7 +100,8 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
         val server = grants?.clock?.now(elapsed, boot)
         val grantReady = if (grants != null && server != null) state.grants.configure(GrantLedger.Context(
             grants.scope, grants.device, grants.appsJson, zone, wall, server, excluded, grants.userApps,
-            problem == null && day > state.uncertainThroughDay, state.uncertainThroughDay))
+            problem == null && day > state.uncertainThroughDay, state.uncertainThroughDay,
+            grants.sharedDay, grants.shared))
             else { state.grants.gap(); false }
         val extra = if (problem == null && grantReady && grants != null)
             state.grants.available(grants.scope, server) else emptyMap()

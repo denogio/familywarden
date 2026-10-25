@@ -107,6 +107,15 @@ def minutes(value):
     adb('shell', 'input', 'keyevent', '67', '67', '67', '67')
     adb('shell', 'input', 'text', str(value))
     # No BACK key: without a visible keyboard it would dismiss the dialog itself.
+    # The keyboard moves the dialog up; tapping before it settles lands outside the
+    # dialog and dismisses it. Wait until two consecutive layouts agree.
+    last = None
+    for _ in range(10):
+        time.sleep(0.7)
+        now = [n.get('bounds') for n in ui().iter('node') if n.get('class') == 'android.widget.EditText']
+        if now and now == last:
+            break
+        last = now
     time.sleep(1)
 
 
@@ -129,30 +138,38 @@ def spent(grant_id):
     return next(r['used'] for r in usage()['grants']['records'] if r['id'] == grant_id)
 
 
-def synthetic_request(request_id, profile='alex', amount=30):
-    # The deliberately disposable second phone key never leaves the router container.
-    script = f'''
+def synthetic_phone(profile='alex'):
+    """A disposable second phone of the child; its key never leaves the router container."""
+    router(f'''
 [ -f /tmp/requests-kid.key ] || usign -G -p /tmp/requests-kid.pub -s /tmp/requests-kid.key
 key=$(sed -n 2p /tmp/requests-kid.pub)
 printf 'familywarden-sync-v2\\nfw-test-kid\\n{'c'*64}\\n' >/tmp/kid-sync.msg
 usign -S -s /tmp/requests-kid.key -m /tmp/kid-sync.msg -x /tmp/kid-sync.sig
 sig=$(sed -n 2p /tmp/kid-sync.sig)
 QUERY_STRING="device=fw-test-kid&nonce={'c'*64}&key=$key&sig=$sig" /usr/sbin/familywardend cgi-phone >/dev/null
-'''
-    router(script)
+''')
     pending = next((d for d in call('devices')['pending'] if d['id'] == 'fw-test-kid'), None)
     if pending:
-        assert call('device_approve', {'device': pending['id'], 'profile': profile, 'name': 'Alex fixture', 'fingerprint': pending['fingerprint']})['status'] == 'ok'
-    raw = json.dumps({'type': 'request', 'v': 1, 'request_id': request_id, 'device': 'fw-test-kid',
-                     'profile': profile, 'target': FIXTURE, 'minutes': amount, 'label': 'Video',
-                     'created': int(router('date +%s').strip())}, separators=(',', ':'))
-    # Pass exact UTF-8 bytes on stdin, not through shell interpolation.
-    output = run(['docker', 'exec', '-i', a.router, 'sh', '-ec', '''
-cat >/tmp/kid-request.json
-{ printf 'familywarden-request-v1\\n'; cat /tmp/kid-request.json; } >/tmp/kid-request.msg
-usign -S -s /tmp/requests-kid.key -m /tmp/kid-request.msg -x /tmp/kid-request.sig
-{ sed -n 2p /tmp/kid-request.sig; cat /tmp/kid-request.json; } | REQUEST_METHOD=POST QUERY_STRING=op=request /usr/sbin/familywardend cgi-app
+        assert call('device_approve', {'device': pending['id'], 'profile': profile, 'name': 'Alex tablet',
+                                       'fingerprint': pending['fingerprint']})['status'] == 'ok'
+
+
+def synthetic_upload(op, value):
+    raw = json.dumps(value, separators=(',', ':'))
+    # Exact UTF-8 bytes on stdin, not through shell interpolation.
+    return run(['docker', 'exec', '-i', a.router, 'sh', '-ec', f'''
+cat >/tmp/kid-up.json
+{{ printf 'familywarden-{op}-v1\\n'; cat /tmp/kid-up.json; }} >/tmp/kid-up.msg
+usign -S -s /tmp/requests-kid.key -m /tmp/kid-up.msg -x /tmp/kid-up.sig
+{{ sed -n 2p /tmp/kid-up.sig; cat /tmp/kid-up.json; }} | REQUEST_METHOD=POST QUERY_STRING=op={op} /usr/sbin/familywardend cgi-app
 '''], data=raw)
+
+
+def synthetic_request(request_id, profile='alex', amount=30):
+    synthetic_phone(profile)
+    output = synthetic_upload('request', {'type': 'request', 'v': 1, 'request_id': request_id, 'device': 'fw-test-kid',
+        'profile': profile, 'target': FIXTURE, 'minutes': amount, 'label': 'Video',
+        'created': int(router('date +%s').strip())})
     assert '"state":"pending"' in output, output
 
 
@@ -176,6 +193,17 @@ try:
     assert call('device_approve', {'device': device_id, 'profile': 'alex', 'name': 'Alex phone', 'fingerprint': device['fingerprint']})['status'] == 'ok'
     sync()
     wait('one usage collector checkpoint exists', lambda: usage()['zone'] == 'UTC')
+    # Shared budget (D4): the tablet used the whole minute, so the app pauses here too.
+    synthetic_phone()
+    out = synthetic_upload('usage', {'type': 'usage', 'v': 1, 'device': 'fw-test-kid', 'profile': 'alex',
+        'day': router('date +%F').strip(), 'seq': 1, 'total': 60, 'apps': {FIXTURE: 60}})
+    assert '"state":"stored"' in out, out
+    def paused_by_other_phone():
+        sync()
+        return suspended()
+    wait("another phone's usage pauses the app before any local use", paused_by_other_phone, 60)
+    day = router('date +%F').strip()
+    assert usage()['days'].get(day, {}).get(FIXTURE, 0) < 1000, usage()['days'].get(day)
     adb('shell', 'am', 'start', '-W', '-n', FIXTURE + '/.ProbeActivity')
     wait('the standing app minute is exhausted and suspended', suspended, 115)
     home()

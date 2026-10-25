@@ -119,6 +119,7 @@ configuration (including the pact snapshot), never from client claims:
 | `apps-v1` | This profile has app control enabled |
 | `screen-time-v1` | The app policy has daily screen limits, always-allowed apps, whole-phone downtime, or today's bonus |
 | `grants-v1` | Active grants exist for this particular phone (§4) |
+| `shared-v1` | Another phone of the same profile reported usage today (§5a) |
 
 `screen-time-v1` names the complete P7b semantics: union counting, ordinary-app
 downtime (including messaging unless always allowed), daily limits, unlimited
@@ -408,6 +409,26 @@ same envelope and verified reply (`type:"usage_reply"`, `message_sha256`) as §3
   profile with app control: total, phones, top 5 apps; never for pact-bound profiles).
   `ubus call familywarden usage` returns today per phone and app plus 7 daily totals.
   `requests[].used` shows reported grant use. Totals are summed across phones.
+
+## 5a. Shared per-child budget (D4) — implemented 2026-10-25
+
+A v3 policy for an app-controlled profile adds top-level
+`"shared": {"day":"2026-10-21","total":<s>,"apps":{"<package>":<s>}}`: today's
+(router-local) totals of the profile's **other** phone keys, summed from their usage
+reports (§5), at most 64 apps by time. It is present only when non-zero and then
+`requires` contains `shared-v1`; an app without it gets the signed refusal (§2b), never
+a policy that lets each phone spend the whole budget. `shared` is not part of the app
+revision, so it does not churn acknowledgements. A usage-store error yields no policy.
+
+Android adds `shared` to its own counters for that day only, before enforcement,
+warnings and grant accounting (`GrantLedger` keeps the offsets in its checkpoint), so
+another phone's usage can only tighten: the tablet's minutes pause the phone, and a grant
+starts to spend when the combined use exceeds the standing limit. Today shows "Includes
+N min on other devices". Offline phones keep the last signed `shared` value; usage on
+other phones during that time is only seen at the next sync (bounded overspend, by design
+of the trusted offline policy). Verified: Go tests (own phone excluded, required feature,
+fail-closed store error, LuCI upgrade status), 5 router checks, 2 JVM tests, and the
+emulator step "another phone's usage pauses the app before any local use".
 
 ## 6. Storage and retention (D6)
 

@@ -59,7 +59,8 @@ internal fun ScreenTimeContent(state: FamilyWardenState, actions: FamilyWardenAc
         if (time.kind == TodayKind.TimesUp) HeroBody(stringResource(R.string.fw_time_reset,
             localTime(time.resetsAt)), night.onNightMuted)
     }
-    Text(stringResource(R.string.fw_time_this_phone), style = MaterialTheme.typography.bodySmall)
+    Text(if (time.otherDevicesMillis >= 60_000) stringResource(R.string.fw_time_other_devices, minutes(time.otherDevicesMillis))
+        else stringResource(R.string.fw_time_this_phone), style = MaterialTheme.typography.bodySmall)
     if (extra.isNotEmpty()) SectionCard {
         extra.forEach { (target, amount) ->
             Text(if (target == "total") stringResource(R.string.fw_request_screen)

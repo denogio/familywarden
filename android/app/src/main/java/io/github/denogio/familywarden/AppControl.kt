@@ -195,7 +195,8 @@ class AppControlService : Service() {
                     it.flags and (android.content.pm.ApplicationInfo.FLAG_SYSTEM or android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0
                 }.map { it.packageName }.toSet()
                 GrantInput("$pin|${store.phoneKey.fingerprint}|${binding.deviceId}|${binding.profileId}", binding.deviceId,
-                    payload.getJSONObject("apps").toString(), store.policyClock(state), users)
+                    payload.getJSONObject("apps").toString(), store.policyClock(state), users,
+                    state.shared?.day.orEmpty(), state.shared?.millis.orEmpty())
             }.getOrNull()
             val sample = monitor?.let { m ->
                 runCatching { m.sample(essential + basePolicy.alwaysAllowed, input) }
@@ -210,7 +211,11 @@ class AppControlService : Service() {
             val policy = basePolicy.copy(grantRemaining = sample?.grantRemaining.orEmpty(),
                 grantReliable = sample?.grantReliable == true && expiryReady)
             val reliable = sample?.reliable == true
-            val used = sample?.millis ?: emptyMap()
+            // Shared budget (D4): other phones' usage today only adds to local counters.
+            val others = state.shared?.takeIf { sample != null && it.day == sample.day }?.millis.orEmpty()
+            val used = (sample?.millis ?: emptyMap()).let { local ->
+                local + others.mapValues { (k, v) -> (local[k] ?: 0) + v }
+            }
             val result = synchronized(AppEnforcer::class.java) {
                 if (AppControl.stopped) return
                 enforcer.reconcile(policy, used, used[UsageCounter.TOTAL] ?: 0, ZonedDateTime.now(zone), reliable)
@@ -225,7 +230,8 @@ class AppControlService : Service() {
             val labels = (policy.limitsMillis.keys + policy.blocked + policy.alwaysAllowed + policy.approved).associateWith(::label)
             AppControl.publish(AppUsageReport(apps.rev, zone.id, today, SystemClock.elapsedRealtime(),
                 reliable, used.toMap(), labels, monitor?.historyTotals() ?: emptyMap(), essential,
-                sample?.grantRemaining.orEmpty(), policy.grantReliable && result.failures.isEmpty(), installed.map { it.packageName }.toSet()))
+                sample?.grantRemaining.orEmpty(), policy.grantReliable && result.failures.isEmpty(), installed.map { it.packageName }.toSet(),
+                others[UsageCounter.TOTAL] ?: 0))
             if (store.appsStatus != status) store.appsStatus = status
             if (AppControl.acknowledges(result.failures, reliable && expiryReady) && store.appsApplied != apps.rev) store.appsApplied = apps.rev
         } catch (e: Exception) {

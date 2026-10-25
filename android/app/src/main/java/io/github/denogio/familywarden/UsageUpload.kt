@@ -13,6 +13,23 @@ data class FamilyUsage(val profile: ProfileRef, val day: String, val totalSecond
 data class DeviceUsage(val name: String, val totalSeconds: Int, val incomplete: Boolean)
 data class AppSeconds(val pkg: String, val label: String, val seconds: Int)
 
+/** Other phones' usage for [day] (router-local), in milliseconds keyed like UsageCounter days. */
+data class SharedUsage(val day: String, val millis: Map<String, Long>) {
+    companion object {
+        private const val MAX = 16L * 25 * 3600
+        fun parse(o: JSONObject): SharedUsage {
+            val day = o.getString("day").also { require(LocalDate.parse(it).toString() == it) }
+            val apps = o.getJSONObject("apps")
+            require(apps.length() <= 64) { "too many shared apps" }
+            val millis = apps.keys().asSequence().associateWith { pkg ->
+                require(validPackage(pkg)) { "invalid package" }
+                RequestProtocol.integer(apps, pkg).also { require(it in 0..MAX) } * 1000
+            } + (UsageCounter.TOTAL to RequestProtocol.integer(o, "total").also { require(it in 0..MAX) } * 1000)
+            return SharedUsage(day, millis)
+        }
+    }
+}
+
 /**
  * Cumulative usage reports (protocol §5). Information for parents, never authority:
  * nothing on any phone is unlocked by them. Cumulative, so a lost report is simply

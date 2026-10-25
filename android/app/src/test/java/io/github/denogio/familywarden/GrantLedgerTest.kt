@@ -156,6 +156,22 @@ class GrantLedgerTest {
         assertTrue(book.configure(context(raw, wall = at + 30_030, server = at + 30_000)))
     }
 
+    @Test fun otherPhonesUsageCountsBeforeAGrantCanBeSavedUp() {
+        // The tablet used the whole standing minute: this phone's first second is grant time.
+        val book = GrantLedger()
+        book.configure(context(apps(listOf(grant()))).copy(sharedDay = "2026-10-24", shared = mapOf(video to 60_000L)))
+        book.charge(at, at + 30_000, setOf(video), emptyMap())
+        assertEquals(30_000L, book.spent(scope, grant().id))
+        // Another day's shared usage never applies; restart keeps the offsets.
+        val other = GrantLedger()
+        other.configure(context(apps(listOf(grant()))).copy(sharedDay = "2026-10-23", shared = mapOf(video to 60_000L)))
+        other.charge(at, at + 30_000, setOf(video), emptyMap())
+        assertEquals(0L, other.spent(scope, grant().id))
+        val restored = GrantLedger.decode(JSONObject(book.encode().toString()))
+        restored.charge(at + 30_000, at + 40_000, setOf(video), mapOf(video to 30_000L))
+        assertEquals(40_000L, restored.spent(scope, grant().id))
+    }
+
     @Test fun earliestExpiryAllocationIsStableAcrossOverlappingGrants() {
         val a = grant()
         val b = grant(id = "b".repeat(32))

@@ -227,6 +227,64 @@ func (s *Service) UsageReport() Reply {
 	return Reply{"day": now.Format(time.DateOnly), "profiles": profiles}
 }
 
+const sharedFeature = "shared-v1"
+
+// sharedUsage is today's usage of the profile's OTHER phones (D4 shared budget), for
+// the phone's signed policy (lock held). Only tightens: the phone adds it to its own
+// counters. nil when there is nothing to add. Not part of the app revision, so it
+// does not churn acknowledgements; it is required (shared-v1) whenever present.
+func (s *Service) sharedUsage(d Device, ctx platform.Context) (object, error) {
+	if s.Usage == nil || ctx.Profiles[d.Profile].AppsRev == "" {
+		return nil, nil
+	}
+	day := s.Now().In(routerZone(ctx)).Format(time.DateOnly)
+	reports, err := s.Usage.UsageDay(d.Profile, day)
+	if err != nil {
+		return nil, err
+	}
+	own, total, apps := usageKey(d), 0, map[string]int{}
+	for key, r := range reports {
+		if key == own {
+			continue
+		}
+		total += r.Total
+		for pkg, secs := range r.Apps {
+			apps[pkg] += secs
+		}
+	}
+	list := make([]appUse, 0, len(apps))
+	for pkg, secs := range apps {
+		if secs > 0 {
+			list = append(list, appUse{Package: pkg, Seconds: secs})
+		}
+	}
+	if total == 0 && len(list) == 0 {
+		return nil, nil
+	}
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].Seconds != list[j].Seconds {
+			return list[i].Seconds > list[j].Seconds
+		}
+		return list[i].Package < list[j].Package
+	})
+	top := map[string]int{}
+	for _, a := range list[:min(len(list), 64)] {
+		top[a.Package] = a.Seconds
+	}
+	return object{{"day", day}, {"total", total}, {"apps", top}}, nil
+}
+
+func withFeature(list []string, feature string) []string {
+	for _, f := range list {
+		if f == feature {
+			return list
+		}
+	}
+	out := append(append([]string{}, list...), feature)
+	sort.Strings(out)
+	return out
+}
+
 // grantUse is how many seconds of a grant the requesting phone reported (lock held).
 func (s *Service) grantUse(e entry, ctx platform.Context) (int, bool) {
 	if s.Usage == nil || e.GrantID == "" {

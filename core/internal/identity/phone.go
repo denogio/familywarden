@@ -113,6 +113,16 @@ func (s *Service) Phone(query string) (status int, body []byte) {
 		tickets = append(tickets, ticketJob{g.Profile, g.NotAfter})
 	}
 	rev, requires := appsView(prof, grants)
+	var shared object
+	if exists && version == 3 && len(pol.Apps) > 0 && string(pol.Apps) != "null" {
+		if shared, err = s.sharedUsage(d, ctx); err != nil {
+			log.Printf("shared usage for %s: %v", d.Profile, err)
+			return StatusError, nil // never a policy without known tightening
+		}
+		if shared != nil {
+			requires = withFeature(requires, sharedFeature)
+		}
+	}
 	seen := seenPhone{at: now, caps: caps}
 	if version == 3 && applied != "-" {
 		seen.applied = applied
@@ -185,6 +195,9 @@ func (s *Service) Phone(query string) (status int, body []byte) {
 			return StatusError, nil
 		}
 		out = append(out, field{"apps", raw(apps)})
+		if shared != nil {
+			out = append(out, field{"shared", shared})
+		}
 	}
 	return s.sign(rk, out)
 }

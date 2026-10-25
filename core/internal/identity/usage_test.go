@@ -148,3 +148,59 @@ func TestUsageDisabledWithoutStoreOrAppControl(t *testing.T) {
 		t.Fatal(m)
 	}
 }
+
+type failingUsage struct{ UsageStore }
+
+func (failingUsage) UsageDay(string, string) (map[string]store.Report, error) {
+	return nil, fmt.Errorf("disk error")
+}
+
+func TestOtherPhonesUsageTightensThePolicyAndIsRequired(t *testing.T) {
+	f := usageFamily(t)
+	caps := "apps-v1,grants-v1,screen-time-v1,shared-v1"
+	if m := reply(t, f.s, f.kid.query("fw-kid", true, "-", caps)); m["shared"] != nil {
+		t.Fatalf("shared usage without other phones: %v", m["shared"])
+	}
+	tablet := newPhone(t)
+	enroll(t, f.s, tablet, "fw-tablet", "kid")
+	send(t, f.kid, f.s, "usage", usageJSON("fw-kid", "kid", usageDay, 1, 600, `{"com.example.video":600}`, ""))
+	send(t, tablet, f.s, "usage", usageJSON("fw-tablet", "kid", usageDay, 1, 900, `{"com.example.video":300,"com.example.game":600}`, ""))
+	m := reply(t, f.s, f.kid.query("fw-kid", true, "-", caps))
+	shared, _ := m["shared"].(map[string]any)
+	if shared["day"] != usageDay || shared["total"] != float64(900) ||
+		shared["apps"].(map[string]any)["com.example.video"] != float64(300) {
+		t.Fatalf("phone must get only the OTHER phones' usage: %v", m["shared"])
+	}
+	req := m["requires"].([]any)
+	if req[len(req)-1] != "shared-v1" {
+		t.Fatalf("shared usage not required: %v", req)
+	}
+	// An app that cannot add other phones' usage is refused, not given a weaker policy.
+	if r := reply(t, f.s, f.kid.query("fw-kid", true, "-", "apps-v1,grants-v1,screen-time-v1")); r["error"] != "unsupported_capabilities" || r["apps"] != nil {
+		t.Fatalf("old client: %v", r)
+	}
+	if d := find(f.s, "fw-kid"); d["apps_error"] != "unsupported_capabilities" {
+		t.Fatalf("LuCI must show the old client as needing an upgrade: %v", d)
+	}
+	// Without app control nothing is shared; a store failure gives no policy at all.
+	f.s.Usage = failingUsage{}
+	if code, body := f.s.Phone(f.kid.query("fw-kid", true, "-", caps)); code != StatusError || body != nil {
+		t.Fatal("usage store failure produced a policy without shared tightening")
+	}
+}
+
+func TestLuCIStopsShowingAnOldAppAsCurrentOnceSharedUsageApplies(t *testing.T) {
+	f := usageFamily(t)
+	old := "apps-v1,grants-v1,screen-time-v1"
+	rev := reply(t, f.s, f.kid.query("fw-kid", true, "-", old))["apps"].(map[string]any)["rev"].(string)
+	reply(t, f.s, f.kid.query("fw-kid", true, rev, old))
+	if d := find(f.s, "fw-kid"); d["apps_applied"] != rev || d["apps_error"] != "" {
+		t.Fatalf("baseline: %v", d)
+	}
+	tablet := newPhone(t)
+	enroll(t, f.s, tablet, "fw-tablet", "kid")
+	send(t, tablet, f.s, "usage", usageJSON("fw-tablet", "kid", usageDay, 1, 60, `{}`, ""))
+	if d := find(f.s, "fw-kid"); d["apps_applied"] != "" || d["apps_error"] != "unsupported_capabilities" {
+		t.Fatalf("old acknowledgement still looks current: %v", d)
+	}
+}
