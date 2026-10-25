@@ -41,7 +41,20 @@ with plain Go and only packaged by the SDK (`CORE_GO=cross`, ~3 min instead of ~
 Footprint: aarch64 apk 2.7 MB, binary 7.5 MB; idle RSS 8.2 MB measured on x86_64 — the
 aarch64 RSS must still be measured on the router (needs explicit permission).
 
-## Step 2 foundation (2026-10-24, not deployed)
+## Deployment (2026-10-25, explicitly authorized)
+
+Production router (OpenWrt 25.12.4, aarch64_cortex-a53) upgraded from shell 0.10.0_rc1 /
+LuCI 0.7.0 to `familywarden` 0.11.0_rc3, `familywarden-core` 0.4.0, LuCI 0.8.0 after a
+private config/key backup, with no active pact and one enrolled phone. The administrator's
+own Pixel 10 (Android 17, Device Owner) was updated first from 0.10.0-pilot1 (code 100) to
+0.11.0-rc3 (code 110, same release key), verified against the old router, then the router.
+Observed: core retried once (shell still upgrading) and imported the phone from UCI;
+firewall chains and the AdGuard Home sync were intact; the phone advertised
+`apps-v1,grants-v1,screen-time-v1`, acknowledged the new app revision, kept locked strict
+DNS and uploaded usage. **Measured aarch64 core RSS: 7.4 MB** (overlay use 6.9 → 10.1 MB).
+Usage totals for the upgrade day start at the phone update (pilot1 did not count totals).
+
+## Step 2 foundation (2026-10-24)
 
 `familywarden` 0.11.0_rc2 / `familywarden-core` 0.3.0 adds the Go-owned LAN
 request/decision ledger and device/key-bound grants, not the complete P8 Android flow.
