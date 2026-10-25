@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/denogio/familywarden/core/internal/platform"
+	"github.com/denogio/familywarden/core/internal/rules"
 	"github.com/denogio/familywarden/core/internal/usign"
 )
 
@@ -45,16 +46,64 @@ func (a Adapter) run(v any, args ...string) error {
 	return json.Unmarshal(out.Bytes(), v)
 }
 
+const appFormat = "go-apps-v1"
+
+// compileContext is shared by policy and administrator/request paths, so they
+// agree on revisions and requirements even before a phone fetches its policy.
+func compileContext(c *platform.Context) error {
+	if c.AppFormat != appFormat {
+		return fmt.Errorf("incompatible policy adapter format %q", c.AppFormat)
+	}
+	for id, prof := range c.Profiles {
+		if prof.AppInput == nil {
+			return fmt.Errorf("missing app input for %s", id)
+		}
+		apps, requires, err := rules.CompileApps(*prof.AppInput)
+		if err != nil {
+			return fmt.Errorf("apps of %s: %w", id, err)
+		}
+		prof.AppsRev, prof.Requires = "", requires
+		if apps != nil {
+			prof.AppsRev = apps.Rev
+		}
+		c.Profiles[id] = prof
+	}
+	return nil
+}
+
 func (a Adapter) Context() (platform.Context, error) {
 	var c platform.Context
-	err := a.run(&c, "core-context")
-	return c, err
+	if err := a.run(&c, "core-context", appFormat); err != nil {
+		return c, err
+	}
+	if err := compileContext(&c); err != nil {
+		return c, err
+	}
+	return c, nil
 }
 
 func (a Adapter) Policy(profile string, version int) (platform.Policy, error) {
 	var p platform.Policy
-	err := a.run(&p, "core-policy", profile, strconv.Itoa(version))
-	return p, err
+	if err := a.run(&p, "core-policy", profile, strconv.Itoa(version), appFormat); err != nil {
+		return p, err
+	}
+	if err := compileContext(&p.Context); err != nil {
+		return p, err
+	}
+	p.Apps = nil // only the portable compiler may supply an app policy
+	if prof, ok := p.Context.Profiles[profile]; ok && version == 3 {
+		apps, _, err := rules.CompileApps(*prof.AppInput)
+		if err != nil {
+			return p, err
+		}
+		if apps != nil {
+			p.Apps, err = json.Marshal(apps)
+			if err != nil {
+				return p, err
+			}
+		}
+	}
+	return p, nil
 }
 
 // RouterKey makes sure the shell created the key (first boot), then reads it.

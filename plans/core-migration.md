@@ -22,7 +22,7 @@ the adapter turns it into nftables. Other platforms get their own applier (pf).
 
 ## Status
 
-**Step 1 done (2026-10-24), not deployed.** Packages `familywarden` 0.11.0_rc1 (depends on)
+**Step 1 done (2026-10-24), subsequently deployed (see below).** Initial packages `familywarden` 0.11.0_rc1 (depends on)
 `familywarden-core` 0.2.0. Evidence: 321 router integration checks against the core-backed
 endpoint and ubus methods (4 implementation-detail assertions that read UCI device sections
 rewritten to use the API; new checks for the import, restart and core-down); Go unit tests
@@ -94,8 +94,44 @@ tests against the resulting 0.11.0_rc2 / 0.3.0 packages. One package-feed fetch 
 the bounded rerun passed. No Android code changed, so no emulator run was needed.
 
 Android grant enforcement and request screens followed (protocol §4, 2026-10-25).
-Authenticated consumption uploads, shared allocations and the shared administrator UI are
-still unimplemented.
+Authenticated consumption uploads and the first shared administrator UI were subsequently
+implemented and deployed. Shared usage offsets are implemented; bounded shared allocations
+or leases are not (cached offsets do not bound offline overspend).
+
+## Step 3a: portable signed app-policy compiler (2026-10-25)
+
+Implemented in `internal/rules.CompileApps`: signed `apps` construction, the unchanged
+16-hex canonical revision, and `apps-v1`/`screen-time-v1` requirements. The adapter passes
+one locked snapshot of effective canonical app rules and today's bonus for each profile.
+Both administrator/request context and phone replies use the same compiler. Malformed
+compiler input refuses the complete policy; it never drops a restriction. The existing
+canonical hash bytes, zero-minute rules, blocked/approved precedence, overnight downtime,
+per-weekday totals, always-allowed packages and bonus wire shape are preserved.
+
+Removed shell `_json_apps`, `_apps_rev`, `_apps_requires` and `_core_requires`.
+The explicit `go-apps-v1` handshake is required in both directions: old core/new shell or
+new core/old shell refuses service, retaining the phone's trusted cached policy rather
+than delivering a weaker policy. **Upgrade core and shell together**. Prepared package
+versions: core 0.7.0-r1 / backend 0.11.0_rc5-r1; not installed on production devices.
+
+Evidence: Go vet/race suites (including subprocess adapter tests and a fixed wire/hash
+fixture), five caught compiler mutations, 390 router integration checks, package tests
+and all 36 Playwright tests. The new real HTTP approval test creates a genuinely signed
+phone request, clicks Approve in LuCI without RPC mocks, then verifies the durable grant.
+Package tests force an actual local-package reinstall and verify changed daemon PID and
+running version. A minimal rc.common lifecycle shim replaces absent procd in that rootfs;
+real procd crash/reboot coverage remains in `scripts/test-core-lifecycle.sh`.
+Session stripping also preserves duplicate-field, malformed/oversized and invalid UTF-8
+rejection instead of normalizing bad inputs before strict decoding.
+
+**Step 3 is not complete:** UCI still owns profiles and configured app rules. The shell
+still normalizes raw UCI into canonical app lines, expands weekday/weekend settings,
+resolves pact snapshots and manages daily bonus mutations. Next slice must migrate those
+writers and their shared editing UI together; do not add an unused parallel JSON store.
+Required gates: import/save/read-back once, preserve active pact snapshots and amendment
+rules, reject stale edits, fail-closed state corruption, and safe firewall apply/rollback.
+No Android change or physical-device/emulator run was needed for this wire-compatible
+compiler move. Off-home transport and adult-pool semantics remain separate open gates.
 
 ## Step 1 in detail
 

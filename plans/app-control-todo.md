@@ -182,10 +182,10 @@ Depends on P3 and ownership decisions from P1.
       Separate package `familywarden-core` (OpenWrt `golang-package.mk`, Go from the
       packages feed bootstrapped from the official golang image); the shell package stays
       `PKGARCH:=all` and unchanged. `scripts/build-apk-docker.sh` builds it (`WITH_CORE=0` skips).
-- [ ] Connect authenticated LuCI/ubus calls through a narrow local bridge and least-privilege ACLs.
-      Done for root/ubus: rpcd exec plugin, one method `ubus call familywarden-core status`
-      (always one JSON object, also when the core is down). No LuCI ACL yet: added when a
-      LuCI view consumes it.
+- [x] Connect authenticated LuCI/ubus calls through a narrow local bridge and least-privilege ACLs.
+      Identity, requests, usage and new-app decisions use the root-only socket bridge.
+      Shared Requests UI uses LuCI sessions/ACLs. Real unmocked HTTP approval regression
+      added 2026-10-25; strict JSON remains strict after transport session cleanup.
 - [x] Keep the existing fw4 compiler and sail endpoint authoritative initially.
       The core touches neither; stopping, crashing or removing it leaves fw4 untouched (tested).
 - [x] Define reload ordering, failures, timeouts and single-writer ownership per state file —
@@ -197,7 +197,13 @@ Depends on P3 and ownership decisions from P1.
 
 **Accept:** disposable OpenWrt installation and reboot work without DNS/pact/firewall regressions.
 
-### Core on OpenWrt: ownership and lifecycle (2026-10-22)
+**Migration checkpoint (2026-10-25):** signed app-policy compilation/revision/features
+now live in Go (390 integration checks, 36 Playwright tests, forced-package reinstall
+checks daemon PID/version). Profiles, schedules, raw app configuration and pacts still
+belong to UCI/shell. See `core-migration.md` step 3a for evidence and remaining gates.
+This checkpoint is tested but not deployed; production remains rc4 / core 0.6.0.
+
+### Core on OpenWrt: ownership and lifecycle (historical baseline, 2026-10-22)
 
 | Path | Owner (single writer) | Notes |
 |---|---|---|

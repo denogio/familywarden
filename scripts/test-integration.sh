@@ -782,6 +782,13 @@ mast3 phoneD fw-d1 "$N1" - "" screen-time-v1 screen-time-v1 "$N2" | head -1 | gr
 v3payload phoneD fw-d1 "$N1" "$rev" >/dev/null
 assert_json "successful compatible sync clears the refusal" "$(call devices)" '@.devices[@.id="fw-d1"].apps_error' ""
 assert_json "compatible signed acknowledgement restored" "$(call devices)" '@.devices[@.id="fw-d1"].apps_applied' "$rev"
+# Adapter protocol changes must refuse an old daemon, never hide app restrictions.
+assert_json "old core context format is refused" "$("$BIN" core-context)" '@.error' "incompatible core: upgrade required"
+assert_json "old core policy format is refused" "$("$BIN" core-policy kid 3)" '@.error' "incompatible core: upgrade required"
+assert_json "new adapter format is explicit" "$("$BIN" core-context go-apps-v1)" '@.app_format' "go-apps-v1"
+raw_policy=$("$BIN" core-policy kid 3 go-apps-v1)
+[ -z "$(echo "$raw_policy" | jsonfilter -e '@.apps')" ] && pass "shell no longer builds signed app policy" || fail "shell still supplies apps"
+[ -n "$(echo "$raw_policy" | jsonfilter -e '@.context.profiles.kid.app_input.rules')" ] && pass "shell supplies effective compiler inputs" || fail "missing app inputs"
 # An acknowledgement from a client that lacks a feature the policy needs LATER must
 # not look current: legacy v3 phone acks the app-only policy, then downtime is added.
 prev=$(v3payload phoneC fw-c1 "$N1" - "" legacy | jsonfilter -e '@.apps.rev')

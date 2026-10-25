@@ -6,18 +6,21 @@ package platform
 import (
 	"encoding/json"
 
+	"github.com/denogio/familywarden/core/internal/rules"
 	"github.com/denogio/familywarden/core/internal/usign"
 )
 
 // Profile is what the core needs to know about a profile it does not own yet.
 type Profile struct {
-	Name     string   `json:"name"`
-	AppsRev  string   `json:"apps_rev"` // revision of the profile's app policy, "" = none
-	Requires []string `json:"requires"` // phone features the profile's policy needs
+	Name     string          `json:"name"`
+	AppsRev  string          `json:"apps_rev"`            // computed by the core, "" = app control off
+	Requires []string        `json:"requires"`            // computed by the core
+	AppInput *rules.AppInput `json:"app_input,omitempty"` // interim effective configuration
 }
 
 // Context is one consistent snapshot of platform state.
 type Context struct {
+	AppFormat   string             `json:"app_format"`   // versioned interim compiler input
 	TimeZone    string             `json:"timezone"`     // IANA name or ""
 	PactCaptain string             `json:"pact_captain"` // profile bound by an active pact, or ""
 	Profiles    map[string]Profile `json:"profiles"`     // effective profiles
