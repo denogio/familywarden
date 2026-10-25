@@ -33,6 +33,36 @@ test('Requests page talks to the real core through rpcd and LuCI ACLs', async ({
   await expect(page.getByText(/Could not reach/)).toHaveCount(0);
 });
 
+test('real HTTP approval persists the chosen grant through the LuCI session shim', async ({ page }) => {
+  const container = process.env.FW_E2E_CONTAINER;
+  test.skip(!container?.startsWith('familywarden-e2e-'), 'Disposable container fixture only');
+  const { execFileSync } = require('node:child_process');
+  const fixture = (action) => execFileSync('docker', ['exec', '-e', 'FW_E2E_FIXTURE=1', container,
+    'sh', '/src/scripts/e2e-request-fixture.sh', action], { timeout: 20000 });
+  try {
+    fixture('create');
+    await page.goto(URL);
+    const card = page.locator('.fwx-card', { hasText: 'Alex HTTP test' });
+    await card.getByLabel('Minutes').fill('20');
+    const answer = page.waitForResponse((r) => r.url().includes('/ubus') &&
+      r.request().postData()?.includes('request_answer'));
+    await card.getByRole('button', { name: 'Approve', exact: true }).click();
+    const response = await (await answer).json();
+    const replies = Array.isArray(response) ? response : [response];
+    expect(replies.some((r) => r.result?.[1]?.state === 'approved' && r.result[1].granted === 20)).toBe(true);
+    // Read through the same authenticated HTTP path, not a fixture or a mock.
+    await page.reload();
+    await expect(card.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0);
+    const stored = JSON.parse(execFileSync('docker', ['exec', container, 'sh', '-c',
+      "echo '{}' | /usr/libexec/rpcd/familywarden call requests"], { encoding: 'utf8', timeout: 10000 }));
+    const request = stored.requests.find((r) => r.request_id === 'http-request-0001');
+    expect(request.state).toBe('approved');
+    expect(request.granted).toBe(20);
+  } finally {
+    fixture('cleanup');
+  }
+});
+
 test('approving sends exactly the chosen minutes and nothing for another request', async ({ page }) => {
   const now = Math.floor(Date.now() / 1000);
   const answers = [];

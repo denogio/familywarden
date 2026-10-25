@@ -70,7 +70,15 @@ func TestAPIShimDropsOnlyTheLuCISession(t *testing.T) {
 	if strings.Contains(got, "ubus_rpc_session") || !strings.Contains(got, `"approve":true`) || !strings.Contains(got, `"minutes":30`) {
 		t.Fatalf("session not stripped or fields lost: %s", got)
 	}
-	for _, raw := range []string{`{"request_id":"r-00000001","approve":true}`, `not json`, `[]`, ``} {
+	for _, raw := range []string{
+		`{"request_id":"r-00000001","approve":true}`, `not json`, `[]`, ``,
+		`{"approve":false,"approve":true,"ubus_rpc_session":"s"}`,
+		`{"approve":false,"\u0061pprove":true,"ubus_rpc_session":"s"}`,
+		`{"approve":true,"ubus_rpc_session":"a","ubus_rpc_session":"b"}`,
+		`{"approve":true,"ubus_rpc_session":"s"} {}`,
+		`{"ubus_rpc_session":"` + strings.Repeat("x", maxAPI) + `"}`,
+		"{\"ubus_rpc_session\":\"\xff\"}",
+	} {
 		if string(withoutSession([]byte(raw))) != raw {
 			t.Fatalf("changed input without a session: %q", raw)
 		}

@@ -53,8 +53,8 @@ count_includes() { uci show firewall | grep -c "path='/var/etc/familywarden.incl
     && pass "postinst added the sail page on :7700" || fail "uhttpd sail instance missing"
 
 uci set familywarden.marker=profile && uci commit familywarden
-apk fix --allow-untrusted --reinstall familywarden >/dev/null 2>&1 \
-    || apk add --allow-untrusted "$FW" >/dev/null 2>&1
+apk add --allow-untrusted --force-reinstall "$FW" >/tmp/fw-reinstall.log 2>&1 \
+    && pass "backend package reinstalled" || { fail "backend reinstall"; cat /tmp/fw-reinstall.log; }
 [ "$(count_includes)" = "1" ] && pass "reinstall keeps one include" || fail "firewall includes after reinstall: $(count_includes) (want 1)"
 uci -q get familywarden.marker >/dev/null && pass "reinstall keeps user config" || fail "reinstall overwrote /etc/config/familywarden"
 
@@ -91,7 +91,36 @@ if [ -n "$CORE" ]; then
     st | grep -q '"running":true' && pass "restart takes over the stale socket" || fail "restart after crash: $(cat /tmp/core.log)"
 
     touch /etc/familywarden/core/usage/marker
-    apk fix --allow-untrusted --reinstall familywarden-core >/dev/null 2>&1 || apk add --allow-untrusted "$CORE" >/dev/null 2>&1
+    # No procd in this rootfs: adapt only rc.common's service lifecycle. The real
+    # packaged init/postinst and the real daemon/socket still participate. Without
+    # postinst's restart the old PID remains and this assertion fails.
+    cp /etc/rc.common /tmp/rc.common.original
+    printf '%s\n' "$CORE_PID" >/tmp/core-service.pid
+    cat >/etc/rc.common <<'EOF'
+#!/bin/sh
+if [ "$1" = /etc/init.d/familywarden-core ]; then
+    case "$2" in
+    enabled) exit 0 ;;
+    restart)
+        kill "$(cat /tmp/core-service.pid)" || exit 1
+        for _ in 1 2 3 4 5; do [ ! -S /var/run/familywarden-core/core.sock ] && break; sleep 1; done
+        familywardend >>/tmp/core.log 2>&1 &
+        echo $! >/tmp/core-service.pid
+        exit 0 ;;
+    esac
+fi
+exec sh /tmp/rc.common.original "$@"
+EOF
+    apk add --allow-untrusted --force-reinstall "$CORE" >/tmp/core-reinstall.log 2>&1 \
+        && pass "core package reinstalled while serving" || { fail "core reinstall"; cat /tmp/core-reinstall.log; }
+    mv /tmp/rc.common.original /etc/rc.common
+    old_pid=$CORE_PID
+    CORE_PID=$(cat /tmp/core-service.pid)
+    expected=$(basename "$CORE" .apk); expected=${expected#familywarden-core-}
+    for _ in 1 2 3 4 5; do st | grep -q "\"core\":\"$expected\"" && break; sleep 1; done
+    [ "$old_pid" != "$CORE_PID" ] && st | grep -q "\"core\":\"$expected\"" \
+        && pass "upgrade restarted the daemon and serves installed version $expected" \
+        || fail "upgrade left old daemon/version running: old=$old_pid new=$CORE_PID status=$(st)"
     [ -f /etc/familywarden/core/usage/marker ] && pass "reinstall keeps core data" || fail "reinstall removed core data"
     # Phone sync goes through the core: CGI on :7700 forwards, core down = 503.
     out=$(QUERY_STRING="device=x&nonce=y" sh /www-familywarden/cgi-bin/mast | head -1)
@@ -100,7 +129,8 @@ if [ -n "$CORE" ]; then
     echo '{}' | /usr/libexec/rpcd/familywarden call requests | grep -q '"requests"' && pass "LuCI requests via the core" || fail "requests via the core"
     out=$(REQUEST_METHOD=POST QUERY_STRING="op=request" sh /www-familywarden/cgi-bin/app </dev/null | head -1)
     [ "$out" = "Status: 400 Bad Request" ] && pass "upload endpoint answered by the core" || fail "upload endpoint: $out"
-    kill "$CORE_PID"; wait "$CORE_PID" 2>/dev/null
+    kill "$CORE_PID"
+    for _ in 1 2 3 4 5; do [ ! -e "$SOCK" ] && break; sleep 1; done
     [ -e "$SOCK" ] && fail "socket left after clean stop" || pass "clean stop removes the socket"
     out=$(QUERY_STRING="device=x&nonce=y" sh /www-familywarden/cgi-bin/mast | head -1)
     [ "$out" = "Status: 503 Service Unavailable" ] && pass "core down: 503, no reply" || fail "core down: $out"

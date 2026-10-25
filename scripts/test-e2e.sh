@@ -35,4 +35,5 @@ docker exec -e PASSWORD="$PASSWORD" "$NAME" sh /src/scripts/e2e-container-setup.
 
 echo "LuCI up on http://127.0.0.1:$PORT - running Playwright"
 cd "$REPO/test/e2e"
-FW_BASE_URL="http://127.0.0.1:$PORT" FW_PASSWORD="$PASSWORD" FW_E2E_ALLOW_PACT=1 npx playwright test "${@:2}"
+FW_BASE_URL="http://127.0.0.1:$PORT" FW_PASSWORD="$PASSWORD" FW_E2E_ALLOW_PACT=1 \
+    FW_E2E_CONTAINER="$NAME" npx playwright test "${@:2}"

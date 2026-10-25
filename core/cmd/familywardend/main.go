@@ -19,6 +19,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	_ "time/tzdata" // OpenWrt ships no zoneinfo; day boundaries need the router's timezone (D8)
 
@@ -222,9 +223,30 @@ func cgiApp(socket string, in io.Reader, out io.Writer) {
 // rpcd has already authorized that session; the core API never sees transport fields,
 // so its strict decoders stay strict. Anything that is not an object passes unchanged.
 func withoutSession(b []byte) []byte {
-	var m map[string]json.RawMessage
-	if json.Unmarshal(b, &m) != nil || m == nil {
+	// Do not let transport cleanup normalize duplicate fields or oversized input
+	// before the core's strict decoders can reject them.
+	if len(b) > maxAPI || !utf8.Valid(b) || !json.Valid(b) {
 		return b
+	}
+	d := json.NewDecoder(bytes.NewReader(b))
+	if token, _ := d.Token(); token != json.Delim('{') {
+		return b
+	}
+	m := make(map[string]json.RawMessage)
+	for d.More() {
+		token, err := d.Token()
+		if err != nil {
+			return b
+		}
+		key := token.(string)
+		if _, duplicate := m[key]; duplicate {
+			return b
+		}
+		var value json.RawMessage
+		if d.Decode(&value) != nil {
+			return b
+		}
+		m[key] = value
 	}
 	if _, ok := m["ubus_rpc_session"]; !ok {
 		return b
