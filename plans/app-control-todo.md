@@ -1,7 +1,10 @@
 # App control — implementation backlog
 
 Branch: `feature/app-control`, based on `v0.9.1` (`dce92f4`).
-Status: implementation authorized; no app-control feature code written yet.
+Status (2026-10-25): LAN app control, requests/grants, usage and new-app approval are
+implemented and deployed. Go configuration/pact migration is in progress; off-home
+transport remains undecided. Older phase evidence below describes historical checkpoints;
+see [core-migration.md](core-migration.md) for current ownership and deployment.
 Product decisions and research: [app-control.md](app-control.md).
 
 This is the durable checklist. Complete a box only after its acceptance evidence is
@@ -202,9 +205,13 @@ and raw app-rule normalization now live in Go. Latest integration suite: 404 che
 including a frozen legacy-normalizer oracle and fail-closed pact snapshot compilation.
 Profiles, schedules, authoritative app configuration and pacts are still stored in
 UCI/shell. See `core-migration.md` steps 3a/3b for evidence and the traced cutover callers.
-The previous 3a checkpoint also has 36 passing Playwright tests and forced-package
-reinstall checks of daemon PID/version. These migration changes are not deployed;
-production remains rc4 / core 0.6.0.
+The raw-normalization and pact-lock checkpoints also pass 36 Playwright tests and
+forced-package reinstall checks of daemon PID/version. The lock suite has 409 integration
+checks, with the pre-fix snapshot failing deterministic lock/concurrency probes.
+Phones now reads the profile directory through the core API (including disabled profiles),
+without creating a parallel store: Go/race and 412 integration checks pass; full package/
+browser checks are running on an immutable snapshot. These migration changes are not
+deployed; production remains rc4 / core 0.6.0.
 
 ### Core on OpenWrt: ownership and lifecycle (historical baseline, 2026-10-22)
 

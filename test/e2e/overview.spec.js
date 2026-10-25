@@ -119,6 +119,46 @@ test('Phones edits a parent scope without offering the phone its own profile', a
   expect(sent[0]).toMatchObject({ device: 'fw-parent', profile: 'alex', approves: '' });
 });
 
+test('Phones gets profile labels and enrollment choices from the core, not UCI', async ({ page }) => {
+  const configReads = [];
+  page.on('request', r => {
+    if (!/\/ubus/.test(r.url())) return;
+    const body = r.postDataJSON();
+    for (const c of Array.isArray(body) ? body : [body]) {
+      if (c.params?.[1] === 'uci' && c.params?.[3]?.config === 'familywarden') configReads.push(c);
+    }
+  });
+  await page.route(/\/ubus(?:\/|$)/, async route => {
+    const body = route.request().postDataJSON();
+    const calls = Array.isArray(body) ? body : [body];
+    if (!calls.some(c => c.params?.[1] === 'familywarden' && ['profiles', 'devices'].includes(c.params?.[2]))) return route.continue();
+    const response = await route.fetch();
+    const json = await response.json();
+    const results = Array.isArray(json) ? json : [json];
+    for (const c of calls) {
+      if (c.params?.[1] !== 'familywarden') continue;
+      const result = results.find(r => r.id === c.id);
+      if (c.params[2] === 'profiles') result.result = [0, { profiles: [
+        { id: 'api_only', name: 'Sam API profile' }, { id: 'alex', name: 'Alex' }] }];
+      if (c.params[2] === 'devices') result.result = [0, { pending: [], devices: [
+        { id: 'fw-sam', name: 'Sam phone', profile: 'api_only', fingerprint: 'b'.repeat(64), seen: 0,
+          administrator: '0', frozen: false, apps_rev: '', approves: '' }] }];
+    }
+    await route.fulfill({ response, json: Array.isArray(json) ? results : results[0] });
+  });
+  await page.goto(`${URL}/devices`);
+  const row = page.locator('tbody tr').filter({ has: page.getByText('Sam phone', { exact: true }) });
+  await expect(row).toContainText('Sam API profile');
+  await row.getByRole('button', { name: 'Edit…' }).click();
+  const dialog = page.locator('.modal');
+  await expect(dialog.locator('option[value="api_only"]')).toHaveText('Sam API profile');
+  const scope = page.getByRole('group', { name: 'May approve requests for' });
+  await expect(scope.getByLabel('Alex')).toBeVisible();
+  await expect(scope.getByLabel('Sam API profile')).toHaveCount(0);
+  expect(configReads).toEqual([]);
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+});
+
 test('native actions block and reset a real profile', async ({ page }) => {
   await page.goto(URL);
   const alex = page.locator('[data-profile="alex"]');

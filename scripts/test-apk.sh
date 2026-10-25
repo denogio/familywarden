@@ -125,6 +125,7 @@ EOF
     # Phone sync goes through the core: CGI on :7700 forwards, core down = 503.
     out=$(QUERY_STRING="device=x&nonce=y" sh /www-familywarden/cgi-bin/mast | head -1)
     [ "$out" = "Status: 400 Bad Request" ] && pass "sync endpoint answered by the core" || fail "sync endpoint: $out"
+    echo '{}' | /usr/libexec/rpcd/familywarden call profiles | grep -q '"profiles"' && pass "LuCI profile directory via the core" || fail "profile directory via the core"
     echo '{}' | /usr/libexec/rpcd/familywarden call devices | grep -q '"devices"' && pass "LuCI devices via the core" || fail "devices via the core"
     echo '{}' | /usr/libexec/rpcd/familywarden call requests | grep -q '"requests"' && pass "LuCI requests via the core" || fail "requests via the core"
     out=$(REQUEST_METHOD=POST QUERY_STRING="op=request" sh /www-familywarden/cgi-bin/app </dev/null | head -1)

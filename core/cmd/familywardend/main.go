@@ -105,6 +105,8 @@ func handler(st *store.Store, id *identity.Service) http.Handler {
 			reply = id.AppDecision(ad)
 		case "request_answer":
 			reply = id.AnswerRequest(a)
+		case "profiles":
+			reply = id.ProfileDirectory()
 		case "devices":
 			reply = id.Devices()
 		case "device_approve":

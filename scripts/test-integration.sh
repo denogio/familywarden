@@ -824,6 +824,10 @@ assert_json "new adapter format is explicit" "$("$BIN" core-context go-apps-v2)"
 raw_policy=$("$BIN" core-policy kid 3 go-apps-v2)
 [ -z "$(echo "$raw_policy" | jsonfilter -e '@.apps')" ] && pass "shell no longer builds signed app policy" || fail "shell still supplies apps"
 assert_json "shell supplies raw versioned app configuration" "$raw_policy" '@.context.profiles.kid.app_input.version' "1"
+directory=$(call profiles)
+assert_json "core profile directory supplies selector labels" "$directory" '@.profiles[@.id="kid"].name' "Kid"
+assert_json "core profile directory includes disabled profiles" "$directory" '@.profiles[@.id="guest"].name' "Guest"
+[ -z "$(echo "$directory" | jsonfilter -e '@.profiles[*].app_input')" ] && pass "profile directory exposes no app configuration" || fail "directory leaked app configuration"
 # Compare the actual stateless Go compiler with a frozen pre-migration oracle.
 # The reference runs separately, so its shell helpers cannot affect production code.
 assert_legacy_app_canonical() {

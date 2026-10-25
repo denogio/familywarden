@@ -24,6 +24,26 @@ func fingerprint(key string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// ProfileDirectory lists every profile, including ones disabled for network
+// enforcement. LuCI selectors must not discover profiles directly through UCI.
+// Only display identity is exposed; configuration ownership migrates separately.
+func (s *Service) ProfileDirectory() Reply {
+	ctx, err := s.ad.Context()
+	if err != nil {
+		return fail("platform state unavailable")
+	}
+	ids := make([]string, 0, len(ctx.Profiles))
+	for id := range ctx.Profiles {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	profiles := make([]Reply, 0, len(ids))
+	for _, id := range ids {
+		profiles = append(profiles, Reply{"id": id, "name": nameOr(ctx.Profiles[id].Name, id)})
+	}
+	return Reply{"profiles": profiles}
+}
+
 // Devices lists approved and pending phones for the administrator.
 func (s *Service) Devices() Reply {
 	ctx, err := s.ad.Context()

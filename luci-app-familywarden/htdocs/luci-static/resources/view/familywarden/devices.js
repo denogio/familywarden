@@ -1,7 +1,6 @@
 'use strict';
 'require view';
 'require rpc';
-'require uci';
 'require poll';
 'require ui';
 'require familywarden.ui as fwui';
@@ -16,6 +15,22 @@ var callDevices = rpc.declare({
 	method: 'devices',
 	expect: { '': {} }
 });
+
+var callProfiles = rpc.declare({
+	object: 'familywarden',
+	method: 'profiles',
+	expect: { '': {} }
+});
+
+var profileDirectory = [];
+
+function loadProfiles() {
+	return callProfiles().then(function(reply) {
+		if (reply.error || !Array.isArray(reply.profiles))
+			throw new Error(reply.error || _('Could not load profiles from FamilyWarden.'));
+		return reply.profiles;
+	});
+}
 
 var callApprove = rpc.declare({
 	object: 'familywarden',
@@ -61,7 +76,8 @@ function fingerprint(fp, large) {
 }
 
 function profileName(id) {
-	return uci.get('familywarden', id, 'name') || id || '?';
+	var profile = profileDirectory.find(function(p) { return p.id === id; });
+	return profile ? profile.name || id : id || '?';
 }
 
 function notify(res, ok) {
@@ -77,18 +93,18 @@ function consequences(lines) {
 
 return view.extend({
 	load: function() {
-		return Promise.all([ callDevices(), uci.load('familywarden') ]);
+		return Promise.all([ callDevices(), loadProfiles() ]);
 	},
 
 	// Approve (pending) or edit (approved) modal
 	showDeviceModal: function(dev, approve) {
 		var self = this;
-		var profiles = uci.sections('familywarden', 'profile');
+		var profiles = profileDirectory;
 		var nameInput = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'maxlength': 64,
 			'value': approve ? '' : (dev.name || ''), 'placeholder': approve ? (dev.name || '') : '' });
 		var profileSelect = E('select', { 'class': 'cbi-input-select' }, profiles.map(function(p) {
-			return E('option', { 'value': p['.name'], 'selected': p['.name'] === dev.profile ? '' : null },
-				p.name || p['.name']);
+			return E('option', { 'value': p.id, 'selected': p.id === dev.profile ? '' : null },
+				p.name || p.id);
 		}));
 		var adminInput = E('input', { 'type': 'checkbox', 'checked': dev.administrator === '1' ? '' : null });
 		// Parent scope: never the phone's own profile, so the list follows the profile select.
@@ -96,15 +112,15 @@ return view.extend({
 		var approvesBox = E('div', { 'class': 'fw-approves', 'role': 'group', 'aria-label': _('May approve requests for') });
 		function renderScope() {
 			approvesBox.replaceChildren.apply(approvesBox, profiles.filter(function(p) {
-				return p['.name'] !== profileSelect.value;
+				return p.id !== profileSelect.value;
 			}).map(function(p) {
 				return E('label', { 'class': 'fw-day' }, [
-					E('input', { 'type': 'checkbox', 'value': p['.name'], 'checked': scope.indexOf(p['.name']) >= 0 ? '' : null,
+					E('input', { 'type': 'checkbox', 'value': p.id, 'checked': scope.indexOf(p.id) >= 0 ? '' : null,
 						'change': function(ev) {
-							scope = scope.filter(function(s) { return s !== p['.name']; });
-							if (ev.currentTarget.checked) scope.push(p['.name']);
+							scope = scope.filter(function(s) { return s !== p.id; });
+							if (ev.currentTarget.checked) scope.push(p.id);
 						} }),
-					p.name || p['.name']
+					p.name || p.id
 				]);
 			}));
 		}
@@ -277,7 +293,8 @@ return view.extend({
 
 	refresh: function() {
 		var self = this;
-		return Promise.all([ callDevices(), uci.load('familywarden') ]).then(function(data) {
+		return Promise.all([ callDevices(), loadProfiles() ]).then(function(data) {
+			profileDirectory = data[1];
 			var node = document.getElementById('fw-devices');
 			if (node)
 				node.replaceWith(self.renderBody(data[0] || {}));
@@ -302,6 +319,7 @@ return view.extend({
 
 	render: function(data) {
 		var self = this;
+		profileDirectory = data[1];
 		fwui.loadStyles('overview');
 		fwui.loadStyles('pages');
 		poll.add(function() { return self.refresh(); }, 5);

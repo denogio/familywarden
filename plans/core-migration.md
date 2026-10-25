@@ -171,6 +171,23 @@ write, shorter extension overwriting a longer one, early bonus write). The fixed
 passes 409 integration checks. This is platform-side serialization, **not** yet one
 core-owned transaction across phone identity, profiles and pacts.
 
+### Core-backed profile directory (core 0.9.0 / backend rc7 / LuCI 0.10.0)
+
+The read-only `profiles` administrator method returns sorted `{id, name}` entries for
+all profiles, including disabled ones. It does not expose app configuration or enrollment
+keys. The Phones page now obtains both selector/scope options and display names through
+that API; it no longer loads or reads the FamilyWarden UCI package. Directory errors
+reject the load rather than pretending the registry is empty. This makes the reader
+ready for a later authority switch without introducing another stored profile list.
+The directory still reads the current adapter context; **no profile store cutover yet**.
+
+Go vet/race suites and 412 integration checks pass, including stable ordering,
+empty-directory/error shape, disabled profiles and data minimization. Package checks
+exercise the real rpcd bridge; a browser test supplies a core-only profile absent from
+UCI and verifies labels/options and zero direct FamilyWarden UCI reads. The full package/
+browser pipeline is running on an immutable snapshot at this checkpoint. These versions
+are development packages, not production installs.
+
 ### Authoritative configuration cutover: traced callers and required transaction
 
 Do not import only the Profiles form and leave competing UCI consumers behind:
@@ -180,7 +197,7 @@ Do not import only the Profiles form and leave competing UCI consumers behind:
 | `profiles.js` | Replace CBI profile, schedule, app/downtime and delete-cascade writes with the core API/shared UI |
 | `settings.js` | Move enable/default policy, captain/delay, DNS domain/AGH URL writes and profile selectors together |
 | `overview.js` | Replace the UCI profile/device enumeration used to distinguish unassigned MACs |
-| `devices.js` | Replace UCI profile selectors (including disabled profiles) with the core registry |
+| `devices.js` | **Read path moved:** labels/selectors (including disabled profiles) use the core `profiles` directory |
 | `cli_dns_sync` | Replace lazy `dns_client_id` UCI writes with a core-owned allocation; preserve existing IDs exactly |
 | `profile_fragment` / `ulysses_sync` | Project one core-owned effective snapshot; no socket call back into a service waiting for this adapter |
 | `pact`, `pact.snap`, `pact.dns`, `release` | Import one consistent active pact, frozen policy/DNS and release deadline, not just current UCI |
