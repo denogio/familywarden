@@ -61,6 +61,18 @@ Follow-up the same day: Approve in LuCI failed with "malformed request" because 
 installed after a fresh backup; its postinst did not restart the daemon, so 0.4.0 kept
 running until a manual restart. 0.5.0-r2 restarts it on upgrade. Measured RSS 7.2 MB.
 
+Later the same day, explicitly authorized: upgraded the administrator's Pixel first to
+release-signed 0.11.0-rc4 (code 120, same certificate), then the router to shell
+0.11.0_rc4-r1 / core 0.6.0-r1 / LuCI 0.9.0-r1. The upgraded postinst restarted core
+successfully; status confirms running 0.6.0-r1. Private backup:
+`~/Backups/familywarden/rivendell-20261025-142446/config.tar.gz`. No active pact;
+configuration checksum unchanged, firewall chains present, AdGuard Home sync without
+error or pending changes. The phone acknowledged its new app revision without error,
+advertises `shared-v1`, and today's usage file updated after deployment. USB disconnected
+during final checks; final sync/ack and report receipt were verified from the router.
+New-app suspension remains disabled on the existing profile; no rules were changed.
+Observed core RSS 11.2 MiB; overlay 31.7 MB free.
+
 ## Step 2 foundation (2026-10-24)
 
 `familywarden` 0.11.0_rc2 / `familywarden-core` 0.3.0 adds the Go-owned LAN
