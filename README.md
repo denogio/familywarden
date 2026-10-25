@@ -15,18 +15,36 @@ phone at home and away, and optionally enforces Ulysses on hotspot and tethering
 only gets a policy after an administrator approves it in LuCI by comparing its fingerprint.
 English and Danish. Status and open items: [plans/android-implementation.md](plans/android-implementation.md).
 
+In development (not released yet): screen time and app limits in the style of Google
+Family Link, and **extra-time requests** — a child asks for more minutes, a parent approves
+or declines on their own phone (no Device Owner needed), and the approved minutes expire
+two hours after approval without changing the standing rules.
+
 <p>
-<img src="docs/screenshots/overview-dark.png" width="200" alt="Overview in dark mode: DNS setup pending and hotspot locked by a pact">
-<img src="docs/screenshots/awaiting-approval.png" width="200" alt="Waiting for the administrator's approval, showing the phone's key fingerprint">
-<img src="docs/screenshots/dns-not-applied.png" width="200" alt="Android refused the DNS resolver; the app says so instead of claiming protection">
-<img src="docs/screenshots/ulysses.png" width="200" alt="Ulysses: hotspot locked by an ongoing pact">
+<img src="docs/screenshots/app-today.png" width="200" alt="Child's Today screen: 38 minutes of screen time left, per-app limits and always-allowed apps">
+<img src="docs/screenshots/app-parent-requests.png" width="200" alt="Parent phone: pending extra-time requests from Alex and Sam with Approve and Decline">
+<img src="docs/screenshots/app-extra-time.png" width="200" alt="Child's Today screen after approval: about 20 extra minutes left for Video">
+<img src="docs/screenshots/app-times-up-dark.png" width="200" alt="Time's up for today in dark mode; calls, emergency calls and the alarm clock still work">
 </p>
 
-### Children's Google accounts (planned app control)
+### LuCI (router web interface)
 
-The planned setup uses a separate, ordinary (non-Family-Link-supervised) Google account
-for each child, with FamilyWarden providing app limits and usage reporting. These
-app-control features are **not implemented yet**; see [the plan](plans/app-control.md).
+<p>
+<img src="docs/screenshots/luci-overview-light.png" width="820" alt="LuCI overview: Alex blocked outside allowed hours, Sam on a 45-minute internet ticket, Jordan as Ulysses captain">
+</p>
+<p>
+<img src="docs/screenshots/luci-profile-apps.png" width="405" alt="Profile editor: daily screen time for weekdays and weekends, always-allowed apps and allowed internet windows">
+<img src="docs/screenshots/luci-phones.png" width="405" alt="Phones page: a new phone waiting for fingerprint approval above the approved phones">
+</p>
+
+Screenshots use a fictional family and are regenerated with
+`scripts/capture-readme-screenshots.sh` (throwaway containers and emulator only).
+
+### Children's Google accounts (app control)
+
+The intended setup uses a separate, ordinary (non-Family-Link-supervised) Google account
+for each child, with FamilyWarden providing app limits and usage reporting. App control is
+**in development and not released**; see [the plan](plans/app-control.md).
 
 **Google account warning:** Using an unsupervised account for a child below Google's
 applicable minimum age may violate Google's account rules and could result in account
