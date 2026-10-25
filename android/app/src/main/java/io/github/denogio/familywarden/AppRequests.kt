@@ -20,6 +20,9 @@ data class ChildRequest(val id: String, val target: String, val minutes: Int, va
     val expires: Long, val granted: Int? = null, val notAfter: Long? = null,
     val answeredBy: String? = null)
 
+/** A paused new app waiting for a parent in this phone's scope (display; router rechecks). */
+data class NewAppRequest(val profile: ProfileRef, val pkg: String, val label: String, val seen: Long)
+
 data class ParentRequest(val id: String, val hash: String, val profile: ProfileRef, val target: String,
     val minutes: Int, val received: Long, val expires: Long, val label: String = "", val note: String = "")
 
@@ -30,11 +33,11 @@ data class UploadReply(val state: String?, val error: String?, val granted: Int?
 /** Kept byte-for-byte across retries, including the original creation timestamp and request id. */
 data class RequestUpload(val op: String, val raw: String, val routerKey: String, val device: String) {
     init {
-        require(op in setOf("request", "decision", "usage"))
+        require(op in setOf("request", "decision", "usage", "app"))
         require(raw.toByteArray(Charsets.UTF_8).size < 16 * 1024 - 101)
         val o = JSONObject(raw)
-        require(o.getString("type") == op && o.getString("device") == device)
-        if (op != "usage") require(o.getString("request_id").matches(RequestProtocol.requestId))
+        require(o.getString("type") == (if (op == "app") "app_decision" else op) && o.getString("device") == device)
+        if (op == "request" || op == "decision") require(o.getString("request_id").matches(RequestProtocol.requestId))
         Usign.parsePublicKey(routerKey)
     }
     fun encode(): String = JSONObject().put("op", op).put("raw", raw)
@@ -61,7 +64,7 @@ object RequestProtocol {
     private val states = setOf("pending", "approved", "denied", "expired")
     private val errors = setOf("malformed", "wrong_profile", "unknown_package", "invalid_minutes", "request_expired",
         "decision_expired", "app_control_off", "pact_forbids", "not_parent", "not_enrolled", "unknown_request",
-        "replay", "request_open", "unavailable", "already_answered", "usage_regressed", "day_out_of_range", "unknown_grant")
+        "replay", "request_open", "unavailable", "already_answered", "usage_regressed", "day_out_of_range", "unknown_grant", "unknown_app")
 
     private fun string(o: JSONObject, key: String): String = (o.get(key) as? String)
         ?: throw IllegalArgumentException("invalid $key")
@@ -131,6 +134,23 @@ object RequestProtocol {
         return o.toString()
     }
 
+    fun newApps(arr: JSONArray, scope: List<ProfileRef>): List<NewAppRequest> {
+        require(arr.length() <= 64) { "too many new apps" }
+        return (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            val profile = string(o, "profile_id")
+            require(scope.any { it.id == profile }) { "new app outside parent scope" }
+            NewAppRequest(ProfileRef(profile, text(o, "profile_name", 128).also { require(it.isNotBlank()) }),
+                string(o, "package").also { require(validPackage(it)) }, text(o, "label", 64), epoch(o, "seen"))
+        }.also { require(it.map { a -> a.profile.id to a.pkg }.toSet().size == it.size) { "duplicate new app" } }
+    }
+
+    fun appDecision(app: NewAppRequest, device: String, approve: Boolean, created: Long): String {
+        require(device.matches(this.device) && created in 1..MAX_EPOCH)
+        return JSONObject().put("type", "app_decision").put("v", 1).put("device", device).put("profile", app.profile.id)
+            .put("package", app.pkg).put("action", if (approve) "approve" else "deny").put("created", created).toString()
+    }
+
     fun decision(request: ParentRequest, device: String, approve: Boolean, minutes: Int, created: Long): String {
         require(device.matches(this.device) && created in 1..MAX_EPOCH)
         require(if (approve) minutes in 1..request.minutes else minutes == 0)
@@ -158,6 +178,12 @@ object RequestProtocol {
         require(string(o, "message_sha256") == digest(upload.raw.toByteArray(Charsets.UTF_8))) { "reply mismatch" }
         if (o.has("error")) return UploadReply(null, string(o, "error").also { require(it in errors) })
         if (upload.op == "usage") return UploadReply(string(o, "state").also { require(it in setOf("stored", "unchanged")) }, null)
+        if (upload.op == "app") {
+            val sent = JSONObject(upload.raw)
+            require(string(o, "profile") == sent.getString("profile") && string(o, "package") == sent.getString("package"))
+            val want = mapOf("approve" to "approved", "deny" to "denied", "revoke" to "revoked")[sent.getString("action")]
+            return UploadReply(string(o, "state").also { require(it == want) }, null)
+        }
         require(id(o) == JSONObject(upload.raw).getString("request_id"))
         val state = string(o, "state").also { require(it in states) }
         if (upload.op == "decision") {

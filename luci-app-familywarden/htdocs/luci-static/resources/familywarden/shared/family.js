@@ -13,7 +13,9 @@ const STRINGS = {
     used: '{used} of {granted} min used', delivered: 'delivered to the phone', notDelivered: 'not confirmed by the phone yet',
     today: 'Today', week: 'Last 7 days', noUsage: 'No usage reported today.', incomplete: 'incomplete', min: '{n} min',
     phones: 'Phones', apps: 'Apps', error: 'Could not reach the FamilyWarden core: {error}', failed: 'The router refused: {error}',
-    updated: 'Updated {time}'
+    updated: 'Updated {time}',
+    newApps: 'New apps waiting', noNewApps: 'No new apps waiting.', allow: 'Allow', keepPaused: 'Keep paused',
+    allowedApps: 'Allowed here', remove: 'Remove', allowedBy: 'allowed by {by}', frozen: 'Frozen by a pact: apps can only be removed.'
   },
   da: {
     title: 'Anmodninger og skærmtid', intro: 'Besvar anmodninger om ekstra tid, og se hvad hvert barn har brugt i dag. Telefonerne rapporterer forbrug, når de synkroniserer; det er information, ikke håndhævelse.',
@@ -24,7 +26,9 @@ const STRINGS = {
     used: '{used} af {granted} min. brugt', delivered: 'modtaget af telefonen', notDelivered: 'endnu ikke bekræftet af telefonen',
     today: 'I dag', week: 'Seneste 7 dage', noUsage: 'Intet forbrug rapporteret i dag.', incomplete: 'ufuldstændig', min: '{n} min.',
     phones: 'Telefoner', apps: 'Apps', error: 'Kunne ikke nå FamilyWarden-kernen: {error}', failed: 'Routeren afviste: {error}',
-    updated: 'Opdateret {time}'
+    updated: 'Opdateret {time}',
+    newApps: 'Nye apps venter', noNewApps: 'Ingen nye apps venter.', allow: 'Tillad', keepPaused: 'Behold på pause',
+    allowedApps: 'Tilladt her', remove: 'Fjern', allowedBy: 'tilladt af {by}', frozen: 'Låst af en pagt: apps kan kun fjernes.'
   }
 };
 
@@ -37,7 +41,7 @@ export function strings(lang) {
 const minutes = (seconds) => Math.floor((Number(seconds) || 0) / 60);
 
 // Pure view model: what the page shows, from the core's `requests` and `usage` replies.
-export function viewModel(requests, usage, nowEpoch) {
+export function viewModel(requests, usage, nowEpoch, newApps) {
   const list = Array.isArray(requests?.requests) ? requests.requests : [];
   const pending = list.filter((r) => r.state === 'pending' && r.expires > nowEpoch)
     .map((r) => ({ id: r.request_id, profile: r.profile_name || r.profile, target: r.target, label: r.label || '',
@@ -53,7 +57,12 @@ export function viewModel(requests, usage, nowEpoch) {
     apps: (p.apps || []).map((a) => ({ name: a.label || a.package, total: minutes(a.seconds) })),
     week: (p.week || []).map((d) => ({ day: d.day, total: minutes(d.total) }))
   }));
-  return { pending, recent, profiles, day: usage?.day || '' };
+  const apps = (Array.isArray(newApps?.profiles) ? newApps.profiles : []).map((p) => ({
+    id: p.id, name: p.name || p.id, frozen: !!p.frozen,
+    pending: (p.pending || []).map((a) => ({ pkg: a.package, label: a.label || a.package })),
+    approved: (p.approved || []).map((a) => ({ pkg: a.package, label: a.label || a.package, by: a.by || '' }))
+  })).filter((p) => p.pending.length || p.approved.length);
+  return { pending, recent, profiles, apps, day: usage?.day || '' };
 }
 
 const CSS = `
@@ -90,6 +99,28 @@ export function mount(root, { call, lang, now = () => Math.floor(Date.now() / 10
   root.replaceChildren(style, el('h2', {}, t('title')), el('p', { class: 'fwx-intro' }, t('intro')), status, body);
   let busy = false;
   let timer = null;
+
+  async function decideApp(profile, pkg, action) {
+    busy = true;
+    try {
+      const reply = await call('app_decision', { profile, package: pkg, action });
+      if (reply?.error) status.textContent = t('failed', { error: reply.error });
+    } catch (e) { status.textContent = t('error', { error: e?.message || e }); }
+    busy = false;
+    refresh();
+  }
+
+  function appsCard(p) {
+    return el('div', { class: 'fwx-card' }, el('strong', {}, p.name),
+      p.frozen ? el('div', { class: 'fwx-muted' }, t('frozen')) : null,
+      p.pending.map((a) => el('div', { class: 'fwx-row' }, el('span', {}, a.label),
+        el('span', { class: 'fwx-actions' },
+          p.frozen ? null : el('button', { class: 'cbi-button cbi-button-positive', onclick: () => decideApp(p.id, a.pkg, 'approve') }, t('allow')),
+          el('button', { class: 'cbi-button', onclick: () => decideApp(p.id, a.pkg, 'deny') }, t('keepPaused'))))),
+      p.approved.length ? el('div', { class: 'fwx-muted' }, t('allowedApps')) : null,
+      p.approved.map((a) => el('div', { class: 'fwx-row' }, el('span', {}, `${a.label} · ${t('allowedBy', { by: a.by })}`),
+        el('button', { class: 'cbi-button cbi-button-negative', onclick: () => decideApp(p.id, a.pkg, 'revoke') }, t('remove')))));
+  }
 
   async function answer(r, approve, input) {
     const value = approve ? Number(input.value) : 0;
@@ -138,11 +169,12 @@ export function mount(root, { call, lang, now = () => Math.floor(Date.now() / 10
     if (busy) return;
     clearTimeout(timer);
     try {
-      const [requests, usage] = await Promise.all([call('requests', {}), call('usage', {})]);
-      if (requests?.error || usage?.error) throw new Error(requests?.error || usage?.error);
-      const vm = viewModel(requests, usage, now());
+      const [requests, usage, newApps] = await Promise.all([call('requests', {}), call('usage', {}), call('new_apps', {})]);
+      if (requests?.error || usage?.error || newApps?.error) throw new Error(requests?.error || usage?.error || newApps?.error);
+      const vm = viewModel(requests, usage, now(), newApps);
       body.replaceChildren(
         el('h3', {}, t('pending')), vm.pending.length ? el('div', { class: 'fwx-grid' }, vm.pending.map(pendingCard)) : el('p', { class: 'fwx-muted' }, t('none')),
+        el('h3', {}, t('newApps')), vm.apps.length ? el('div', { class: 'fwx-grid' }, vm.apps.map(appsCard)) : el('p', { class: 'fwx-muted' }, t('noNewApps')),
         el('h3', {}, `${t('today')} · ${vm.day}`), el('div', { class: 'fwx-grid' }, vm.profiles.map(usageCard)),
         el('h3', {}, t('recent')), vm.recent.length ? el('div', { class: 'fwx-card' }, vm.recent.map(recentRow)) : el('p', { class: 'fwx-muted' }, t('noRecent')));
       status.textContent = t('updated', { time: time(now()) });

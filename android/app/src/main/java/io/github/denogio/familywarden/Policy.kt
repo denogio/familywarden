@@ -34,6 +34,7 @@ data class MastState(
     val parents: List<ParentKey> = emptyList(),
     val request: ChildRequest? = null,
     val requests: List<ParentRequest> = emptyList(),
+    val newApps: List<NewAppRequest> = emptyList(),
     val familyUsage: List<FamilyUsage> = emptyList(),
     /** v3: today's usage of this profile's OTHER phones (shared budget, D4). */
     val shared: SharedUsage? = null,

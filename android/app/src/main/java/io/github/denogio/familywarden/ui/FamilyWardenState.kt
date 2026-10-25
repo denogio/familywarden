@@ -40,6 +40,9 @@ data class FamilyWardenState(
     val screenTime: ScreenTimeState? = null,
     val childRequest: ChildRequest? = null,
     val parentRequests: List<ParentRequest> = emptyList(),
+    val parentNewApps: List<NewAppRequest> = emptyList(),
+    /** This child phone's apps paused until a parent allows them (local labels). */
+    val waitingApps: List<String> = emptyList(),
     val familyUsage: List<FamilyUsage> = emptyList(),
     val requestTargets: List<RequestTarget> = emptyList(),
     val uploadPending: Boolean = false,
@@ -109,6 +112,7 @@ class FamilyWardenActions(
     val openUsageAccess: () -> Unit,
     val askTime: (String, Int) -> Unit = { _, _ -> },
     val answerTime: (ParentRequest, Boolean, Int) -> Unit = { _, _, _ -> },
+    val decideApp: (NewAppRequest, Boolean) -> Unit = { _, _ -> },
     val retryUpload: () -> Unit = {},
     val forgetUpload: () -> Unit = {},
     val chooseParentMode: () -> Unit = {},

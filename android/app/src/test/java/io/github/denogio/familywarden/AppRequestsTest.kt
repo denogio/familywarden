@@ -116,4 +116,24 @@ class AppRequestsTest {
         rejected { RequestProtocol.child(JSONObject(o.toString()).put("granted", 31)) }
         rejected { RequestProtocol.child(JSONObject(o.toString()).put("state", "unlimited")) }
     }
+
+    @Test fun newAppDecisionsAreScopedSignedAndBoundToTheirReply() {
+        val alex = ProfileRef("alex", "Alex")
+        fun entry(profile: String = "alex") = JSONObject().put("profile_id", profile).put("profile_name", "Alex")
+            .put("package", "com.example.draw").put("label", "Draw").put("seen", now)
+        val app = RequestProtocol.newApps(JSONArray().put(entry()), listOf(alex)).single()
+        assertEquals("Draw", app.label)
+        rejected { RequestProtocol.newApps(JSONArray().put(entry("sam")), listOf(alex)) }
+        rejected { RequestProtocol.newApps(JSONArray().put(entry()).put(entry()), listOf(alex)) }
+        rejected { RequestProtocol.newApps(JSONArray().put(entry().put("package", "../x")), listOf(alex)) }
+        val raw = RequestProtocol.appDecision(app, "fw-parent", true, now)
+        val u = RequestUpload("app", raw, router.publicKey, "fw-parent")
+        val ok = JSONObject().put("v", 1).put("type", "app_reply").put("device", "fw-parent").put("server_time", now)
+            .put("message_sha256", RequestProtocol.digest(raw.toByteArray())).put("profile", "alex")
+            .put("package", "com.example.draw").put("state", "approved")
+        assertEquals("approved", RequestProtocol.verifyReply(signed(ok), u, now).state)
+        rejected { RequestProtocol.verifyReply(signed(JSONObject(ok.toString()).put("state", "denied")), u, now) }
+        rejected { RequestProtocol.verifyReply(signed(JSONObject(ok.toString()).put("package", "com.example.other")), u, now) }
+        assertEquals("unknown_app", RequestProtocol.verifyReply(signed(JSONObject(ok.toString()).put("error", "unknown_app")), u, now).error)
+    }
 }

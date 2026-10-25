@@ -221,6 +221,10 @@ class AppControlService : Service() {
                 enforcer.reconcile(policy, used, used[UsageCounter.TOTAL] ?: 0, ZonedDateTime.now(zone), reliable)
             }
             notify(today.toString(), AppControl.almostUsedUp(policy, used), result.newlyPaused)
+            // For the next usage report: apps waiting for a parent's approval (bounded, labelled).
+            val waiting = result.waitingApproval.sorted().take(32).joinToString("\n") { "$it\t${UsageUpload.label(label(it)) ?: ""}" }
+            val waitPrefs = getSharedPreferences("usage-upload", MODE_PRIVATE)
+            if (waitPrefs.getString("new_apps", null) != waiting) waitPrefs.edit().putString("new_apps", waiting).apply()
             val status = when {
                 result.failures.isNotEmpty() -> "suspend_failed"
                 sample == null -> "usage_unavailable"

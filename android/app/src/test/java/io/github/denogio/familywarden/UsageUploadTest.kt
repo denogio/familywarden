@@ -85,4 +85,14 @@ class UsageUploadTest {
         try { RequestProtocol.verifyReply((router.sign(wrongType) + "\n").toByteArray() + wrongType, upload, 1800000000); fail() }
         catch (_: Exception) { }
     }
+
+    @Test fun waitingAppsAreReportedOnlyWhenGivenAndBounded() {
+        assertFalse(report(emptyMap()).has("new_apps"))
+        val many = (0 until 40).associate { "com.example.n$it" to "N$it\u0000" } + ("bad pkg" to "X")
+        val o = JSONObject(UsageUpload.report("fw-alex", "alex", day, 7, emptyMap(), emptyMap(), emptyMap(), false, many))
+        val apps = o.getJSONObject("new_apps")
+        assertEquals(32, apps.length())
+        assertFalse(apps.has("bad pkg"))
+        assertEquals("N0", apps.getString("com.example.n0"))
+    }
 }

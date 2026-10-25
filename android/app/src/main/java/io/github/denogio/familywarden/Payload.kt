@@ -98,6 +98,8 @@ object Payload {
             requests = if (version == 3 && o.has("requests"))
                 RequestProtocol.parents(o.getJSONArray("requests"), binding?.approves ?: emptyList()) else emptyList(),
             shared = if (version == 3 && apps != null && o.has("shared")) SharedUsage.parse(o.getJSONObject("shared")) else null,
+            newApps = if (version == 3 && o.has("new_apps"))
+                RequestProtocol.newApps(o.getJSONArray("new_apps"), binding?.approves ?: emptyList()) else emptyList(),
             familyUsage = if (version == 3 && o.has("usage"))
                 UsageUpload.parse(o.getJSONArray("usage"), binding?.approves ?: emptyList()) else emptyList(),
         )

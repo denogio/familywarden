@@ -42,12 +42,8 @@ config profile alex
  option enabled 1
  option policy block
  option apps 1
- option apps_suspend_new 0
+ option apps_suspend_new 1
  list device aa:bb:cc:00:00:01
-config app fixture
- option profile alex
- option package io.github.denogio.familywarden.fixture
- option minutes 1
 config profile parent
  option name Taylor
  option enabled 0

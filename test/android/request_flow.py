@@ -193,6 +193,28 @@ try:
     assert call('device_approve', {'device': device_id, 'profile': 'alex', 'name': 'Alex phone', 'fingerprint': device['fingerprint']})['status'] == 'ok'
     sync()
     wait('one usage collector checkpoint exists', lambda: usage()['zone'] == 'UTC')
+    # New-app approval: the fixture is not approved yet, so it waits for a parent.
+    wait('an unapproved new app is paused', suspended, 60)
+    def reported_new():
+        sync()
+        alex = next((p for p in call('new_apps')['profiles'] if p['id'] == 'alex'), {})
+        return any(a['package'] == FIXTURE for a in alex.get('pending', []))
+    wait('the paused new app is reported to the router', reported_new, 150)
+    home()
+    tap('Requests')
+    wait('the child sees it waiting for a parent', lambda: bool(nodes('Waiting for a parent')))
+    assert call('app_decision', {'profile': 'alex', 'package': FIXTURE, 'action': 'approve'})['state'] == 'approved'
+    def unpaused():
+        sync()
+        return not suspended()
+    wait('the allowed app runs only after the signed policy arrives', unpaused, 60)
+    router("""uci add familywarden app >/dev/null
+uci set familywarden.@app[-1].profile=alex
+uci set familywarden.@app[-1].package=io.github.denogio.familywarden.fixture
+uci set familywarden.@app[-1].minutes=1
+uci commit familywarden
+familywarden reload >/dev/null""")
+    adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
     # Shared budget (D4): the tablet used the whole minute, so the app pauses here too.
     synthetic_phone()
     out = synthetic_upload('usage', {'type': 'usage', 'v': 1, 'device': 'fw-test-kid', 'profile': 'alex',
@@ -294,6 +316,16 @@ touch /tmp/drop-next-app-response
     sync()
     wait('parent receives the scoped request', lambda: bool(nodes('Approve')))
     wait('parent sees the child\'s screen time today', lambda: bool(nodes('Screen time today')))
+    out = synthetic_upload('usage', {'type': 'usage', 'v': 1, 'device': 'fw-test-kid', 'profile': 'alex',
+        'day': router('date +%F').strip(), 'seq': 2, 'total': 60, 'apps': {FIXTURE: 60},
+        'new_apps': {'com.example.draw': 'Draw'}})
+    assert '"state"' in out, out
+    sync()
+    wait('parent sees the new app', lambda: bool(nodes('Allow')))
+    ui('native-parent-new-app')
+    tap('Allow')
+    wait('non-owner parent allows a new app (signed)', lambda: any(a['package'] == 'com.example.draw'
+        for p in call('new_apps')['profiles'] if p['id'] == 'alex' for a in p['approved']))
     ui('native-parent-pending')
     tap('Approve')
     minutes(15)

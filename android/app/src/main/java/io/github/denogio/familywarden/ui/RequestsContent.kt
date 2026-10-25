@@ -47,6 +47,7 @@ fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions) {
             reply.error != null -> R.string.fw_request_action_rejected
             reply.state == "denied" -> R.string.fw_request_denial_sent
             reply.granted != null -> R.string.fw_request_approval_sent
+            reply.state == "approved" -> R.string.fw_app_allowed_sent
             else -> R.string.fw_request_sent
         }))
     } }
@@ -73,7 +74,20 @@ fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions) {
             if (u.devices.isEmpty()) Text(stringResource(R.string.fw_usage_none))
             if (u.devices.any { it.incomplete }) Text(stringResource(R.string.fw_usage_incomplete), style = MaterialTheme.typography.bodySmall)
         }
-        if (state.parentRequests.isEmpty()) SectionCard {
+        for (app in state.parentNewApps) SectionCard {
+            Overline(stringResource(R.string.fw_app_new_title))
+            Text(app.profile.name, style = MaterialTheme.typography.titleLarge)
+            Text(app.label.ifEmpty { app.pkg }, style = MaterialTheme.typography.titleMedium)
+            if (app.label.isNotEmpty()) Text(app.pkg, style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.fw_app_new_body))
+            Button(onClick = { actions.decideApp(app, true) }, enabled = ready, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.fw_app_allow))
+            }
+            OutlinedButton(onClick = { actions.decideApp(app, false) }, enabled = ready, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.fw_app_deny))
+            }
+        }
+        if (state.parentRequests.isEmpty() && state.parentNewApps.isEmpty()) SectionCard {
             Text(stringResource(R.string.fw_request_empty), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(R.string.fw_request_empty_body))
         }
@@ -100,6 +114,11 @@ fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions) {
         HeroCard {
             HeroTitle(stringResource(R.string.fw_request_ask))
             HeroBody(stringResource(if (state.bound) R.string.fw_request_pact else R.string.fw_request_intro))
+        }
+        if (state.waitingApps.isNotEmpty()) SectionCard {
+            Overline(stringResource(R.string.fw_app_waiting_title))
+            state.waitingApps.forEach { Text(it, style = MaterialTheme.typography.titleMedium) }
+            Text(stringResource(R.string.fw_app_waiting_body), style = MaterialTheme.typography.bodySmall)
         }
         state.childRequest?.let { r -> SectionCard {
             val expired = state.requestEpoch?.let { now -> now >= (r.notAfter ?: r.expires) } == true

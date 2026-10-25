@@ -17,6 +17,7 @@ private val parent = FamilyWardenState(epoch * 1000, owner = false, parentMode =
     requestEpoch = epoch, parentRequests = listOf(
         ParentRequest("request-alex-001", "a".repeat(64), alex, "com.example.video", 30, epoch - 300, epoch + 3300, "Video"),
         ParentRequest("request-sam-001", "b".repeat(64), sam, "com.example.game", 15, epoch - 120, epoch + 3480, "Game")),
+    parentNewApps = listOf(NewAppRequest(sam, "com.example.draw", "Draw", epoch - 600)),
     familyUsage = listOf(FamilyUsage(alex, "2027-01-15", 82 * 60, listOf(DeviceUsage("Alex's phone", 70 * 60, false),
         DeviceUsage("Alex's tablet", 12 * 60, false)), listOf(AppSeconds("com.example.video", "Video", 30 * 60),
         AppSeconds("com.example.game", "Game", 25 * 60)))))

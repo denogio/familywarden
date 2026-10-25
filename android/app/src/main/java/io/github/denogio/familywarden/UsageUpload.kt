@@ -41,7 +41,8 @@ object UsageUpload {
 
     /** Exact JSON for one day. [millis] is the checkpoint's day map (apps plus [UsageCounter.TOTAL]). */
     fun report(device: String, profile: String, day: String, seq: Long, millis: Map<String, Long>,
-        labels: Map<String, String>, grantMillis: Map<String, Long>, incomplete: Boolean): String {
+        labels: Map<String, String>, grantMillis: Map<String, Long>, incomplete: Boolean,
+        newApps: Map<String, String>? = null): String {
         require(seq >= 1 && LocalDate.parse(day).toString() == day)
         val apps = millis.filterKeys { it != UsageCounter.TOTAL && validPackage(it) }
             .mapValues { (_, ms) -> (ms / 1000).coerceIn(0L, MAX_DAY_SECONDS.toLong()).toInt() }
@@ -54,6 +55,11 @@ object UsageUpload {
                 apps.forEach { (pkg, _) -> label(labels[pkg])?.let { put(pkg, it) } }
             })
             .put("incomplete", incomplete)
+        newApps?.let { apps ->
+            o.put("new_apps", JSONObject().apply {
+                apps.filterKeys(::validPackage).entries.sortedBy { it.key }.take(32).forEach { (pkg, l) -> put(pkg, label(l) ?: "") }
+            })
+        }
         if (grantMillis.isNotEmpty()) o.put("grants_used", JSONObject().apply {
             grantMillis.entries.sortedBy { it.key }.take(32).forEach { (id, ms) ->
                 require(id.matches(Regex("[0-9a-f]{32}")))
@@ -62,6 +68,11 @@ object UsageUpload {
         })
         return o.toString()
     }
+
+    internal fun waitingApps(prefs: android.content.SharedPreferences): Map<String, String> =
+        prefs.getString("new_apps", "").orEmpty().lines().filter { it.isNotEmpty() }.associate {
+            it.substringBefore('\t') to it.substringAfter('\t', "")
+        }
 
     /** Untrusted display text from PackageManager: bounded, no control characters. */
     internal fun label(raw: String?): String? {
@@ -121,7 +132,8 @@ object UsageUpload {
         val scope = "$pin|${store.phoneKey.fingerprint}|${binding.deviceId}|${binding.profileId}"
         val pm = context.packageManager
         for (day in listOf(today.minusDays(1), today).map(LocalDate::toString)) {
-            val millis = checkpoint.counter.days[day] ?: continue
+            // Today is always reported (also at zero): it carries apps waiting for approval.
+            val millis = checkpoint.counter.days[day] ?: if (day == today.toString()) emptyMap() else continue
             val labels = millis.keys.filter { it != UsageCounter.TOTAL }.associateWith { pkg ->
                 runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }.getOrDefault("")
             }
@@ -129,7 +141,7 @@ object UsageUpload {
             val grants = if (day == today.toString())
                 checkpoint.grants.reported(scope, binding.deviceId, server - 12 * 3_600_000L) else emptyMap()
             val raw = report(binding.deviceId, binding.profileId, day, checkpoint.sequence, millis, labels, grants,
-                day <= checkpoint.uncertainThroughDay)
+                day <= checkpoint.uncertainThroughDay, if (day == today.toString()) waitingApps(prefs) else null)
             val result = runCatching {
                 AppRequestClient.post(host, RequestUpload("usage", raw, routerKey, binding.deviceId), store.phoneKey, state.serverTime)
             }

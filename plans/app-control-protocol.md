@@ -430,6 +430,26 @@ of the trusted offline policy). Verified: Go tests (own phone excluded, required
 fail-closed store error, LuCI upgrade status), 5 router checks, 2 JVM tests, and the
 emulator step "another phone's usage pauses the app before any local use".
 
+## 5b. New-app approval — implemented 2026-10-25
+
+With `apps_suspend_new`, a newly installed user app is paused (A12). The child's phone
+adds `"new_apps": {"<package>": "<label>"}` (≤32, labels ≤64 code points, untrusted
+display text) to **today's** usage report (§5), also when today's usage is zero. The
+core keeps per profile in `newapps.json`: `pending` (last reporter, refreshed at most
+hourly; an app the same phone stops reporting leaves the list; shown for 7 days),
+`approved` (≤256, who/when) and `dismissed`. Reports never resurrect dismissed apps.
+
+Decisions: administrator `ubus call familywarden app_decision
+'{"profile":"alex","package":"…","action":"approve|deny|revoke"}'` (`new_apps` lists
+them), or a parent phone in scope via signed `POST /cgi-bin/app?op=app`,
+`familywarden-app-v1\n` + `{"type":"app_decision","v":1,"device":…,"profile":…,
+"package":…,"action":…,"created":…}` (strict decoding, 1 h validity, reply type
+`app_reply` echoing profile/package/state). Only a reported app can be approved;
+`approve` is refused for a pact-bound captain (`pact_forbids`), `deny`/`revoke` only
+tighten. Approved packages are appended to the signed `apps.approved` list (never if
+blocked; no new capability needed) and change the app revision, so phones re-apply and
+acknowledge. Parent phones receive `new_apps[]` (scoped) in v3 sync.
+
 ## 6. Storage and retention (D6)
 
 - App activity: per profile, per day, per package seconds — **30 days**, then deleted.

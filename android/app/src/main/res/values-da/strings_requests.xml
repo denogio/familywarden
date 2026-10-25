@@ -49,4 +49,11 @@
     <string name="fw_usage_today_title">Skærmtid i dag</string>
     <string name="fw_usage_none">Ingen skærmtid rapporteret i dag endnu.</string>
     <string name="fw_usage_incomplete">Noget tid kan mangle: en telefon er genstartet eller kunne ikke læse brug i et stykke tid.</string>
+    <string name="fw_app_new_title">Ny app</string>
+    <string name="fw_app_new_body">Installeret og sat på pause, indtil du tillader den. Når du tillader den, kører den under de almindelige skærmtidsregler.</string>
+    <string name="fw_app_allow">Tillad</string>
+    <string name="fw_app_deny">Behold på pause</string>
+    <string name="fw_app_allowed_sent">Tilladt. Appen virker, når barnets telefon har anvendt politikken.</string>
+    <string name="fw_app_waiting_title">Venter på en forælder</string>
+    <string name="fw_app_waiting_body">Nye apps forbliver på pause, indtil en forælder tillader dem. Din forælder ser dem automatisk.</string>
 </resources>

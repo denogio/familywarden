@@ -43,6 +43,17 @@ object AppRequestClient {
         deliver(context, store, fresh, upload)
     }
 
+    fun decideApp(context: Context, app: NewAppRequest, approve: Boolean): UploadReply = synchronized(Mast) {
+        val store = Store(context)
+        check(store.pendingUpload == null) { "pending upload" }
+        val fresh = fresh(store)
+        check(fresh.state.newApps.any { it.profile.id == app.profile.id && it.pkg == app.pkg }) { "app no longer waiting" }
+        val raw = RequestProtocol.appDecision(app, store.deviceId, approve, fresh.state.serverTime)
+        val upload = RequestUpload("app", raw, requireNotNull(store.publicKey), store.deviceId)
+        store.pendingUpload = upload
+        deliver(context, store, fresh, upload)
+    }
+
     fun retry(context: Context): UploadReply = synchronized(Mast) {
         val store = Store(context)
         val upload = requireNotNull(store.pendingUpload)

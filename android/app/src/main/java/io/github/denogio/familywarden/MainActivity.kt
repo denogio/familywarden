@@ -81,6 +81,7 @@ class MainActivity : ComponentActivity() {
         },
         askTime = { target, minutes -> upload { AppRequestClient.request(this, target, minutes) } },
         answerTime = { request, approve, minutes -> upload { AppRequestClient.answer(this, request, approve, minutes) } },
+        decideApp = { app, approve -> upload { AppRequestClient.decideApp(this, app, approve) } },
         retryUpload = { upload { AppRequestClient.retry(this) } },
         forgetUpload = { AppRequestClient.forgetRetry(this); uploadReply = null; render() },
         chooseParentMode = {
@@ -267,7 +268,9 @@ class MainActivity : ComponentActivity() {
             networkId = getSystemService(ConnectivityManager::class.java).activeNetwork?.networkHandle,
             dialog = dialog,
             childRequest = state?.request, parentRequests = state?.requests.orEmpty(),
-            familyUsage = state?.familyUsage.orEmpty(),
+            familyUsage = state?.familyUsage.orEmpty(), parentNewApps = state?.newApps.orEmpty(),
+            waitingApps = if (state?.apps != null) UsageUpload.waitingApps(getSharedPreferences("usage-upload", MODE_PRIVATE))
+                .map { (pkg, label) -> label.ifEmpty { pkg } }.sorted() else emptyList(),
             uploadPending = store.hasPendingUpload, uploadReply = uploadReply,
             canRequestTotal = state?.apps?.let { it.screenMinutes.isNotEmpty() || it.downtime.isNotEmpty() } == true,
             requestEpoch = state?.let { store.policyClock(it)?.now(android.os.SystemClock.elapsedRealtime(),

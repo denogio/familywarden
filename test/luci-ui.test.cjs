@@ -68,7 +68,7 @@ test('family view model separates pending, recent and usage without inventing da
   assert.equal(vm.profiles[0].total, 82);
   assert.equal(vm.profiles[0].devices[0].incomplete, true);
   assert.equal(vm.profiles[0].apps[0].name, 'Video');
-  assert.deepEqual(viewModel({}, {}, now), { pending: [], recent: [], profiles: [], day: '' });
+  assert.deepEqual(viewModel({}, {}, now), { pending: [], recent: [], profiles: [], apps: [], day: '' });
 });
 
 test('family strings have complete English and Danish tables', async () => {
@@ -79,4 +79,16 @@ test('family strings have complete English and Danish tables', async () => {
   assert.equal(strings('da-DK')('approve'), 'Godkend');
   assert.equal(strings('fr')('approve'), 'Approve');
   assert.equal(strings('en')('range', { max: 30 }), 'Approve 1–30 minutes.');
+});
+
+test('family view model lists waiting and allowed new apps, hides empty profiles', async () => {
+  const { viewModel } = await familyModule();
+  const vm = viewModel({}, {}, 1800000000, { profiles: [
+    { id: 'alex', name: 'Alex', frozen: false, pending: [{ package: 'com.example.draw', label: 'Draw' }],
+      approved: [{ package: 'com.example.maps', label: '', by: "Jordan's phone" }] },
+    { id: 'sam', name: 'Sam', pending: [], approved: [] }] });
+  assert.deepEqual(vm.apps.map((p) => p.id), ['alex']);
+  assert.equal(vm.apps[0].pending[0].label, 'Draw');
+  assert.equal(vm.apps[0].approved[0].label, 'com.example.maps');
+  assert.deepEqual(viewModel({}, {}, 1, undefined).apps, []);
 });

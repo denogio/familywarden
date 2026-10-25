@@ -75,7 +75,9 @@ class AppEnforcer(private val context: Context) {
     private val prefs = context.getSharedPreferences("app-enforcement", Context.MODE_PRIVATE)
 
     /** [failures]: could not (un)pause. [newlyPaused]: paused by this call, with the reason. */
-    data class Result(val failures: Set<String>, val newlyPaused: Map<String, AppAction>)
+    /** [waitingApproval]: user apps paused only because they are not approved yet. */
+    data class Result(val failures: Set<String>, val newlyPaused: Map<String, AppAction>,
+        val waitingApproval: Set<String> = emptySet())
 
     /** Serialized: the service tick and lifting on policy removal must not interleave. */
     fun reconcile(policy: LocalAppPolicy, used: Map<String, Long>, totalUsedMillis: Long, now: ZonedDateTime,
@@ -90,6 +92,7 @@ class AppEnforcer(private val context: Context) {
         val safe = essentialPackages()
         val failures = mutableSetOf<String>()
         val paused = mutableMapOf<String, AppAction>()
+        val waiting = mutableSetOf<String>()
         // Downtime and the daily limit concern every app, so look at all of them.
         for (info in pm.getInstalledApplications(0)) {
             val pkg = info.packageName
@@ -100,6 +103,7 @@ class AppEnforcer(private val context: Context) {
             // Unknown usage must not leave a former grant unpaused indefinitely.
             if (action == AppAction.HOLD && pkg in granted) action = AppAction.GRANT_UNAVAILABLE
             if (action == AppAction.HOLD) continue
+            if (action == AppAction.NOT_APPROVED) waiting.add(pkg)
             if (action == AppAction.GRANT && granted.add(pkg)) saveGranted()
             if (action == AppAction.ALLOW && granted.remove(pkg)) saveGranted()
             val block = action.block
@@ -120,7 +124,7 @@ class AppEnforcer(private val context: Context) {
             check(prefs.edit().putStringSet("suspended", owned.toSet()).commit()) { "suspension persistence failed" }
             if (!failed && block && granted.remove(pkg)) saveGranted()
         }
-        Result(failures, paused)
+        Result(failures, paused, waiting)
     }
 
     /**

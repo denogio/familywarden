@@ -7,6 +7,9 @@
 var methods = {
 	requests: rpc.declare({ object: 'familywarden', method: 'requests', expect: { '': {} } }),
 	usage: rpc.declare({ object: 'familywarden', method: 'usage', expect: { '': {} } }),
+	new_apps: rpc.declare({ object: 'familywarden', method: 'new_apps', expect: { '': {} } }),
+	app_decision: rpc.declare({ object: 'familywarden', method: 'app_decision',
+		params: [ 'profile', 'package', 'action' ], expect: { '': {} } }),
 	request_answer: rpc.declare({ object: 'familywarden', method: 'request_answer',
 		params: [ 'request_id', 'approve', 'minutes' ], expect: { '': {} } })
 };
@@ -23,9 +26,9 @@ return view.extend({
 			call: function(method, params) {
 				var fn = methods[method];
 				if (!fn) return Promise.reject(new Error('unknown method ' + method));
-				return method === 'request_answer'
-					? fn(params.request_id, params.approve, params.minutes)
-					: fn();
+				if (method === 'request_answer') return fn(params.request_id, params.approve, params.minutes);
+				if (method === 'app_decision') return fn(params.profile, params.package, params.action);
+				return fn();
 			}
 		});
 		return root;

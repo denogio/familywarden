@@ -412,7 +412,8 @@ pending. Details and deliberate design deviations: `docs/design/family-views/UI-
       (2026-10-25: Requests page = first shared administrator UI module (A20): answer
       requests, see today per phone/app, 7-day totals, reported grant use. Parent Android
       shows "Screen time today" per scoped child.)
-- [ ] Include new-app approval, essential-app warnings and removal/revocation workflows.
+- [x] Include new-app approval (2026-10-25, protocol §5b; LuCI Requests page and parent phone).
+- [ ] Essential-app warnings and removal/revocation workflows.
 - [ ] Add all English/Danish Android strings/plurals, accessibility labels, large-text,
       dark/light themes and sanitized previews/screenshots.
 - [ ] Add mapper/unit tests and focused Playwright coverage for actual backend responses.
