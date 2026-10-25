@@ -24,10 +24,13 @@ claim that the complete role design or P10 has shipped.
   invent a discretionary pool or categories.
 - Pairing, fingerprint approval, address repair, signed removal checks, diagnostics,
   DNS tests and the Ulysses sail flow remain in the existing components.
-- Complete EN/DA resources and plural resources. At 150%+ text, bottom navigation
-  uses native horizontally scrollable tabs so long translated labels retain their
-  full text. The large-text home header says Today rather than breaking the brand
-  name across lines. Body content scrolls vertically.
+- Complete EN/DA resources and plural resources. **User-approved navigation change
+  (2026-10-25):** bottom navigation uses icons only at every font scale. Each icon
+  retains its localized accessible name, native selected state/indicator and touch
+  target; the visible top heading identifies the selected page. App-controlled
+  Today always says Today rather than the brand name. Setup retains the brand.
+  This supersedes the export's labeled tabs and the former large-text scrollable
+  tab fallback. Body content still scrolls vertically.
 
 ## Data and authority
 
@@ -58,9 +61,12 @@ only Requests and Settings. Local mode never grants authority: the router rechec
 ## Explicitly deferred
 
 - Off-home parent notifications (P9); LAN-only notifications exist while syncing.
-- Child switching, parent controls (rules, lock now) and usage views on the parent phone.
+- Child switching and full parent controls (rules, lock now). Parent usage summaries
+  and new-app approvals already exist on the Requests page; the design's separate
+  Screen time / Controls layout is not yet implemented.
 - Adult categories and daily discretionary pool (P11).
-- Shared child budgets, authenticated usage upload and domain history.
+- Bounded shared-budget allocations and domain history. Authenticated usage uploads
+  and shared usage offsets exist; cached offsets do not bound offline overspend.
 - Lock now, Tonight and School time.
 
 No disabled placeholder for an unsupported action is presented as usable. Existing
@@ -77,6 +83,10 @@ boundary is router-local midnight, not the export's proposed 04:00/delivery assu
   **debug-only PreviewActivity** and fictional fixtures on Android 15. Covers light,
   dark, near limit, time's-up, downtime, unavailable usage, adult pact, History/Settings
   navigation and Danish at 200% text with vertical scrolling.
+- Icon-only navigation checks use UIAutomator on the debug previews: no visible
+  navigation text, localized accessible names, selected state, touch targets of at
+  least 48 dp and a visible page heading. Child, adult and parent navigation are
+  covered in EN and Danish at 200% text, with light/dark fixtures.
 - The focused render check is not a new end-to-end enforcement test. The previous
   signed-policy P7b emulator run passed; it was not repeated for every UI edit.
 - The initial Android 17 rendering attempt exceeded its 5 GiB container limit. A fresh

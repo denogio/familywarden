@@ -10,7 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -25,6 +24,7 @@ import io.github.denogio.familywarden.ui.components.*
 import io.github.denogio.familywarden.ui.theme.MastSpacing
 import io.github.denogio.familywarden.ui.theme.MonoLarge
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import java.time.Instant
 import java.time.ZoneId
@@ -57,7 +57,6 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
     }
     val page = pages.firstOrNull { it.name == selected } ?: pages.first()
     val readyForNavigation = (state.owner || state.parentMode) && state.paired
-    val largeText = LocalDensity.current.fontScale >= 1.5f
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -69,9 +68,9 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
                             Icon(painterResource(R.drawable.ic_lighthouse), null, tint = Color.Unspecified, modifier = Modifier.size(28.dp))
                             Spacer(Modifier.width(10.dp))
                         }
-                        Text(stringResource(if (largeText && state.screenTime != null && page == Page.Overview) R.string.fw_today
-                            else if (page == Page.Overview || !readyForNavigation) R.string.fw_name else page.title),
-                            style = MaterialTheme.typography.titleLarge)
+                        Text(stringResource(if (!readyForNavigation) R.string.fw_name
+                            else if (page == Page.Overview && state.screenTime != null) R.string.fw_today else page.title),
+                            style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
                     }
                     if (state.paired) IconButton(onClick = actions.sync, enabled = !state.syncing) {
                         if (state.syncing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -81,19 +80,13 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
             }
         },
         bottomBar = {
-            if (readyForNavigation && largeText) {
-                // Native scrollable tabs keep long localized labels intact at 200% text.
-                ScrollableTabRow(selectedTabIndex = pages.indexOf(page), edgePadding = 0.dp) {
-                    pages.forEach { p -> Tab(selected = p == page, onClick = { selected = p.name },
-                        icon = { Icon(p.icon, null) },
-                        text = { Text(stringResource(if (p == Page.Overview && state.screenTime != null) R.string.fw_today else p.title)) }) }
-                }
-            } else if (readyForNavigation) NavigationBar {
+            if (readyForNavigation) NavigationBar {
                 pages.forEach { p -> NavigationBarItem(
                     selected = p == page,
                     onClick = { selected = p.name },
-                    icon = { Icon(p.icon, null) },
-                    label = { Text(stringResource(if (p == Page.Overview && state.screenTime != null) R.string.fw_today else p.title)) },
+                    // Keep localized screen-reader names without visible labels, at every font scale.
+                    icon = { Icon(p.icon, stringResource(if (p == Page.Overview && state.screenTime != null)
+                        R.string.fw_today else p.title)) },
                 ) }
             }
         },

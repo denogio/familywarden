@@ -86,7 +86,7 @@ def tap(text, scroll=False, last=False):
     for _ in range(9 if scroll else 3):
         found = nodes(text)
         if found:
-            n = found[-1] if last else found[0]
+            n = found[-1] if last else next((n for n in found if n.get('clickable') == 'true'), found[0])
             x1, y1, x2, y2 = map(int, re.findall(r'\d+', n.get('bounds')))
             assert x2 > x1 and y2 > y1, (text, n.attrib)
             adb('shell', 'input', 'tap', str((x1+x2)//2), str((y1+y2)//2))

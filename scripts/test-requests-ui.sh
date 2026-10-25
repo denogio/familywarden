@@ -12,6 +12,7 @@ PKG=io.github.denogio.familywarden
 "${ADB[@]}" install -r "$ROOT/android/app/build/outputs/apk/debug/app-debug.apk" >/dev/null
 FONT=$("${ADB[@]}" shell settings get system font_scale | tr -d '\r')
 NIGHT=$("${ADB[@]}" shell cmd uimode night | tr -d '\r' | awk '{print $NF}')
+DENSITY=$("${ADB[@]}" shell wm density | tr -d '\r' | awk '/density:/{v=$NF} END{print v}')
 LOCALE=$("${ADB[@]}" shell cmd locale get-app-locales "$PKG" | tr -d '\r' | grep -o '\[.*\]' | tr -d '[]')
 cleanup() {
     "${ADB[@]}" shell settings put system font_scale "$FONT" >/dev/null
@@ -28,9 +29,14 @@ trap cleanup EXIT
 sleep 2
 capture() {
     sleep 2
-    "${ADB[@]}" shell rm -f /sdcard/fw-requests-ui.xml
-    "${ADB[@]}" shell uiautomator dump /sdcard/fw-requests-ui.xml >/dev/null
-    "${ADB[@]}" exec-out cat /sdcard/fw-requests-ui.xml > "$OUT/$1.xml"
+    # UiAutomator can return a null root while a preview is still starting: retry.
+    for _ in 1 2 3 4 5 6; do
+        "${ADB[@]}" shell rm -f /sdcard/fw-requests-ui.xml
+        "${ADB[@]}" shell uiautomator dump /sdcard/fw-requests-ui.xml >/dev/null 2>&1 || true
+        "${ADB[@]}" exec-out cat /sdcard/fw-requests-ui.xml > "$OUT/$1.xml" 2>/dev/null || true
+        grep -q '<hierarchy' "$OUT/$1.xml" && break
+        sleep 2
+    done
     "${ADB[@]}" exec-out screencap -p > "$OUT/$1.png"
 }
 render() {
@@ -42,25 +48,41 @@ contains() { grep -Fq "$2" "$OUT/$1.xml" || { echo "Missing '$2' in $1"; exit 1;
 tap() {
     read -r x y < <(python3 - "$OUT/$1.xml" "$2" <<'PY'
 import re,sys,xml.etree.ElementTree as E
-nodes=[n for n in E.parse(sys.argv[1]).iter('node') if n.get('text')==sys.argv[2]]
+nodes=[n for n in E.parse(sys.argv[1]).iter('node') if sys.argv[2] in (n.get('text'), n.get('content-desc'))]
 assert nodes,sys.argv[2]
-x1,y1,x2,y2=map(int,re.findall(r'\d+',nodes[0].get('bounds')))
+node=next((n for n in nodes if n.get('clickable')=='true'), nodes[0])
+x1,y1,x2,y2=map(int,re.findall(r'\d+',node.get('bounds')))
 print((x1+x2)//2,(y1+y2)//2)
 PY
 )
     "${ADB[@]}" shell input tap "$x" "$y"
 }
+check_nav() {
+    python3 "$ROOT/test/android/check_navigation.py" "$OUT/$1.xml" --selected "$2" --density "$DENSITY" --labels "${@:3}"
+}
+reveal() {
+    for _ in 1 2 3 4 5 6; do
+        capture "$1"
+        grep -Fq "text=\"$2\"" "$OUT/$1.xml" && return 0
+        "${ADB[@]}" shell input swipe 400 1500 400 700 350
+    done
+    contains "$1" "$2"
+}
 render ParentRequestsPreview parent-light
+check_nav parent-light Requests Requests Settings
 contains parent-light Alex
-contains parent-light Approve
-contains parent-light Decline
 if grep -Fq 'Set up device owner' "$OUT/parent-light.xml"; then echo 'Parent-only view requires Device Owner'; exit 1; fi
-tap parent-light Approve
+tap parent-light Settings
+capture parent-settings
+check_nav parent-settings Settings Requests Settings
+tap parent-settings Requests
+reveal parent-time-request Approve
+tap parent-time-request Approve
 capture parent-approve-dialog
 contains parent-approve-dialog 'Approve extra time'
 contains parent-approve-dialog 'Choose 1–30 minutes.'
 tap parent-approve-dialog Cancel
-capture parent-after-dismiss
+reveal parent-after-dismiss Decline
 tap parent-after-dismiss Decline
 capture parent-decline-dialog
 contains parent-decline-dialog 'Decline this request?'
@@ -77,7 +99,9 @@ contains child-extra-light 'About 20 extra minutes left'
 "${ADB[@]}" shell cmd uimode night yes >/dev/null
 sleep 2
 render ParentRequestsDarkPreview parent-dark
-contains parent-dark Approve
+check_nav parent-dark Requests Requests Settings
+reveal parent-dark-request Approve
+contains parent-dark-request Approve
 render ChildExtraDarkPreview child-extra-dark
 contains child-extra-dark 'About 20 extra minutes left'
 "${ADB[@]}" shell cmd locale set-app-locales "$PKG" --locales da-DK >/dev/null
@@ -85,6 +109,7 @@ contains child-extra-dark 'About 20 extra minutes left'
 sleep 2
 render ParentRequestsLargePreview parent-danish-large
 contains parent-danish-large Anmodninger
+check_nav parent-danish-large Anmodninger Anmodninger Indstillinger
 for _ in 1 2 3 4; do
     capture parent-danish-large-scrolled
     grep -Fq Godkend "$OUT/parent-danish-large-scrolled.xml" && break
