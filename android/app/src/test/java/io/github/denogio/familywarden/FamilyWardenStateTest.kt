@@ -24,6 +24,25 @@ class FamilyWardenStateTest {
         assertFalse(parent.copy(binding = binding.copy(approves = emptyList())).canManageFamily)
     }
 
+    @Test fun familySelectionUsesIdsAndCurrentSignedNames() {
+        val alex = ProfileRef("alex", "Alex")
+        val sam = ProfileRef("sam", "Sam")
+        val state = healthy().copy(binding = binding.copy(approves = listOf(alex, sam)))
+        assertEquals(alex, state.familyProfile(null))
+        assertEquals(sam, state.familyProfile("sam"))
+        val renamed = sam.copy(name = "Alex")
+        assertEquals(renamed, state.copy(binding = binding.copy(approves = listOf(alex, renamed))).familyProfile("sam"))
+    }
+
+    @Test fun removedOrUnknownSelectionFallsBackOnlyWithinCurrentScope() {
+        val sam = ProfileRef("sam", "Sam")
+        val state = healthy().copy(binding = binding.copy(approves = listOf(sam)))
+        assertEquals(sam, state.familyProfile("alex"))
+        assertEquals(sam, state.familyProfile("unknown"))
+        assertNull(state.copy(binding = binding.copy(approves = emptyList())).familyProfile("sam"))
+        assertNull(state.copy(binding = null).familyProfile("sam"))
+    }
+
     @Test fun pendingBadgeCountsOnlyCurrentScopedRequestsAndNewApps() {
         val sam = ProfileRef("sam", "Sam")
         val alex = ProfileRef("alex", "Alex")

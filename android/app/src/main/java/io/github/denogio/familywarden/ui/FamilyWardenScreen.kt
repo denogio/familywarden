@@ -47,6 +47,9 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
     var familySelected by rememberSaveable { mutableStateOf(if (initialRequests) Page.Requests.name else Page.FamilyTime.name) }
     var familyMode by rememberSaveable { mutableStateOf(initialRequests) }
     val showFamily = state.canManageFamily && (state.parentMode || familyMode)
+    var selectedChild by rememberSaveable(state.binding?.deviceId) { mutableStateOf<String?>(null) }
+    val familyProfile = state.familyProfile(selectedChild)
+    LaunchedEffect(familyProfile?.id) { selectedChild = familyProfile?.id }
     var featureSheet by rememberSaveable { mutableStateOf(false) }
     var enableConfirmation by rememberSaveable { mutableStateOf(false) }
     val childNavigation = state.appsActive && state.binding?.captain == false
@@ -109,17 +112,21 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
             }
         },
     ) { padding ->
-        val scroll = key(page, readyForNavigation) { rememberScrollState() }
+        val scroll = key(page, readyForNavigation,
+            if (showFamily && page != Page.Requests) familyProfile?.id else null) { rememberScrollState() }
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(scroll)
                 .padding(horizontal = MastSpacing.gutter, vertical = MastSpacing.s),
             verticalArrangement = Arrangement.spacedBy(MastSpacing.m),
         ) {
+            if (readyForNavigation && showFamily && page != Page.Requests) {
+                FamilyChildSelector(state, familyProfile?.id) { selectedChild = it }
+            }
             when {
                 !state.owner && !state.parentMode -> OwnerSetup(actions, !state.provisioned)
                 !state.paired -> PairSetup(actions, state.parentMode)
-                page == Page.FamilyTime -> FamilyTimeContent(state)
-                page == Page.Controls -> FamilyControlsContent(state, actions)
+                page == Page.FamilyTime -> FamilyTimeContent(state, familyProfile?.id)
+                page == Page.Controls -> FamilyControlsContent(state, actions, familyProfile?.id)
                 page == Page.Requests -> RequestsContent(state, actions, family = showFamily)
                 page == Page.Settings && state.parentMode -> ParentSettings(state, actions)
                 page == Page.Overview && state.screenTime != null -> ScreenTimeContent(state, actions) { selected = Page.Requests.name }

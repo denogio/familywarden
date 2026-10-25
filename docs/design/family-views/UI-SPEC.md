@@ -69,10 +69,17 @@ its labeled tabs remain superseded by the user's icon-only navigation decision.
   Own pages and family pages retain separate selections. Family never shows own
   request buttons or pact controls; My phone never lists children's approvals.
   Being an administrator or captain alone does not enable Family mode.
-- Screen time renders signed summaries for assigned profiles, with report dates,
+- Screen time renders signed summaries for the selected assigned profile, with report dates,
   incomplete-data notes and an explicit last-sync/not-live disclaimer. Missing
   reports are text, not an invented zero-minute count.
-- Requests contains time and new-app decisions only. Its badge counts scoped
+- The child selector on Screen time and Controls resolves the saved profile ID against
+  the latest signed `approves` scope on every render. A removed selection falls back
+  to the first currently assigned profile (or none), never stale sibling data. Selecting
+  another child resets that page's scroll. Selection survives page/mode changes;
+  new phone enrollment resets it. Native radio-group sheet options grow with text
+  and have at least 48 dp touch targets.
+- Requests remains the combined inbox for **all** assigned children, independent of
+  the child selector. It contains time and new-app decisions only. Its badge counts scoped
   pending time requests (excluding known-expired ones) plus pending new apps.
   The Family button carries the same badge while viewing My phone.
 - Controls honestly explains that rule, schedule, home-internet and DNS editing
@@ -87,9 +94,9 @@ This is a presentation split, not a grant, authorization, pact or transport chan
 ## Explicitly deferred
 
 - Off-home parent notifications (P9); LAN-only notifications exist while syncing.
-- Child switching and full parent controls (rules, lock now). Screen time currently
-  lists all assigned profiles; the design's child selector and policy editors are
-  not implemented. New-app approvals stay on Requests; usage is on Screen time.
+- Full parent controls (rule editors, lock now and detailed device application state).
+  The child selector is a presentation filter, not a new policy-editing or device-
+  inventory API. New-app approvals stay on Requests; usage is on Screen time.
 - Adult categories and daily discretionary pool (P11).
 - Bounded shared-budget allocations and domain history. Authenticated usage uploads
   and shared usage offsets exist; cached offsets do not bound offline overspend.
@@ -110,6 +117,16 @@ fixture separately confirms that a parent awaiting approval sees neither a false
 empty scope nor cached child usage. Test emulators were removed after completion;
 no physical device, production router or enforcement rule changed. These are UI
 checks, not a repeated full native request/enforcement lifecycle run.
+
+Child selector checkpoint (2026-10-25): 199 JVM tests, lint/debug APK/release Kotlin
+compilation and syntax checks pass on an immutable snapshot. Android 15 preview
+interaction checks confirm sibling usage isolation, the combined inbox, selection
+across pages/modes and immediate fallback after scope revocation. EN and Danish
+200%-font radio options expose selected state and at least 48 dp targets. A separate
+Danish replay verifies the exact `Godkend` action (not the `Godkendelser` heading).
+The APK used for UI replay was checked against all tracked Android build inputs;
+only the test harness changed after compilation. No large board screenshots were
+loaded into the conversation. Test emulators were removed; no deployment occurred.
 
 Earlier checkpoints:
 

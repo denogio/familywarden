@@ -60,6 +60,27 @@ PY
 check_nav() {
     python3 "$ROOT/test/android/check_navigation.py" "$OUT/$1.xml" --selected "$2" --density "$DENSITY" --labels "${@:3}"
 }
+check_picker() {
+    python3 - "$OUT/$1.xml" "$DENSITY" "$2" <<'PY'
+import math,re,sys,xml.etree.ElementTree as E
+root=E.parse(sys.argv[1]).getroot()
+parents={child:parent for parent in root.iter() for child in parent}
+for name in ('Alex','Sam'):
+    matches=[n for n in root.iter('node') if n.get('text')==name]
+    assert matches, f'Missing child option: {name}'
+    target=matches[-1]
+    # Android exposes the already-selected radio option as checked, not clickable.
+    while target.get('clickable')!='true' and target.get('checked')!='true' and target in parents:
+        target=parents[target]
+    assert target.get('clickable')=='true' or target.get('checked')=='true', name
+    x1,y1,x2,y2=map(int,re.findall(r'\d+',target.get('bounds')))
+    minimum=math.ceil(48*int(sys.argv[2])/160)
+    assert x2-x1>=minimum and y2-y1>=minimum, f'Small child option: {name}'
+    selected=target.get('selected')=='true' or target.get('checked')=='true'
+    assert selected==(name==sys.argv[3]), f'Wrong child selection: {name}'
+print('PASS accessible child options:', sys.argv[3])
+PY
+}
 reveal() {
     for _ in 1 2 3 4 5 6; do
         capture "$1"
@@ -79,13 +100,28 @@ tap parent-light 'Screen time'
 capture parent-screen-time
 check_nav parent-screen-time 'Screen time' 'Screen time' Controls Requests
 contains parent-screen-time '82 min'
-contains parent-screen-time 'No screen time reported today yet.'
 if grep -Fq 'text="Approve"' "$OUT/parent-screen-time.xml"; then echo 'Approvals leaked into screen time'; exit 1; fi
-tap parent-screen-time Controls
+tap parent-screen-time 'Choose a child'
+capture child-picker
+check_picker child-picker Alex
+tap child-picker Sam
+capture parent-sam
+contains parent-sam Sam
+contains parent-sam 'No screen time reported today yet.'
+if grep -Fq '82 min' "$OUT/parent-sam.xml"; then echo 'Sibling usage leaked into selected child'; exit 1; fi
+tap parent-sam Controls
 capture parent-settings
+contains parent-settings Sam
 check_nav parent-settings Controls 'Screen time' Controls Requests
 contains parent-settings 'Managed on the router'
 tap parent-settings Requests
+capture parent-combined-inbox
+contains parent-combined-inbox 'Alex · Sam'
+tap parent-combined-inbox 'Screen time'
+capture parent-selection-retained
+contains parent-selection-retained 'No screen time reported today yet.'
+if grep -Fq '82 min' "$OUT/parent-selection-retained.xml"; then echo 'Child selection lost between pages'; exit 1; fi
+tap parent-selection-retained Requests
 reveal parent-time-request Approve
 tap parent-time-request Approve
 capture parent-approve-dialog
@@ -101,9 +137,29 @@ tap managed-parent Family
 capture managed-family
 check_nav managed-family 'Screen time' 'Screen time' Controls Requests
 contains managed-family 'My phone'
-tap managed-family 'My phone'
+tap managed-family 'Choose a child'
+capture managed-picker
+tap managed-picker Sam
+capture managed-sam
+tap managed-sam 'My phone'
 capture managed-own
 contains managed-own Overview
+tap managed-own Family
+capture managed-sam-restored
+contains managed-sam-restored 'No screen time reported today yet.'
+if grep -Fq '82 min' "$OUT/managed-sam-restored.xml"; then echo 'Child selection lost across modes'; exit 1; fi
+render ParentScopeChangePreview parent-scope
+tap parent-scope 'Choose a child'
+capture scope-picker
+tap scope-picker Sam
+capture scope-sam
+tap scope-sam 'Sync now'
+capture scope-revoked
+contains scope-revoked '82 min'
+tap scope-revoked 'Choose a child'
+capture scope-current-picker
+if grep -Fq 'text="Sam"' "$OUT/scope-current-picker.xml"; then echo 'Revoked child remains selectable'; exit 1; fi
+"${ADB[@]}" shell input keyevent KEYCODE_BACK
 render ChildRequestPreview child-pending
 contains child-pending 'Waiting for a parent'
 render ChildRetryPreview child-retry
@@ -128,10 +184,15 @@ sleep 2
 render ParentRequestsLargePreview parent-danish-large
 contains parent-danish-large Godkendelser
 check_nav parent-danish-large Godkendelser Skærmtid Kontrol Godkendelser
-for _ in 1 2 3 4; do
-    capture parent-danish-large-scrolled
-    grep -Fq Godkend "$OUT/parent-danish-large-scrolled.xml" && break
-    "${ADB[@]}" shell input swipe 400 1500 400 700 350
-done
-contains parent-danish-large-scrolled Godkend
+# Match the actual action, not the page heading "Godkendelser".
+reveal parent-danish-large-scrolled Godkend
+tap parent-danish-large-scrolled Skærmtid
+capture parent-danish-selector
+check_nav parent-danish-selector Skærmtid Skærmtid Kontrol Godkendelser
+tap parent-danish-selector 'Vælg et barn'
+capture danish-child-picker
+check_picker danish-child-picker Alex
+tap danish-child-picker Sam
+capture danish-sam
+contains danish-sam 'Ingen skærmtid rapporteret i dag endnu.'
 printf 'P8 UI checks passed; fictional-fixture captures: %s\n' "$OUT"

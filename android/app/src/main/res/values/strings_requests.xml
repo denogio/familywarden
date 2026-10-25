@@ -4,12 +4,13 @@
     <string name="fw_family_requests">Requests</string>
     <string name="fw_family_screen_time">Screen time</string>
     <string name="fw_family_controls">Controls</string>
+    <string name="fw_family_choose_child">Choose a child</string>
     <string name="fw_family">Family</string>
     <string name="fw_my_phone">My phone</string>
     <string name="fw_family_reported">Reported usage from the last successful sync. This is not a live device status.</string>
     <string name="fw_family_refresh_failed">Could not refresh. Showing previously received reports, if available.</string>
     <string name="fw_family_router_controls">Managed on the router</string>
-    <string name="fw_family_router_controls_body">Edit limits, schedules, home internet and DNS in FamilyWarden on the router. This app currently shows reported screen time and handles requests for the profiles assigned below.</string>
+    <string name="fw_family_router_controls_body">Edit limits, schedules, home internet and DNS in FamilyWarden on the router. This app currently shows reported screen time for the selected child. Requests includes all children assigned to this phone.</string>
     <string name="fw_request_notification">%1$s asked for more time</string>
     <string name="fw_parent_setup">Use this phone as a parent</string>
     <string name="fw_parent_disconnect">Disconnect parent phone</string>

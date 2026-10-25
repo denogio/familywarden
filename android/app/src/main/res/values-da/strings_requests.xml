@@ -4,12 +4,13 @@
     <string name="fw_family_requests">Godkendelser</string>
     <string name="fw_family_screen_time">Skærmtid</string>
     <string name="fw_family_controls">Kontrol</string>
+    <string name="fw_family_choose_child">Vælg et barn</string>
     <string name="fw_family">Familie</string>
     <string name="fw_my_phone">Min telefon</string>
     <string name="fw_family_reported">Rapporteret forbrug fra seneste gennemførte synkronisering. Det er ikke en livestatus for telefonerne.</string>
     <string name="fw_family_refresh_failed">Kunne ikke opdatere. Tidligere modtagne rapporter vises, hvis de findes.</string>
     <string name="fw_family_router_controls">Administreres på routeren</string>
-    <string name="fw_family_router_controls_body">Ret grænser, tidsplaner, hjemmets internet og DNS i FamilyWarden på routeren. Appen viser indtil videre rapporteret skærmtid og håndterer godkendelser for profilerne nedenfor.</string>
+    <string name="fw_family_router_controls_body">Ret grænser, tidsplaner, hjemmets internet og DNS i FamilyWarden på routeren. Appen viser indtil videre rapporteret skærmtid for det valgte barn. Godkendelser omfatter alle børn, som telefonen er tilknyttet.</string>
     <string name="fw_request_notification">%1$s har bedt om mere tid</string>
     <string name="fw_parent_setup">Brug telefonen som forælder</string>
     <string name="fw_parent_disconnect">Frakobl forældertelefon</string>

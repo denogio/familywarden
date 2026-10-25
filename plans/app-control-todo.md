@@ -20,7 +20,7 @@ Historical test counts are evidence at that checkpoint, not current suite totals
 | P7/P7b child enforcement | Signed app/total limits, bonus, downtime, warnings, safe exceptions and new-app approval | Remaining physical/lifecycle validation; full future policy editors are separate UI work |
 | P8 LAN requests | Child/parent/admin flow, device/key-bound grants, consumption, first-answer-wins and new-app decisions; deployed | Focused physical request/approval run and bounded multi-phone allocation |
 | P9 off-home | LAN notifications only | Transport decision, encryption/key distribution and off-home implementation/testing |
-| P10 Android | Child/adult status/history, scoped parent decisions and usage | Parent presentation split is implemented and preview-tested (#94); child selector and full parent controls remain |
+| P10 Android | Child/adult status/history, scoped parent decisions and usage | Parent presentation split is implemented and preview-tested (#94); scoped child selection is implemented and preview-tested (#97); full parent controls remain |
 | P10 shared web | Existing LuCI pages and shared Requests module; new control prototype reviewed | Production-wide shared presentation layer, core API integration, host adapter and EN/DA; prototype is not shipped code |
 | Core migration | Identity, requests, usage, new-apps, signed app compilation and profile directory | Authoritative configuration/pact ownership, CAS edits, safe apply/rollback, remaining UCI cutover (#91); DNS sync remains in adapter/shell |
 | P11 adult pool | Existing pact enforcement, not the proposed pool | Final consumption/reset rules, ledger and pact-safe self-service |
@@ -469,8 +469,11 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       (#94); 197 JVM tests, lint/debug/release compilation, navigation-validator tests
       and grouped Android 15 EN/DA/200%-font preview checks pass. No policy-edit API
       or new deployment is implied.
-- [ ] Parent Android: child selector, full app inventory/rule editors and truthful
-      per-device connection/applied-policy views.
+- [x] Parent Android: scoped child selection on Screen time/Controls, combined Requests
+      inbox and selection across pages/modes (#97). 199 JVM tests, lint/builds and
+      Android 15 EN/DA-200% interactions pass, including scope revocation.
+- [ ] Parent Android: full app inventory/rule editors and truthful per-device
+      connection/applied-policy views.
 - [x] Child Android: remaining budgets, pause reasons, request status/remaining extra
       and local usage/history totals. Domain history remains P6 work.
 - [x] Existing LuCI: configure rules/roles, view usage/requests and inspect app revisions,

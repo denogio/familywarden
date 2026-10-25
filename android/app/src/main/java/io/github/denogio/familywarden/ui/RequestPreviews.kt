@@ -1,7 +1,7 @@
 package io.github.denogio.familywarden.ui
 
 import android.content.res.Configuration
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.tooling.preview.Preview
 import io.github.denogio.familywarden.*
 import io.github.denogio.familywarden.ui.theme.MastTheme
@@ -37,6 +37,16 @@ private fun ParentRequestsPreview() { MastTheme { FamilyWardenScreen(parent, act
 @Preview(name = "Parent — screen time", widthDp = 400, heightDp = 840)
 @Composable
 private fun ParentScreenTimePreview() { MastTheme { FamilyWardenScreen(parent, actions) } }
+
+@Preview(name = "Parent — scope changes", widthDp = 400, heightDp = 840)
+@Composable
+private fun ParentScopeChangePreview() {
+    var current by remember { mutableStateOf(parent) }
+    val fixtureActions = FamilyWardenActions(
+        { current = current.copy(binding = current.binding!!.copy(approves = listOf(alex))) },
+        {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+    MastTheme { FamilyWardenScreen(current, fixtureActions) }
+}
 
 @Preview(name = "Parent — awaiting enrollment", widthDp = 400, heightDp = 840)
 @Composable

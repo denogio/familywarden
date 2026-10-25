@@ -52,6 +52,10 @@ data class FamilyWardenState(
 ) {
     /** Presentation only; the core still authorizes every family action. */
     val canManageFamily: Boolean get() = parentMode || binding?.approves?.isNotEmpty() == true
+    /** Resolve saved presentation state against the current signed scope on every render. */
+    fun familyProfile(preferred: String?): ProfileRef? = binding?.approves?.let { profiles ->
+        profiles.firstOrNull { it.id == preferred } ?: profiles.firstOrNull()
+    }
     val familyPendingCount: Int get() {
         val scope = binding?.approves.orEmpty().map { it.id }.toSet()
         return parentRequests.count { it.profile.id in scope && (requestEpoch == null || requestEpoch < it.expires) } +
