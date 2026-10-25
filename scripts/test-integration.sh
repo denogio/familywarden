@@ -57,6 +57,25 @@ call() {
     fi
 }
 
+# Deterministic lock probes: let a mutation queue behind the same platform lock
+# that reload and policy snapshots use, then observe state before releasing it.
+hold_state_lock() {
+    rm -f /tmp/state-lock.ready /tmp/state-lock.release
+    (
+        flock -x 200 || exit 1
+        touch /tmp/state-lock.ready
+        while [ ! -f /tmp/state-lock.release ]; do sleep 1; done
+    ) 200>/var/lock/familywarden.lock &
+    STATE_LOCK_PID=$!
+    for _ in $(seq 1 15); do [ -f /tmp/state-lock.ready ] && return 0; sleep 1; done
+    fail "could not hold state lock for regression probe"
+}
+release_state_lock() {
+    touch /tmp/state-lock.release
+    wait "$STATE_LOCK_PID"
+    rm -f /tmp/state-lock.ready /tmp/state-lock.release
+}
+
 assert_json() {
     got=$(echo "$2" | jsonfilter -e "$3")
     [ "$got" = "$4" ] && pass "$1" || fail "$1 (expected $3=$4, got '$got')"
@@ -477,6 +496,21 @@ assert_rule "lockdown ends on time in the kernel" 'meta l4proto tcp meta time < 
 assert_json "can be extended" "$(call pact "{\"until\":$((until + 600))}")" '@.status' "ok"
 assert_json "can't be shortened" "$(call pact "{\"until\":$((until - 600))}")" '@.error' "the pact can only be extended"
 assert_json "can't become ongoing" "$(call pact '{"until":0}')" '@.error' "the pact can only be extended"
+hold_state_lock
+call pact "{\"until\":$((until + 1200))}" >/tmp/queued-pact.json &
+QUEUED_PID=$!
+sleep 1
+[ "$(sed -n 's/^until=//p' /etc/familywarden/pact)" = "$((until + 600))" ] && pass "pact mutation waits for the state transaction lock" || fail "pact changed while another transaction held the lock"
+release_state_lock
+wait "$QUEUED_PID"
+assert_json "queued pact extension completes after lock release" "$(cat /tmp/queued-pact.json)" '@.status' "ok"
+PACT_PIDS=""
+for extra in 1800 2400 3000 3600; do
+    call pact "{\"until\":$((until + extra))}" >"/tmp/concurrent-pact-$extra.json" &
+    PACT_PIDS="$PACT_PIDS $!"
+done
+for p in $PACT_PIDS; do wait "$p"; done
+[ "$(sed -n 's/^until=//p' /etc/familywarden/pact)" = "$((until + 3600))" ] && pass "concurrent pact extensions cannot shorten the longest pact" || fail "a shorter concurrent pact overwrote the longest extension"
 sed -i "s/^until=.*/until=$(( $(date +%s) - 1 ))/" /etc/familywarden/pact
 "$BIN" tick
 [ -f /etc/familywarden/pact ] && fail "expired pact left" || pass "expired pact cleaned up"
@@ -934,6 +968,16 @@ assert_legacy_app_canonical kid "weekday and weekend overrides"
 uci set familywarden.kid.screen_minutes='120'
 uci commit familywarden
 
+[ ! -f /etc/familywarden/bonus ] || cp /etc/familywarden/bonus /tmp/bonus-before-lock-probe
+hold_state_lock
+call bonus '{"profile":"kid","minutes":1}' >/tmp/queued-bonus.json &
+QUEUED_PID=$!
+sleep 1
+[ ! -s /tmp/queued-bonus.json ] && pass "bonus mutation waits for the state transaction lock" || fail "bonus changed while another transaction held the lock"
+release_state_lock
+wait "$QUEUED_PID"
+assert_json "queued bonus completes after lock release" "$(cat /tmp/queued-bonus.json)" '@.status' "ok"
+if [ -f /tmp/bonus-before-lock-probe ]; then mv /tmp/bonus-before-lock-probe /etc/familywarden/bonus; else rm -f /etc/familywarden/bonus; fi
 assert_json "bonus: minutes are bounded" "$(call bonus '{"profile":"kid","minutes":241}')" '@.error' "minutes must be 1..240"
 assert_json "bonus: zero refused" "$(call bonus '{"profile":"kid","minutes":0}')" '@.error' "minutes must be 1..240"
 assert_json "bonus: unknown profile" "$(call bonus '{"profile":"nobody","minutes":15}')" '@.error' "profile not found"

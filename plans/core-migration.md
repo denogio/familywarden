@@ -160,6 +160,17 @@ Long checks/builds run from immutable temporary snapshots, not the editing check
 Snapshot browser checks need their own `npm ci` from the pinned lockfile; a clean source
 archive intentionally contains no `node_modules` from the editing checkout.
 
+### Platform transaction gate (backend 0.11.0_rc6-r2)
+
+Pact changes now take the same ticket/state lock order as overrides and tickets; bonus
+mutations also hold the state lock while checking the pact and writing their file. No
+product rules moved into the adapter. Deterministic tests queue operations behind a
+held state lock and verify that files do not change early; parallel extensions must
+retain the longest deadline. The pre-fix snapshot fails all three checks (early pact
+write, shorter extension overwriting a longer one, early bonus write). The fixed suite
+passes 409 integration checks. This is platform-side serialization, **not** yet one
+core-owned transaction across phone identity, profiles and pacts.
+
 ### Authoritative configuration cutover: traced callers and required transaction
 
 Do not import only the Profiles form and leave competing UCI consumers behind:

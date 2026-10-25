@@ -373,6 +373,7 @@ ubus_bonus() {
     [ "$target" = "total" ] || _valid_package "$target" || { _json_error "invalid package"; return 1; }
     (
         flock -x 201 || { _json_error "bonus lock failed"; return 1; }
+        flock -x 200 || { _json_error "state lock failed"; return 1; }
         fw_load
         config_get name "$profile" name ""
         [ -n "$name" ] || { _json_error "profile not found"; return 1; }
@@ -401,7 +402,7 @@ ubus_bonus() {
         json_add_string "target" "$target"
         json_add_int "minutes_today" "$total"
         json_dump
-    ) 201>"${FW_LOCK}.bonus"
+    ) 201>"${FW_LOCK}.bonus" 200>"$FW_LOCK"
 }
 
 pact_get() {
@@ -1275,6 +1276,11 @@ ubus_ticket() {
 # until=0 for an ongoing pact with a weekly amendment window. An "until" pact
 # can only be extended; an ongoing pact can only be changed inside its window.
 ubus_pact() {
+    (
+    # The same transaction order as tickets: a concurrent allow must not pass
+    # its pact check before activation and write an override after it.
+    flock -x 201 || { _json_error "ticket lock failed"; return 1; }
+    flock -x 200 || { _json_error "state lock failed"; return 1; }
     local until="${1:-0}" wday="${2:-sun}" wstart="${3:-10:00}" wstop="${4:-11:00}"
     local captain type now delay name default_policy
     now=$(date +%s)
@@ -1345,6 +1351,7 @@ ubus_pact() {
         logger -t familywarden "Ulysses: $captain bound to the mast (ongoing, window $wday $wstart-$wstop)"
     fi
 
+    flock -u 200
     compile_and_apply >/dev/null || { echo '{"error":"compile failed"}'; return 1; }
     json_init
     json_add_string "status" "ok"
@@ -1352,6 +1359,7 @@ ubus_pact() {
     json_add_string "type" "$type"
     json_add_int "pact_until" "$until"
     json_dump
+    ) 201>"${FW_LOCK}.ticket" 200>"$FW_LOCK"
 }
 
 # ---- Ulysses Mast (phone app) ----
