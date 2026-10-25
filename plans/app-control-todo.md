@@ -373,7 +373,8 @@ Evidence: 185 JVM tests; `scripts/test-requests-emulator.sh` (Android 15 + OpenW
       (One open request per child; storage bounds; no product rate limit, per A15.)
 - [x] Test wrong child/parent/day/app, replay, tampering, restart and grant exhaustion.
 - [ ] Physical-device run (Pixel test phone only, never a child's daily phone).
-- [ ] Authenticated consumption upload and shared multi-phone allocation (P6/P7 follow-up).
+- [x] Authenticated usage and grant-consumption upload (protocol §5, 2026-10-25).
+- [ ] Shared multi-phone allocation and router-side budgets (P6/P7 follow-up).
 
 **Accept:** child exhausts an app, requests extra time, parent approves, only the approved
 minutes become usable, and the standing rule remains unchanged.
@@ -408,6 +409,9 @@ pending. Details and deliberate design deviations: `docs/design/family-views/UI-
       summaries and connection/applied-policy status.
 - [ ] Child Android: remaining budgets, blocked reasons, request status and usage visibility.
 - [ ] LuCI: configure rules/roles, view usage and requests, inspect capability/failure states.
+      (2026-10-25: Requests page = first shared administrator UI module (A20): answer
+      requests, see today per phone/app, 7-day totals, reported grant use. Parent Android
+      shows "Screen time today" per scoped child.)
 - [ ] Include new-app approval, essential-app warnings and removal/revocation workflows.
 - [ ] Add all English/Danish Android strings/plurals, accessibility labels, large-text,
       dark/light themes and sanitized previews/screenshots.

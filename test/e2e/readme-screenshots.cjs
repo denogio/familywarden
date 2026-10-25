@@ -34,4 +34,5 @@ async function shoot(scheme, file, url, ready, scrollTo) {
   await shoot('dark', 'luci-overview-dark.png', 'overview', 'Alex');
   await shoot('light', 'luci-profile-apps.png', 'profiles?profile=alex', 'Screen time and apps', 'Screen time and apps on approved phones');
   await shoot('light', 'luci-phones.png', 'devices', "Jordan's phone");
+  await shoot('light', 'luci-requests.png', 'family', 'Waiting for an answer');
 })().catch((e) => { console.error(e); process.exit(1); });

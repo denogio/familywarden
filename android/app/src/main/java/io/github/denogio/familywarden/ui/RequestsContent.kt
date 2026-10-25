@@ -65,7 +65,7 @@ fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions) {
                 Text(stringResource(R.string.fw_request_subject, d.name, pluralStringResource(R.plurals.fw_time_minutes, m, m)),
                     style = MaterialTheme.typography.bodyMedium)
             }
-            for (a in u.apps) {
+            for (a in u.apps.filter { it.seconds >= 60 }) {
                 val m = a.seconds / 60
                 Text(stringResource(R.string.fw_request_subject, a.label.ifEmpty { a.pkg }, pluralStringResource(R.plurals.fw_time_minutes, m, m)),
                     style = MaterialTheme.typography.bodySmall)

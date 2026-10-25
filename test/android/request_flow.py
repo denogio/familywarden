@@ -106,7 +106,7 @@ def minutes(value):
     adb('shell', 'input', 'keyevent', 'KEYCODE_MOVE_END')
     adb('shell', 'input', 'keyevent', '67', '67', '67', '67')
     adb('shell', 'input', 'text', str(value))
-    adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+    # No BACK key: without a visible keyboard it would dismiss the dialog itself.
     time.sleep(1)
 
 
@@ -233,6 +233,14 @@ touch /tmp/drop-next-app-response
     time.sleep(2)
     assert suspended() and spent(grant_id) == 60_000
     print('PASS repeated delivery cannot refill consumed minutes', flush=True)
+    def reported():
+        sync()
+        report = call('usage')
+        alex = next((x for x in report['profiles'] if x['id'] == 'alex'), None)
+        used = next((r.get('used') for r in call('requests')['requests'] if r['request_id'] == request['request_id']), None)
+        return alex and alex['total'] >= 60 and used is not None and used >= 59 and alex
+    alex_usage = wait('signed usage report reaches the router with grant use', reported, 150)
+    assert any(a['package'] == FIXTURE for a in alex_usage['apps']), alex_usage
     home()
     ui('native-child-exhausted')
     assert call('device_allow_removal', {'device': device_id})['status'] == 'ok'
@@ -257,6 +265,7 @@ touch /tmp/drop-next-app-response
     synthetic_request('request-native-parent-001')
     sync()
     wait('parent receives the scoped request', lambda: bool(nodes('Approve')))
+    wait('parent sees the child\'s screen time today', lambda: bool(nodes('Screen time today')))
     ui('native-parent-pending')
     tap('Approve')
     minutes(15)

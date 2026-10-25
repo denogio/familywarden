@@ -70,6 +70,8 @@ config profile 'sam'
 	option name 'Sam'
 	option enabled '1'
 	option policy 'scheduled'
+	option apps '1'
+	option screen_minutes '90'
 	list device 'aa:bb:cc:00:20:01'
 	list device 'aa:bb:cc:00:20:02'
 
@@ -119,4 +121,15 @@ usign -S -s /tmp/new.key -m /tmp/new.msg -x /tmp/new.sig
 key=$(sed -n 2p /tmp/new.pub | sed 's/+/%2B/g; s|/|%2F|g; s/=/%3D/g')
 sig=$(sed -n 2p /tmp/new.sig | sed 's/+/%2B/g; s|/|%2F|g; s/=/%3D/g')
 QUERY_STRING="device=fw-new-phone&nonce=$nonce&key=$key&sig=$sig&name=Pixel-8" /usr/sbin/familywardend cgi-phone >/dev/null
+# Signed uploads from the fictional phones: one pending request, today's usage.
+upload() { # $1 device id, $2 op, $3 exact JSON
+    printf 'familywarden-%s-v1\n%s' "$2" "$3" > /tmp/up.msg
+    usign -S -m /tmp/up.msg -s "/tmp/$1.key" -x /tmp/up.sig
+    { sed -n 2p /tmp/up.sig; printf '%s' "$3"; } | REQUEST_METHOD=POST QUERY_STRING="op=$2" /usr/sbin/familywardend cgi-app >/dev/null
+}
+now=$(date +%s); day=$(date +%F)
+upload fw-alex-phone request "{\"type\":\"request\",\"v\":1,\"request_id\":\"readme-request-1\",\"device\":\"fw-alex-phone\",\"profile\":\"alex\",\"target\":\"com.example.video\",\"minutes\":30,\"label\":\"Video\",\"created\":$now}"
+upload fw-sam-phone request "{\"type\":\"request\",\"v\":1,\"request_id\":\"readme-request-2\",\"device\":\"fw-sam-phone\",\"profile\":\"sam\",\"target\":\"total\",\"minutes\":15,\"created\":$now}"
+upload fw-alex-phone usage "{\"type\":\"usage\",\"v\":1,\"device\":\"fw-alex-phone\",\"profile\":\"alex\",\"day\":\"$day\",\"seq\":1,\"total\":4920,\"apps\":{\"com.example.video\":1800,\"com.example.game\":1500,\"com.example.school\":900,\"com.example.music\":720},\"labels\":{\"com.example.video\":\"Video\",\"com.example.game\":\"Game\",\"com.example.school\":\"School\",\"com.example.music\":\"Music\"}}"
+upload fw-sam-phone usage "{\"type\":\"usage\",\"v\":1,\"device\":\"fw-sam-phone\",\"profile\":\"sam\",\"day\":\"$day\",\"seq\":1,\"total\":3060,\"apps\":{\"com.example.game\":2400,\"com.example.video\":660},\"labels\":{\"com.example.game\":\"Game\",\"com.example.video\":\"Video\"}}"
 echo "README fixture ready"

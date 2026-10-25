@@ -18,7 +18,8 @@ English and Danish. Status and open items: [plans/android-implementation.md](pla
 In development (not released yet): screen time and app limits in the style of Google
 Family Link, and **extra-time requests** — a child asks for more minutes, a parent approves
 or declines on their own phone (no Device Owner needed), and the approved minutes expire
-two hours after approval without changing the standing rules.
+two hours after approval without changing the standing rules. Phones report their screen time
+to the router, so parents see each child's day on their phone and in LuCI.
 
 <p>
 <img src="docs/screenshots/app-today.png" width="200" alt="Child's Today screen: 38 minutes of screen time left, per-app limits and always-allowed apps">
@@ -35,6 +36,9 @@ two hours after approval without changing the standing rules.
 <p>
 <img src="docs/screenshots/luci-profile-apps.png" width="405" alt="Profile editor: daily screen time for weekdays and weekends, always-allowed apps and allowed internet windows">
 <img src="docs/screenshots/luci-phones.png" width="405" alt="Phones page: a new phone waiting for fingerprint approval above the approved phones">
+</p>
+<p>
+<img src="docs/screenshots/luci-requests.png" width="820" alt="Requests page: pending extra-time requests from Sam and Alex with Approve and Decline, and today's screen time per child">
 </p>
 
 Screenshots use a fictional family and are regenerated with
