@@ -37,15 +37,88 @@ async function mockFamilyWarden(page, method, reply) {
   });
 }
 
-for (const path of ['profiles', 'settings']) {
-  test(`${path} disables legacy writes after core configuration activation`, async ({ page }) => {
-    await mockFamilyWarden(page, 'configuration_status', () => ({ owner: 'core' }));
-    await page.goto(`${URL}/${path}`);
-    await expect(page.getByRole('heading', { name: 'Core-managed configuration' })).toBeVisible();
-    await expect(page.locator('.cbi-page-actions')).toHaveCount(0);
-    await expect(page.locator('.cbi-map input, .cbi-map select')).toHaveCount(0);
+test('profiles disables legacy UCI writes after core configuration activation', async ({ page }) => {
+  await mockFamilyWarden(page, 'configuration_status', () => ({ owner: 'core' }));
+  await page.goto(`${URL}/profiles`);
+  await expect(page.getByRole('heading', { name: 'Core-managed configuration' })).toBeVisible();
+  await expect(page.locator('.cbi-page-actions')).toHaveCount(0);
+  await expect(page.locator('.cbi-map input, .cbi-map select')).toHaveCount(0);
+});
+
+const coreExport = {
+  owner: 'core',
+  configuration: {
+    version: 1, revision: 'r1',
+    current: {
+      settings: { enabled: '1', default_policy: 'allow', captain: '', delay_hours: '24', dns_domain: '', resolver_url: '' },
+      profiles: [], schedules: [], apps: [], downtime: [], legacy_phones: []
+    },
+    pact: null
+  },
+  pending: false
+};
+
+// Capture the CAS calls while the owned settings form commits through the core.
+async function mockCoreConfiguration(page, replies) {
+  const calls = [];
+  await page.route(/\/ubus(?:\/$)/, async route => {
+    const body = route.request().postDataJSON();
+    const callsAll = Array.isArray(body) ? body : [body];
+    const mine = callsAll.filter(c => c.params?.[1] === 'familywarden' && replies[c.params[2]]);
+    if (!mine.length) return route.continue();
+    const response = await route.fetch();
+    const json = await response.json();
+    const results = Array.isArray(json) ? json : [json];
+    for (const call of mine) {
+      const result = results.find(r => r.id === call.id);
+      calls.push({ method: call.params[2], params: call.params[3] || {}, reply: replies[call.params[2]](call.params[3] || {}) });
+      result.result = [0, calls[calls.length - 1].reply];
+    }
+    await route.fulfill({ response, json: Array.isArray(json) ? results : results[0] });
   });
+  return calls;
 }
+
+test('settings in core-owned mode saves through apply and confirm against the read revision', async ({ page }) => {
+  const calls = await mockCoreConfiguration(page, {
+    configuration_status: () => ({ owner: 'core' }),
+    configuration_export: () => coreExport,
+    configuration_apply: params => {
+      expect(params.revision).toBe('r1');
+      expect(params.current.settings.default_policy).toBe('block');
+      expect(params.current.settings.enabled).toBe('1');
+      return { status: 'confirmation_required', revision: 'r2', token: 'tok', deadline: 123 };
+    },
+    configuration_confirm: params => {
+      expect(params.revision).toBe('r2');
+      expect(params.token).toBe('tok');
+      return { status: 'ok', revision: 'r2' };
+    },
+    reload: () => ({ status: 'ok' })
+  });
+  await page.goto(`${URL}/settings`);
+  await expect(page.locator('#fw-settings')).toBeVisible();
+  await page.selectOption('#cbi-familywarden-settings-default_policy select', 'block');
+  await page.locator('li').filter({ hasText: /^Save & Apply$/ }).click();
+  await expect.poll(() => calls.some(c => c.method === 'configuration_confirm')).toBeTruthy();
+  const order = calls.map(c => c.method);
+  expect(order.indexOf('configuration_confirm')).toBe(order.indexOf('configuration_apply') + 1);
+  // The page re-loads itself after confirmation; the owned form comes back.
+  await expect(page.locator('#fw-settings')).toBeVisible();
+});
+
+test('settings in core-owned mode keeps stale data and reports core errors', async ({ page }) => {
+  const calls = await mockCoreConfiguration(page, {
+    configuration_status: () => ({ owner: 'core' }),
+    configuration_export: () => coreExport,
+    configuration_apply: () => ({ error: 'configuration conflict' }),
+    reload: () => ({ status: 'ok' })
+  });
+  await page.goto(`${URL}/settings`);
+  await page.locator('li').filter({ hasText: /^Save & Apply$/ }).click();
+  await expect(page.getByText('Could not save the configuration: configuration conflict')).toBeVisible();
+  await expect(calls.filter(c => c.method === 'configuration_confirm')).toHaveLength(0);
+});
 
 const fixtures = {
   alex: { name: 'Alex', policy: 'scheduled', status: 'blocked', override: 'none',

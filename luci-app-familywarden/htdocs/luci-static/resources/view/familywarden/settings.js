@@ -5,6 +5,7 @@
 'require ui';
 'require familywarden.ulysses as ulysses';
 'require familywarden.ui as fwui';
+'require familywarden.configuration as fwconfig';
 
 var callConfigurationOwner = rpc.declare({ object: 'familywarden', method: 'configuration_status', expect: { '': {} } });
 
@@ -59,8 +60,11 @@ return view.extend({
 			});
 		});
 		return Promise.all([ callList(), callProfiles(), callMast(window.location.hostname),
-			L.resolveDefault(callDnsStatus(), {}), callConfigurationOwner() ]).then(function(data) {
+			L.resolveDefault(callDnsStatus(), {}), callConfigurationOwner(),
+			L.resolveDefault(fwconfig.configurationExport(), null) ]).then(function(data) {
 			if (!data[4] || !['legacy', 'core'].includes(data[4].owner)) throw new Error(_('Configuration ownership unavailable'));
+			if (data[4].owner === 'core' && (!data[5] || !data[5].configuration || typeof data[5].configuration.revision !== 'string'))
+				throw new Error(_('Core configuration unavailable'));
 			var status = data[0], directory = data[1];
 			if (!status || status.error || !status.profiles || typeof status.profiles !== 'object' || Array.isArray(status.profiles) ||
 				Object.keys(status.profiles).some(function(id) {
@@ -77,10 +81,8 @@ return view.extend({
 	},
 
 	render: function(data) {
-		if (data[4].owner === 'core') {
-			this.handleSave = this.handleSaveApply = this.handleReset = null;
-			return E('div', {}, [ E('h2', {}, _('Core-managed configuration')), E('p', {}, _('Legacy UCI editing is disabled. Use the core configuration API with revision checks and confirmation.')) ]);
-		}
+		var owned = data[4].owner === 'core';
+		var self = this;
 		var m, s, o;
 		var profiles = data[0].profiles;
 		var directory = data[1].profiles;
@@ -109,6 +111,7 @@ return view.extend({
 		o.rmempty = false;
 		o.default = '1';
 		o.readonly = bound;
+		var fEnabled = o;
 
 		o = s.option(form.ListValue, 'default_policy', _('Default Policy'),
 			_('What happens to devices that are in no profile. "Block" means every device needs a profile to get online - put servers, TVs and the like in an "Unrestricted" profile first. New devices get no internet until you add them (the overview lists them).'));
@@ -116,6 +119,7 @@ return view.extend({
 		o.value('block', _('Block Internet'));
 		o.default = 'allow';
 		o.readonly = bound;
+		var fDefaultPolicy = o;
 
 		// Pairing serves every FamilyWarden phone, not only the Ulysses captain.
 		s = m.section(form.TypedSection, 'global', _('Phone pairing'),
@@ -162,6 +166,7 @@ return view.extend({
 			_('E.g. dns.example.net: a phone of profile "Alex" uses alex.dns.example.net.'));
 		o.datatype = 'hostname';
 		o.rmempty = true;
+		var fDnsDomain = o;
 
 		o = s.option(form.Value, 'agh_url', _('AdGuard Home address'),
 			_('The AdGuard Home web interface as the router reaches it, e.g. http://192.168.1.2:3000.'));
@@ -170,6 +175,7 @@ return view.extend({
 			return (!value || /^https?:\/\/[^\s\/]+\/?$/.test(value)) ? true : _('Expected http://host[:port] or https://host[:port]');
 		};
 		o.rmempty = true;
+		var fAghUrl = o;
 		// Honest warning instead of a lock icon: plain HTTP exposes the login on the LAN.
 		o.renderWidget = function(section_id, option_index, cfgvalue) {
 			var node = form.Value.prototype.renderWidget.apply(this, [section_id, option_index, cfgvalue]);
@@ -263,6 +269,7 @@ return view.extend({
 			o.value(p.id, p.name || p.id);
 		});
 		o.readonly = bound;
+		var fCaptain = o;
 
 		o = s.option(form.Value, 'ulysses_delay', _('Cooling-off (hours)'),
 			_('How long "sailing home" on the sail page takes before the pact is lifted. Frozen into each pact when it is made.'));
@@ -270,8 +277,48 @@ return view.extend({
 		o.placeholder = '24';
 		o.default = '24';
 		o.readonly = bound;
+		var fDelay = o;
+
+		if (owned) {
+			// The form displays the core-owned values (the router keeps the UCI
+			// projection in sync); saving writes through the core document's
+			// revision-checked apply + confirmation instead of UCI commit.
+			// The footer is built from the map's handlers before m.render(), so
+			// they must exist on the map before that.
+			var exportData = data[5];
+			m.handleSave = m.handleReset = null;
+			m.handleSaveApply = function() {
+					var field = function(widget) {
+						var value = widget.formvalue('settings');
+						return value === null ? '' : value;
+					};
+					var current = JSON.parse(JSON.stringify(exportData.configuration.current));
+					current.settings = {
+						enabled: field(fEnabled),
+						default_policy: field(fDefaultPolicy),
+						captain: field(fCaptain),
+						delay_hours: field(fDelay),
+						dns_domain: field(fDnsDomain),
+						resolver_url: field(fAghUrl)
+					};
+					return fwconfig.commit(exportData.configuration, current).then(function() {
+						return callReload();
+					}).then(function() {
+						return Promise.resolve().then(function() { window.location.reload(); });
+					}).catch(function(error) {
+						ui.addNotification(null, E('p', {},
+						_('Could not save the configuration: %s').format(error.message)), 'error');
+					});
+			};
+		}
 
 		return m.render().then(function(formEl) {
+			if (owned) {
+				return E('div', { 'id': 'fw-settings' }, [
+					fwui.header(_('Settings'), _('Core-managed configuration: Save & Apply writes through revision checks and a confirmation. Sections marked "applies immediately" talk to AdGuard Home right away.')),
+					formEl
+				]);
+			}
 			return E('div', { 'id': 'fw-settings' }, [
 				fwui.header(_('Settings'), _('Form fields are staged until Save & Apply. Sections marked "applies immediately" talk to AdGuard Home right away.')),
 				formEl

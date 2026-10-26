@@ -33,6 +33,7 @@ define Package/luci-app-familywarden/install
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/overview.css $(1)/www/luci-static/resources/familywarden/overview.css
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/pages.css $(1)/www/luci-static/resources/familywarden/pages.css
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/ui.js $(1)/www/luci-static/resources/familywarden/ui.js
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/configuration.js $(1)/www/luci-static/resources/familywarden/configuration.js
 	# Shared administrator UI (A20): platform-neutral ES modules
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/familywarden/shared
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/shared/family.js $(1)/www/luci-static/resources/familywarden/shared/family.js
