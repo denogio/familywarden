@@ -61,7 +61,7 @@ const coreExport = {
 // Capture the CAS calls while the owned settings form commits through the core.
 async function mockCoreConfiguration(page, replies) {
   const calls = [];
-  await page.route(/\/ubus(?:\/$)/, async route => {
+  await page.route(/\/ubus(?:\/|$)/, async route => {
     const body = route.request().postDataJSON();
     const callsAll = Array.isArray(body) ? body : [body];
     const mine = callsAll.filter(c => c.params?.[1] === 'familywarden' && replies[c.params[2]]);

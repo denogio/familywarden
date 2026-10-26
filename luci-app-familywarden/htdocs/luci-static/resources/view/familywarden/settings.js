@@ -80,6 +80,12 @@ return view.extend({
 		});
 	},
 
+	handleSaveApply: function(ev, mode) {
+		if (this.ownedSave)
+			return this.ownedSave();
+		return this.super('handleSaveApply', [ev, mode]);
+	},
+
 	render: function(data) {
 		var owned = data[4].owner === 'core';
 		var self = this;
@@ -283,11 +289,11 @@ return view.extend({
 			// The form displays the core-owned values (the router keeps the UCI
 			// projection in sync); saving writes through the core document's
 			// revision-checked apply + confirmation instead of UCI commit.
-			// The footer is built from the map's handlers before m.render(), so
-			// they must exist on the map before that.
+			// The footer buttons call the view's handlers, so the view routes
+			// Save & Apply here and hides Save/Reset (no UCI staging).
 			var exportData = data[5];
-			m.handleSave = m.handleReset = null;
-			m.handleSaveApply = function() {
+			this.handleSave = this.handleReset = null;
+			this.ownedSave = function() {
 					var field = function(widget) {
 						var value = widget.formvalue('settings');
 						return value === null ? '' : value;
