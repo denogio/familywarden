@@ -493,6 +493,25 @@ that returns the adapter context unchanged fails both app-context and phone/muta
 revision tests. The real router test changes the runtime projection to 777 minutes
 and still receives the authoritative frozen 10-minute policy.
 
+### Strict DNS edits before persistence (core 0.13.0-r6)
+
+New/changed DNS fields are validated before saving or applying the candidate:
+ClientIDs must use AGH's supported grammar; protections must be known policy IDs;
+service IDs must fit the phone's `[a-z0-9_]{1,64}` contract; configured domains and
+complete `<ClientID>.<domain>` hostnames must fit Android's hostname grammar/length;
+resolver URLs must be plain HTTP(S) base endpoints without embedded credentials,
+query or fragment. The endpoint check is shared with the AGH CLI.
+
+Enabling DNS requires a domain even when the profile already has a ClientID, and
+clearing a domain while any affected profile still enables DNS is refused. Disabling
+DNS and clearing the domain in one explicit edit remains allowed outside a pact.
+Untouched legacy fields retain import semantics: an unrelated rename does not
+normalize or silently drop old DNS data. Unit tests reproduced acceptance of invalid
+ClientIDs/protections/services/domains/endpoints and oversized combined hostnames
+before the fix, then verify refusal without store/platform writes, valid edits and
+legacy preservation. The real AGH test rejects activation without a domain on a
+profile with an existing ID and then successfully applies the valid edit.
+
 ### Authoritative configuration cutover: traced callers and required transaction
 
 Do not import only the Profiles form and leave competing UCI consumers behind:

@@ -291,6 +291,8 @@ assert_eq "core import" "$(api configuration_import "{\"revision\":\"$rev\"}" | 
 "$BIN" dns-sync && pass "owned sync succeeds" || fail "owned sync failed: $(cat /tmp/familywarden.dns.status)"
 grep -q '^gran grandma-2 ' /etc/familywarden/dns.ack && pass "owned sync keeps existing profiles" || fail "ack: $(cat /etc/familywarden/dns.ack)"
 exported=$(api configuration_export)
+invalid=$(echo "$exported" | ucode -l fs -e 'let d=json(fs.stdin.read("all")); d.configuration.current.settings.dns_domain=""; for(let p in d.configuration.current.profiles) if(p.id=="alex") p.dns="1"; print(sprintf("%J",d.configuration.current));')
+assert_eq "existing ClientID cannot enable DNS without a domain" "$(api configuration_apply "{\"revision\":\"$(echo "$exported" | jsonfilter -e '@.configuration.revision')\",\"current\":$invalid}" | jsonfilter -e '@.error')" "DNS domain required before enabling DNS"
 current=$(echo "$exported" | ucode -l fs -e 'let d = json(fs.stdin.read("all")); for (let p in d.configuration.current.profiles) if (p.id == "alex") p.dns = "1"; print(sprintf("%J", d.configuration.current));')
 applied=$(api configuration_apply "{\"revision\":\"$(echo "$exported" | jsonfilter -e '@.configuration.revision')\",\"current\":$current}")
 if [ "$(echo "$applied" | jsonfilter -e '@.status')" = confirmation_required ]; then

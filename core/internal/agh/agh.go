@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -23,6 +24,13 @@ import (
 )
 
 const Prefix = "familywarden-"
+
+// ValidEndpoint accepts a base HTTP(S) URL, never embedded credentials, query
+// parameters or fragments. Credentials are supplied separately and privately.
+func ValidEndpoint(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User == nil && u.RawQuery == "" && u.Fragment == ""
+}
 
 // Profile is one profile whose phones use strict DNS. ClientID may be empty
 // (legacy routers): a free one is derived from Name and reported in Allocated.

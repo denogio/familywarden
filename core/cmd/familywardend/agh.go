@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"time"
 	"unicode/utf8"
 
@@ -55,8 +54,7 @@ func decodeAGH(in io.Reader, v any, max int64) error {
 }
 
 func validateAGHEndpoint(raw, auth string) error {
-	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || auth == "" {
+	if !agh.ValidEndpoint(raw) || auth == "" {
 		return fmt.Errorf("invalid AGH endpoint or missing credentials")
 	}
 	return nil

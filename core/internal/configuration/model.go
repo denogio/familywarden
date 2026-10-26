@@ -296,6 +296,9 @@ func ValidateEdit(old rules.Configuration, next *rules.Configuration, now time.T
 			}
 		}
 	}
+	if err := validateDNSEdit(old, *next); err != nil {
+		return err
+	}
 	if Active(old.Pact, now) && InWindow(old.Pact, now) {
 		next.Pact = clone(old).Pact
 		next.Pact.Frozen = frozen(next.Current, old.Pact.Captain)
