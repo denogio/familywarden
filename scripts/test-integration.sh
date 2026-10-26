@@ -1355,6 +1355,14 @@ assert_json "legacy reload restores the core projection" "$(call profiles)" '@.p
 exported=$(cfg_api configuration_export); revision=$(echo "$exported" | jsonfilter -e '@.configuration.revision')
 current=$(echo "$exported" | jsonfilter -e '@.configuration.current' | sed 's/"Robin"/"Jordan"/')
 assert_json "second edit is pending" "$(cfg_api configuration_apply "{\"revision\":\"$revision\",\"current\":$current}")" '@.status' confirmation_required
+# The candidate's revision does not cover the previous configuration. A
+# schema-valid but corrupted rollback snapshot must never be recovered.
+cp /etc/familywarden/core/configuration.json /tmp/owned-pending.keep
+ucode -l fs -e 'let d=json(fs.readfile("/etc/familywarden/core/configuration.json")); d.pending.before.current.settings.default_policy="allow"; print(sprintf("%J",d));' > /tmp/owned-pending.corrupt
+cp /tmp/owned-pending.corrupt /etc/familywarden/core/configuration.json
+assert_json "corrupt rollback revision refuses reads before recovery" "$(cfg_api configuration_export)" '@.error' 'invalid household revision'
+cmp -s /tmp/owned-pending.corrupt /etc/familywarden/core/configuration.json && pass "corrupt rollback refusal leaves the journal untouched" || fail "invalid journal was rewritten"
+mv /tmp/owned-pending.keep /etc/familywarden/core/configuration.json
 stop_core
 rm -f /var/run/familywarden/familywarden
 start_core

@@ -81,6 +81,19 @@ func New(ad platform.Adapter, backend Backend, st Storage) (*Authority, error) {
 	return a, nil
 }
 
+// A rollback target is independently sealed, not covered by the candidate's
+// revision. Validate both before any recovery can write to the platform/store.
+func validateSealed(c rules.Configuration) error {
+	if err := Validate(c); err != nil {
+		return err
+	}
+	rev := c.Revision
+	if err := c.Seal(); err != nil || rev != c.Revision {
+		return errors.New("invalid household revision")
+	}
+	return nil
+}
+
 func (a *Authority) load() (document, bool, error) {
 	var d document
 	var raw json.RawMessage
@@ -94,15 +107,11 @@ func (a *Authority) load() (document, bool, error) {
 	if d.Version != 1 {
 		return d, true, errors.New("unsupported household document")
 	}
-	if err := Validate(d.Configuration); err != nil {
+	if err := validateSealed(d.Configuration); err != nil {
 		return d, true, err
 	}
-	rev := d.Configuration.Revision
-	if err := d.Configuration.Seal(); err != nil || rev != d.Configuration.Revision {
-		return d, true, errors.New("invalid household revision")
-	}
 	if d.Pending != nil {
-		if err := Validate(d.Pending.Before); err != nil {
+		if err := validateSealed(d.Pending.Before); err != nil {
 			return d, true, err
 		}
 		if len(d.Pending.Token) != 64 || d.Pending.Until <= 0 {

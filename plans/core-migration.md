@@ -422,7 +422,10 @@ These are safety limits, not a supported downgrade procedure or deployment appro
   it; only its current revision/token does. A confirmed edit is not automatically
   rolled back on restart.
 - A corrupt/future-version document, failed read-back or uncertain apply must stay
-  fail-closed. Do not delete `core/configuration.json` to make legacy mode work: its
+  fail-closed. Since core 0.13.0-r4, the pending journal's previous configuration
+  must pass its own revision check as well as schema validation: the candidate's
+  revision does not cover it. Schema-valid corruption is refused before deadline
+  rollback or restart can change the store/platform. Do not delete `core/configuration.json` to make legacy mode work: its
   absence selects a different authority and can bypass the active pact/recovery
   journal. Repair requires a compatible core and an explicitly reviewed recovery.
 - `core/migration-backup` contains the original legacy configuration/pact projection
@@ -446,6 +449,15 @@ These are safety limits, not a supported downgrade procedure or deployment appro
   mismatches, but they do not prove arbitrary old/new package combinations safe.
   Retain legacy paths until the disposable upgrade/interruption/mixed-version matrix
   has passed; the P12 downgrade gate remains open.
+
+Recovery evidence: unit tests first reproduced acceptance of a schema-valid but
+revision-invalid rollback target at both deadline and restart, then pass with the
+shared sealed-configuration validator. Additional tests interrupt initial import at
+its first journal write, platform apply and completion write; a durable but unfinished
+import refuses legacy fallback and restart finishes the exact saved revision despite
+subsequent UCI edits. The real router suite also corrupts a pending rollback target
+and checks rejection with the journal unchanged, before restoring it and testing the
+normal reboot rollback. These checks do not close the broader package-downgrade gate.
 
 ### Owned app-policy configuration comes from the document (core 0.13.0-r3)
 
