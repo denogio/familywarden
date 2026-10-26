@@ -94,11 +94,19 @@ Overview-only notes are historical. App control is implemented; the separate sha
 control-interface prototype is reviewed but not yet a production-wide replacement.
 See [the prototype review](../docs/design/control-prototype-review.md).
 
-Current writer hardening (#103): partial identity updates resolve omitted fields
+Writer checkpoint (#103): partial identity updates resolve omitted fields
 under the core's final validation/save mutex, preventing stale patches from restoring
 old administrator/profile/name values. Deterministic regression, Go vet/race and real
 OpenWrt integration pass. Core 0.10.0-r2 is prepared, not deployed; this does not finish
 the separate cross-process configuration/pact transaction or CAS cutover.
+
+Runtime gate follow-up: core 0.11.0/backend rc8 serialize runtime identity, grant,
+new-app and authenticated-upload mutations with the platform pact/state gate through
+persistence, not just the context read. Go vet/race and real OpenWrt checks pass,
+including actual inherited-fd lock lifetime and a negative regression probe. Install
+these development packages together (`go-apps-v3`); no phone wire/store schema change
+or deployment. Full household configuration ownership/CAS/apply-confirm/rollback is
+still open; direct UCI forms have not been cut over.
 
 ## P0 — Establish the implementation baseline
 

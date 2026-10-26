@@ -820,8 +820,12 @@ assert_json "compatible signed acknowledgement restored" "$(call devices)" '@.de
 assert_json "old core context format is refused" "$("$BIN" core-context)" '@.error' "incompatible core: upgrade required"
 assert_json "old core policy format is refused" "$("$BIN" core-policy kid 3)" '@.error' "incompatible core: upgrade required"
 assert_json "old canonical-input adapter is refused" "$("$BIN" core-context go-apps-v1)" '@.error' "incompatible core: upgrade required"
-assert_json "new adapter format is explicit" "$("$BIN" core-context go-apps-v2)" '@.app_format' "go-apps-v2"
-raw_policy=$("$BIN" core-policy kid 3 go-apps-v2)
+assert_json "pre-transaction adapter is refused" "$("$BIN" core-context go-apps-v2)" '@.error' "incompatible core: upgrade required"
+assert_json "new adapter format is explicit" "$("$BIN" core-context go-apps-v3)" '@.app_format' "go-apps-v3"
+assert_json "held context requires inherited state fd" "$("$BIN" core-context go-apps-v3 held-v1 3>&-)" '@.error' "state transaction required"
+assert_json "held context rejects a foreign fd" "$("$BIN" core-context go-apps-v3 held-v1 3>/tmp/foreign-state-lock)" '@.error' "state transaction required"
+assert_json "unknown transaction mode is refused" "$("$BIN" core-context go-apps-v3 unknown)" '@.error' "invalid transaction mode"
+raw_policy=$("$BIN" core-policy kid 3 go-apps-v3)
 [ -z "$(echo "$raw_policy" | jsonfilter -e '@.apps')" ] && pass "shell no longer builds signed app policy" || fail "shell still supplies apps"
 assert_json "shell supplies raw versioned app configuration" "$raw_policy" '@.context.profiles.kid.app_input.version' "1"
 directory=$(call profiles)
@@ -837,7 +841,7 @@ assert_legacy_app_canonical() {
         config_load familywarden
         _legacy_apps_canon "$1"
     ' _ "$1")
-    actual=$("$BIN" core-context go-apps-v2 | jsonfilter -e "@.profiles.$1.app_input" | /usr/sbin/familywardend app-canon)
+    actual=$("$BIN" core-context go-apps-v3 | jsonfilter -e "@.profiles.$1.app_input" | /usr/sbin/familywardend app-canon)
     [ "$actual" = "$expected" ] && pass "Go normalization preserves legacy canonical bytes ($1: $2)" || fail "canonical normalization changed ($1: $2)"
 }
 assert_legacy_app_canonical kid "app limits and downtime"
@@ -1026,6 +1030,16 @@ restore_app_compiler
 # Captain: screen time and always-allowed apps freeze with the pact; no self-bonus.
 call pact "{\"until\":0,\"window_day\":\"$tomorrow\",\"window_start\":\"10:00\",\"window_stop\":\"11:00\"}" >/dev/null
 assert_json "no bonus for a captain under a pact" "$(call bonus '{"profile":"kid","minutes":15}')" '@.error' "bound by Ulysses pact"
+cp /etc/familywarden/core/devices.json /tmp/registry-before-queued-move
+hold_state_lock
+call device_update '{"device":"fw-d1","profile":"parent"}' >/tmp/queued-device-move.json &
+move_pid=$!
+sleep 1
+[ ! -s /tmp/queued-device-move.json ] && pass "core identity mutation waits for state gate" || fail "identity mutation bypassed state gate"
+cmp -s /etc/familywarden/core/devices.json /tmp/registry-before-queued-move && pass "queued identity mutation does not write early" || fail "identity changed before state gate opened"
+release_state_lock
+wait "$move_pid"
+assert_json "queued identity mutation checks the locked pact" "$(cat /tmp/queued-device-move.json)" '@.error' "bound by Ulysses pact"
 uci set familywarden.kid.screen_minutes='999'
 uci set familywarden.kid.screen_weekday='999'
 uci del_list familywarden.kid.always_allowed='com.example.school'

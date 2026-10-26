@@ -18,17 +18,26 @@ import (
 )
 
 type Adapter struct {
-	Shell   string // the familywarden plugin, e.g. /usr/libexec/rpcd/familywarden
-	KeyFile string // usign secret key, e.g. /etc/familywarden/mast.key
+	Shell    string // the familywarden plugin, e.g. /usr/libexec/rpcd/familywarden
+	KeyFile  string // usign secret key, e.g. /etc/familywarden/mast.key
+	LockFile string // interim state transaction lock; empty uses the OpenWrt default
 }
 
 const maxOutput = 1 << 20
 
 func (a Adapter) run(v any, args ...string) error {
+	return a.runLocked(v, nil, args...)
+}
+
+func (a Adapter) runLocked(v any, lock *os.File, args ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	var out, errb bytes.Buffer
 	cmd := exec.CommandContext(ctx, a.Shell, args...)
+	cmd.WaitDelay = time.Second // bound pipe draining if a timed-out shell leaves children
+	if lock != nil {
+		cmd.ExtraFiles = []*os.File{lock} // inherited fd 3 shares the lock's open-file description
+	}
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s %v: %w: %s", a.Shell, args, err, bytes.TrimSpace(errb.Bytes()))
@@ -45,7 +54,7 @@ func (a Adapter) run(v any, args ...string) error {
 	return json.Unmarshal(out.Bytes(), v)
 }
 
-const appFormat = "go-apps-v2"
+const appFormat = "go-apps-v3"
 
 // compileContext is shared by policy and administrator/request paths, so they
 // agree on revisions and requirements even before a phone fetches its policy.

@@ -21,8 +21,8 @@ func TestAdapterCompilesConsistentContextAndPhonePolicy(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "adapter")
 	// Assert the explicit format handshake and version on the real subprocess seam.
 	script := "#!/bin/sh\ncase \"$*\" in\n" +
-		"'core-context go-apps-v2') printf '%s' '" + string(ctx) + "';;\n" +
-		"'core-policy alex 3 go-apps-v2'|'core-policy alex 2 go-apps-v2') printf '%s' '" + string(pol) + "';;\n" +
+		"'core-context go-apps-v3') printf '%s' '" + string(ctx) + "';;\n" +
+		"'core-policy alex 3 go-apps-v3'|'core-policy alex 2 go-apps-v3') printf '%s' '" + string(pol) + "';;\n" +
 		"*) exit 1;;\nesac\n"
 	if err := os.WriteFile(path, []byte(script), 0700); err != nil {
 		t.Fatal(err)
@@ -53,8 +53,9 @@ func TestAdapterRefusesIncompleteOrIncompatibleAppInputs(t *testing.T) {
 	for _, raw := range []string{
 		`{"profiles":{}}`,
 		`{"app_format":"future","profiles":{}}`,
-		`{"app_format":"go-apps-v2","profiles":{"alex":{"name":"Alex"}}}`,
-		`{"app_format":"go-apps-v2","profiles":{"alex":{"app_input":{"version":2,"enabled":"1"}}}}`,
+		`{"app_format":"go-apps-v2","profiles":{}}`,
+		`{"app_format":"go-apps-v3","profiles":{"alex":{"name":"Alex"}}}`,
+		`{"app_format":"go-apps-v3","profiles":{"alex":{"app_input":{"version":2,"enabled":"1"}}}}`,
 	} {
 		var c platform.Context
 		if err := json.Unmarshal([]byte(raw), &c); err != nil {

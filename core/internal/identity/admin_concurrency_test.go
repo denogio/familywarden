@@ -26,6 +26,14 @@ func (g *adminContextGate) Context() (platform.Context, error) {
 	return g.Adapter.Context()
 }
 
+func (g *adminContextGate) WithContext(fn func(platform.Context) error) error {
+	ctx, err := g.Context()
+	if err != nil {
+		return err
+	}
+	return fn(ctx)
+}
+
 func TestPartialDeviceUpdatesDoNotRestoreStaleOmittedFields(t *testing.T) {
 	f := setupFamily(t)
 	gate := &adminContextGate{Adapter: f.s.ad, entered: make(chan struct{}), release: make(chan struct{})}

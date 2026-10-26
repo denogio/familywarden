@@ -33,6 +33,13 @@ type fakeAdapter struct {
 }
 
 func (f *fakeAdapter) Context() (platform.Context, error) { return f.ctx, f.ctxErr }
+func (f *fakeAdapter) WithContext(fn func(platform.Context) error) error {
+	ctx, err := f.Context()
+	if err != nil {
+		return err
+	}
+	return fn(ctx)
+}
 func (f *fakeAdapter) Policy(profile string, version int) (platform.Policy, error) {
 	f.lastPolicy = profile
 	captain := ""

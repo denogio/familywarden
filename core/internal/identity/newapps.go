@@ -409,18 +409,14 @@ func DecodeAppDecision(raw []byte) (AppDecisionInput, error) {
 }
 
 func (s *Service) AppDecision(a AppDecisionInput) Reply {
-	ctx, err := s.ad.Context()
-	if err != nil {
-		return fail("platform state unavailable")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	r := Reply{}
-	for _, f := range s.decideApp("router", a.Profile, a.Package, a.Action, ctx) {
-		r[f.k] = f.v
-	}
-	if _, bad := r["error"]; !bad {
-		r["status"] = "ok"
-	}
-	return r
+	return s.mutate(func(ctx platform.Context) Reply {
+		r := Reply{}
+		for _, f := range s.decideApp("router", a.Profile, a.Package, a.Action, ctx) {
+			r[f.k] = f.v
+		}
+		if _, bad := r["error"]; !bad {
+			r["status"] = "ok"
+		}
+		return r
+	})
 }

@@ -18,6 +18,22 @@ func fail(msg string) Reply { return Reply{"error": msg} }
 
 func ok() Reply { return Reply{"status": "ok"} }
 
+// mutate keeps identity validation and persistence inside the platform pact gate.
+// Callbacks must not call the adapter; enforcement runs after returning.
+func (s *Service) mutate(fn func(platform.Context) Reply) Reply {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var r Reply
+	err := s.ad.WithContext(func(ctx platform.Context) error {
+		r = fn(ctx)
+		return nil
+	})
+	if err != nil || r == nil {
+		return fail("platform state unavailable")
+	}
+	return r
+}
+
 // fingerprint is SHA-256 of the full base64 key, as LuCI and the app show it.
 func fingerprint(key string) string {
 	sum := sha256.Sum256([]byte(key))
@@ -166,80 +182,76 @@ func (s *Service) write(id, profile, name, admin, key, fpr, approves string, kee
 	if !validDevice.MatchString(id) {
 		return fail("invalid device")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	i := s.find(id)
-	// An update's omitted fields come from the current row under the same lock
-	// as validation and persistence, never from an earlier snapshot.
-	if key == "" && i >= 0 {
-		d := s.devices[i]
-		if profile == "" {
-			profile = d.Profile
+	return s.mutate(func(ctx platform.Context) Reply {
+		i := s.find(id)
+		// An update's omitted fields come from the current row under the same lock
+		// as validation and persistence, never from an earlier snapshot.
+		if key == "" && i >= 0 {
+			d := s.devices[i]
+			if profile == "" {
+				profile = d.Profile
+			}
+			if name == "" {
+				name = d.Name
+			}
+			if admin == "" && d.Administrator {
+				admin = "1"
+			}
 		}
-		if name == "" {
-			name = d.Name
+		if admin == "" {
+			admin = "0"
 		}
-		if admin == "" && d.Administrator {
-			admin = "1"
+		if admin != "0" && admin != "1" {
+			return fail("administrator must be 0 or 1")
 		}
-	}
-	if admin == "" {
-		admin = "0"
-	}
-	if admin != "0" && admin != "1" {
-		return fail("administrator must be 0 or 1")
-	}
-	name = cleanName(name)
-	if !validProfile.MatchString(profile) {
-		return fail("invalid profile")
-	}
-	ctx, err := s.ad.Context()
-	if err != nil {
-		return fail("platform state unavailable") // fail closed: pact state unknown
-	}
-	if _, ok := ctx.Profiles[profile]; !ok {
-		return fail("profile not found")
-	}
-	if i >= 0 && frozen(s.devices[i], ctx) {
-		return fail("bound by Ulysses pact")
-	}
-	if key != "" {
-		if fpr != fingerprint(key) || s.pending[id].key != key {
-			return fail("pending device changed; refresh and compare fingerprint")
+		name = cleanName(name)
+		if !validProfile.MatchString(profile) {
+			return fail("invalid profile")
 		}
-	} else {
-		if i < 0 {
-			return fail("device not found")
+		if _, ok := ctx.Profiles[profile]; !ok {
+			return fail("profile not found")
 		}
-		key = s.devices[i].PubKey
-	}
-	var old []string
-	if i >= 0 {
-		old = s.devices[i].Approves
-	}
-	list := strings.Fields(approves)
-	if keepApproves {
-		list = old
-	}
-	scope, msg := validateApproves(profile, list, old, ctx, keepApproves)
-	if msg != "" {
-		return fail(msg)
-	}
-	d := Device{ID: id, Name: name, Profile: profile, PubKey: key, Administrator: admin == "1", Approves: scope}
-	prev := append([]Device(nil), s.devices...)
-	if i >= 0 {
-		s.devices[i] = d
-	} else {
-		s.devices = append(s.devices, d)
-	}
-	if err := s.save(); err != nil {
-		s.devices = prev
-		log.Printf("saving device %s: %v", id, err)
-		return fail("saving device failed")
-	}
-	delete(s.pending, id)
-	log.Printf("device %s approved for profile %s (administrator=%s, approves=%s)", id, profile, admin, strings.Join(scope, " "))
-	return ok()
+		if i >= 0 && frozen(s.devices[i], ctx) {
+			return fail("bound by Ulysses pact")
+		}
+		if key != "" {
+			if fpr != fingerprint(key) || s.pending[id].key != key {
+				return fail("pending device changed; refresh and compare fingerprint")
+			}
+		} else {
+			if i < 0 {
+				return fail("device not found")
+			}
+			key = s.devices[i].PubKey
+		}
+		var old []string
+		if i >= 0 {
+			old = s.devices[i].Approves
+		}
+		list := strings.Fields(approves)
+		if keepApproves {
+			list = old
+		}
+		scope, msg := validateApproves(profile, list, old, ctx, keepApproves)
+		if msg != "" {
+			return fail(msg)
+		}
+		d := Device{ID: id, Name: name, Profile: profile, PubKey: key, Administrator: admin == "1", Approves: scope}
+		prev := append([]Device(nil), s.devices...)
+		if i >= 0 {
+			s.devices[i] = d
+		} else {
+			s.devices = append(s.devices, d)
+		}
+		if err := s.save(); err != nil {
+			s.devices = prev
+			log.Printf("saving device %s: %v", id, err)
+			return fail("saving device failed")
+		}
+		delete(s.pending, id)
+		log.Printf("device %s approved for profile %s (administrator=%s, approves=%s)", id, profile, admin, strings.Join(scope, " "))
+		return ok()
+	})
 }
 
 // validateApproves: existing profiles, not the phone's own, at most 16. New power
@@ -285,27 +297,23 @@ func (s *Service) Delete(id string) Reply {
 	if !validDevice.MatchString(id) {
 		return fail("invalid device")
 	}
-	ctx, err := s.ad.Context()
-	if err != nil {
-		return fail("platform state unavailable")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.pending, id)
-	if i := s.find(id); i >= 0 {
-		if frozen(s.devices[i], ctx) {
-			return fail("bound by Ulysses pact")
+	return s.mutate(func(ctx platform.Context) Reply {
+		delete(s.pending, id)
+		if i := s.find(id); i >= 0 {
+			if frozen(s.devices[i], ctx) {
+				return fail("bound by Ulysses pact")
+			}
+			prev := append([]Device(nil), s.devices...)
+			s.devices = append(s.devices[:i:i], s.devices[i+1:]...)
+			if err := s.save(); err != nil {
+				s.devices = prev
+				return fail("saving device failed")
+			}
+			log.Printf("device %s removed", id)
 		}
-		prev := append([]Device(nil), s.devices...)
-		s.devices = append(s.devices[:i:i], s.devices[i+1:]...)
-		if err := s.save(); err != nil {
-			s.devices = prev
-			return fail("saving device failed")
-		}
-		log.Printf("device %s removed", id)
-	}
-	delete(s.removals, id)
-	return ok()
+		delete(s.removals, id)
+		return ok()
+	})
 }
 
 // AllowRemoval lets one managed phone remove FamilyWarden itself within the hour.
@@ -313,21 +321,17 @@ func (s *Service) AllowRemoval(id string) Reply {
 	if !validDevice.MatchString(id) {
 		return fail("invalid device")
 	}
-	ctx, err := s.ad.Context()
-	if err != nil {
-		return fail("platform state unavailable")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	i := s.find(id)
-	if i < 0 {
-		return fail("device not found")
-	}
-	if frozen(s.devices[i], ctx) {
-		return fail("bound by Ulysses pact")
-	}
-	until := s.Now().Add(removalWindow).Unix()
-	s.removals[id] = until
-	log.Printf("device %s may remove FamilyWarden until %d", id, until)
-	return Reply{"status": "ok", "remove_until": until}
+	return s.mutate(func(ctx platform.Context) Reply {
+		i := s.find(id)
+		if i < 0 {
+			return fail("device not found")
+		}
+		if frozen(s.devices[i], ctx) {
+			return fail("bound by Ulysses pact")
+		}
+		until := s.Now().Add(removalWindow).Unix()
+		s.removals[id] = until
+		log.Printf("device %s may remove FamilyWarden until %d", id, until)
+		return Reply{"status": "ok", "remove_until": until}
+	})
 }

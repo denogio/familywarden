@@ -206,21 +206,23 @@ func (s *Service) uploadLocked(op, sig string, raw []byte, device string) (int, 
 	if _, err := s.routerKey(); err != nil {
 		return StatusError, nil, nil
 	}
-	ctx, err := s.ad.Context()
-	if err != nil {
-		return StatusError, nil, nil
-	}
 	var reply object
 	var ticket *ticketJob
-	switch op {
-	case "request":
-		reply = s.submit(d, raw, ctx)
-	case "usage":
-		reply = s.usage(d, raw, ctx)
-	case "app":
-		reply = s.appDecision(d, raw, ctx)
-	default:
-		reply, ticket = s.decide(d, raw, ctx)
+	err = s.ad.WithContext(func(ctx platform.Context) error {
+		switch op {
+		case "request":
+			reply = s.submit(d, raw, ctx)
+		case "usage":
+			reply = s.usage(d, raw, ctx)
+		case "app":
+			reply = s.appDecision(d, raw, ctx)
+		default:
+			reply, ticket = s.decide(d, raw, ctx)
+		}
+		return nil
+	})
+	if err != nil {
+		return StatusError, nil, nil
 	}
 	h := sha256.Sum256(raw)
 	return StatusOK, append(object{{"v", 1}, {"type", op + "_reply"}, {"device", d.ID},
@@ -618,23 +620,21 @@ func (s *Service) AnswerRequest(a Answer) Reply {
 	if !validRequestID.MatchString(a.RequestID) {
 		return fail("invalid request")
 	}
-	s.mu.Lock()
-	ctx, err := s.ad.Context()
-	if err != nil {
-		s.mu.Unlock()
-		return fail("platform state unavailable")
-	}
-	out, t := s.answer("router", a.RequestID, "", a.Approve, a.Minutes, func(entry) bool { return true }, ctx)
-	s.mu.Unlock()
-	r := Reply{}
-	for _, f := range out {
-		r[f.k] = f.v
-	}
-	if t != nil {
-		r["home_internet"] = s.openTicket(*t)
-	}
-	if _, bad := r["error"]; !bad {
-		r["status"] = "ok"
+	var ticket *ticketJob
+	r := s.mutate(func(ctx platform.Context) Reply {
+		out, t := s.answer("router", a.RequestID, "", a.Approve, a.Minutes, func(entry) bool { return true }, ctx)
+		ticket = t
+		r := Reply{}
+		for _, f := range out {
+			r[f.k] = f.v
+		}
+		if _, bad := r["error"]; !bad {
+			r["status"] = "ok"
+		}
+		return r
+	})
+	if _, bad := r["error"]; !bad && ticket != nil {
+		r["home_internet"] = s.openTicket(*ticket)
 	}
 	return r
 }

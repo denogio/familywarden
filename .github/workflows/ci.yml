@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       mast_emulator:
-        description: Run the Ulysses Mast emulator test (KVM, ~10 min)
+        description: Run grouped lifecycle and signed child/parent emulator tests (KVM)
         type: boolean
         default: false
 
@@ -214,6 +214,9 @@ jobs:
 
       - name: Device owner, pairing and the tethering restriction on Android 15
         run: ./scripts/test-mast-emulator.sh apk mast/ulysses-mast-debug.apk
+
+      - name: Signed child requests and ordinary parent approvals on Android 15
+        run: ./scripts/test-requests-emulator.sh apk mast/ulysses-mast-debug.apk
 
   release:
     name: Release

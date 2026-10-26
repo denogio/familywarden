@@ -242,6 +242,41 @@ Go vet/race, syntax and the full real OpenWrt integration suite pass on the fina
 immutable inputs. The throwaway integration router is capped at 768 MiB/two CPUs;
 its container is removed after the run. No deployment.
 
+### Runtime pact gate (core 0.11.0 / backend 0.11.0_rc8, 2026-10-26)
+
+Existing core mutations now use `Adapter.WithContext`: the core mutex is taken first,
+then the OpenWrt state lock stays held from snapshot through validation and persistence.
+This covers approve/update/delete/removal, administrator request/new-app decisions and
+all four authenticated upload paths. The fake adapter implements the same boundary.
+Ticket/enforcement jobs run only after both locks release, preserving ticket→state lock
+order and avoiding an IPC callback into a core already holding its mutex.
+
+The Go OpenWrt adapter passes its locked open-file description as child fd 3. The
+private `core-context ... held-v1` mode checks the descriptor's inode and locks that
+same description instead of deadlocking on a second fd. The parent retains the lock
+after the snapshot subprocess exits, including during durable writes. Acquisition and
+command execution are bounded; snapshot errors release the lock without calling the mutation.
+Callbacks themselves may report failed saves and also release the lock.
+
+Private format `go-apps-v3` is mandatory on both context/policy paths: install these
+core/backend development packages together. Older formats/missing or foreign descriptors
+are refused, never interpreted as an unfrozen household. Phone wire formats, keys,
+store schemas, app revisions and grant/retention rules do not change. No deployment.
+
+Go vet/race, syntax and real fw4/nft integration pass on immutable inputs. Tests check
+all ten runtime mutation routes and their document/usage writes, deferred home tickets,
+real inherited-descriptor lock lifetime, callback-error cleanup, cancellation, invalid
+snapshots and mixed-format refusal. A negative probe that releases the lock before
+the callback fails as intended. The real router test queues a binding change behind
+the state gate and verifies no early write and pact refusal afterward.
+The opt-in CI emulator job now groups lifecycle and signed child/ordinary-parent suites;
+new package/native validation is tracked separately from these local source results.
+
+This is a concrete runtime race fix, **not the household-store cutover**. Direct UCI
+form writes are still outside this gate, and the shell still owns pact semantics and
+snapshot files. The configuration/CAS/apply-confirm/rollback work below remains open;
+no parallel or unused configuration store has been added.
+
 ### Authoritative configuration cutover: traced callers and required transaction
 
 Do not import only the Profiles form and leave competing UCI consumers behind:

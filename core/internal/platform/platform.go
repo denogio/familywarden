@@ -50,6 +50,12 @@ type LegacyDevice struct {
 
 type Adapter interface {
 	Context() (Context, error)
+	// WithContext serializes a core mutation with participating platform pact/state
+	// writers. The callback runs exactly once after a successful snapshot, while
+	// the platform lock is held; errors before it runs must not mutate anything.
+	// Callers take their core mutex first. Callbacks must not call the adapter;
+	// enforcement/apply work runs after this method releases the platform lock.
+	WithContext(func(Context) error) error
 	Policy(profile string, version int) (Policy, error)
 	RouterKey() (usign.SecretKey, error)
 	LegacyDevices() ([]LegacyDevice, error)
