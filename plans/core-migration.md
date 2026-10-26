@@ -413,6 +413,16 @@ missing/null access-list fields (refuse the sync before any writes rather than
 replace foreign settings with inferred empty values). Missing client/catalogue
 collections are errors, not valid empty collections.
 
+Mixed-version DNS safety (core 0.13.0-r5 / backend 0.11.0_rc10-r3): the private
+`configuration_dns` reply now requires `dns-config-v1` plus typed captain/input,
+domain/URL strings and a profiles array. A missing URL in an older core's reply
+must not be mistaken for explicitly cleared settings (the previous combination
+could remove the last DNS acknowledgement). Both sync and catalogue refuse the
+incompatible/incomplete reply before touching acknowledged policy. The real AGH
+suite wraps the core CLI to reproduce the older shape and a version-marked reply
+with a missing URL: both preserve the acknowledgement and matching packages recover
+without re-pairing. The pre-fix source fails the acknowledgement/catalogue checks.
+
 ### Recovery and downgrade limits (optional core ownership)
 
 These are safety limits, not a supported downgrade procedure or deployment approval.

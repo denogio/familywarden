@@ -312,6 +312,32 @@ uci commit familywarden
 grep -q '^gran grandma-2 ' /etc/familywarden/dns.ack && pass "owned DNS ignores direct UCI edits" || fail "UCI edit became DNS authority"
 
 echo ""
+echo "=== Mixed-version DNS configuration must preserve acknowledged policy ==="
+cp /etc/familywarden/dns.ack /tmp/mixed-dns-ack.before
+mv /usr/sbin/familywardend /usr/sbin/familywardend.real
+cat > /usr/sbin/familywardend <<'MIXED_CORE'
+#!/bin/sh
+case "$*" in
+    *"api configuration_dns")
+        # Emulate the pre-endpoint private API (older core): no format or URL.
+        /usr/sbin/familywardend.real "$@" | ucode -l fs -e 'let d=json(fs.stdin.read("all")); delete d.format; delete d.input.url; print(sprintf("%J",d));'
+        ;;
+    *) exec /usr/sbin/familywardend.real "$@" ;;
+esac
+MIXED_CORE
+chmod 755 /usr/sbin/familywardend
+"$BIN" dns-sync && fail "mixed DNS configuration format accepted" || pass "mixed DNS configuration format refused"
+cmp -s /tmp/mixed-dns-ack.before /etc/familywarden/dns.ack && pass "mixed DNS configuration keeps the last acknowledgement" || fail "mixed core dropped acknowledged DNS policy"
+assert_eq "mixed catalogue refuses incompatible configuration" "$(call dns_services | jsonfilter -e '@.error')" "DNS configuration unavailable"
+# Even a matching format marker cannot make an omitted required URL an
+# intentional empty value. Require the response's complete typed shape too.
+sed -i 's/delete d.format; //' /usr/sbin/familywardend
+"$BIN" dns-sync && fail "incomplete DNS configuration accepted" || pass "incomplete DNS configuration refused"
+cmp -s /tmp/mixed-dns-ack.before /etc/familywarden/dns.ack && pass "incomplete DNS configuration keeps the last acknowledgement" || fail "incomplete DNS configuration dropped acknowledged policy"
+mv /usr/sbin/familywardend.real /usr/sbin/familywardend
+"$BIN" dns-sync && pass "DNS sync recovers after matching core returns" || fail "matching core did not recover DNS"
+
+echo ""
 echo "=== LuCI helpers ==="
 call dns_services | jsonfilter -e '@.services[*].id' | grep -qx youtube && pass "service catalogue from AGH" || fail "no services"
 call dns_services | jsonfilter -e "@.services[@.id='youtube'].name" | grep -qx YouTube && pass "service names" || fail "no service names"

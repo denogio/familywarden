@@ -9,6 +9,19 @@ import (
 	"github.com/denogio/familywarden/core/internal/rules"
 )
 
+func TestPrivateDNSConfigurationContract(t *testing.T) {
+	a, b, _ := setup(t)
+	b.current.Current.Settings.ResolverURL = "http://192.0.2.1:3000"
+	_ = b.current.Seal()
+	activate(t, a, b)
+	r := a.API("configuration_dns", nil)
+	okResult(t, r)
+	input, ok := r["input"].(map[string]any)
+	if !ok || r["format"] != "dns-config-v1" || input["url"] != b.current.Current.Settings.ResolverURL {
+		t.Fatal("private DNS contract omitted its version or authoritative endpoint", r)
+	}
+}
+
 func TestDNSOnlyTightensForABoundCaptain(t *testing.T) {
 	now := time.Unix(1800000000, 0)
 	c := sample()

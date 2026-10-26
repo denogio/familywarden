@@ -64,6 +64,26 @@ core_configuration_api() {
     printf '%s\n' "$response"
     [ "$code" = 0 ] && [ -z "$(printf '%s' "$response" | jsonfilter -e '@.error')" ]
 }
+# Private desired-DNS contract: an older core's missing fields must never be
+# interpreted as explicitly empty settings (which could drop acknowledged DNS).
+core_dns_configuration() {
+    local response kind key
+    response=$(core_configuration_api configuration_dns '{}') || return 1
+    [ "$(printf '%s' "$response" | jsonfilter -e '@.format')" = "dns-config-v1" ] || return 1
+    json_load "$response" || return 1
+    json_get_type kind captain
+    [ "$kind" = string ] || return 1
+    json_get_type kind input
+    [ "$kind" = object ] || return 1
+    json_select input || return 1
+    for key in domain url; do
+        json_get_type kind "$key"
+        [ "$kind" = string ] || return 1
+    done
+    json_get_type kind profiles
+    [ "$kind" = array ] || return 1
+    printf '%s\n' "$response"
+}
 # AdGuard Home management (see "DNS: AdGuard Home sync")
 FW_AGH_AUTH="$FW_PERSIST/agh.auth"
 FW_AGH_OWNED="$FW_PERSIST/agh.owned"
@@ -1939,7 +1959,7 @@ _dns_sync_locked() {
     if configuration_owned; then
         # The core owns the desired DNS set: live DNS plus a bound captain's
         # snapshot and frozen domain (configuration.DNS).
-        core=$(core_configuration_api configuration_dns '{}') || { _dns_status "DNS configuration unavailable"; return 1; }
+        core=$(core_dns_configuration) || { _dns_status "DNS configuration unavailable"; return 1; }
         url=$(echo "$core" | jsonfilter -e '@.input.url')
         domain=$(echo "$core" | jsonfilter -e '@.input.domain')
         _dns_cap=$(echo "$core" | jsonfilter -e '@.captain')
@@ -2101,7 +2121,7 @@ ubus_dns_auth() {
 ubus_dns_services() {
     local url core
     if configuration_owned; then
-        core=$(core_configuration_api configuration_dns '{}') || { _json_error "DNS configuration unavailable"; return 1; }
+        core=$(core_dns_configuration) || { _json_error "DNS configuration unavailable"; return 1; }
         url=$(echo "$core" | jsonfilter -e '@.input.url')
     else
         config_load familywarden
