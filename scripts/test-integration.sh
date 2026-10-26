@@ -1316,6 +1316,11 @@ usign -G -p /tmp/owned-phone.pub -s /tmp/owned-phone.key >/dev/null
 v2payload owned-phone fw-owned "$N1" >/dev/null
 assert_json "owned mode approves a bound phone" "$(call device_approve "{\"device\":\"fw-owned\",\"profile\":\"alex\",\"fingerprint\":\"$(fpr owned-phone)\"}")" '@.status' ok
 assert_json "owned policy still uses the frozen limit" "$(v3payload owned-phone fw-owned "$N1" - '' apps-v1,screen-time-v1)" '@.apps.screen.mon' 10
+# Even a stale/tampered runtime projection cannot become the app-policy source.
+uci -c /var/run/familywarden set familywarden.alex.screen_minutes=777
+uci -c /var/run/familywarden commit familywarden
+assert_json "owned app policy ignores a divergent runtime projection" "$(v3payload owned-phone fw-owned "$N1" - '' apps-v1,screen-time-v1)" '@.apps.screen.mon' 10
+call reload >/dev/null
 assert_json "owned binding cannot escape its pact" "$(call device_update '{"device":"fw-owned","profile":"taylor"}')" '@.error' 'bound by Ulysses pact'
 # Phone pact/rules now come from the core document; the shell supplies only the
 # runtime override. Both must agree on a real router (the core logs any divergence).

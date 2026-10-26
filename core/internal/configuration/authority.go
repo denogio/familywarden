@@ -178,7 +178,24 @@ func (a *Authority) Context() (platform.Context, error) {
 	if err := a.refresh(); err != nil {
 		return platform.Context{}, err
 	}
-	return a.Adapter.Context()
+	c, err := a.Adapter.Context()
+	if err != nil {
+		return platform.Context{}, err
+	}
+	return a.appContext(c)
+}
+
+// Called with the authority mutex held; adapter.WithContext additionally holds
+// the platform state lock through compilation and the caller's mutation.
+func (a *Authority) appContext(c platform.Context) (platform.Context, error) {
+	d, found, err := a.load()
+	if err != nil {
+		return platform.Context{}, err
+	}
+	if !found {
+		return c, nil
+	}
+	return AppContext(d.Configuration, c, a.at(c))
 }
 
 func (a *Authority) Policy(profile string, version int) (platform.Policy, error) {
@@ -198,6 +215,23 @@ func (a *Authority) Policy(profile string, version int) (platform.Policy, error)
 	if !found {
 		return p, nil
 	}
+	p.Context, err = AppContext(d.Configuration, p.Context, a.at(p.Context))
+	if err != nil {
+		return platform.Policy{}, err
+	}
+	p.Apps = nil
+	if prof, ok := p.Context.Profiles[profile]; ok && version == 3 {
+		apps, _, err := prof.AppInput.Compile()
+		if err != nil {
+			return platform.Policy{}, err
+		}
+		if apps != nil {
+			p.Apps, err = json.Marshal(apps)
+			if err != nil {
+				return platform.Policy{}, err
+			}
+		}
+	}
 	return PhonePolicy(d.Configuration, p, profile, a.at(p.Context))
 }
 
@@ -207,7 +241,13 @@ func (a *Authority) WithContext(fn func(platform.Context) error) error {
 	if err := a.refresh(); err != nil {
 		return err
 	}
-	return a.Adapter.WithContext(fn)
+	return a.Adapter.WithContext(func(c platform.Context) error {
+		compiled, err := a.appContext(c)
+		if err != nil {
+			return err
+		}
+		return fn(compiled)
+	})
 }
 
 func (a *Authority) Configuration() (rules.Configuration, error) {

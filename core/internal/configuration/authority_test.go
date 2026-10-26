@@ -41,7 +41,7 @@ func (f *fakeBackend) Configuration() (rules.Configuration, error) { return clon
 func (f *fakeBackend) Context() (platform.Context, error) {
 	p := map[string]platform.Profile{}
 	for _, v := range f.current.Current.Profiles {
-		p[v.ID] = platform.Profile{Name: v.Name}
+		p[v.ID] = platform.Profile{Name: v.Name, AppInput: &rules.AppConfig{Version: 1}}
 	}
 	return platform.Context{Profiles: p, TimeZone: "UTC"}, nil
 }

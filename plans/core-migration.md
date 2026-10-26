@@ -413,6 +413,30 @@ missing/null access-list fields (refuse the sync before any writes rather than
 replace foreign settings with inferred empty values). Missing client/catalogue
 collections are errors, not valid empty collections.
 
+### Owned app-policy configuration comes from the document (core 0.13.0-r3)
+
+`configuration.AppContext` builds the app compiler input directly from
+`Effective(configuration, router-local time)`: enabled/suspend-new flags,
+weekday/weekend totals, package rules, downtime and always-allowed packages.
+Only today's bonus and the timezone come from the adapter snapshot. It rebuilds
+profile labels, app revisions and capability requirements for all authoritative
+profiles and discards stale platform-only profiles. Missing runtime facts, malformed
+bonus or a divergent pact captain refuse the operation instead of weakening policy.
+
+`Authority.Context`, `Authority.WithContext` and `Authority.Policy` share this
+compilation, so request validation/mutations and signed phone replies use the same
+revision. `WithContext` keeps compilation and the mutation inside the adapter's
+state lock; v2 replies do not acquire a v3 app-policy payload. Legacy ownership and
+the private `go-apps-v3` adapter seam remain unchanged. The shell still exports
+legacy app fields for compatibility, but they are not the owned-mode policy source.
+
+Regression tests supply deliberately looser platform rules (999 minutes), stale
+profile labels and an extra deleted profile; the document's frozen limits, zero
+weekday limit, downtime, blocked precedence and today's bonus must win. A mutation
+that returns the adapter context unchanged fails both app-context and phone/mutation
+revision tests. The real router test changes the runtime projection to 777 minutes
+and still receives the authoritative frozen 10-minute policy.
+
 ### Authoritative configuration cutover: traced callers and required transaction
 
 Do not import only the Profiles form and leave competing UCI consumers behind:
