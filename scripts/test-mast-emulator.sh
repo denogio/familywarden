@@ -2,7 +2,7 @@
 # Ulysses Mast on real Android: an emulator (KVM) with the debug APK as device
 # owner, paired with a throwaway FamilyWarden router container. Checks
 # DNS-independent pairing, enrollment approval in the router, scoped pact
-# enforcement, DNS failure reporting and restoration, and Android protection.
+# enforcement, same-key address repair, DNS failure reporting/restoration and protection.
 #
 #   ./scripts/test-mast-emulator.sh <router-apk-dir> [familywarden-debug.apk]
 #
@@ -41,7 +41,7 @@ docker run --rm -v mast-sdk:/opt/extra "$SDK_IMAGE" sh -c \
 docker network create "$NET" >/dev/null
 
 echo "=== Router with an ongoing pact (captain always blocked) ==="
-docker run -d --name "$ROUTER" --network "$NET" --cap-add NET_ADMIN \
+docker run -d --name "$ROUTER" --network "$NET" --cap-add NET_ADMIN --memory=768m --cpus=2 \
     -v "$APK_DIR:/apk:ro" -v "${LEGACY_APK_DIR:-$APK_DIR}:/legacy:ro" \
     openwrt/rootfs:x86-64-25.12.4 sleep infinity >/dev/null
 docker exec -e START=$([ -n "${LEGACY_APK_DIR:-}" ] && echo legacy || echo apk) "$ROUTER" sh -c '
@@ -77,6 +77,7 @@ echo "router at $ROUTER_IP"
 
 echo "=== Emulator (Android 15) ==="
 docker run -d --name "$EMU" --network "$NET" --device /dev/kvm --sysctl net.ipv6.conf.lo.disable_ipv6=0 \
+    --memory=4608m --memory-swap=4608m --cpus=2 \
     -v mast-sdk:/opt/extra -v "$MAST_APK:/mast.apk:ro" "$SDK_IMAGE" sleep infinity >/dev/null
 docker exec "$EMU" sh -c "
     export ANDROID_HOME=/opt/extra ANDROID_SDK_ROOT=/opt/extra
@@ -87,7 +88,7 @@ docker exec "$EMU" sh -c "
         'hw.cpu.arch=x86_64' 'tag.id=google_apis' 'hw.ramSize=2048' 'disk.dataPartition.size=4G' \
         'hw.lcd.width=1080' 'hw.lcd.height=2400' 'hw.lcd.density=420' > ~/.android/avd/t.avd/config.ini
     (/opt/extra/emulator/emulator -avd t -no-window -no-audio -no-snapshot -no-boot-anim \
-        -gpu swangle_indirect -accel on -memory 2048 -feature -ModemSimulator >/tmp/emu.log 2>&1 &)
+        -gpu swangle_indirect -accel on -memory 2048 -feature -ModemSimulator -feature -WiFiPacketStream >/tmp/emu.log 2>&1 &)
 "
 ADB="docker exec $EMU /opt/extra/platform-tools/adb"
 for _ in $(seq 1 120); do
@@ -96,6 +97,9 @@ for _ in $(seq 1 120); do
 done
 [ "$($ADB shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] || { docker exec "$EMU" tail -20 /tmp/emu.log; echo "emulator did not boot"; exit 1; }
 pass "emulator booted ($($ADB shell getprop ro.build.version.release | tr -d '\r'))"
+# Emulator 37's packet-stream Wi-Fi has no guest network with this API 35 image;
+# use the established user-mode backend and wait for its DHCP route, not just boot.
+bash "$REPO/scripts/wait-emulator-router.sh" "$EMU" "$ROUTER_IP" 7700
 
 restrictions() { $ADB shell dumpsys user | tr -d '\r'; }
 has() { restrictions | grep -A30 "UserInfo{0:" | grep -q "$1"; }
@@ -167,6 +171,14 @@ open_removal() {
     tap_text 'Remove FamilyWarden'
 }
 
+# Emit only endpoint and public identity hashes, never app-private key material.
+pair_state() {
+    $ADB exec-out run-as io.github.denogio.familywarden cat shared_prefs/familywarden.xml | python3 -c '
+import hashlib,sys,xml.etree.ElementTree as E
+values={n.get("name"):n.text or "" for n in E.parse(sys.stdin).getroot()}
+print(values["host"],hashlib.sha256(values["pubkey"].encode()).hexdigest(),values["device_id"],sep="|")'
+}
+
 $ADB install -r /mast.apk >/dev/null && pass "APK installed (sideloaded, not from Play)" || fail "install"
 # Android checks for accounts asynchronously after boot (hasIncompatibleAccountsTask);
 # until that has finished, set-device-owner is refused. Retry for a bit.
@@ -190,7 +202,7 @@ ui pairing-confirmation
 ui_has 'Confirm the router'
 tap_text 'It matches, pair'
 $ADB logcat -d -s UlyssesMast:* AndroidRuntime:E | tr -d '\r' | grep -A4 -E "debug:|FATAL" | head -8 | sed 's/^/  log: /'
-echo "  router :7700 from emulator: $($ADB shell "echo | nc -w 3 $ROUTER_IP 7700 >/dev/null 2>&1 && echo open || echo CLOSED" | tr -d '\r')"
+echo "  router :7700 from emulator: $($ADB shell "nc -z -w 3 $ROUTER_IP 7700 >/dev/null 2>&1 && echo open || echo CLOSED" | tr -d '\r')"
 if [ -n "${LEGACY_APK_DIR:-}" ]; then
     ui legacy-unsupported
     ui_has 'Router setup needs an update'
@@ -205,11 +217,16 @@ has no_config_tethering && fail "pending phone restricted before approval" || pa
 # The administrator compares the fingerprint the app shows with LuCI's
 APP_FP=$(printf '%s' "$UI" | grep -oE '([0-9a-f]{4} ){15}[0-9a-f]{4}' | head -1 | tr -d ' ')
 PENDING=$(docker exec "$ROUTER" sh -c 'echo "{}" | /usr/libexec/rpcd/familywarden call devices')
+if ! printf '%s' "$PENDING" | python3 -c 'import json,sys; sys.exit(0 if len(json.load(sys.stdin).get("pending", [])) == 1 else 1)'; then
+    fail "router did not receive exactly one enrollment request"
+    exit 1
+fi
 DEV_ID=$(echo "$PENDING" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pending"][0]["id"])')
 ROUTER_FP=$(echo "$PENDING" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pending"][0]["fingerprint"])')
 [ -n "$APP_FP" ] && [ "$APP_FP" = "$ROUTER_FP" ] && pass "app and LuCI show the same fingerprint" || fail "fingerprints differ: app=$APP_FP router=$ROUTER_FP"
 out=$(docker exec "$ROUTER" sh -c "echo '{\"device\":\"$DEV_ID\",\"profile\":\"alex\",\"name\":\"Alex phone\",\"administrator\":\"1\",\"fingerprint\":\"$ROUTER_FP\"}' | /usr/libexec/rpcd/familywarden call device_approve")
-echo "$out" | grep -q '"status": "ok"' && pass "administrator approved the phone" || fail "approval: $out"
+printf '%s' "$out" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("status") == "ok" else 1)' \
+    && pass "administrator approved the phone" || fail "approval: $out"
 broadcast io.github.denogio.familywarden.DEBUG_SYNC
 has no_config_tethering && pass "scoped pact restricts tethering" || fail "no_config_tethering missing"
 ui blocked-light
@@ -224,7 +241,51 @@ ui_has 'Hotspot is locked'
 $ADB shell settings put system font_scale 1.0
 $ADB shell cmd uimode night no
 has no_config_date_time && pass "clock locked while paired" || fail "no_config_date_time missing"
-docker exec "$ROUTER" sh -c "test -s /tmp/familywarden.seen/$DEV_ID" && pass "router saw the approved phone sync" || fail "router has no sync record"
+# Sync observations moved to the core; the old shell .seen files are not authority.
+docker exec "$ROUTER" sh -c 'echo "{}" | /usr/libexec/rpcd/familywarden call devices' | python3 -c '
+import json,sys
+sys.exit(0 if any(d["id"] == sys.argv[1] and int(d.get("seen", 0)) > 0 for d in json.load(sys.stdin).get("devices", [])) else 1)' "$DEV_ID" \
+    && pass "router saw the approved phone sync" || fail "router has no sync record"
+
+echo ""
+echo "=== Same-key address repair while bound (no DNS dependency) ==="
+# Use a second address on this isolated bridge, without changing the enrolled router/key.
+SUBNET=$(docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}' "$NET")
+read -r REPAIR_IP REPAIR_PREFIX < <(python3 -c '
+import ipaddress,sys
+n=ipaddress.ip_network(sys.argv[1]); print(n.broadcast_address-2,n.prefixlen)' "$SUBNET")
+docker exec "$ROUTER" ip addr add "$REPAIR_IP/$REPAIR_PREFIX" dev eth0
+ORIGINAL_PAIR=$(pair_state)
+REPAIR_URI="familywarden://pair?host=router.invalid&address=$REPAIR_IP:7700&key=$KEY"
+# A foreign QR key must not turn repair into re-pairing during a pact.
+FOREIGN_KEY=$(docker exec "$ROUTER" sh -c 'usign -G -s /tmp/foreign.key -p /tmp/foreign.pub >/dev/null && tail -1 /tmp/foreign.pub' | sed 's/+/%2B/g; s|/|%2F|g; s/=/%3D/g')
+$ADB shell am start -a android.intent.action.VIEW -d "'familywarden://pair?host=router.invalid&address=$REPAIR_IP:7700&key=$FOREIGN_KEY'" -n io.github.denogio.familywarden/.MainActivity >/dev/null
+sleep 8
+[ "$(pair_state)" = "$ORIGINAL_PAIR" ] && pass "foreign QR key cannot replace a bound phone's router pin" || fail "foreign QR changed pairing"
+# An unreachable endpoint must not replace the last working address either.
+$ADB shell am start -a android.intent.action.VIEW -d "'familywarden://pair?host=router.invalid&address=$REPAIR_IP:7701&key=$KEY'" -n io.github.denogio.familywarden/.MainActivity >/dev/null
+sleep 8
+[ "$(pair_state)" = "$ORIGINAL_PAIR" ] && pass "unreachable repair endpoint leaves the last working address intact" || fail "unreachable repair changed pairing"
+# Same advertised key is insufficient: the new endpoint must return a fresh signed reply.
+docker exec "$ROUTER" sh -c 'cp /www-familywarden/cgi-bin/mast /tmp/mast.signed; printf "#!/bin/sh\nprintf '\''Content-Type: application/octet-stream\\r\\n\\r\\n{}'\''\n" > /www-familywarden/cgi-bin/mast'
+$ADB shell am start -a android.intent.action.VIEW -d "'$REPAIR_URI'" -n io.github.denogio.familywarden/.MainActivity >/dev/null
+sleep 8
+[ "$(pair_state)" = "$ORIGINAL_PAIR" ] && pass "unsigned repair reply leaves endpoint, pin and identity unchanged" || fail "unsigned reply changed pairing"
+has no_config_tethering && pass "failed address repair retains cached pact protection" || fail "repair failure lifted pact"
+docker exec "$ROUTER" mv /tmp/mast.signed /www-familywarden/cgi-bin/mast
+$ADB shell am start -a android.intent.action.VIEW -d "'$REPAIR_URI'" -n io.github.denogio.familywarden/.MainActivity >/dev/null
+for _ in $(seq 1 15); do
+    [ "$(pair_state)" = "$REPAIR_IP:7700|${ORIGINAL_PAIR#*|}" ] && break
+    sleep 1
+done
+[ "$(pair_state)" = "$REPAIR_IP:7700|${ORIGINAL_PAIR#*|}" ] && pass "fresh signed same-key reply repairs the address without re-enrollment" || fail "same-key address repair failed"
+has no_config_tethering && pass "successful address repair preserves active pact" || fail "address repair lifted pact"
+$ADB shell am start -a android.intent.action.VIEW -d "'$PAIR_URI'" -n io.github.denogio.familywarden/.MainActivity >/dev/null
+for _ in $(seq 1 15); do
+    [ "$(pair_state)" = "$ORIGINAL_PAIR" ] && break
+    sleep 1
+done
+[ "$(pair_state)" = "$ORIGINAL_PAIR" ] && pass "phone follows the same router back to its original endpoint" || fail "repair back failed"
 
 # The profile has no DNS yet: explicitly unconfigured, not green.
 ui navigation-overview

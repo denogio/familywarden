@@ -26,7 +26,7 @@ printf 'OUT=%q\nROUTER=%q\nEMU=%q\nNET=%q\n' "$OUT" "$ROUTER" "$EMU" "$NET" > "$
 docker run --rm --memory=1g --cpus=2 -v "$ROOT:/src:ro" -v "$OUT/probe:/out" \
     -v mast-android-debugkey:/root/.android "$SDK_IMAGE" sh /src/test/android/install-probe/build.sh > "$OUT/probe-build.log" 2>&1
 docker network create "$NET" >/dev/null
-docker run -d --name "$ROUTER" --network "$NET" --cap-add NET_ADMIN \
+docker run -d --name "$ROUTER" --network "$NET" --cap-add NET_ADMIN --memory=768m --cpus=2 \
     -v "$APKS:/apk:ro" openwrt/rootfs:x86-64-25.12.4 sleep infinity >/dev/null
 # Bound feed stalls on the host; this minimal OpenWrt image has no timeout command.
 timeout --kill-after=10 180 docker exec "$ROUTER" sh -ec '
@@ -81,7 +81,9 @@ docker exec "$EMU" sh -c '
         hw.cpu.arch=x86_64 tag.id=google_apis hw.ramSize=2048 disk.dataPartition.size=4G \
         hw.lcd.width=1080 hw.lcd.height=2400 hw.lcd.density=420 > /root/.android/avd/p8.avd/config.ini
     (/opt/extra/emulator/emulator -avd p8 -no-window -no-audio -no-snapshot -no-boot-anim \
-        -gpu swangle_indirect -accel on -memory 2048 -cores 2 -feature -ModemSimulator >/tmp/emu.log 2>&1 &)
+        -gpu swangle_indirect -accel on -memory 2048 -cores 2 -feature -ModemSimulator -feature -WiFiPacketStream >/tmp/emu.log 2>&1 &)
 '
+# Match the API 35 user-mode Wi-Fi backend used by test-mast-emulator.sh.
+bash "$ROOT/scripts/wait-emulator-router.sh" "$EMU" "$IP" 7700
 python3 "$ROOT/test/android/request_flow.py" --router "$ROUTER" --emulator "$EMU" --address "$IP:7700" --out "$OUT"
 echo "P8 native checks passed; artifacts: $OUT"

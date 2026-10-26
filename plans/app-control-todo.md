@@ -295,7 +295,9 @@ Depends on P3/P4 and P1 protocol decisions.
       An enrolled phone may scan/enter its router again (also managed or pact-bound): same
       pinned key -> only the address changes, after a fresh request-bound signed reply from
       the new address (`Mast.repairAddress`). Another key still needs removal authority.
-      Unit-tested rule; not yet exercised on a device with a real address change.
+      Unit-tested and verified on Android 15 against two real container endpoints while
+      pact-bound (#99): foreign-key, unreachable and unsigned replies refused; pin and
+      device identity preserved. Physical network/address transitions remain a gate.
 - [x] Test pending enrollment, changed pending keys, revoked roles and old Android clients.
       Done: pending/foreign-key v3, v2-only phones, router-rollback downgrade (integration
       + JVM), and the real debug app against a real v3 router on the Android 15 emulator

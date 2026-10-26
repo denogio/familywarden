@@ -127,13 +127,25 @@ re-enrolling Mast requires completing the normal release/removal flow or resetti
 ## Testing
 
 - `android/`: `./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease`.
-  36 unit tests cover Policy, usign, pairing, and UI mapping.
+  Latest Android checkpoint: 199 JVM tests covering policy/signatures, roles, pairing,
+  removal, usage/grants and UI mapping/selection.
 - `scripts/test-mast-emulator.sh <router-apk-dir>`: Android 15 emulator with the debug APK
   as Device Owner against a FamilyWarden router in Docker. Covers real pairing confirmation,
   Compose in light/dark themes and 200% text, pacts, release, new pacts, offline reboot,
   and refusal of `pm clear` and uninstall. A removal dialog opened before a new pact
-  must not allow removal afterward. Also verifies successful removal after a fresh release.
+  must not allow removal afterward. Also verifies successful removal after a fresh release
+  and same-key numeric address repair while bound (foreign key, unreachable endpoint and
+  unsigned response refused; endpoint/pin/device identity preserved).
   CI runs it through *workflow_dispatch* with `mast_emulator`.
   Set `MAST_SCREENSHOT_DIR=/tmp/mast-ui` to save screenshots.
+- `scripts/test-requests-emulator.sh <router-apk-dir> [debug.apk]`: real signed child
+  request, restart-safe grant consumption, new-app approval and a parent phone without
+  Device Owner. Both native suites pass at the 2026-10-26 validation checkpoint.
+- API 35 test guests use the established user-mode Wi-Fi backend
+  (`-feature -WiFiPacketStream`): emulator 37.2.12's packet-stream backend produced no
+  guest network in this environment. `scripts/wait-emulator-router.sh` waits for a real
+  zero-I/O TCP connection, not merely Android boot completion or an incomplete HTTP probe.
+  Temporary emulator/router containers are resource-capped and removed after the tests.
+  These settings change test infrastructure only, not phone policy or production networking.
 - Release builds use R8 minification and resource shrinking (about 4.1 MB locally).
   Emulator runtime tests use debug builds; physical hotspot/Pixel behavior is not yet tested.

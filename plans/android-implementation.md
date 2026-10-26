@@ -102,13 +102,31 @@ Implements the decisions recorded in `plans/dns-filtering.md` (2026-10-17):
 ## Remaining gates (before rollout)
 
 1. Real device: hotspot restriction under a new pact, and a reboot without the router.
-2. Positive DoT test needs a publicly trusted certificate: not possible in the emulator.
-3. Startup clock integrity and before-first-unlock reboot behavior; same-key control
-   address repair when the router's LAN IP changes.
+2. Positive in-app DoT probe against a suitable publicly trusted resolver/certificate:
+   not covered by the current disposable resolver fixture.
+3. Physical startup-clock and before-first-unlock behavior, plus real network/address
+   transitions. Same-key numeric address repair is emulator-verified (see below), not
+   a completed physical-device gate.
 4. Choose default protections/services per profile (#33). No AGH or router change has
    been made by this work beyond the approved `familywarden` AGH user.
 
-## Verification at this checkpoint
+## Runtime follow-up (2026-10-26)
+
+The resource-capped Android 15/OpenWrt suite passes all 98 successful checks, including
+same-key address repair while pact-bound. Foreign QR keys, unreachable endpoints and
+unsigned repair replies preserve the old endpoint/pin/device identity and restrictions;
+fresh signed replies permit address repair and return without re-enrollment. The
+signed request/grant/new-app/ordinary-parent suite also passes its 31 checkpoints.
+
+This validates the existing phone-policy path with the selector-checkpoint debug APK
+and matching core 0.9/backend rc7 development artifacts. Emulator 37's API35 network
+bootstrap now explicitly uses user-mode Wi-Fi and waits for TCP connectivity. Tests
+read sync observations through the core API, not removed shell RAM files. Both suites
+run on immutable snapshots and remove their containers/networks afterward. No physical
+phone, live router, deployed policy, signing key or production package was changed.
+The remaining physical and positive-resolver gates above stay open.
+
+## Verification at the original checkpoint
 
 - Router: 178 integration checks (real fw4/nftables, enrollment, freeze, removal,
   crafted names); 49 AdGuard Home checks against a throwaway v0.107.79 container
