@@ -37,13 +37,6 @@ async function mockFamilyWarden(page, method, reply) {
   });
 }
 
-test('profiles disables legacy UCI writes after core configuration activation', async ({ page }) => {
-  await mockFamilyWarden(page, 'configuration_status', () => ({ owner: 'core' }));
-  await page.goto(`${URL}/profiles`);
-  await expect(page.getByRole('heading', { name: 'Core-managed configuration' })).toBeVisible();
-  await expect(page.locator('.cbi-page-actions')).toHaveCount(0);
-  await expect(page.locator('.cbi-map input, .cbi-map select')).toHaveCount(0);
-});
 
 const coreExport = {
   owner: 'core',
@@ -78,6 +71,63 @@ async function mockCoreConfiguration(page, replies) {
   });
   return calls;
 }
+
+// A core export matching the live UCI projection as the browser sees it. The
+// profile mapping must equal the shell's real legacy export field for field.
+async function ownedExport(page) {
+  await page.goto(`${URL}/profiles`);
+  await expect(page.locator('#fw-profiles')).toBeVisible();
+  const { real, current } = await page.evaluate(async () => {
+    const [cfg, uci] = await Promise.all([L.require('familywarden.configuration'), L.require('uci')]);
+    const exported = await cfg.configurationExport();
+    await uci.load('familywarden');
+    return { real: exported.configuration.current, current: cfg.fromUci(exported.configuration.current) };
+  });
+  expect(current.profiles).toEqual(real.profiles);
+  return { owner: 'core', configuration: { version: 1, revision: 'r1', current, pact: null }, pending: false };
+}
+
+test('profiles in core-owned mode writes edits and new rows through apply and confirm only', async ({ page }) => {
+  const exported = await ownedExport(page);
+  const uciWrites = [];
+  page.on('request', r => {
+    if (/"uci",\s*"(add|set|delete|commit|apply)"/.test(r.postData() || '')) uciWrites.push(r.postData());
+  });
+  const calls = await mockCoreConfiguration(page, {
+    configuration_status: () => ({ owner: 'core' }),
+    configuration_export: () => exported,
+    configuration_apply: () => ({ status: 'confirmation_required', revision: 'r2', token: 'tok', deadline: 123 }),
+    configuration_confirm: () => ({ status: 'ok', revision: 'r2' }),
+    reload: () => ({ status: 'ok' })
+  });
+  await page.goto(`${URL}/profiles?name=alex`);
+  await page.locator('#cbi-familywarden-alex-name input').fill('Alex renamed');
+  await page.locator('#cbi-familywarden-app .cbi-button-add').click();
+  await page.locator('#cbi-familywarden-app input[id*="package"]').last().fill('com.example.game');
+  await page.locator('li').filter({ hasText: /^Save & Apply$/ }).click();
+  await expect.poll(() => calls.some(c => c.method === 'configuration_confirm')).toBeTruthy();
+  const apply = calls.find(c => c.method === 'configuration_apply');
+  expect(apply.params.revision).toBe('r1');
+  expect(apply.params.current.profiles.find(p => p.id === 'alex').name).toBe('Alex renamed');
+  expect(apply.params.current.apps.some(a => a.profile === 'alex' && a.package === 'com.example.game' && /^[A-Za-z0-9_-]{1,64}$/.test(a.id))).toBeTruthy();
+  expect(apply.params.current.settings).toEqual(exported.configuration.current.settings);
+  expect(uciWrites).toEqual([]);
+});
+
+test('profiles in core-owned mode refuses a projection that differs from the core document', async ({ page }) => {
+  const exported = await ownedExport(page);
+  exported.configuration.current.profiles.push({ ...exported.configuration.current.profiles[0], id: 'not_projected' });
+  await mockCoreConfiguration(page, {
+    configuration_status: () => ({ owner: 'core' }),
+    configuration_export: () => exported
+  });
+  await page.goto(`${URL}/profiles`);
+  const message = 'The router configuration does not match the core configuration. Reload FamilyWarden and try again.';
+  await expect(page.getByText(message, { exact: true })).toBeVisible();
+  await expect(page.locator('#fw-profiles')).toHaveCount(0);
+  await expect.poll(() => pageErrors.get(page)).toEqual([message]);
+  pageErrors.set(page, []);
+});
 
 test('settings in core-owned mode saves through apply and confirm against the read revision', async ({ page }) => {
   const calls = await mockCoreConfiguration(page, {

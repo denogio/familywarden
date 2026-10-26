@@ -7,6 +7,7 @@
 'require ui';
 'require familywarden.ulysses as ulysses';
 'require familywarden.ui as fwui';
+'require familywarden.configuration as fwconfig';
 
 var callConfigurationOwner = rpc.declare({ object: 'familywarden', method: 'configuration_status', expect: { '': {} } });
 
@@ -78,6 +79,42 @@ var callHostHints = rpc.declare({
 
 var selectedProfile = null;
 var statusNode = null;
+// Core-owned mode: the configuration export {configuration, ...}, else null.
+var owned = null;
+
+// Persist the browser's UCI edits. Legacy: commit UCI with the rollback timer
+// and confirm explicitly before navigating away (uci.apply() resolves before
+// its detached confirm poll runs; navigating unconfirmed makes the router roll
+// back). Core-owned: write the edited projection as the next core document
+// against the exported revision, confirmed; UCI is never committed.
+function writeConfiguration() {
+	var write = owned
+		? fwconfig.commit(owned.configuration, fwconfig.fromUci(owned.configuration.current))
+		: uci.save().then(function() {
+			return uci.apply().then(function() {
+				return uci.callConfirm();
+			});
+		}).catch(function(e) {
+			// Even on a client-side timeout the commit may have landed
+			// with the rollback timer armed — confirm it anyway.
+			console.log('uci.apply error (confirming anyway):', e.message || e);
+			return uci.callConfirm().catch(function() {});
+		});
+	return write.then(function() {
+		return callReload();
+	});
+}
+
+// Drop unsaved local UCI edits after a failed immediate write; staged form
+// fields stay in the DOM and are parsed again by the next Save & Apply.
+function restoreUci() {
+	uci.unload('familywarden');
+	return uci.load('familywarden');
+}
+
+function writeFailed(error) {
+	ui.addNotification(null, E('p', {}, _('Could not save the configuration: %s').format(error.message)), 'error');
+}
 
 function getSelectedProfile() {
 	var params = new URLSearchParams(window.location.search);
@@ -188,25 +225,14 @@ function showAddProfileModal() {
 					uci.set('familywarden', id, 'enabled', '1');
 					uci.set('familywarden', id, 'name', name);
 					uci.set('familywarden', id, 'policy', 'allow');
-					// Save and apply immediately so the profile is persisted to disk.
-					// uci.apply() commits with a rollback timer and resolves BEFORE
-					// the detached confirm poll runs — redirecting at that point
-					// aborts the confirm and the router reverts the commit ~10s
-					// later. Confirm explicitly before navigating away.
-					return uci.save().then(function() {
-						return uci.apply().then(function() {
-							return uci.callConfirm();
-						});
-					}).catch(function(e) {
-						// Even on a client-side timeout the commit may have landed
-						// with the rollback timer armed — confirm it anyway.
-						console.log('uci.apply error (confirming anyway):', e.message || e);
-						return uci.callConfirm().catch(function() {});
-					}).then(function() {
-						return callReload();
-					}).then(function() {
+					// Persist immediately so the new profile can be opened.
+					return writeConfiguration().then(function() {
 						L.ui.hideModal();
 						window.location = profileUrl(id);
+					}, function(error) {
+						L.ui.hideModal();
+						writeFailed(error);
+						return restoreUci();
 					});
 				})
 			}, _('Create'))
@@ -264,18 +290,34 @@ return view.extend({
 			// Optional: AdGuard Home may not be configured (or reachable)
 			L.resolveDefault(callDnsServices(), []),
 			L.resolveDefault(callDnsStatus(), {}),
-			callConfigurationOwner()
+			callConfigurationOwner(),
+			L.resolveDefault(fwconfig.configurationExport(), null)
 		]).then(function(data) {
 			if (!data[6] || !['legacy', 'core'].includes(data[6].owner)) throw new Error(_('Configuration ownership unavailable'));
+			owned = null;
+			if (data[6].owner === 'core') {
+				var exported = data[7];
+				if (!exported || !exported.configuration || typeof exported.configuration.revision !== 'string')
+					throw new Error(_('Core configuration unavailable'));
+				// Never edit a projection that differs from the core document.
+				if (!fwconfig.matchesUci(exported.configuration.current))
+					throw new Error(_('The router configuration does not match the core configuration. Reload FamilyWarden and try again.'));
+				owned = exported;
+			}
 			return data;
 		});
 	},
 
+	// Core-owned: Save & Apply writes through the core instead of UCI commit.
+	handleSaveApply: function(ev, mode) {
+		if (!this.ownedMap)
+			return this.super('handleSaveApply', [ev, mode]);
+		return this.ownedMap.parse().then(writeConfiguration).then(function() {
+			window.location.reload();
+		}, writeFailed);
+	},
+
 	render: function(data) {
-		if (data[6].owner === 'core') {
-			this.handleSave = this.handleSaveApply = this.handleReset = null;
-			return E('div', {}, [ E('h2', {}, _('Core-managed configuration')), E('p', {}, _('Legacy UCI editing is disabled. Use the core configuration API with revision checks and confirmation.')) ]);
-		}
 		var allProfiles = data[0] || {};
 		var leases = data[2] || [];
 		var hostHints = data[3] || {};
@@ -332,6 +374,17 @@ return view.extend({
 
 		// --- Profile settings form ---
 		var m = new form.Map('familywarden');
+		if (owned) {
+			// Row add/remove re-renders from the local UCI cache without the
+			// server-side UCI staging that Map.save() would do; everything is
+			// written at once by Save & Apply.
+			m.save = function(cb) {
+				this.checkDepends();
+				return this.parse().then(cb).then(this.load.bind(this)).then(this.renderContents.bind(this));
+			};
+			this.ownedMap = m;
+			this.handleSave = this.handleReset = null;
+		}
 
 		// The captain's profile is frozen for the pact's lifetime, except in
 		// its weekly window (the backend ignores edits anyway): read-only, no
@@ -640,21 +693,12 @@ return view.extend({
 						});
 					});
 					uci.remove('familywarden', pid);
-					// Save and apply immediately so the deletion is persisted to disk.
-					// Confirm explicitly before redirecting (see create handler):
-					// uci.apply() resolves before its detached confirm poll runs,
-					// and navigating away unconfirmed makes the router roll back.
-					return uci.save().then(function() {
-						return uci.apply().then(function() {
-							return uci.callConfirm();
-						});
-					}).catch(function(e) {
-						console.log('uci.apply error (confirming anyway):', e.message || e);
-						return uci.callConfirm().catch(function() {});
-					}).then(function() {
-						return callReload();
-					}).then(function() {
+					// Persist immediately; the deletion is not a staged form edit.
+					return writeConfiguration().then(function() {
 						window.location = L.url('admin/services/familywarden/profiles');
+					}, function(error) {
+						writeFailed(error);
+						return restoreUci();
 					});
 				})
 			}, _('Delete Profile'))

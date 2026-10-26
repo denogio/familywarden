@@ -331,7 +331,15 @@ writing to it once the document exists:
   `configuration_export`, stages the edited global fields onto that document and runs
   `configuration_apply` → `configuration_confirm` with the exported revision
   (`familywarden/configuration.js`); a stale revision is shown as an error, never merged.
-  UCI is not written. The Profiles editor still disables Save until its own cutover.
+  UCI is not written.
+- **LuCI Profiles saves through CAS (2026-10-26):** the same CBI form renders from the
+  projection, but only after `fwconfig.matchesUci` confirms the loaded UCI equals the
+  exported document (otherwise the page refuses to load). Row add/remove and profile
+  create/delete stay in the browser's UCI cache (no server-side UCI staging); Save &
+  Apply, create and delete write `fwconfig.fromUci` (the shell export's option mapping)
+  through apply + confirm. Verified with mocked CAS tests and once against a real
+  imported router (document revision advanced, confirmed, projection updated, no UCI
+  deltas).
 
 Verified on the final immutable inputs: Go vet/race, syntax, the full real OpenWrt
 integration suite (import → CAS → confirm → stale refusal → re-import no-op → restart
