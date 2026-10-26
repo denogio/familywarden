@@ -16,6 +16,7 @@ const STRINGS = {
     phones: 'Phones', apps: 'Apps', error: 'Could not reach the FamilyWarden core: {error}', failed: 'The router refused: {error}',
     updated: 'Updated {time}', invalidData: 'Invalid reply from FamilyWarden.',
     stale: 'Showing previously received data. Actions are unavailable until refresh succeeds.',
+    noReport: 'No usage report for this day', coverageUnknown: 'Reporting coverage unavailable',
     newApps: 'New apps waiting', noNewApps: 'No new apps waiting.', allow: 'Allow', keepPaused: 'Keep paused',
     allowedApps: 'Allowed here', remove: 'Remove', allowedBy: 'allowed by {by}', frozen: 'Frozen by a pact: apps can only be removed.'
   },
@@ -30,6 +31,7 @@ const STRINGS = {
     phones: 'Telefoner', apps: 'Apps', error: 'Kunne ikke nå FamilyWarden-kernen: {error}', failed: 'Routeren afviste: {error}',
     updated: 'Opdateret {time}', invalidData: 'Ugyldigt svar fra FamilyWarden.',
     stale: 'Tidligere modtagne data vises. Handlinger er utilgængelige, indtil opdateringen lykkes.',
+    noReport: 'Ingen forbrugsrapport for denne dag', coverageUnknown: 'Rapportdækning er ukendt',
     newApps: 'Nye apps venter', noNewApps: 'Ingen nye apps venter.', allow: 'Tillad', keepPaused: 'Behold på pause',
     allowedApps: 'Tilladt her', remove: 'Fjern', allowedBy: 'tilladt af {by}', frozen: 'Låst af en pagt: apps kan kun fjernes.'
   }
@@ -58,7 +60,8 @@ export function viewModel(requests, usage, nowEpoch, newApps) {
     id: p.id, name: p.name || p.id, total: minutes(p.total),
     devices: (p.devices || []).map((d) => ({ name: d.name, total: minutes(d.total), incomplete: !!d.incomplete })),
     apps: (p.apps || []).map((a) => ({ name: a.label || a.package, total: minutes(a.seconds) })),
-    week: (p.week || []).map((d) => ({ day: d.day, total: minutes(d.total) }))
+    week: (p.week || []).map((d) => ({ day: d.day, total: minutes(d.total),
+      reported: typeof d.reported === 'boolean' ? d.reported : null }))
   }));
   const apps = (Array.isArray(newApps?.profiles) ? newApps.profiles : []).map((p) => ({
     id: p.id, name: p.name || p.id, frozen: !!p.frozen,
@@ -79,6 +82,8 @@ const CSS = `
 .fwa .fwx-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
 .fwa input[type=number]{width:6em}.fwa .fwx-week{display:flex;align-items:flex-end;gap:6px;height:64px;margin-top:8px}
 .fwa .fwx-week span{flex:1;background:var(--fwx-bar);border-radius:3px 3px 0 0;min-height:2px}
+.fwa .fwx-week .fwx-gap{background:transparent;min-height:8px;border-bottom:1px dashed var(--fwx-muted)}
+.fwa .fwx-week .fwx-coverage-unknown{background:repeating-linear-gradient(135deg,var(--fwx-bar),var(--fwx-bar) 4px,transparent 4px,transparent 8px)}
 .fwa .fwx-error{color:#b3261e}`;
 
 export function mount(root, { call, lang, now = () => Math.floor(Date.now() / 1000), interval = 15000 }) {
@@ -171,15 +176,21 @@ export function mount(root, { call, lang, now = () => Math.floor(Date.now() / 10
   }
 
   function usageCard(p) {
-    const max = Math.max(1, ...p.week.map((d) => d.total));
+    const max = Math.max(1, ...p.week.filter((d) => d.reported !== false).map((d) => d.total));
     return el('div', { class: 'fwx-card' },
-      el('strong', {}, p.name), el('div', { class: 'fwx-big' }, t('min', { n: p.total })),
+      el('strong', {}, p.name), el('div', { class: 'fwx-big' }, p.devices.length ? t('min', { n: p.total }) : '—'),
       p.devices.length ? null : el('div', { class: 'fwx-muted' }, t('noUsage')),
       p.devices.map((d) => el('div', { class: 'fwx-row' }, el('span', {}, d.name),
         el('span', { class: 'fwx-muted' }, t('min', { n: d.total }) + (d.incomplete ? ` · ${t('incomplete')}` : '')))),
       p.apps.slice(0, 5).map((a) => el('div', { class: 'fwx-row fwx-muted' }, el('span', {}, a.name), el('span', {}, t('min', { n: a.total })))),
-      el('div', { class: 'fwx-week', title: t('week') }, p.week.map((d) =>
-        el('span', { style: `height:${Math.round((d.total / max) * 100)}%`, title: `${d.day}: ${t('min', { n: d.total })}` }))));
+      el('div', { class: 'fwx-week', role: 'group', 'aria-label': t('week') }, p.week.map((d) => {
+        const measured = d.reported === true || (d.reported == null && d.total > 0);
+        const detail = measured ? t('min', { n: d.total }) : t(d.reported === false ? 'noReport' : 'coverageUnknown');
+        const title = `${d.day}: ${detail}` + (measured && d.reported == null ? ` · ${t('coverageUnknown')}` : '');
+        return el('span', { class: !measured ? 'fwx-gap' : d.reported == null ? 'fwx-coverage-unknown' : '',
+          style: `height:${measured ? Math.round((d.total / max) * 100) : 0}%`, title,
+          role: 'img', 'aria-label': title });
+      })));
   }
 
   async function refresh(force = true) {

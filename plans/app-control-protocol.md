@@ -388,8 +388,10 @@ same envelope and verified reply (`type:"usage_reply"`, `message_sha256`) as §3
  "grants_used":{"<grant_id>":600},"incomplete":false}
 ```
 
-- **Information, not authority.** No phone decision reads these reports; a phone can
-  only misreport itself. Shared budgets (`budget.remaining`) are still not implemented.
+- **Authenticated source, not guaranteed accuracy.** Reports cannot authorize grants
+  or loosen standing policy. The core derives signed other-phone offsets from them
+  (§5a); those offsets can only tighten local decisions. Shared allocation/leases
+  bounding offline overspend are not implemented.
 - **What counts (D5):** whole seconds with the screen on and unlocked, app visible
   (PiP included). `total` is the union (PiP counts once), not the sum of `apps`.
   Always-allowed/essential apps are excluded from `total`.
@@ -409,6 +411,12 @@ same envelope and verified reply (`type:"usage_reply"`, `message_sha256`) as §3
   profile with app control: total, phones, top 5 apps; never for pact-bound profiles).
   `ubus call familywarden usage` returns today per phone and app plus 7 daily totals.
   `requests[].used` shows reported grant use. Totals are summed across phones.
+- **Administrator weekly coverage (core 0.10.0):** each `usage.profiles[].week[]`
+  item adds `reported`, true when at least one stored device report exists for that
+  profile/date. A real zero report is `{day,total:0,reported:true}`; absence has
+  `reported:false`. This describes presence, not complete coverage or accurate
+  counters. Older replies without the field have unknown coverage, not measured zero.
+  Retention, counters, grants, revisions and signed phone payloads are unchanged.
 
 ## 5a. Shared per-child budget (D4) — implemented 2026-10-25
 

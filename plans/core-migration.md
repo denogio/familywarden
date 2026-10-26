@@ -211,6 +211,16 @@ selector test fails. Tests used an immutable source snapshot and matching existi
 development packages with the Settings source overlaid; no new package deployment,
 physical-phone change or live-router change occurred.
 
+### Administrator usage coverage (core 0.10.0, 2026-10-26)
+
+The administrator's seven-day usage rows now include `reported`, distinguishing a
+missing report from a real zero sample. The shared view preserves unknown coverage
+on older cores, renders gaps/zero honestly and labels chart days accessibly in EN/DA.
+This is a read-summary addition, not a profile/pact store migration or a signed phone
+policy change. Core 0.10.0 is prepared, not deployed. Go vet/race, six Node tests and
+53 browser tests pass with the compiled source binary/UI overlaid in disposable LuCI;
+new package/release installation remains a separate gate.
+
 ### Authoritative configuration cutover: traced callers and required transaction
 
 Do not import only the Profiles form and leave competing UCI consumers behind:

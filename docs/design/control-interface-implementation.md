@@ -58,14 +58,36 @@ presentation source overlaid; this is source/runtime evidence, not a newly built
 release package. The container was removed afterward. No production deployment.
 No large design-board screenshots were loaded into the conversation.
 
+## Usage coverage checkpoint (2026-10-26)
+
+Core 0.10.0 adds `reported` to each administrator weekly day, distinguishing an
+absent report from an authenticated zero count. It does not mean that all phones
+reported or that their counters are complete/accurate. No retention, grant, budget
+or signed-phone-policy semantics change.
+
+The shared view renders missing days as gaps and measured zero as zero. With older
+cores, absent coverage metadata remains explicitly unknown: positive counts can be
+shown with a coverage warning, but ambiguous zero days are not labelled measured zero.
+A profile without today's device reports displays a dash rather than a fabricated
+zero. Each chart day has an EN/DA accessible label.
+
+Go vet/race tests, six Node tests, syntax and all 53 real-LuCI/neutral browser tests
+pass on an immutable final snapshot. The real HTTP fixture submits an authenticated
+zero report and checks its week metadata through the session/ACL path. Its date comes
+from the core's router-local day, not the fixture shell's timezone, and the assertion
+uses the actual submitted date to avoid a midnight race. The browser tests cover
+both EN and DA gaps, zero values and legacy coverage. A freshly compiled core binary
+and changed UI were overlaid on matching development packages for runtime testing;
+new release-package installation has not been claimed. No production deployment.
+
 ## Still to implement
 
 - The prototype's complete Family/child-detail, Devices, Administration and
   Ulysses presentation and navigation. Current module hardening is not that port.
 - Real contracts for unsupported editors and device/health facts, with explicit
-  loading, partial, unavailable and application states. Existing usage/weekly-chart
-  semantics are unchanged here; truthful missing-day gaps need reported-day metadata
-  from the core rather than treating an absent report as measured zero time.
+  loading, partial, unavailable and application states. Weekly presence metadata now
+  exists; full history, complete coverage and deletion-state explanations still need
+  their corresponding backend contracts.
 - Authoritative configuration/pact ownership, CAS editing and safe apply/rollback
   in the core before replacing the corresponding legacy UCI writers.
 - Neutral standalone **production** hosting/authentication, if chosen. The neutral

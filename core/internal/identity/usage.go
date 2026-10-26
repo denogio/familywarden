@@ -11,9 +11,10 @@ import (
 )
 
 // Usage reports (protocol §5): a phone uploads its cumulative, router-local-day counts.
-// They are information for parents and the administrator, never authority: no limit,
-// grant or pact decision on any phone reads them (yet), so a lying phone can only
-// misreport itself.
+// Summaries inform parents/admins; the core also signs other-phone offsets for shared
+// budgets. Offsets only tighten local decisions, never mint grants or relax policy.
+// A signature authenticates the reporter, not counter accuracy, and cached offsets
+// do not bound offline overspend.
 
 // UsageStore is the core store's usage part (internal/store).
 type UsageStore interface {
@@ -230,11 +231,12 @@ func (s *Service) UsageReport() Reply {
 		week := []Reply{}
 		for back := 6; back >= 0; back-- {
 			day := time.Date(now.Year(), now.Month(), now.Day()-back, 12, 0, 0, 0, now.Location()).Format(time.DateOnly)
-			t, _, _, _, err := s.dayUsage(id, day, 0)
+			t, dayDevices, _, _, err := s.dayUsage(id, day, 0)
 			if err != nil {
 				return fail("usage unavailable")
 			}
-			week = append(week, Reply{"day": day, "total": t})
+			// Presence is not completeness: a real zero report is still measured data.
+			week = append(week, Reply{"day": day, "total": t, "reported": len(dayDevices) > 0})
 		}
 		if devices == nil {
 			devices = []Reply{}

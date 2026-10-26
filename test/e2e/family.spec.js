@@ -127,6 +127,36 @@ test('stopping the shared mount ignores a late reply and does not restart pollin
   expect(await page.evaluate(() => sharedFixture.reads)).toBe(3);
 });
 
+for (const [lang, labels] of [
+  ['en', { week: 'Last 7 days', missing: 'No usage report for this day', unknown: 'Reporting coverage unavailable', zero: '0 min' }],
+  ['da', { week: 'Seneste 7 dage', missing: 'Ingen forbrugsrapport for denne dag', unknown: 'Rapportdækning er ukendt', zero: '0 min.' }]
+]) test(`weekly usage distinguishes gaps, measured zero and legacy coverage (${lang})`, async ({ page }) => {
+  const root = await neutral(page, { lang });
+  await expect(root.getByRole('button', { name: lang === 'en' ? 'Approve' : 'Godkend', exact: true })).toBeEnabled();
+  await page.evaluate(async () => {
+    sharedFixture.replies.requests = { requests: [] };
+    sharedFixture.replies.usage = { profiles: [
+      { id: 'alex', name: 'Alex', total: 0, devices: [], apps: [], week: [
+        { day: '2027-01-12', total: 0, reported: false },
+        { day: '2027-01-13', total: 0, reported: true },
+        { day: '2027-01-14', total: 0 },
+        { day: '2027-01-15', total: 1800 }
+      ] },
+      { id: 'sam', name: 'Sam', total: 0, devices: [{ name: 'Sam phone', total: 0 }], apps: [], week: [] }
+    ] };
+    await sharedFixture.control.refresh();
+  });
+  const alex = root.locator('.fwx-card', { has: page.getByText('Alex', { exact: true }) });
+  const sam = root.locator('.fwx-card', { has: page.getByText('Sam', { exact: true }) });
+  await expect(alex.locator('.fwx-big')).toHaveText('—');
+  await expect(sam.locator('.fwx-big')).toHaveText(labels.zero);
+  const chart = alex.getByRole('group', { name: labels.week });
+  await expect(chart.getByRole('img', { name: `2027-01-12: ${labels.missing}`, exact: true })).toHaveClass('fwx-gap');
+  await expect(chart.getByRole('img', { name: `2027-01-13: ${labels.zero}`, exact: true })).not.toHaveClass(/fwx-gap/);
+  await expect(chart.getByRole('img', { name: `2027-01-14: ${labels.unknown}`, exact: true })).toHaveClass('fwx-gap');
+  await expect(chart.getByRole('img', { name: new RegExp(`2027-01-15:.*30.*${labels.unknown}`) })).toHaveClass('fwx-coverage-unknown');
+});
+
 test('Requests page talks to the real core through rpcd and LuCI ACLs', async ({ page }) => {
   await page.goto(URL);
   await expect(page.getByRole('heading', { name: 'Requests and screen time' })).toBeVisible();
@@ -160,6 +190,14 @@ test('real HTTP approval persists the chosen grant through the LuCI session shim
     const request = stored.requests.find((r) => r.request_id === 'http-request-0001');
     expect(request.state).toBe('approved');
     expect(request.granted).toBe(20);
+    const reportDay = fixture('report-zero').toString().trim();
+    const usage = await page.evaluate(async () => {
+      const rpc = await L.require('rpc');
+      return rpc.declare({ object: 'familywarden', method: 'usage', expect: { '': {} } })();
+    });
+    const profile = usage.profiles.find(p => p.id === 'http_test');
+    expect(profile.week.find(d => d.day === reportDay)).toMatchObject({ total: 0, reported: true });
+    expect(profile.week.filter(d => d.day !== reportDay).every(d => d.reported === false && d.total === 0)).toBe(true);
   } finally {
     fixture('cleanup');
   }

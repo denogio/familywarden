@@ -72,6 +72,27 @@ func TestUsageReportsAreStoredAndShownOnlyInScope(t *testing.T) {
 	}
 }
 
+func TestWeeklyUsageDistinguishesMissingDayFromZeroReport(t *testing.T) {
+	f := usageFamily(t)
+	if m := send(t, f.kid, f.s, "usage", usageJSON("fw-kid", "kid", usageDay, 1, 0, `{}`, "")); m["state"] != "stored" {
+		t.Fatal(m)
+	}
+	reply := f.s.UsageReport()
+	profiles, ok := reply["profiles"].([]Reply)
+	if !ok || len(profiles) != 1 {
+		t.Fatal(reply)
+	}
+	week := profiles[0]["week"].([]Reply)
+	if len(week) != 7 {
+		t.Fatal(week)
+	}
+	for _, day := range week {
+		if day["total"] != 0 || day["reported"] != (day["day"] == usageDay) {
+			t.Fatalf("zero usage must not imply a report exists: %v", day)
+		}
+	}
+}
+
 func TestUsageReportsAreAuthenticatedBoundedAndMonotonic(t *testing.T) {
 	f := usageFamily(t)
 	send(t, f.kid, f.s, "usage", usageJSON("fw-kid", "kid", usageDay, 5, 900, `{"com.example.video":900}`, ""))

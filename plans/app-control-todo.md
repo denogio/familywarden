@@ -320,6 +320,10 @@ Depends on P2/P5 and chosen accounting rules.
       and half-open event intervals; tested process-death/restart and duplicate handling.
 - [x] Track per-app/day locally, reconcile active sessions and handle missing history
       honestly; missing permission is not zero usage.
+- [x] Distinguish missing administrator weekly reports from measured zero (#102):
+      core-owned `reported` metadata, conservative legacy fallback and EN/DA chart
+      labels. Go vet/race, six Node tests and 53 browser tests pass; core 0.10.0 is
+      prepared, not deployed.
 - [x] Keep local counters/enforcement usable offline with the last trusted policy.
 - [ ] Measure/review checkpoint write frequency and battery cost; throttle safely without
       making persisted grant consumption refill after a crash.

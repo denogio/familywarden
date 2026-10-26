@@ -71,6 +71,16 @@ test('family view model separates pending, recent and usage without inventing da
   assert.deepEqual(viewModel({}, {}, now), { pending: [], recent: [], profiles: [], apps: [], day: '' });
 });
 
+test('weekly usage keeps missing, zero and legacy coverage distinct', async () => {
+  const { viewModel } = await familyModule();
+  const vm = viewModel({}, { profiles: [{ id: 'alex', total: 0, devices: [], apps: [], week: [
+    { day: '2027-01-13', total: 0, reported: false },
+    { day: '2027-01-14', total: 0, reported: true },
+    { day: '2027-01-15', total: 0 }
+  ] }] }, 1800000000);
+  assert.deepEqual(vm.profiles[0].week.map(d => d.reported), [false, true, null]);
+});
+
 test('family strings have complete English and Danish tables', async () => {
   const { strings } = await familyModule();
   const src = readFileSync('luci-app-familywarden/htdocs/luci-static/resources/familywarden/shared/family.js', 'utf8');

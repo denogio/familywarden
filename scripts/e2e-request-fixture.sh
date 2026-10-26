@@ -31,6 +31,18 @@ create)
     { sed -n 2p /tmp/http-test.sig; printf '%s' "$request"; } |
         REQUEST_METHOD=POST QUERY_STRING=op=request familywardend cgi-app | grep -q '"state":"pending"'
     ;;
+report-zero)
+    # A real authenticated zero report is different from an absent day's data.
+    test -s /tmp/http-test.key
+    day=$(echo '{}' | /usr/libexec/rpcd/familywarden call usage | jsonfilter -e '@.day')
+    test -n "$day"
+    report=$(printf '{"type":"usage","v":1,"device":"fw-http-test","profile":"http_test","day":"%s","seq":1,"total":0,"apps":{},"labels":{},"incomplete":false}' "$day")
+    printf 'familywarden-usage-v1\n%s' "$report" > /tmp/http-test.msg
+    usign -S -s /tmp/http-test.key -m /tmp/http-test.msg -x /tmp/http-test.sig
+    { sed -n 2p /tmp/http-test.sig; printf '%s' "$report"; } |
+        REQUEST_METHOD=POST QUERY_STRING=op=usage familywardend cgi-app | grep -q '"state":"stored"'
+    printf '%s\n' "$day"
+    ;;
 cleanup)
     echo '{"device":"fw-http-test"}' | /usr/libexec/rpcd/familywarden call device_delete >/dev/null
     uci -q delete familywarden.http_test || true
