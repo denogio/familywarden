@@ -392,8 +392,16 @@ catalogue (`dns_services`) still reads AGH from the shell. An older core without
 Evidence: Go unit tests against an in-memory AGH API, and the unchanged
 `scripts/test-agh.sh` (58 checks against a real AdGuard Home v0.107.79 container,
 now driving the Go reconciler) plus 460 integration checks. A mutant that writes an
-empty allow list fails the real-container check. Next: compute the desired DNS set
-from the core document in owned mode instead of the projection.
+empty allow list fails the real-container check.
+
+In core-owned mode the desired DNS set also comes from the document
+(`configuration.DNS` via `configuration_dns`): live DNS plus an actively bound
+captain's snapshot (DNS stays on, protections/services only accumulate, frozen
+domain), including a captain whose profile was deleted. The shell's projection-based
+computation remains for legacy routers only. `test-agh.sh` now also imports a real
+router into core ownership (fw4 apply), enables DNS through a confirmed core edit and
+verifies the AGH client and acknowledgement; a direct UCI edit that switches DNS off is
+ignored. Re-enabling the UCI path in owned mode fails that check.
 
 ### Authoritative configuration cutover: traced callers and required transaction
 

@@ -126,7 +126,7 @@ func TestSyncAddsOwnClientsAndKeepsForeignState(t *testing.T) {
 func TestSyncNeverTakesOverOrWidens(t *testing.T) {
 	f := household()
 	old := "parent hijack dns.example.net - -"
-	res := run(t, f, Input{Profiles: []Profile{{ID: "parent", ClientID: "hijack", Ack: old}, {ID: "x", ClientID: "-bad"}}})
+	res := run(t, f, Input{Acks: []string{"parentx other dns.example.net - -", old}, Profiles: []Profile{{ID: "parent", ClientID: "hijack"}, {ID: "x", ClientID: "-bad"}}})
 	if res.Error != "invalid ClientID for x" || !res.Complete || !reflect.DeepEqual(res.Ack, []string{old}) || len(f.clients) != 2 {
 		t.Fatal(res, f.clients)
 	}

@@ -84,7 +84,7 @@ EOF
     sleep 3
     docker logs "$AGH" 2>&1 | grep -iE 'fatal|error' | head -5 || true
     set +e
-    docker run --rm --network "$NET" -e AGH_IP="$AGH_IP" -v "$REPO:/src:ro" -v "$CONF/core:/core:ro" "$OPENWRT_IMAGE" \
+    docker run --rm --memory=768m --cpus=2 --cap-add NET_ADMIN --network "$NET" -e AGH_IP="$AGH_IP" -v "$REPO:/src:ro" -v "$CONF/core:/core:ro" "$OPENWRT_IMAGE" \
         sh /src/scripts/test-agh.sh --inside
     exit $?
 fi
@@ -270,6 +270,43 @@ rm -f /etc/familywarden/pact /etc/familywarden/pact.dns
 [ -z "$(client familywarden-aalex-junior .name)" ] && pass "after the pact the loosening applies" || fail "client kept after the pact"
 uci set familywarden.settings.dns_domain='dns.example.net'
 uci commit familywarden
+
+echo ""
+echo "=== Core-owned configuration: the core supplies the desired DNS set ==="
+# Activating core ownership applies the projection through real fw4 (as the postinst sets it up).
+uci add firewall include >/dev/null
+uci set firewall.@include[-1].fw4_compatible='1'
+uci set firewall.@include[-1].type='nftables'
+uci set firewall.@include[-1].path='/var/etc/familywarden.include'
+uci commit firewall
+fw4 start >/dev/null 2>&1
+mkdir -p /var/run/familywarden-core /etc/familywarden/core
+/usr/sbin/familywardend -data /etc/familywarden/core >/tmp/core.log 2>&1 &
+for _ in $(seq 1 20); do [ "$(/usr/sbin/familywardend status | jsonfilter -e '@.running')" = true ] && break; sleep 1; done
+api() { printf '%s' "${2:-{\}}" | /usr/sbin/familywardend api "$1"; }
+rev=$(api configuration_export | jsonfilter -e '@.configuration.revision')
+assert_eq "core import" "$(api configuration_import "{\"revision\":\"$rev\"}" | jsonfilter -e '@.status')" "ok"
+"$BIN" dns-sync && pass "owned sync succeeds" || fail "owned sync failed: $(cat /tmp/familywarden.dns.status)"
+grep -q '^gran grandma-2 ' /etc/familywarden/dns.ack && pass "owned sync keeps existing profiles" || fail "ack: $(cat /etc/familywarden/dns.ack)"
+exported=$(api configuration_export)
+current=$(echo "$exported" | ucode -l fs -e 'let d = json(fs.stdin.read("all")); for (let p in d.configuration.current.profiles) if (p.id == "alex") p.dns = "1"; print(sprintf("%J", d.configuration.current));')
+applied=$(api configuration_apply "{\"revision\":\"$(echo "$exported" | jsonfilter -e '@.configuration.revision')\",\"current\":$current}")
+if [ "$(echo "$applied" | jsonfilter -e '@.status')" = confirmation_required ]; then
+    applied=$(api configuration_confirm "{\"revision\":\"$(echo "$applied" | jsonfilter -e '@.revision')\",\"token\":\"$(echo "$applied" | jsonfilter -e '@.token')\"}")
+fi
+assert_eq "core edit enables DNS" "$(echo "$applied" | jsonfilter -e '@.status')" "ok"
+alex_id=$(api configuration_export | jsonfilter -e '@.configuration.current.profiles[@.id="alex"].client_id')
+assert_eq "the legacy ClientID survives the import" "$alex_id" "aalex-junior"
+"$BIN" dns-sync && pass "owned sync after the edit" || fail "owned sync failed: $(cat /tmp/familywarden.dns.status)"
+assert_eq "owned client created" "$(client "familywarden-$alex_id" .ids[0])" "$alex_id"
+assert_eq "owned client protections" "$(client "familywarden-$alex_id" .safebrowsing_enabled)" "true"
+grep -q "^alex $alex_id dns.example.net safe_browsing tiktok$" /etc/familywarden/dns.ack && pass "owned profile acknowledged" || fail "ack: $(cat /etc/familywarden/dns.ack)"
+assert_eq "existing client still untouched" "$(agh clients | jsonfilter -e "@.clients[@.name='Grandma tablet']")" "$grandma_before"
+# The projection is not authority: a direct UCI edit must not switch DNS off.
+uci set familywarden.gran.dns='0'
+uci commit familywarden
+"$BIN" dns-sync
+grep -q '^gran grandma-2 ' /etc/familywarden/dns.ack && pass "owned DNS ignores direct UCI edits" || fail "UCI edit became DNS authority"
 
 echo ""
 echo "=== LuCI helpers ==="

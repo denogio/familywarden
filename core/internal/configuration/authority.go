@@ -309,6 +309,12 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 			owner = "core"
 		}
 		return map[string]any{"owner": owner}
+	case "configuration_dns":
+		if !found {
+			return fail(errors.New("configuration import required"))
+		}
+		domain, captain, profiles := DNS(d.Configuration, a.Now())
+		return map[string]any{"captain": captain, "input": map[string]any{"domain": domain, "profiles": profiles}}
 	case "configuration_export":
 		if !found {
 			c, err := a.Adapter.Configuration()

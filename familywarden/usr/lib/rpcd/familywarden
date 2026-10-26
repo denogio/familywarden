@@ -1942,23 +1942,36 @@ cli_dns_sync() {
 }
 
 _dns_sync_locked() {
-    local domain url p id name x res err complete
+    local domain url p id name x res err complete core=""
     rm -f "$FW_DNS_DIRTY"
     config_load familywarden
-    config_get domain settings dns_domain ""
     config_get url settings agh_url ""
-    # Captain bound by a pact: its DNS and the DNS domain can only be tightened
-    _dns_cap=""
-    if pact_active && [ -s "$FW_PACT_DNS" ]; then
-        _dns_cap=$(pact_get captain)
-        x=$(sed -n 's/^domain=//p' "$FW_PACT_DNS")
-        [ -n "$x" ] && domain="$x"
-    fi
-    _dns_profiles=""
-    config_foreach _dns_profile_cb profile
-    # Even if its profile section was deleted meanwhile
-    if [ "$(_dns_snap "$_dns_cap" dns)" = "1" ]; then
-        case " $_dns_profiles " in *" $_dns_cap "*) ;; *) _dns_profiles="$_dns_profiles $_dns_cap" ;; esac
+    if configuration_owned; then
+        # The core owns the desired DNS set: live DNS plus a bound captain's
+        # snapshot and frozen domain (configuration.DNS).
+        core=$(core_configuration_api configuration_dns '{}') || { _dns_status "DNS configuration unavailable"; return 1; }
+        domain=$(echo "$core" | jsonfilter -e '@.input.domain')
+        _dns_cap=$(echo "$core" | jsonfilter -e '@.captain')
+        _dns_profiles=$(echo "$core" | jsonfilter -e '@.input.profiles[*].id' | tr '\n' ' ')
+        if [ -n "$(echo "$core" | jsonfilter -e "@.input.profiles[@.client_id=''].id")" ]; then
+            _dns_status "core-owned profile has no ClientID"
+            return 1
+        fi
+    else
+        config_get domain settings dns_domain ""
+        # Captain bound by a pact: its DNS and the DNS domain can only be tightened
+        _dns_cap=""
+        if pact_active && [ -s "$FW_PACT_DNS" ]; then
+            _dns_cap=$(pact_get captain)
+            x=$(sed -n 's/^domain=//p' "$FW_PACT_DNS")
+            [ -n "$x" ] && domain="$x"
+        fi
+        _dns_profiles=""
+        config_foreach _dns_profile_cb profile
+        # Even if its profile section was deleted meanwhile
+        if [ "$(_dns_snap "$_dns_cap" dns)" = "1" ]; then
+            case " $_dns_profiles " in *" $_dns_cap "*) ;; *) _dns_profiles="$_dns_profiles $_dns_cap" ;; esac
+        fi
     fi
     if [ -z "$domain" ] || [ -z "$url" ]; then
         # Clearing the settings is no way out of a pact either
@@ -1973,42 +1986,46 @@ _dns_sync_locked() {
     [ -n "$_agh_auth" ] || { _dns_status "AdGuard Home credentials not set"; return 1; }
 
     # The core reconciles AdGuard Home (core/internal/agh); this side only supplies
-    # the desired profiles from the configuration and stores the result.
-    json_init
+    # the desired profiles (legacy routers) and stores the result.
+    if [ -n "$core" ]; then
+        json_load "$(echo "$core" | jsonfilter -e '@.input')"
+    else
+        json_init
+        json_add_string domain "$domain"
+        json_add_array taken
+        config_foreach _dns_taken_cb profile
+        json_close_array
+        json_add_array profiles
+        for p in $_dns_profiles; do
+            config_get id "$p" dns_client_id ""
+            [ -n "$id" ] || id=$(_dns_snap "$p" id)
+            config_get name "$p" name "$p"
+            _dns_lists "$p"
+            json_add_object ""
+            json_add_string id "$p"
+            json_add_string name "$name"
+            json_add_string client_id "$id"
+            json_add_array protections
+            for x in $_dns_prot; do json_add_string "" "$x"; done
+            json_close_array
+            json_add_array services
+            for x in $_dns_svc; do json_add_string "" "$x"; done
+            json_close_array
+            json_close_object
+        done
+        json_close_array
+    fi
     json_add_string url "$_agh_url"
     json_add_string auth "$_agh_auth"
-    json_add_string domain "$domain"
     json_add_array owned
     if [ -f "$FW_AGH_OWNED" ]; then
         while IFS= read -r x; do [ -z "$x" ] || json_add_string "" "$x"; done < "$FW_AGH_OWNED"
     fi
     json_close_array
-    json_add_array taken
-    config_foreach _dns_taken_cb profile
-    json_close_array
-    json_add_array profiles
-    for p in $_dns_profiles; do
-        config_get id "$p" dns_client_id ""
-        [ -n "$id" ] || id=$(_dns_snap "$p" id)
-        if [ -z "$id" ] && configuration_owned; then
-            _dns_status "core-owned profile has no ClientID"
-            return 1
-        fi
-        config_get name "$p" name "$p"
-        _dns_lists "$p"
-        json_add_object ""
-        json_add_string id "$p"
-        json_add_string name "$name"
-        json_add_string client_id "$id"
-        json_add_array protections
-        for x in $_dns_prot; do json_add_string "" "$x"; done
-        json_close_array
-        json_add_array services
-        for x in $_dns_svc; do json_add_string "" "$x"; done
-        json_close_array
-        json_add_string ack "$(awk -v p="$p" '$1 == p { print; exit }' "$FW_DNS_ACK" 2>/dev/null)"
-        json_close_object
-    done
+    json_add_array acks
+    if [ -f "$FW_DNS_ACK" ]; then
+        while IFS= read -r x; do [ -z "$x" ] || json_add_string "" "$x"; done < "$FW_DNS_ACK"
+    fi
     json_close_array
     res=$(json_dump | "$FW_CORE_BIN" agh-sync) || { _dns_status "DNS sync helper failed"; return 1; }
     for p in $_dns_profiles; do

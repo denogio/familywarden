@@ -32,7 +32,6 @@ type Profile struct {
 	ClientID    string   `json:"client_id"`
 	Protections []string `json:"protections"`
 	Services    []string `json:"services"`
-	Ack         string   `json:"ack"` // last acknowledged line, kept when this sync fails for it
 }
 
 type Input struct {
@@ -40,6 +39,7 @@ type Input struct {
 	Auth     string    `json:"auth"` // base64("user:password"); AGH sends no auth challenge
 	Domain   string    `json:"domain"`
 	Owned    []string  `json:"owned"`
+	Acks     []string  `json:"acks"`  // last acknowledged lines; a profile that fails keeps its own
 	Taken    []string  `json:"taken"` // ClientIDs stored for any profile
 	Profiles []Profile `json:"profiles"`
 }
@@ -48,12 +48,12 @@ type Input struct {
 // owned list if WriteOwned). Otherwise both stay as they were. Error is the
 // last problem, "" when everything is in sync.
 type Result struct {
-	Error      string            `json:"error"`
-	Complete   bool              `json:"complete"`
-	Ack        []string          `json:"ack"`
-	WriteOwned bool              `json:"write_owned"`
-	Owned      []string          `json:"owned"`
-	Allocated  []Allocation      `json:"allocated"`
+	Error      string       `json:"error"`
+	Complete   bool         `json:"complete"`
+	Ack        []string     `json:"ack"`
+	WriteOwned bool         `json:"write_owned"`
+	Owned      []string     `json:"owned"`
+	Allocated  []Allocation `json:"allocated"`
 }
 
 // Allocation is a ClientID newly derived for a profile without one.
@@ -258,8 +258,11 @@ func Sync(in Input, hc *http.Client) Result {
 		keep = append(keep, id)
 		name := Prefix + id
 		keepOld := func() {
-			if p.Ack != "" {
-				res.Ack = append(res.Ack, p.Ack)
+			for _, line := range in.Acks {
+				if strings.HasPrefix(line, p.ID+" ") {
+					res.Ack = append(res.Ack, line)
+					return
+				}
 			}
 		}
 		exists, foreign := false, false
