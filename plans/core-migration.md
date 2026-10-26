@@ -348,6 +348,30 @@ new owned-mode profiles/settings gate, and a disposable real-procd QEMU router (
 of an active pact, visible pending edit, reboot rollback with pact, release deadline
 and signing key intact). Core/backend versions are prepared; **no deployment**.
 
+### Phone pact/rules from the core document (core 0.13.0, 2026-10-26)
+
+When the core owns the configuration, `Authority.Policy` computes the signed reply's
+`captain`, `pact` and `rules` from the document (`configuration.PhonePolicy`: active pact
+with type/until/release, effective enabled/policy and complete captain windows, frozen
+outside the amendment window). The shell's `core-policy` now only contributes runtime
+facts in that mode: the captain's manual override, DNS acknowledgement and app input with
+today's bonus. A different captain or a missing override refuses the reply (the phone
+keeps its last trusted policy); any other difference from the shell's projection is
+logged and the document wins. Legacy routers are unchanged.
+
+Evidence: unit tests (no pact, other profile, frozen `until` pact, ongoing amendment
+window, divergent captain, missing override) and real OpenWrt integration (460 checks):
+an owned router with a live looser schedule edit sends the frozen window, the release
+deadline and a manual block, and the core log shows no shell/core divergence. A mutant
+that reads live instead of effective configuration fails both the frozen-window and the
+divergence checks.
+
+Known edge: a legacy import whose configured captain differs from its frozen snapshot
+materializes the configured captain if an apply happens inside the amendment window,
+without refreshing `pact.frozen`; the next apply outside the window restores the frozen
+rules. Core edits cannot create this state (`ValidateEdit` refuses captain edits outside
+the window and refreshes the snapshot inside it).
+
 ### Authoritative configuration cutover: traced callers and required transaction
 
 Do not import only the Profiles form and leave competing UCI consumers behind:

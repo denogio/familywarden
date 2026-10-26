@@ -187,7 +187,18 @@ func (a *Authority) Policy(profile string, version int) (platform.Policy, error)
 	if err := a.refresh(); err != nil {
 		return platform.Policy{}, err
 	}
-	return a.Adapter.Policy(profile, version)
+	p, err := a.Adapter.Policy(profile, version)
+	if err != nil {
+		return p, err
+	}
+	d, found, err := a.load()
+	if err != nil {
+		return platform.Policy{}, err
+	}
+	if !found {
+		return p, nil
+	}
+	return PhonePolicy(d.Configuration, p, profile, a.at(p.Context))
 }
 
 func (a *Authority) WithContext(fn func(platform.Context) error) error {

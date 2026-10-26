@@ -1297,6 +1297,7 @@ EOF
 start_core
 call pact "{\"until\":$(( $(date +%s) + 3600 ))}" >/dev/null
 uci set familywarden.alex.screen_minutes=999
+uci set familywarden.alex_week.stop=23:00
 uci commit familywarden
 "$BIN" reload >/dev/null
 "$BIN" sail-request >/dev/null
@@ -1316,6 +1317,16 @@ v2payload owned-phone fw-owned "$N1" >/dev/null
 assert_json "owned mode approves a bound phone" "$(call device_approve "{\"device\":\"fw-owned\",\"profile\":\"alex\",\"fingerprint\":\"$(fpr owned-phone)\"}")" '@.status' ok
 assert_json "owned policy still uses the frozen limit" "$(v3payload owned-phone fw-owned "$N1" - '' apps-v1,screen-time-v1)" '@.apps.screen.mon' 10
 assert_json "owned binding cannot escape its pact" "$(call device_update '{"device":"fw-owned","profile":"taylor"}')" '@.error' 'bound by Ulysses pact'
+# Phone pact/rules now come from the core document; the shell supplies only the
+# runtime override. Both must agree on a real router (the core logs any divergence).
+owned_reply=$(v3payload owned-phone fw-owned "$N1" - '' apps-v1,screen-time-v1)
+assert_json "owned phone sees the active pact" "$owned_reply" '@.pact.active' true
+assert_json "owned phone sees the release deadline" "$owned_reply" '@.pact.release_at' "$release_before"
+assert_json "owned phone gets frozen windows, not live edits" "$owned_reply" '@.rules.windows[0].stop' '20:00'
+call block '{"profile":"alex"}' >/dev/null
+assert_json "owned phone keeps the runtime override" "$(v3payload owned-phone fw-owned "$N1" - '' apps-v1,screen-time-v1)" '@.rules.override' block
+call reset '{"profile":"alex"}' >/dev/null
+grep -q 'platform projection differs' /tmp/core.log && fail "core and shell phone policy diverged" || pass "core and shell phone policy agree"
 # A complete configuration edit uses the read revision and requires confirmation.
 exported=$(cfg_api configuration_export)
 revision=$(echo "$exported" | jsonfilter -e '@.configuration.revision')
