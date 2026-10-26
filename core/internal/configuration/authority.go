@@ -314,7 +314,7 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 			return fail(errors.New("configuration import required"))
 		}
 		domain, captain, profiles := DNS(d.Configuration, a.Now())
-		return map[string]any{"captain": captain, "input": map[string]any{"domain": domain, "profiles": profiles}}
+		return map[string]any{"captain": captain, "input": map[string]any{"domain": domain, "profiles": profiles, "url": d.Configuration.Current.Settings.ResolverURL}}
 	case "configuration_export":
 		if !found {
 			c, err := a.Adapter.Configuration()

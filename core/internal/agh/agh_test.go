@@ -32,7 +32,7 @@ func (f *fake) serve(w http.ResponseWriter, r *http.Request) {
 	case "clients":
 		_ = json.NewEncoder(w).Encode(map[string]any{"clients": f.clients})
 	case "access/list":
-		_ = json.NewEncoder(w).Encode(f.acc)
+		_ = json.NewEncoder(w).Encode(access{nonNil(f.acc.Allowed), nonNil(f.acc.Disallowed), nonNil(f.acc.Blocked)})
 	case "clients/add":
 		f.clients = append(f.clients, body)
 	case "clients/update":
@@ -150,5 +150,65 @@ func TestSyncNeverTakesOverOrWidens(t *testing.T) {
 	f = household()
 	if res = run(t, f, Input{Auth: "d3Jvbmc=", Profiles: []Profile{{ID: "alex", ClientID: "fw01"}}}); res.Complete || res.Error != "AdGuard Home unreachable or credentials rejected" || len(f.calls) != 0 {
 		t.Fatal(res, f.calls)
+	}
+}
+
+func TestServices(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/control/blocked_services/all" || r.Header.Get("Authorization") != "Basic dG9rZW4=" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"blocked_services":[{"id":"youtube","name":"YouTube","icon_svg":"x"}]}`))
+	}))
+	defer srv.Close()
+	got, err := Services(srv.URL+"/", "dG9rZW4=", srv.Client())
+	if err != nil || !reflect.DeepEqual(got, []Service{{"youtube", "YouTube"}}) {
+		t.Fatal(got, err)
+	}
+	if _, err := Services(srv.URL, "d3Jvbmc=", srv.Client()); err == nil {
+		t.Fatal("rejected credentials accepted")
+	}
+}
+
+func TestFreshlyOpenedAccessListStaysOpen(t *testing.T) {
+	f := household()
+	reads := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/control/access/list" {
+			reads++
+			if reads == 2 {
+				f.acc.Allowed = []string{}
+			}
+		}
+		f.serve(w, r)
+	}))
+	defer srv.Close()
+	res := Sync(Input{URL: srv.URL, Auth: "dG9rZW4=", Domain: "dns.example.net", Owned: []string{"old"}, Profiles: []Profile{{ID: "alex", ClientID: "fwalex"}}}, srv.Client())
+	if !res.Complete || res.Error != "" || res.WriteOwned || len(f.acc.Allowed) != 0 || contains(f.calls, "POST access/set") {
+		t.Fatal(res, f.acc, f.calls)
+	}
+}
+
+func TestIncompleteAccessListsNeverTriggerWrites(t *testing.T) {
+	for _, reply := range []string{`{}`, `null`, `{"allowed_clients":[],"blocked_hosts":[]}`, `{"allowed_clients":null,"disallowed_clients":[],"blocked_hosts":[]}`} {
+		t.Run(reply, func(t *testing.T) {
+			writes := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == "POST" {
+					writes++
+				}
+				if r.URL.Path == "/control/clients" {
+					_, _ = w.Write([]byte(`{"clients":[]}`))
+					return
+				}
+				_, _ = w.Write([]byte(reply))
+			}))
+			defer srv.Close()
+			res := Sync(Input{URL: srv.URL, Profiles: []Profile{{ID: "alex", ClientID: "fwalex"}}}, srv.Client())
+			if res.Complete || res.Error == "" || writes != 0 {
+				t.Fatal(res, writes)
+			}
+		})
 	}
 }

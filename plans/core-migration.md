@@ -385,9 +385,11 @@ after `access/set`, and acknowledging a profile only after AGH accepted its clie
 The shell's `_dns_sync_locked` keeps only platform duties: the desired profiles (live
 DNS plus the captain's pact snapshot, frozen domain), credentials, and storing the
 stateless `familywardend agh-sync` result (acks, owned ids, legacy ClientID
-allocations to UCI). Its HTTP/reconciliation helpers are removed; the service
-catalogue (`dns_services`) still reads AGH from the shell. An older core without
-`agh-sync` fails the sync and keeps the last acknowledged DNS policy.
+allocations to UCI). Its HTTP/reconciliation helpers are removed, including the
+service catalogue (`dns_services` now calls `familywardend agh-services`). An older
+core without these helpers fails explicitly and keeps the last acknowledged DNS
+policy. Both commands accept bounded input, reject trailing documents and invalid
+endpoints, bypass HTTP proxies and refuse redirects rather than forward credentials.
 
 Evidence: Go unit tests against an in-memory AGH API, and the unchanged
 `scripts/test-agh.sh` (58 checks against a real AdGuard Home v0.107.79 container,
@@ -401,7 +403,15 @@ domain), including a captain whose profile was deleted. The shell's projection-b
 computation remains for legacy routers only. `test-agh.sh` now also imports a real
 router into core ownership (fw4 apply), enables DNS through a confirmed core edit and
 verifies the AGH client and acknowledgement; a direct UCI edit that switches DNS off is
-ignored. Re-enabling the UCI path in owned mode fails that check.
+ignored. The resolver URL also comes from the document for both sync and service
+catalogue calls; direct UCI endpoint edits cannot redirect the stored credentials.
+Re-enabling the UCI path in owned mode fails that check.
+
+Additional safety regressions cover an allow list that becomes empty between the
+first read and the final re-read (leave it empty and retain ownership records), and
+missing/null access-list fields (refuse the sync before any writes rather than
+replace foreign settings with inferred empty values). Missing client/catalogue
+collections are errors, not valid empty collections.
 
 ### Authoritative configuration cutover: traced callers and required transaction
 
@@ -409,13 +419,13 @@ Do not import only the Profiles form and leave competing UCI consumers behind:
 
 | Existing caller/writer | Cutover responsibility |
 |---|---|
-| `profiles.js` | Replace CBI profile, schedule, app/downtime and delete-cascade writes with the core API/shared UI |
-| `settings.js` | **Profile read path moved:** captain choices/DNS labels use core `profiles`; global form fields still use UCI and need the future atomic writer cutover |
-| `overview.js` | Replace the UCI profile/device enumeration used to distinguish unassigned MACs |
+| `profiles.js` | **Owned mode moved:** edits/create/delete use core CAS; CBI's local UCI cache is only the form model, not a server-side writer |
+| `settings.js` | **Owned mode moved:** core-profile choices and core CAS for global edits; UCI remains the display projection |
+| `overview.js` | **Moved:** unassigned MACs use `list.configuration.assigned_devices`, not UCI |
 | `devices.js` | **Read path moved:** labels/selectors (including disabled profiles) use the core `profiles` directory |
-| `cli_dns_sync` | Replace lazy `dns_client_id` UCI writes with a core-owned allocation; preserve existing IDs exactly |
-| `profile_fragment` / `ulysses_sync` | Project one core-owned effective snapshot; no socket call back into a service waiting for this adapter |
-| `pact`, `pact.snap`, `pact.dns`, `release` | Import one consistent active pact, frozen policy/DNS and release deadline, not just current UCI |
+| `cli_dns_sync` | **Owned mode moved:** core allocates IDs in its edit transaction; desired DNS state and endpoint come from the document; Go owns AGH reconciliation |
+| `profile_fragment` / `ulysses_sync` | **Owned mode moved:** Go materializes the effective snapshot; shell applies firewall/platform state without a reentrant socket call |
+| `pact`, `pact.snap`, `pact.dns`, `release` | **Owned mode moved:** explicit import captures configured/frozen state and release; files become adapter projections |
 | `block/allow/reset/ticket`, sail authentication | Keep platform enforcement/authentication behind the adapter; reconcile with core-owned pact/config transactions |
 
 The next vertical slice must include a versioned configuration document and its real

@@ -146,6 +146,7 @@ echo "=== Not configured yet ==="
 "$BIN" dns-sync
 [ $? -ne 0 ] && pass "sync fails without credentials" || fail "sync succeeded without credentials"
 assert_eq "status names the missing credentials" "$(call dns_status | jsonfilter -e '@.error')" "AdGuard Home credentials not set"
+assert_eq "catalogue refuses missing credentials" "$(call dns_services | jsonfilter -e '@.error')" "AdGuard Home not configured"
 assert_eq "access list untouched" "$(agh access/list)" "$access_before"
 
 echo ""
@@ -223,6 +224,7 @@ call dns_auth '{"username":"familywarden","password":"wrong"}' >/dev/null
 "$BIN" dns-sync
 [ $? -ne 0 ] && pass "wrong credentials fail" || fail "wrong credentials succeeded"
 assert_eq "acknowledged policy kept while AGH can't be reached" "$(cat /etc/familywarden/dns.ack)" "$(cat /tmp/ack.before)"
+assert_eq "catalogue reports rejected credentials" "$(call dns_services | jsonfilter -e '@.error')" "AdGuard Home unreachable"
 call dns_auth '{"username":"familywarden","password":"test-password"}' >/dev/null
 
 echo ""
@@ -304,8 +306,9 @@ grep -q "^alex $alex_id dns.example.net safe_browsing tiktok$" /etc/familywarden
 assert_eq "existing client still untouched" "$(agh clients | jsonfilter -e "@.clients[@.name='Grandma tablet']")" "$grandma_before"
 # The projection is not authority: a direct UCI edit must not switch DNS off.
 uci set familywarden.gran.dns='0'
+uci set familywarden.settings.agh_url='http://127.0.0.1:1'
 uci commit familywarden
-"$BIN" dns-sync
+"$BIN" dns-sync && pass "owned DNS ignores a divergent UCI endpoint" || fail "UCI endpoint became DNS authority"
 grep -q '^gran grandma-2 ' /etc/familywarden/dns.ack && pass "owned DNS ignores direct UCI edits" || fail "UCI edit became DNS authority"
 
 echo ""

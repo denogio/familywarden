@@ -1863,16 +1863,6 @@ cli_core_legacy_devices_remove() {
 # (root only, written by dns_auth). AGH sends no auth challenge on its API, so
 # the header is sent up front.
 
-# $1 GET|POST, $2 path below /control/, $3 body file (POST). Body on stdout.
-_agh() {
-    if [ "$1" = "GET" ]; then
-        uclient-fetch -q --no-proxy -T 10 -O - --header="Authorization: Basic $_agh_auth" "$_agh_url/control/$2"
-    else
-        uclient-fetch -q --no-proxy -T 10 -O - --header="Authorization: Basic $_agh_auth" \
-            --header='Content-Type: application/json' --post-file="$3" "$_agh_url/control/$2"
-    fi
-}
-
 _dns_taken_cb() {
     local v
     config_get v "$1" dns_client_id ""
@@ -1950,6 +1940,7 @@ _dns_sync_locked() {
         # The core owns the desired DNS set: live DNS plus a bound captain's
         # snapshot and frozen domain (configuration.DNS).
         core=$(core_configuration_api configuration_dns '{}') || { _dns_status "DNS configuration unavailable"; return 1; }
+        url=$(echo "$core" | jsonfilter -e '@.input.url')
         domain=$(echo "$core" | jsonfilter -e '@.input.domain')
         _dns_cap=$(echo "$core" | jsonfilter -e '@.captain')
         _dns_profiles=$(echo "$core" | jsonfilter -e '@.input.profiles[*].id' | tr '\n' ' ')
@@ -2108,28 +2099,20 @@ ubus_dns_auth() {
 
 # Blockable services from AGH, for LuCI's service picker
 ubus_dns_services() {
-    local url d id name
-    config_load familywarden
-    config_get url settings agh_url ""
-    _agh_url=${url%/}
+    local url core
+    if configuration_owned; then
+        core=$(core_configuration_api configuration_dns '{}') || { _json_error "DNS configuration unavailable"; return 1; }
+        url=$(echo "$core" | jsonfilter -e '@.input.url')
+    else
+        config_load familywarden
+        config_get url settings agh_url ""
+    fi
     _agh_auth=$(cat "$FW_AGH_AUTH" 2>/dev/null)
-    [ -n "$_agh_url" ] && [ -n "$_agh_auth" ] || { _json_error "AdGuard Home not configured"; return 1; }
-    d=$(mktemp -d) || return 1
-    _agh GET blocked_services/all > "$d/all" || { rm -rf "$d"; _json_error "AdGuard Home unreachable"; return 1; }
-    jsonfilter -i "$d/all" -e '@.blocked_services[*].id' > "$d/ids" 2>/dev/null
-    jsonfilter -i "$d/all" -e '@.blocked_services[*].name' > "$d/names" 2>/dev/null
+    [ -n "$url" ] && [ -n "$_agh_auth" ] || { _json_error "AdGuard Home not configured"; return 1; }
     json_init
-    json_add_array "services"
-    awk 'NR == FNR { id[FNR] = $0; next } { print id[FNR] "\t" $0 }' "$d/ids" "$d/names" > "$d/pairs"
-    while IFS="$(printf '\t')" read -r id name; do
-        json_add_object ""
-        json_add_string "id" "$id"
-        json_add_string "name" "$name"
-        json_close_object
-    done < "$d/pairs"
-    json_close_array
-    rm -rf "$d"
-    json_dump
+    json_add_string url "${url%/}"
+    json_add_string auth "$_agh_auth"
+    json_dump | "$FW_CORE_BIN" agh-services || _json_error "DNS service helper failed"
 }
 
 # ---- Sail page backend (CLI only; called by the CGI on $FW_SAIL_PORT) ----

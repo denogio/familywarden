@@ -73,6 +73,24 @@ type access struct {
 	Blocked    []string `json:"blocked_hosts"`
 }
 
+// Missing access-list fields are not an empty list. Refuse incomplete replies
+// rather than erase foreign entries when posting the replacement document.
+func (a *access) UnmarshalJSON(data []byte) error {
+	var v struct {
+		Allowed    *[]string `json:"allowed_clients"`
+		Disallowed *[]string `json:"disallowed_clients"`
+		Blocked    *[]string `json:"blocked_hosts"`
+	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	if v.Allowed == nil || v.Disallowed == nil || v.Blocked == nil {
+		return fmt.Errorf("incomplete AdGuard Home access list")
+	}
+	*a = access{*v.Allowed, *v.Disallowed, *v.Blocked}
+	return nil
+}
+
 type api struct {
 	url, auth string
 	http      *http.Client
@@ -102,9 +120,13 @@ func (a api) do(method, path string, body, out any) error {
 		return err
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	const maxReply = 8 << 20
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxReply+1))
 	if err != nil {
 		return err
+	}
+	if len(data) > maxReply {
+		return fmt.Errorf("oversized AdGuard Home reply")
 	}
 	if resp.StatusCode/100 != 2 {
 		return fmt.Errorf("%s %s: %s", method, path, resp.Status)
@@ -225,7 +247,7 @@ func Sync(in Input, hc *http.Client) Result {
 		Clients []client `json:"clients"`
 	}
 	var acc access
-	if a.do("GET", "clients", nil, &clients) != nil || a.do("GET", "access/list", nil, &acc) != nil {
+	if a.do("GET", "clients", nil, &clients) != nil || clients.Clients == nil || a.do("GET", "access/list", nil, &acc) != nil {
 		res.Error = "AdGuard Home unreachable or credentials rejected"
 		return res
 	}
@@ -308,6 +330,12 @@ func Sync(in Input, hc *http.Client) Result {
 			res.Error = "AdGuard Home access list unreadable"
 			return res
 		}
+		// An administrator may have opened the list since the first read.
+		// Do not turn that freshly empty list back into a restrictive one.
+		if len(acc.Allowed) == 0 {
+			res.Complete = true
+			return res
+		}
 		changed := false
 		next, owned := []string{}, []string{}
 		for _, x := range acc.Allowed {
@@ -352,4 +380,23 @@ func nonNil(v []string) []string {
 		return []string{}
 	}
 	return v
+}
+
+type Service struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// Services lists AdGuard Home's blockable services for the service picker.
+func Services(url, auth string, hc *http.Client) ([]Service, error) {
+	var all struct {
+		Services []Service `json:"blocked_services"`
+	}
+	if err := (api{strings.TrimRight(url, "/"), auth, hc}).do("GET", "blocked_services/all", nil, &all); err != nil {
+		return nil, err
+	}
+	if all.Services == nil {
+		return nil, fmt.Errorf("incomplete AdGuard Home services catalogue")
+	}
+	return all.Services, nil
 }
