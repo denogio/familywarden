@@ -102,3 +102,39 @@ test('family view model lists waiting and allowed new apps, hides empty profiles
   assert.equal(vm.apps[0].approved[0].label, 'com.example.maps');
   assert.deepEqual(viewModel({}, {}, 1, undefined).apps, []);
 });
+
+function configurationFixture(rows) {
+  const source = readFileSync('luci-app-familywarden/htdocs/luci-static/resources/familywarden/configuration.js', 'utf8');
+  return new Function('baseclass', 'rpc', 'uci', source)(
+    { extend: value => value }, { declare: () => () => { throw new Error('unexpected RPC'); } },
+    { sections: (_, type) => rows[type] || [] }
+  );
+}
+
+test('configuration projection preserves untouched nullable captain fields and collections', () => {
+  const rows = { profile: [{ '.name': 'alex', name: 'Alex', policy: 'block' }, { '.name': 'taylor', name: 'Taylor', policy: 'allow' }] };
+  const cfg = configurationFixture(rows);
+  const base = cfg.fromUci({ settings: { captain: 'alex' }, legacy_phones: [] });
+  const captain = base.profiles[0];
+  for (const profile of base.profiles)
+    for (const k of ['devices', 'protections', 'services', 'always_allowed']) profile[k] = null;
+  for (const k of ['schedules', 'apps', 'downtime']) base[k] = null;
+  assert.equal(cfg.matchesUci(base), true);
+  rows.profile[1].name = 'Taylor renamed';
+  const edited = cfg.fromUci(base);
+  assert.deepEqual(edited.profiles[0], captain, 'unrelated edits must not change a frozen captain');
+  assert.strictEqual(edited.profiles[0], captain);
+  assert.equal(edited.profiles[1].name, 'Taylor renamed');
+  assert.equal(edited.profiles[1].devices, null, 'a changed name must not normalize untouched fields');
+  for (const k of ['schedules', 'apps', 'downtime']) assert.equal(edited[k], null);
+  assert.strictEqual(edited.settings, base.settings);
+  assert.strictEqual(edited.legacy_phones, base.legacy_phones);
+  assert.equal(base.profiles[1].name, 'Taylor');
+  // Profile creation/removal must also keep the unchanged frozen record exact.
+  rows.profile.push({ '.name': 'new_profile', name: 'New profile' });
+  const created = cfg.fromUci(base);
+  assert.strictEqual(created.profiles[0], captain);
+  assert.equal(created.profiles.length, 3);
+  rows.profile = [rows.profile[0]];
+  assert.deepEqual(cfg.fromUci(base).profiles, [captain]);
+});

@@ -114,6 +114,32 @@ test('profiles in core-owned mode writes edits and new rows through apply and co
   expect(uciWrites).toEqual([]);
 });
 
+test('owned profile edits preserve nullable captain fields and collections', async ({ page }) => {
+  const exported = await ownedExport(page);
+  const current = exported.configuration.current;
+  for (const p of current.profiles)
+    for (const key of ['devices', 'protections', 'services', 'always_allowed'])
+      if (p[key]?.length === 0) p[key] = null;
+  for (const key of ['schedules', 'apps', 'downtime'])
+    if (current[key]?.length === 0) current[key] = null;
+  const captain = current.profiles.find(p => p.id === current.settings.captain);
+  expect(captain).toBeTruthy();
+  const calls = await mockCoreConfiguration(page, {
+    configuration_status: () => ({ owner: 'core' }),
+    configuration_export: () => exported,
+    configuration_apply: () => ({ status: 'confirmation_required', revision: 'r2', token: 'tok' }),
+    configuration_confirm: () => ({ status: 'ok', revision: 'r2' }),
+    reload: () => ({ status: 'ok' })
+  });
+  await page.goto(`${URL}/profiles?name=alex`);
+  await page.locator('#cbi-familywarden-alex-name input').fill('Alex renamed');
+  await page.locator('li').filter({ hasText: /^Save & Apply$/ }).click();
+  await expect.poll(() => calls.some(c => c.method === 'configuration_confirm')).toBeTruthy();
+  const actual = calls.find(c => c.method === 'configuration_apply').params.current;
+  expect(actual.profiles.find(p => p.id === captain.id)).toEqual(captain);
+  for (const key of ['schedules', 'apps', 'downtime']) expect(actual[key]).toEqual(current[key]);
+});
+
 async function ownedAmendmentWindow(page) {
   const exported = await ownedExport(page);
   const listed = await page.evaluate(async () => {

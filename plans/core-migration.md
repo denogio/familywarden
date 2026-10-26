@@ -530,6 +530,22 @@ ongoing pact, edits the captain through the real LuCI session/ACL/RPC bridge, an
 verifies the frozen edit and absence of a pending rollback before and after daemon
 restart. No live router or physical phone was touched.
 
+### Preserve exact unchanged records across the UCI form projection (LuCI 0.11.0-r3)
+
+`fwconfig.fromUci` now reuses unchanged authoritative field values, records and
+collections after semantic comparison. In particular, UCI's missing lists (`[]` in
+the browser mapping) must not rewrite the document's `null` lists or reorder an
+unchanged collection. Otherwise saving another profile could appear to mutate the
+frozen captain and be correctly refused by the core's exact pact guard. The guard
+itself is not weakened.
+
+A Node regression first reproduced the unintended rewrite, then checks ordinary
+edits, creation and deletion without modifying the input document or unrelated
+captain fields. The browser regression edits an unrelated profile with nullable
+captain/collection fields. An additional unmocked router check imports nullable
+lists, creates an active captain pact, edits another profile through real LuCI
+CAS/confirm, and verifies the captain's frozen null fields and pact are unchanged.
+
 ### Authoritative configuration cutover: traced callers and required transaction
 
 Do not import only the Profiles form and leave competing UCI consumers behind:
