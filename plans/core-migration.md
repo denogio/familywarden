@@ -204,7 +204,8 @@ read-only. LuCI displays the rejected-load error and reports that exact error to
 browser; error tests explicitly assert it rather than suppress unexpected failures.
 
 Evidence: syntax checks, five Node view-model tests, 24 focused real-LuCI browser
-checks and the full disposable OpenWrt suite (45 passed, one existing skip). A regression
+checks and the full disposable OpenWrt suite (46 passed, including the guarded real
+HTTP approval fixture). A regression
 probe restores the previous Settings source and confirms that the core-only profile
 selector test fails. Tests used an immutable source snapshot and matching existing
 development packages with the Settings source overlaid; no new package deployment,

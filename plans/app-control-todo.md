@@ -21,7 +21,7 @@ Historical test counts are evidence at that checkpoint, not current suite totals
 | P8 LAN requests | Child/parent/admin flow, device/key-bound grants, consumption, first-answer-wins and new-app decisions; deployed | Focused physical request/approval run and bounded multi-phone allocation |
 | P9 off-home | LAN notifications only | Transport decision, encryption/key distribution and off-home implementation/testing |
 | P10 Android | Child/adult status/history, scoped parent decisions and usage | Parent presentation split is implemented and preview-tested (#94); scoped child selection is implemented and preview-tested (#97); full parent controls remain |
-| P10 shared web | Existing LuCI pages and shared Requests module; new control prototype reviewed | Production-wide shared presentation layer, core API integration, host adapter and EN/DA; prototype is not shipped code |
+| P10 shared web | Existing LuCI pages and shared Requests module, now hardened/tested in neutral and LuCI hosts; control prototype reviewed | Production-wide shared presentation layer, core API integration, host adapter and EN/DA; prototype is not shipped code |
 | Core migration | Identity, requests, usage, new-apps, signed app compilation and profile directory (Phones/Settings readers) | Authoritative configuration/pact ownership, CAS edits, safe apply/rollback, remaining UCI cutover (#91); DNS sync remains in adapter/shell |
 | P11 adult pool | Existing pact enforcement, not the proposed pool | Final consumption/reset rules, ledger and pact-safe self-service |
 | P13 release validation | Same-key rc3/rc4 router+phone pilot and rc5 phone update | Release-wide security/compatibility/lifecycle acceptance for remaining scope; no blanket production rollout approval |
@@ -487,8 +487,13 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       dark/light themes and fictional previews/screenshots. New screens must preserve this.
 - [x] Existing slices: mapper/unit tests and focused Playwright coverage of real backend
       requests/responses (`b3ded32`, `37a0146` and current Android verification).
-- [ ] Implement the production-wide shared control web presentation, real API wiring,
-      native host adapter and EN/DA; test loading/stale/error/authorization states (#96).
+- [x] Harden the existing shared Requests foundation (#101): persistent action errors,
+      single-flight operations, stale-action guards, draft/focus preservation and late-
+      reply disposal. Same `.fwa` module passes neutral-host and real-LuCI tests;
+      [implementation evidence](../docs/design/control-interface-implementation.md).
+- [ ] Implement the complete control prototype on that shared foundation, remaining
+      core-backed views/editors, host integration and EN/DA (#96). This is not yet a
+      production-wide replacement of the legacy LuCI pages.
 
 **Accept:** UI reflects server authority and applied state, and has loading/error/offline states.
 

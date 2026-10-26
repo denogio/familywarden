@@ -25,6 +25,108 @@ test.afterEach(async ({ page }) => {
   expect(pageErrors.get(page)).toEqual([]);
 });
 
+// Same production module in a neutral host: no LuCI rendering/session helpers.
+async function neutral(page, options = {}) {
+  await page.setContent('<main id="shared-fixture"></main>');
+  await page.evaluate(async ({ lang = 'en', interval = 100000, bad = false, defer = false }) => {
+    const module = await import('/luci-static/resources/familywarden/shared/family.js');
+    const pending = { request_id: 'request-neutral-001', profile: 'alex', profile_name: 'Alex',
+      target: 'com.example.video', label: 'Video', minutes: 30,
+      received: Math.floor(Date.now() / 1000), expires: Math.floor(Date.now() / 1000) + 3600, state: 'pending' };
+    const fixture = window.sharedFixture = { reads: 0, mutations: [], replies: {
+      requests: bad ? {} : { requests: [pending] }, usage: { day: '2027-01-15', profiles: [] }, new_apps: { profiles: [] }
+    } };
+    fixture.control = module.mount(document.getElementById('shared-fixture'), { lang, interval,
+      call: (method, params) => {
+        if (method === 'request_answer' || method === 'app_decision') {
+          fixture.mutations.push({ method, params });
+          return new Promise(resolve => { fixture.finishAction = resolve; });
+        }
+        fixture.reads++;
+        if (defer && method === 'requests') return new Promise(resolve => { fixture.finishRead = resolve; });
+        return Promise.resolve(fixture.replies[method]);
+      }
+    });
+    fixture.pending = pending;
+  }, options);
+  return page.locator('#shared-fixture');
+}
+
+test('neutral shared host keeps refusals visible and serializes outgoing actions', async ({ page }) => {
+  const root = await neutral(page);
+  await expect(root).toHaveClass(/fwa/);
+  const approve = root.getByRole('button', { name: 'Approve', exact: true });
+  await expect(approve).toBeEnabled();
+  await root.getByLabel('Minutes').fill('20');
+  await approve.click();
+  await expect(approve).toBeDisabled();
+  await expect(root.getByRole('button', { name: 'Decline', exact: true })).toBeDisabled();
+  await expect(root.getByLabel('Minutes')).toBeDisabled();
+  await approve.dispatchEvent('click');
+  expect(await page.evaluate(() => sharedFixture.mutations)).toEqual([
+    { method: 'request_answer', params: { request_id: 'request-neutral-001', approve: true, minutes: 20 } }
+  ]);
+  await page.evaluate(() => sharedFixture.finishAction({ error: 'not_authorized' }));
+  await expect(root.getByRole('alert')).toHaveText('The router refused: not_authorized');
+  await page.evaluate(() => sharedFixture.control.refresh());
+  await expect(root.getByRole('alert')).toHaveText('The router refused: not_authorized');
+  await expect(root.getByLabel('Minutes')).toHaveValue('20');
+});
+
+test('neutral shared host retains stale data but disables actions until a valid refresh', async ({ page }) => {
+  const root = await neutral(page);
+  const approve = root.getByRole('button', { name: 'Approve', exact: true });
+  await expect(approve).toBeEnabled();
+  await page.evaluate(async () => { sharedFixture.replies.requests = {}; await sharedFixture.control.refresh(); });
+  await expect(root).toContainText('Invalid reply from FamilyWarden.');
+  await expect(root).toContainText('Showing previously received data.');
+  await expect(root).toContainText('Video');
+  await expect(root.getByText('No requests waiting.', { exact: true })).toHaveCount(0);
+  await expect(approve).toBeDisabled();
+  await approve.dispatchEvent('click');
+  expect(await page.evaluate(() => sharedFixture.mutations)).toEqual([]);
+  await page.evaluate(async () => {
+    sharedFixture.replies.requests = { requests: [] };
+    await sharedFixture.control.refresh();
+  });
+  await expect(root.getByText('No requests waiting.', { exact: true })).toBeVisible();
+  await expect(root).not.toContainText('Invalid reply from FamilyWarden.');
+});
+
+test('initial malformed shared data is not an empty household, in Danish too', async ({ page }) => {
+  const root = await neutral(page, { lang: 'da', bad: true });
+  await expect(root).toContainText('Ugyldigt svar fra FamilyWarden.');
+  await expect(root).not.toContainText('Ingen ventende anmodninger.');
+  await expect(root.locator('button')).toHaveCount(0);
+});
+
+test('shared polling preserves an active amount and its draft after blur', async ({ page }) => {
+  const root = await neutral(page, { interval: 40 });
+  const input = root.getByLabel('Minutes');
+  await expect(input).toBeEnabled();
+  await input.fill('21');
+  const reads = await page.evaluate(() => sharedFixture.reads);
+  await page.waitForTimeout(160); // Several poll intervals: no repaint may interrupt typing.
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('21');
+  expect(await page.evaluate(() => sharedFixture.reads)).toBe(reads);
+  await root.getByRole('heading').first().click();
+  await expect.poll(() => page.evaluate(() => sharedFixture.reads)).toBeGreaterThan(reads);
+  await expect(input).toHaveValue('21');
+});
+
+test('stopping the shared mount ignores a late reply and does not restart polling', async ({ page }) => {
+  const root = await neutral(page, { interval: 40, defer: true });
+  await page.evaluate(() => {
+    sharedFixture.control.stop();
+    sharedFixture.finishRead({ requests: [sharedFixture.pending] });
+  });
+  await expect(root).toHaveAttribute('aria-busy', 'false');
+  await page.waitForTimeout(160);
+  await expect(root.locator('.fwx-card')).toHaveCount(0);
+  expect(await page.evaluate(() => sharedFixture.reads)).toBe(3);
+});
+
 test('Requests page talks to the real core through rpcd and LuCI ACLs', async ({ page }) => {
   await page.goto(URL);
   await expect(page.getByRole('heading', { name: 'Requests and screen time' })).toBeVisible();

@@ -120,6 +120,14 @@ not redesign-level.
    Pixel 8a enrolling, DNS 401) is good; should it become the canonical
    fixture for e2e screenshots and README?
 
+## Implementation checkpoint
+
+The existing real-core Requests renderer has been hardened as the shared `.fwa`
+foundation, with the same module tested in neutral and LuCI hosts. The complete
+prototype has **not** been ported. See
+[implementation checkpoints](control-interface-implementation.md) for actual scope,
+51-test browser evidence and remaining work; do not create a competing renderer.
+
 ## Next steps
 
 - Resolve the five decisions above (user).
