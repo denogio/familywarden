@@ -22,10 +22,16 @@ Build only the synthetic target APK (two versions for replacement tests):
 
 ```sh
 mkdir -p /tmp/fw-install-probe
-docker run --rm -v "$PWD:/src:ro" -v /tmp/fw-install-probe:/out \
+docker run --rm --memory=1g --cpus=2 -v "$PWD:/src:ro" -v /tmp/fw-install-probe:/out \
   -v mast-android-debugkey:/root/.android ghcr.io/cirruslabs/android-sdk:35 \
   sh /src/test/android/install-probe/build.sh
 ```
+
+The fixture builder creates a standard **test-only** debug key if the mounted volume
+is empty (for example, CI downloaded the FamilyWarden APK without running Gradle).
+It preserves an existing key, including refusing a corrupt key rather than silently
+replacing it. Both fixture versions use that same signer; it does not have to match
+the FamilyWarden APK's certificate. Production signing keys are never mounted here.
 
 Then run **one experiment at a time**:
 

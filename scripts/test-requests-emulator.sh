@@ -23,8 +23,12 @@ cleanup() {
 }
 trap cleanup EXIT
 printf 'OUT=%q\nROUTER=%q\nEMU=%q\nNET=%q\n' "$OUT" "$ROUTER" "$EMU" "$NET" > "$OUT/session.env"
-docker run --rm --memory=1g --cpus=2 -v "$ROOT:/src:ro" -v "$OUT/probe:/out" \
-    -v mast-android-debugkey:/root/.android "$SDK_IMAGE" sh /src/test/android/install-probe/build.sh > "$OUT/probe-build.log" 2>&1
+if ! docker run --rm --memory=1g --cpus=2 -v "$ROOT:/src:ro" -v "$OUT/probe:/out" \
+    -v mast-android-debugkey:/root/.android "$SDK_IMAGE" sh /src/test/android/install-probe/build.sh > "$OUT/probe-build.log" 2>&1; then
+    echo "Fixture build failed:" >&2
+    tail -n 80 "$OUT/probe-build.log" >&2
+    exit 1
+fi
 docker network create "$NET" >/dev/null
 docker run -d --name "$ROUTER" --network "$NET" --cap-add NET_ADMIN --memory=768m --cpus=2 \
     -v "$APKS:/apk:ro" openwrt/rootfs:x86-64-25.12.4 sleep infinity >/dev/null
