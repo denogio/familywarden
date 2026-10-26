@@ -1,12 +1,13 @@
 # App control — implementation backlog
 
 Branch: `feature/app-control`, based on `v0.9.1` (`dce92f4`).
-Status (2026-10-25): LAN app control, requests/grants, usage and new-app approval are
-implemented and deployed. Go configuration/pact migration is in progress; off-home
-transport remains undecided. Phase evidence below includes historical checkpoints;
+Status (2026-10-26): LAN app control, requests/grants, usage and new-app approval are
+implemented and deployed. Optional Go configuration/pact authority, LuCI CAS writers
+and AGH reconciliation are implemented on this branch, not deployed; broader migration
+validation remains open. Off-home transport remains undecided. Phase evidence below includes historical checkpoints;
 see [core-migration.md](core-migration.md) for current ownership and deployment.
 
-## Current work and remaining scope (reconciled 2026-10-25)
+## Current work and remaining scope (reconciled 2026-10-26)
 
 Checkboxes track the stated implementation or validation item, not the whole product.
 An implemented feature is not automatically physically verified, deployed or released.
@@ -22,7 +23,7 @@ Historical test counts are evidence at that checkpoint, not current suite totals
 | P9 off-home | LAN notifications only | Transport decision, encryption/key distribution and off-home implementation/testing |
 | P10 Android | Child/adult status/history, scoped parent decisions and usage | Parent presentation split is implemented and preview-tested (#94); scoped child selection is implemented and preview-tested (#97); full parent controls remain |
 | P10 shared web | Existing LuCI pages and shared Requests module, now hardened/tested in neutral and LuCI hosts; control prototype reviewed | Production-wide shared presentation layer, core API integration, host adapter and EN/DA; prototype is not shipped code |
-| Core migration | Identity, requests, usage, new-apps, signed app compilation and profile directory (Phones/Settings readers) | Authoritative configuration/pact ownership, CAS edits, safe apply/rollback, remaining UCI cutover (#91); DNS sync remains in adapter/shell |
+| Core migration | Identity/requests/usage/new-apps; opt-in authoritative configuration/pacts, CAS/confirm/rollback, Settings/Profiles CAS; owned phone/app policy from the document; Go AGH reconciliation/catalogue | Remaining legacy paths and adapter facts, mixed-version/upgrade/interruption validation, imported amendment-window edge; not deployed (#91/P12) |
 | P11 adult pool | Existing pact enforcement, not the proposed pool | Final consumption/reset rules, ledger and pact-safe self-service |
 | P13 release validation | Same-key rc3/rc4 router+phone pilot and rc5 phone update | Release-wide security/compatibility/lifecycle acceptance for remaining scope; no blanket production rollout approval |
 
@@ -62,7 +63,9 @@ Existing implementation to read before moving behavior:
 
 | Responsibility | Current source / state |
 |---|---|
-| Firewall, enrollment, pact, AGH sync | `familywarden/usr/lib/rpcd/familywarden` |
+| Firewall/platform application, legacy pact/configuration | `familywarden/usr/lib/rpcd/familywarden` |
+| Phone identity and owned configuration/pact/app policy | `core/internal/identity`, `core/internal/configuration` |
+| AGH reconciliation and service catalogue | `core/internal/agh` (shell retains platform storage/credentials) |
 | Boot, reload, pact/DNS tick | `familywarden/etc/init.d/familywarden` |
 | Signed phone endpoint | `familywarden/www-familywarden/cgi-bin/mast` |
 | Device identity and policy validation | Android `PhoneKey.kt`, `Payload.kt`, `Sync.kt`, `Store.kt` |
@@ -105,8 +108,9 @@ new-app and authenticated-upload mutations with the platform pact/state gate thr
 persistence, not just the context read. Go vet/race and real OpenWrt checks pass,
 including actual inherited-fd lock lifetime and a negative regression probe. Install
 these development packages together (`go-apps-v3`); no phone wire/store schema change
-or deployment. Full household configuration ownership/CAS/apply-confirm/rollback is
-still open; direct UCI forms have not been cut over.
+or deployment. At that checkpoint full household ownership/CAS/apply-confirm/rollback
+and direct UCI forms were still open. The subsequent optional authority and LuCI
+writer cutover are implemented; see the current checkpoint below.
 
 ## P0 — Establish the implementation baseline
 
@@ -251,6 +255,17 @@ Phones now reads the profile directory through the core API (including disabled 
 without creating a parallel store: Go/race and 412 integration checks pass; full package/
 browser checks are running on an immutable snapshot. These migration changes are not
 deployed; production remains rc4 / core 0.6.0.
+
+**Current migration checkpoint (2026-10-26):** opt-in import now gives the core one
+revision-sealed configured/frozen document, with CAS/apply/confirm and restart rollback.
+Settings and Profiles save through CAS in owned mode. Phone pact/rules and app compiler
+input come from the document; app revisions agree across phone, context and locked
+mutation paths (runtime bonus/timezone remain adapter facts). A divergent runtime
+projection cannot change the frozen phone app limit. Go also owns AGH reconciliation
+and the service catalogue, including empty-list/concurrent-change safeguards; owned
+DNS profiles/domain/endpoint come from the document. Evidence: Go vet/race, 461 real
+OpenWrt integration checks and 72 real AGH checks; per-slice CI and remaining boundaries
+are recorded in `core-migration.md`. No deployment or legacy-path removal is implied.
 
 ### Core on OpenWrt: ownership and lifecycle (historical baseline, 2026-10-22)
 
@@ -547,7 +562,10 @@ Depends on P4/P5/P11. Move only responsibilities assigned to Go; this is not a r
 - [ ] Preserve strict DNS/no automatic unfiltered fallback and handset applied/probe status.
 - [ ] Add idempotent migration, backup and interruption tests; stop dual writers.
 - [ ] Define rollback limits after schema changes; never restore a backup that silently
-      loosens an active pact or replays already-spent grants.
+      loosens an active pact or replays already-spent grants. Safety limits are recorded
+      in `core-migration.md` (no ownership-marker deletion, no partial-ledger restore,
+      no unvalidated downgrade); automated safe restoration/mixed-version validation
+      is still missing.
 - [ ] Remove legacy paths only after parity and mixed-version tests pass.
 
 **Accept:** v0.9.1 fixtures upgrade without changing effective restrictions or identities.

@@ -413,6 +413,40 @@ missing/null access-list fields (refuse the sync before any writes rather than
 replace foreign settings with inferred empty values). Missing client/catalogue
 collections are errors, not valid empty collections.
 
+### Recovery and downgrade limits (optional core ownership)
+
+These are safety limits, not a supported downgrade procedure or deployment approval.
+
+- An unconfirmed configuration edit is deliberately rolled back on its deadline or
+  daemon restart. A browser timeout, RPC transport success or reboot does not confirm
+  it; only its current revision/token does. A confirmed edit is not automatically
+  rolled back on restart.
+- A corrupt/future-version document, failed read-back or uncertain apply must stay
+  fail-closed. Do not delete `core/configuration.json` to make legacy mode work: its
+  absence selects a different authority and can bypass the active pact/recovery
+  journal. Repair requires a compatible core and an explicitly reviewed recovery.
+- `core/migration-backup` contains the original legacy configuration/pact projection
+  at first activation. It is neither a current household backup nor an undo button;
+  restoring it after core edits can remove restrictions or reinstate old bindings.
+- A durable backup must preserve the entire `/etc/familywarden/` tree (including
+  core documents/usage, router keys, AGH credentials/ownership/acknowledgements and
+  legacy projections), plus `/etc/config/familywarden` and the package/version
+  manifest. Keep root-private permissions and do not publish/export these secrets
+  as test fixtures. Live filesystem copies across separate document replacements
+  are not a transactionally consistent backup; backup/recovery must be quiesced and
+  separately authorized on a real router.
+- Restoring only an old grant/usage/new-app ledger can replay already consumed
+  grants, lower accounting offsets or resurrect approvals. Restoring an entire old
+  tree is also not automatically safe: check current pact restrictions/deadlines,
+  device bindings and monotonic grant/usage state before any restoration. No tool
+  currently merges such historical state safely.
+- Package downgrade is not schema downgrade. A pre-authority core/shell must not be
+  installed over an owned household just because an older package can read the UCI
+  projection. The private `go-apps-v3` and stateless AGH helper seams refuse known
+  mismatches, but they do not prove arbitrary old/new package combinations safe.
+  Retain legacy paths until the disposable upgrade/interruption/mixed-version matrix
+  has passed; the P12 downgrade gate remains open.
+
 ### Owned app-policy configuration comes from the document (core 0.13.0-r3)
 
 `configuration.AppContext` builds the app compiler input directly from
