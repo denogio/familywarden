@@ -321,12 +321,17 @@ writing to it once the document exists:
   `gc_pact`, sail request/cancel, tick, reload, pact and DNS ClientID writes short-circuit
   to the core. `list` now reports `configuration` (enabled, default_policy, captain,
   waiting period, assigned devices) so LuCI never loads the UCI collection to render
-  ownership facts; `profiles`/`settings` disable Save/Reset and `reload` re-applies the
+  ownership facts; `profiles` disables Save/Reset and `reload` re-applies the
   projection when the owner is core. Legacy `ubus_pact`/sail keep working untouched when
   no document exists.
 - **Validation:** apply-time revalidation rejects duplicate identities, malformed JSON
   (duplicate keys, trailing data), unbounded or non-decimal limits and invalid
   DNS/ClientID state; DNS ClientIDs are allocated inside the transaction when missing.
+- **LuCI Settings saves through CAS (2026-10-26):** in core-owned mode Settings reads
+  `configuration_export`, stages the edited global fields onto that document and runs
+  `configuration_apply` → `configuration_confirm` with the exported revision
+  (`familywarden/configuration.js`); a stale revision is shown as an error, never merged.
+  UCI is not written. The Profiles editor still disables Save until its own cutover.
 
 Verified on the final immutable inputs: Go vet/race, syntax, the full real OpenWrt
 integration suite (import → CAS → confirm → stale refusal → re-import no-op → restart
