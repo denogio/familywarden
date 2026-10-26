@@ -317,7 +317,14 @@ return view.extend({
 	handleSaveApply: function(ev, mode) {
 		if (!this.ownedMap)
 			return this.super('handleSaveApply', [ev, mode]);
-		return this.ownedMap.parse().then(writeConfiguration).then(function() {
+		var amend = this.ownedAmendment;
+		if (amend && !window.confirm(_('Commit these changes to the pact? They take effect immediately and are not rolled back if this page disconnects.')))
+			return Promise.resolve();
+		return this.ownedMap.parse().then(function() {
+			if (amend)
+				return fwconfig.amend(owned.configuration, fwconfig.fromUci(owned.configuration.current)).then(function() { return callReload(); });
+			return writeConfiguration();
+		}).then(function() {
 			window.location.reload();
 		}, writeFailed);
 	},
@@ -396,6 +403,7 @@ return view.extend({
 		// schedule add/delete. DNS stays editable: during a pact the backend
 		// applies additions at once and removals only when the pact ends.
 		var frozen = ulysses.isFrozen(status);
+		this.ownedAmendment = !!(owned && ulysses.isBound(status) && status.pact_type === 'ongoing' && status.pact_in_window);
 
 		var s = m.section(form.NamedSection, selectedProfile, 'profile', _('Profile and internet access'));
 		s.addremove = false;
@@ -736,7 +744,9 @@ return view.extend({
 				fwui.header(_('Profiles'), _('Devices, allowed hours and DNS protection for each profile. Form edits are staged until Save & Apply.')),
 				tabs,
 				statusBar,
-				E('p', { 'class': 'fw-immediate-note' }, _('Status and quick actions above are live. Form edits below do not change access until Save & Apply.')),
+				E('p', { 'class': 'fw-immediate-note' }, self.ownedAmendment
+					? _('Pact edits require explicit confirmation and are committed immediately, without automatic rollback.')
+					: _('Status and quick actions above are live. Form edits below do not change access until Save & Apply.')),
 				frozen ? E('div', { 'class': 'fw-profile-lock' }, [
 					E('strong', {}, _('Held by the pact')),
 					E('p', {}, _('Internet rules, devices and schedules are read-only outside the amendment window. DNS stays editable: protections can be added now; loosening waits until the pact ends or its window. Phone bindings stay frozen throughout the pact.'))

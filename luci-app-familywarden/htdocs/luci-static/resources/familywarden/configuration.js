@@ -13,6 +13,12 @@ var callApply = rpc.declare({
 	params: [ 'revision', 'current' ]
 });
 
+var callAmend = rpc.declare({
+	object: 'familywarden',
+	method: 'configuration_amend',
+	params: [ 'revision', 'current' ]
+});
+
 var callConfirm = rpc.declare({
 	object: 'familywarden',
 	method: 'configuration_confirm',
@@ -90,6 +96,17 @@ return baseclass.extend({
 	// otherwise editing it would overwrite core state the form never showed.
 	matchesUci: function(current) {
 		return canonical(this.fromUci(current)) === canonical(current);
+	},
+	// Explicit pact amendment: committed immediately, no connection rollback.
+	// The caller must obtain the user's acknowledgement before invoking this.
+	amend: function(configuration, current) {
+		return callAmend(configuration.revision, current).then(function(res) {
+			ensure(res);
+			if (res.status !== 'ok' || typeof res.revision !== 'string')
+				throw new Error('Invalid pact amendment reply');
+			configuration.revision = res.revision;
+			return configuration;
+		});
 	},
 	commit: function(configuration, current) {
 		return callApply(configuration.revision, current).then(function(res) {

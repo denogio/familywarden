@@ -10,7 +10,7 @@
 		},
 		"write": {
 			"ubus": {
-				"familywarden": [ "block", "allow", "reset", "ticket", "bonus", "pact", "reload", "configuration_apply", "configuration_confirm", "device_approve", "device_reject", "device_update", "device_delete", "device_allow_removal", "request_answer", "app_decision", "dns_sync", "dns_auth" ]
+				"familywarden": [ "block", "allow", "reset", "ticket", "bonus", "pact", "reload", "configuration_apply", "configuration_amend", "configuration_confirm", "device_approve", "device_reject", "device_update", "device_delete", "device_allow_removal", "request_answer", "app_decision", "dns_sync", "dns_auth" ]
 			},
 			"uci": [ "familywarden" ]
 		}

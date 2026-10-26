@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestExplicitAmendmentCommitsWithoutAnAutomaticPactRollback(t *testing.T) {
@@ -30,6 +31,38 @@ func TestExplicitAmendmentCommitsWithoutAnAutomaticPactRollback(t *testing.T) {
 	d, _, _ = recovered.load()
 	if d.Configuration.Pact.Frozen.Profiles[0].ScreenMinutes != "5" {
 		t.Fatal("restart undid a committed pact")
+	}
+}
+
+func TestAmendmentRefusalsDoNotChangeStoredOrAppliedState(t *testing.T) {
+	for _, reason := range []string{"stale revision", "other profile", "window closed"} {
+		t.Run(reason, func(t *testing.T) {
+			a, b, st := setup(t)
+			activate(t, a, b)
+			day := strings.ToLower(a.Now().Weekday().String()[:3])
+			okResult(t, a.API("configuration_pact", []byte(fmt.Sprintf(`{"until":0,"window_day":"%s","window_start":"00:00","window_stop":"24:00"}`, day))))
+			d, _, _ := a.load()
+			next := clone(d.Configuration)
+			next.Current.Profiles[0].ScreenMinutes = "5"
+			revision := d.Configuration.Revision
+			switch reason {
+			case "stale revision":
+				revision = "stale"
+			case "other profile":
+				next.Current.Profiles[1].Name = "Changed outside the captain"
+			case "window closed":
+				tomorrow := a.Now().Add(24 * time.Hour)
+				a.Now = func() time.Time { return tomorrow }
+			}
+			before := string(st.data)
+			applies := b.applies
+			if r := a.API("configuration_amend", request(map[string]any{"revision": revision, "current": next.Current})); r["error"] == nil {
+				t.Fatal("invalid amendment accepted", reason, r)
+			}
+			if string(st.data) != before || b.applies != applies {
+				t.Fatal("refused amendment changed the journal or platform", reason)
+			}
+		})
 	}
 }
 

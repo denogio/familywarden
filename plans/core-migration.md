@@ -512,6 +512,24 @@ before the fix, then verify refusal without store/platform writes, valid edits a
 legacy preservation. The real AGH test rejects activation without a domain on a
 profile with an existing ID and then successfully applies the valid edit.
 
+### Explicit pact amendment from Profiles (LuCI 0.11.0-r2 / backend rc10-r4)
+
+When an owned captain's ongoing-pact amendment window is open, Profiles Save & Apply
+asks for explicit confirmation that the change commits immediately and has no
+connection rollback. Only then does it call revision-bound `configuration_amend`,
+not `configuration_apply`/`configuration_confirm`. The RPC bridge and both write ACLs
+include only that amendment method; sail release remains CLI-only. Other profiles and
+ordinary Settings/Profile edits retain the normal confirmed CAS flow.
+
+Browser regressions cover cancellation (no write, staged fields retained), successful
+amendment and a window that closes before the core handles the write (error, staged
+fields retained, no ordinary apply/confirm fallback). Core tests separately refuse stale
+revisions, other-profile edits and a closed window without changing journal/platform
+state. An unmocked disposable router check imports the configuration, creates an open
+ongoing pact, edits the captain through the real LuCI session/ACL/RPC bridge, and
+verifies the frozen edit and absence of a pending rollback before and after daemon
+restart. No live router or physical phone was touched.
+
 ### Authoritative configuration cutover: traced callers and required transaction
 
 Do not import only the Profiles form and leave competing UCI consumers behind:

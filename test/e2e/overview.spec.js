@@ -114,6 +114,60 @@ test('profiles in core-owned mode writes edits and new rows through apply and co
   expect(uciWrites).toEqual([]);
 });
 
+async function ownedAmendmentWindow(page) {
+  const exported = await ownedExport(page);
+  const listed = await page.evaluate(async () => {
+    const rpc = await L.require('rpc');
+    return rpc.declare({ object: 'familywarden', method: 'list', expect: { '': {} } })();
+  });
+  listed.configuration.captain = 'alex';
+  Object.assign(listed.profiles.alex, { captain: true, pact_type: 'ongoing', pact_in_window: true,
+    pact_window: 'sun 10:00-11:00' });
+  return { exported, listed };
+}
+
+for (const decision of ['cancel', 'confirm', 'window closed']) {
+  test(`owned pact amendment: ${decision}`, async ({ page }) => {
+    const { exported, listed } = await ownedAmendmentWindow(page);
+    const calls = await mockCoreConfiguration(page, {
+      list: () => listed,
+      configuration_status: () => ({ owner: 'core' }),
+      configuration_export: () => exported,
+      configuration_amend: () => decision === 'window closed'
+        ? { error: 'pact amendment window is closed' } : { status: 'ok', revision: 'r2' },
+      configuration_apply: () => ({ error: 'must not call ordinary apply for a pact amendment' }),
+      configuration_confirm: () => ({ error: 'must not arm a rollback for a pact amendment' }),
+      reload: () => ({ status: 'ok' })
+    });
+    await page.goto(`${URL}/profiles?name=alex`);
+    await expect(page.getByText('Pact edits require explicit confirmation and are committed immediately, without automatic rollback.')).toBeVisible();
+    await page.locator('#cbi-familywarden-alex-name input').fill('Alex amended');
+    let prompted = false;
+    page.once('dialog', async dialog => {
+      prompted = true;
+      expect(dialog.type()).toBe('confirm');
+      expect(dialog.message()).toContain('not rolled back');
+      if (decision === 'cancel') await dialog.dismiss(); else await dialog.accept();
+    });
+    await page.locator('li').filter({ hasText: /^Save & Apply$/ }).click();
+    expect(prompted).toBeTruthy();
+    if (decision === 'cancel') {
+      expect(calls.filter(c => c.method === 'configuration_amend')).toHaveLength(0);
+      await expect(page.locator('#cbi-familywarden-alex-name input')).toHaveValue('Alex amended');
+    } else {
+      await expect.poll(() => calls.filter(c => c.method === 'configuration_amend').length).toBe(1);
+      const amend = calls.find(c => c.method === 'configuration_amend');
+      expect(amend.params.revision).toBe('r1');
+      expect(amend.params.current.profiles.find(p => p.id === 'alex').name).toBe('Alex amended');
+      if (decision === 'window closed') {
+        await expect(page.getByText('Could not save the configuration: pact amendment window is closed')).toBeVisible();
+        await expect(page.locator('#cbi-familywarden-alex-name input')).toHaveValue('Alex amended');
+      }
+    }
+    expect(calls.filter(c => ['configuration_apply', 'configuration_confirm'].includes(c.method))).toHaveLength(0);
+  });
+}
+
 test('profiles in core-owned mode refuses a projection that differs from the core document', async ({ page }) => {
   const exported = await ownedExport(page);
   exported.configuration.current.profiles.push({ ...exported.configuration.current.profiles[0], id: 'not_projected' });
