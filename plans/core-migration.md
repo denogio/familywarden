@@ -270,12 +270,34 @@ snapshots and mixed-format refusal. A negative probe that releases the lock befo
 the callback fails as intended. The real router test queues a binding change behind
 the state gate and verifies no early write and pact refusal afterward.
 The opt-in CI emulator job now groups lifecycle and signed child/ordinary-parent suites;
-new package/native validation is tracked separately from these local source results.
+[CI 40305278912](https://github.com/denogio/familywarden/actions/runs/40305278912)
+passes SDK/package tests, packaged LuCI and both grouped Android lifecycle and signed
+child/ordinary-parent suites. The clean-worker fixture signer was repaired in 92b6fde;
+no production signing key was used.
 
 This is a concrete runtime race fix, **not the household-store cutover**. Direct UCI
 form writes are still outside this gate, and the shell still owns pact semantics and
 snapshot files. The configuration/CAS/apply-confirm/rollback work below remains open;
 no parallel or unused configuration store has been added.
+
+### Versioned migration input (core 0.11.0-r2 / backend rc8-r2)
+
+The local root-only `familywardend api configuration_export` reader now returns one
+version-1 configuration snapshot and a content revision. It captures configured and
+frozen profiles separately under one shared platform lock, rather than attempting to
+import the effective profile as the editable configuration. Raw unset/zero values,
+disabled profiles, existing DNS ClientIDs, anonymous section identities, schedules,
+app/downtime sections, legacy frozen associations, DNS snapshots and release deadlines
+are represented. Runtime usage/grants, credentials and router signing keys are excluded.
+The Go revision covers the complete snapshot, including frozen state and release time.
+Missing frozen data is an error, not an empty/unbound household.
+
+This is the live migration **reader**, explicitly returning `owner:"legacy"`; it does
+not create a second configuration store or switch authority. The transactional writer,
+import/read-back completion, store-backed policy/projection and UI writer cutover below
+are still work in progress. No editable API or deployment is implied by the export.
+Go vet/race, syntax and real OpenWrt integration pass with live-vs-frozen edits,
+disabled profiles, anonymous IDs, ClientIDs and missing-snapshot refusal covered.
 
 ### Authoritative configuration cutover: traced callers and required transaction
 

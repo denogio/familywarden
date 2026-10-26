@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/denogio/familywarden/core/internal/platform"
+	"github.com/denogio/familywarden/core/internal/rules"
 	"github.com/denogio/familywarden/core/internal/usign"
 )
 
@@ -33,6 +34,9 @@ type fakeAdapter struct {
 }
 
 func (f *fakeAdapter) Context() (platform.Context, error) { return f.ctx, f.ctxErr }
+func (f *fakeAdapter) Configuration() (rules.Configuration, error) {
+	return rules.Configuration{Version: 1}, f.ctxErr
+}
 func (f *fakeAdapter) WithContext(fn func(platform.Context) error) error {
 	ctx, err := f.Context()
 	if err != nil {

@@ -95,6 +95,8 @@ func handler(st *store.Store, id *identity.Service) http.Handler {
 		}
 		var reply identity.Reply
 		switch method {
+		case "configuration_export":
+			reply = id.ConfigurationExport()
 		case "requests":
 			reply = id.Requests()
 		case "usage":

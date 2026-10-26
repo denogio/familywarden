@@ -40,6 +40,19 @@ func fingerprint(key string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// ConfigurationExport is the actual migration reader, not an authoritative store.
+// Until the reader/writer cutover, UCI and the legacy pact files still own this data.
+func (s *Service) ConfigurationExport() Reply {
+	c, err := s.ad.Configuration()
+	if err != nil {
+		return fail("configuration unavailable")
+	}
+	if err := c.Seal(); err != nil {
+		return fail("configuration unavailable")
+	}
+	return Reply{"owner": "legacy", "configuration": c}
+}
+
 // ProfileDirectory lists every profile, including ones disabled for network
 // enforcement. LuCI selectors must not discover profiles directly through UCI.
 // Only display identity is exposed; configuration ownership migrates separately.

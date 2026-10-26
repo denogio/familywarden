@@ -1571,6 +1571,114 @@ _core_context_fields() {
     json_close_object
 }
 
+# Complete migration input: raw configured options and frozen pact data under one
+# shared lock. No effective-profile substitution or normalization belongs here.
+_cfg_fields() {
+    local section="$1" pair option key value
+    shift
+    for pair in "$@"; do
+        option="${pair%%:*}"; key="${pair#*:}"
+        config_get value "$section" "$option" ""
+        json_add_string "$key" "$value"
+    done
+}
+_cfg_list() {
+    json_add_array "$3"
+    config_list_foreach "$1" "$2" _apps_string_cb
+    json_close_array
+}
+_cfg_profile() {
+    json_add_object ""
+    json_add_string "id" "$1"
+    _cfg_fields "$1" name:name enabled:enabled policy:policy block_router:block_router \
+        dns:dns dns_client_id:client_id apps:apps apps_suspend_new:suspend_new \
+        screen_minutes:screen_minutes screen_weekday:screen_weekday screen_weekend:screen_weekend
+    _cfg_list "$1" device devices
+    _cfg_list "$1" dns_protection protections
+    _cfg_list "$1" dns_service services
+    _cfg_list "$1" always_allowed always_allowed
+    json_close_object
+}
+_cfg_window() {
+    json_add_object ""
+    json_add_string "id" "$1"
+    _cfg_fields "$1" profile:profile days:days start:start stop:stop
+    json_close_object
+}
+_cfg_app() {
+    json_add_object ""
+    json_add_string "id" "$1"
+    _cfg_fields "$1" profile:profile package:package minutes:minutes blocked:blocked
+    json_close_object
+}
+_cfg_phone() {
+    json_add_object ""
+    _cfg_fields "$1" id:id name:name profile:profile pubkey:public_key \
+        administrator:administrator approves:approves
+    json_close_object
+}
+_cfg_data() {
+    json_add_object settings
+    _cfg_fields settings enabled:enabled default_policy:default_policy ulysses_profile:captain \
+        ulysses_delay:delay_hours dns_domain:dns_domain agh_url:resolver_url
+    json_close_object
+    json_add_array profiles; config_foreach _cfg_profile profile; json_close_array
+    json_add_array schedules; config_foreach _cfg_window schedule; json_close_array
+    json_add_array apps; config_foreach _cfg_app app; json_close_array
+    json_add_array downtime; config_foreach _cfg_window app_downtime; json_close_array
+    json_add_array legacy_phones; config_foreach _cfg_phone device; json_close_array
+}
+_cfg_dns_snapshot() {
+    local key value line
+    for key in dns id domain; do
+        value=$(sed -n "s/^${key}=//p" "$FW_PACT_DNS")
+        case "$key" in dns) key=enabled ;; id) key=client_id ;; esac
+        json_add_string "$key" "$value"
+    done
+    for key in prot svc; do
+        case "$key" in prot) json_add_array protections ;; svc) json_add_array services ;; esac
+        while IFS= read -r line; do
+            case "$line" in "$key="*) json_add_string "" "${line#*=}" ;; esac
+        done < "$FW_PACT_DNS"
+        json_close_array
+    done
+}
+cli_core_configuration() {
+    [ "$1" = configuration-v1 ] || { _json_error "incompatible configuration format"; return 1; }
+    (
+        local tmp key pair
+        flock -s 200 || exit 1
+        if [ -f "$FW_PACT" ] && { [ ! -s "$FW_PACT_SNAP" ] || [ ! -f "$FW_PACT_DNS" ]; }; then
+            _json_error "incomplete pact snapshot"
+            exit 1
+        fi
+        config_load familywarden
+        json_init
+        json_add_int version 1
+        json_add_object current
+        _cfg_data
+        json_close_object
+        if [ -f "$FW_PACT" ]; then
+            json_add_object pact
+            for pair in captain:captain type:type until:until window_day:window_day \
+                window_start:window_start window_stop:window_stop delay:delay_seconds default_policy:default_policy; do
+                json_add_string "${pair#*:}" "$(pact_get "${pair%%:*}")"
+            done
+            json_add_string release_at "$(cat "$FW_RELEASE" 2>/dev/null)"
+            json_add_object dns; _cfg_dns_snapshot; json_close_object
+            tmp=$(mktemp -d) || exit 1
+            trap 'rm -rf "$tmp"' 0
+            cp "$FW_PACT_SNAP" "$tmp/familywarden" || exit 1
+            UCI_CONFIG_DIR="$tmp"
+            config_load familywarden
+            unset UCI_CONFIG_DIR
+            json_add_object frozen; _cfg_data; json_close_object
+            json_close_object
+        fi
+        json_dump
+    ) 200>"$FW_LOCK"
+}
+
 cli_core_context() {
     [ "$1" = "go-apps-v3" ] || { _json_error "incompatible core: upgrade required"; return 1; }
     case "$2" in ''|held-v1) ;; *) _json_error "invalid transaction mode"; return 1 ;; esac
@@ -2229,6 +2337,9 @@ EOF
         ;;
     mast)
         cli_mast "$2"
+        ;;
+    core-configuration)
+        cli_core_configuration "$2"
         ;;
     core-context)
         cli_core_context "$2" "$3"

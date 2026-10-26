@@ -1050,6 +1050,44 @@ payload=$(v3payload phoneD fw-d1 "$N1" -)
 assert_json "pact: screen time frozen" "$payload" '@.apps.screen.wed' "60"
 assert_json "pact: always allowed frozen" "$payload" '@.apps.always_allowed[0]' "com.example.school"
 assert_legacy_app_canonical kid "frozen app snapshot"
+uci set familywarden.migration_disabled=profile
+uci set familywarden.migration_disabled.name='Alex tablet'
+uci set familywarden.migration_disabled.enabled=0
+uci set familywarden.migration_disabled.dns_client_id=fw-preserved
+anonymous_schedule=$(uci add familywarden schedule)
+uci set "familywarden.$anonymous_schedule.profile=migration_disabled"
+uci set "familywarden.$anonymous_schedule.days=mon"
+uci set "familywarden.$anonymous_schedule.start=12:00"
+uci set "familywarden.$anonymous_schedule.stop=13:00"
+uci commit familywarden
+configuration=$(/usr/sbin/familywardend -socket "$CORE_SOCK" api configuration_export <<EOF
+{}
+EOF
+)
+assert_json "migration reader does not claim configuration ownership" "$configuration" '@.owner' legacy
+assert_json "configuration snapshot has an explicit version" "$configuration" '@.configuration.version' 1
+assert_json "configuration export includes disabled profiles" "$configuration" '@.configuration.current.profiles[@.id="migration_disabled"].enabled' 0
+assert_json "configuration export preserves existing ClientIDs" "$configuration" '@.configuration.current.profiles[@.id="migration_disabled"].client_id' fw-preserved
+assert_json "configuration export preserves anonymous section identity" "$configuration" '@.configuration.current.schedules[@.profile="migration_disabled"].id' "$anonymous_schedule"
+assert_json "configuration export preserves live edits" "$configuration" '@.configuration.current.profiles[@.id="kid"].screen_weekday' 999
+assert_json "configuration export preserves frozen rules separately" "$configuration" '@.configuration.pact.frozen.profiles[@.id="kid"].screen_weekday' 60
+assert_json "configuration export preserves frozen captain" "$configuration" '@.configuration.pact.captain' kid
+config_rev=$(echo "$configuration" | jsonfilter -e '@.configuration.revision')
+[ "${#config_rev}" = 64 ] && pass "configuration revision seals the complete snapshot" || fail "missing configuration revision"
+echo $(( $(date +%s) + 900 )) > /etc/familywarden/release
+configuration=$(/usr/sbin/familywardend -socket "$CORE_SOCK" api configuration_export <<EOF
+{}
+EOF
+)
+[ "$(echo "$configuration" | jsonfilter -e '@.configuration.revision')" != "$config_rev" ] && pass "release deadline changes configuration revision" || fail "release deadline omitted from revision"
+[ ! -f /etc/familywarden/core/configuration.json ] && pass "migration reader creates no parallel configuration store" || fail "unexpected configuration writer"
+mv /etc/familywarden/pact.snap /tmp/configuration-snapshot.keep
+configuration=$(/usr/sbin/familywardend -socket "$CORE_SOCK" api configuration_export <<EOF
+{}
+EOF
+)
+assert_json "incomplete frozen state is not exported as editable configuration" "$configuration" '@.error' "configuration unavailable"
+mv /tmp/configuration-snapshot.keep /etc/familywarden/pact.snap
 cp /etc/familywarden/pact /tmp/pact-original
 cp /etc/familywarden/pact.snap /tmp/pact-snapshot-before
 cp /var/run/familywarden/familywarden /tmp/pact-effective-before

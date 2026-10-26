@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/denogio/familywarden/core/internal/platform"
+	"github.com/denogio/familywarden/core/internal/rules"
 	"github.com/denogio/familywarden/core/internal/usign"
 )
 
@@ -77,6 +78,12 @@ func compileContext(c *platform.Context) error {
 		c.Profiles[id] = prof
 	}
 	return nil
+}
+
+func (a Adapter) Configuration() (rules.Configuration, error) {
+	var c rules.Configuration
+	err := a.run(&c, "core-configuration", "configuration-v1")
+	return c, err
 }
 
 func (a Adapter) Context() (platform.Context, error) {

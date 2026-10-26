@@ -50,6 +50,9 @@ type LegacyDevice struct {
 
 type Adapter interface {
 	Context() (Context, error)
+	// Configuration exports configured and frozen state together for migration.
+	// It must not replace a frozen pact with the current editable profile.
+	Configuration() (rules.Configuration, error)
 	// WithContext serializes a core mutation with participating platform pact/state
 	// writers. The callback runs exactly once after a successful snapshot, while
 	// the platform lock is held; errors before it runs must not mutate anything.
