@@ -47,7 +47,8 @@ function windowLabel(w) {
 
 return baseclass.extend({
 	// The configured captain profile id (pact or not), or ''
-	captainId: function() {
+	captainId: function(configuration) {
+		if (configuration) return configuration.captain || '';
 		return uci.get('familywarden', 'settings', 'ulysses_profile') || '';
 	},
 
@@ -84,7 +85,7 @@ return baseclass.extend({
 	},
 
 	// Modal to make or amend the captain's pact. Resolves true once made.
-	showPactModal: function(name, p) {
+	showPactModal: function(name, p, configuration) {
 		var self = this;
 		var bound = this.isBound(p);
 		var parts = (bound && p.pact_window || 'sun 10:00-11:00').match(/^(\w+) (\S+)-(\S+)$/) || [];
@@ -117,7 +118,9 @@ return baseclass.extend({
 		typeOngoing.addEventListener('change', sync);
 		sync();
 
-		var delay = uci.get('familywarden', 'settings', 'ulysses_delay') || '24';
+		var delay = configuration
+			? (bound && typeof configuration.pact_delay_seconds === 'number' ? configuration.pact_delay_seconds / 3600 : configuration.delay_hours || '24')
+			: uci.get('familywarden', 'settings', 'ulysses_delay') || '24';
 
 		return new Promise(function(resolve) {
 			ui.showModal('⚓ ' + _('Bind to the mast') + ' · ' + (name || ''), [

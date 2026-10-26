@@ -23,9 +23,11 @@ import (
 
 	_ "time/tzdata" // OpenWrt ships no zoneinfo; day boundaries need the router's timezone (D8)
 
+	"github.com/denogio/familywarden/core/internal/configuration"
 	"github.com/denogio/familywarden/core/internal/identity"
 	"github.com/denogio/familywarden/core/internal/openwrt"
 	"github.com/denogio/familywarden/core/internal/store"
+	"path/filepath"
 )
 
 var version = "dev" // set with -ldflags "-X main.version=..."
@@ -127,6 +129,21 @@ func handler(st *store.Store, id *identity.Service) http.Handler {
 		writeJSON(w, reply)
 	})
 	return mux
+}
+
+func configurationHandler(base http.Handler, cfg *configuration.Authority) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !strings.HasPrefix(r.URL.Path, "/api/configuration_") {
+			base.ServeHTTP(w, r)
+			return
+		}
+		b, err := io.ReadAll(io.LimitReader(r.Body, (1<<20)+1))
+		if err != nil || len(b) > 1<<20 {
+			writeJSON(w, map[string]any{"error": "malformed configuration request"})
+			return
+		}
+		writeJSON(w, cfg.API(strings.TrimPrefix(r.URL.Path, "/api/"), b))
+	})
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -265,7 +282,11 @@ func withoutSession(b []byte) []byte {
 
 // api is the rpcd shim: JSON on stdin, one JSON object on stdout.
 func api(socket, method string, in io.Reader, out io.Writer) {
-	b, _ := io.ReadAll(io.LimitReader(in, maxAPI+1))
+	limit := maxAPI
+	if strings.HasPrefix(method, "configuration_") {
+		limit = 1 << 20
+	}
+	b, _ := io.ReadAll(io.LimitReader(in, int64(limit+1)))
 	b = withoutSession(b)
 	resp, err := client(socket).Post("http://core/api/"+method, "application/json", bytes.NewReader(b))
 	if err == nil {
@@ -338,8 +359,14 @@ func main() {
 	// respawn limit can never leave phone sync down. Until then nothing listens and
 	// phones get 503, keeping their last trusted policy.
 	var id *identity.Service
+	var cfg *configuration.Authority
+	ad := openwrt.Adapter{Shell: *shell, KeyFile: *routerKey, ConfigFile: filepath.Join(*dataDir, "configuration.json")}
 	for wait := time.Second; ; wait = min(2*wait, time.Minute) {
-		if id, err = identity.New(openwrt.Adapter{Shell: *shell, KeyFile: *routerKey}, st); err == nil {
+		cfg, err = configuration.New(ad, ad, st)
+		if err == nil {
+			id, err = identity.New(cfg, st)
+		}
+		if err == nil {
 			break
 		}
 		log.Printf("identity not ready (retrying in %v): %v", wait, err)
@@ -351,7 +378,7 @@ func main() {
 		log.Fatalf("listen: %v", err)
 	}
 
-	srv := &http.Server{Handler: handler(st, id), ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: configurationHandler(handler(st, id), cfg), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go func() {

@@ -55,6 +55,15 @@ FW_MAST_SEEN="/tmp/familywarden.mast"
 # Go core (phone identity, plans/core-migration.md) and its local socket
 FW_CORE_BIN="/usr/sbin/familywardend"
 FW_CORE_SOCK="/var/run/familywarden-core/core.sock"
+FW_CORE_CONFIG="$FW_PERSIST/core/configuration.json"
+configuration_owned() { [ -f "$FW_CORE_CONFIG" ]; }
+core_configuration_api() {
+    local response code
+    response=$(printf '%s' "${2:-{\}}" | "$FW_CORE_BIN" -socket "$FW_CORE_SOCK" api "$1")
+    code=$?
+    printf '%s\n' "$response"
+    [ "$code" = 0 ] && [ -z "$(printf '%s' "$response" | jsonfilter -e '@.error')" ]
+}
 # AdGuard Home management (see "DNS: AdGuard Home sync")
 FW_AGH_AUTH="$FW_PERSIST/agh.auth"
 FW_AGH_OWNED="$FW_PERSIST/agh.owned"
@@ -438,6 +447,7 @@ release_at() {
 
 # End the pact when it expired or a requested release is due
 gc_pact() {
+    configuration_owned && return 0
     [ -f "$FW_PACT" ] || { rm -f "$FW_PACT_SNAP" "$FW_RELEASE"; return 0; }
     local rel
     rel=$(release_at)
@@ -482,6 +492,10 @@ _clear_allow() {
 # MACs removed from every other profile. Called by compile_and_apply under the
 # exclusive lock; all enforcement and reporting reads it via fw_load.
 ulysses_sync() {
+    if configuration_owned; then
+        [ -s "$FW_EFFECTIVE_DIR/familywarden" ] || return 1
+        return 0
+    fi
     local captain="" macs="" ids="" name
     mkdir -p "$FW_EFFECTIVE_DIR"
     config_load familywarden
@@ -1001,7 +1015,13 @@ gen_profile_scheduled() {
 }
 
 compile_and_apply() {
-    (
+    if [ "$1" = held-v1 ]; then
+        _compile_and_apply_locked 200>&3
+    else
+        _compile_and_apply_locked 200>"$FW_LOCK"
+    fi
+}
+_compile_and_apply_locked() (
         flock -x 200 || {
             echo '{"error":"could not acquire lock"}'
             return 1
@@ -1058,8 +1078,7 @@ EOF
         fw4 reload 2>/dev/null || { echo '{"error":"firewall reload failed"}'; return 1; }
 
         echo '{"status":"ok"}'
-    ) 200>"$FW_LOCK"
-}
+)
 
 # ---- Ubus handlers ----
 
@@ -1071,9 +1090,23 @@ ubus_list() {
         fw_load
         config_foreach ubus_list_profile profile
         json_close_object
+        json_add_object configuration
+        if fw_enabled; then json_add_boolean enabled 1; else json_add_boolean enabled 0; fi
+        json_add_string default_policy "$(fw_default_policy)"
+        json_add_string captain "$(_mast_captain_now)"
+        local delay_hours
+        config_get delay_hours settings ulysses_delay 24
+        json_add_string delay_hours "$delay_hours"
+        if pact_active; then json_add_int pact_delay_seconds "$(pact_get delay)"; fi
+        json_add_array assigned_devices
+        config_foreach _configuration_assigned_devices profile
+        json_close_array
+        json_close_object
         json_dump
     ) 200>"$FW_LOCK"
 }
+
+_configuration_assigned_devices() { config_list_foreach "$1" device _apps_string_cb; }
 
 ubus_list_profile() {
     local profile="$1"
@@ -1276,6 +1309,10 @@ ubus_ticket() {
 # until=0 for an ongoing pact with a weekly amendment window. An "until" pact
 # can only be extended; an ongoing pact can only be changed inside its window.
 ubus_pact() {
+    if configuration_owned; then
+        ( json_init; json_add_int until "${1:-0}"; json_add_string window_day "${2:-sun}"; json_add_string window_start "${3:-10:00}"; json_add_string window_stop "${4:-11:00}"; json_dump ) | "$FW_CORE_BIN" -socket "$FW_CORE_SOCK" api configuration_pact
+        return
+    fi
     (
     # The same transaction order as tickets: a concurrent allow must not pass
     # its pact check before activation and write an override after it.
@@ -1647,7 +1684,11 @@ cli_core_configuration() {
     [ "$1" = configuration-v1 ] || { _json_error "incompatible configuration format"; return 1; }
     (
         local tmp key pair
-        flock -s 200 || exit 1
+        if [ "$2" = held-v1 ]; then
+            [ /proc/self/fd/3 -ef "$FW_LOCK" ] && flock -n -x 3 || exit 1
+        else
+            flock -s 200 || exit 1
+        fi
         if [ -f "$FW_PACT" ] && { [ ! -s "$FW_PACT_SNAP" ] || [ ! -f "$FW_PACT_DNS" ]; }; then
             _json_error "incomplete pact snapshot"
             exit 1
@@ -2028,6 +2069,10 @@ _dns_sync_locked() {
         [ -n "$id" ] || id=$(_dns_snap "$p" id)
         if [ -z "$id" ]; then
             id=$(_dns_new_id "$p")
+            if configuration_owned; then
+                _dns_status "error" "core-owned profile has no ClientID"
+                return 1
+            fi
             uci set "familywarden.$p.dns_client_id=$id"
             uci commit familywarden
             _dns_taken="$_dns_taken $id "
@@ -2242,6 +2287,12 @@ cli_sail_status() {
 }
 
 cli_sail_request() {
+    if configuration_owned; then
+        local response
+        response=$(core_configuration_api configuration_sail_request '{}') || { printf '%s\n' "$response"; return 1; }
+        cli_sail_status
+        return
+    fi
     pact_active || { echo '{"error":"there is no pact"}'; return 1; }
     if [ "$(release_at)" = "0" ]; then
         echo $(( $(date +%s) + $(pact_get delay) )) > "$FW_RELEASE"
@@ -2251,6 +2302,12 @@ cli_sail_request() {
 }
 
 cli_sail_cancel() {
+    if configuration_owned; then
+        local response
+        response=$(core_configuration_api configuration_sail_cancel '{}') || { printf '%s\n' "$response"; return 1; }
+        cli_sail_status
+        return
+    fi
     rm -f "$FW_RELEASE"
     logger -t familywarden "Ulysses: sailing home cancelled"
     cli_sail_status
@@ -2259,6 +2316,10 @@ cli_sail_cancel() {
 # Run every minute by the init script's procd instance: recompile when a
 # requested release is due or an "until" pact has ended. A no-op otherwise.
 cli_tick() {
+    if configuration_owned; then
+        core_configuration_api configuration_tick '{}' >/dev/null
+        return
+    fi
     [ -f "$FW_PACT" ] || return 0
     local rel
     rel=$(release_at)
@@ -2268,6 +2329,10 @@ cli_tick() {
 }
 
 ubus_reload() {
+    if configuration_owned; then
+        core_configuration_api configuration_reapply '{}'
+        return
+    fi
     # A config change may concern DNS too: the init script's tick syncs AGH
     touch "$FW_DNS_DIRTY"
     # compile_and_apply prints the single JSON reply (status or error)
@@ -2287,6 +2352,7 @@ ubus_version() {
     json_init
     json_add_string "backend" "${backend_pkg:-unknown}"
     json_add_string "frontend" "${luci_pkg:-unknown}"
+    if configuration_owned; then json_add_string configuration_owner core; else json_add_string configuration_owner legacy; fi
     json_dump
 }
 
@@ -2308,6 +2374,7 @@ case "$1" in
   "mast": { "host": "string" },
   "version": {},
   "profiles": {},
+  "configuration_status": {},
   "devices": {},
   "device_approve": { "device": "string", "profile": "string", "name": "string", "administrator": "string", "fingerprint": "string", "approves": "string" },
   "device_reject": { "device": "string" },
@@ -2338,8 +2405,20 @@ EOF
     mast)
         cli_mast "$2"
         ;;
+    core-configuration-facts)
+        json_init
+        json_add_string timezone "$(uci -q get system.@system[0].zonename)"
+        json_dump
+        ;;
+    core-apply-configuration)
+        [ /proc/self/fd/3 -ef "$FW_LOCK" ] && [ /proc/self/fd/4 -ef "${FW_LOCK}.ticket" ] || { _json_error "configuration transaction required"; exit 1; }
+        # Revoke pre-pact temporary allows before rendering the owned snapshot.
+        captain=$(pact_captain)
+        [ -z "$captain" ] || _clear_allow "$captain"
+        compile_and_apply held-v1
+        ;;
     core-configuration)
-        cli_core_configuration "$2"
+        cli_core_configuration "$2" "$3"
         ;;
     core-context)
         cli_core_context "$2" "$3"
@@ -2444,7 +2523,7 @@ EOF
             version)
                 ubus_version
                 ;;
-            profiles|devices|device_approve|device_update|device_reject|device_delete|device_allow_removal|requests|request_answer|usage|new_apps|app_decision)
+            configuration_status|profiles|devices|device_approve|device_update|device_reject|device_delete|device_allow_removal|requests|request_answer|usage|new_apps|app_decision)
                 # Phone identity lives in the Go core (A18); this is the rpcd shim.
                 read -r input
                 printf '%s' "${input:-{\}}" | "$FW_CORE_BIN" -socket "$FW_CORE_SOCK" api "$2"

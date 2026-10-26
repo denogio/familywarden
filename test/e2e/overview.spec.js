@@ -27,10 +27,23 @@ async function mockFamilyWarden(page, method, reply) {
     for (const call of calls) {
       if (call.params?.[1] === 'familywarden' && methods.includes(call.params?.[2])) {
         const result = results.find(r => r.id === call.id);
-        result.result = [0, reply(result.result[1], call.params[2])];
+        const replacement = reply(result.result[1], call.params[2]);
+        if (call.params[2] === 'list' && replacement && !replacement.error && !Object.hasOwn(replacement, 'configuration'))
+          replacement.configuration = result.result[1].configuration;
+        result.result = [0, replacement];
       }
     }
     await route.fulfill({ response, json: Array.isArray(json) ? results : results[0] });
+  });
+}
+
+for (const path of ['profiles', 'settings']) {
+  test(`${path} disables legacy writes after core configuration activation`, async ({ page }) => {
+    await mockFamilyWarden(page, 'configuration_status', () => ({ owner: 'core' }));
+    await page.goto(`${URL}/${path}`);
+    await expect(page.getByRole('heading', { name: 'Core-managed configuration' })).toBeVisible();
+    await expect(page.locator('.cbi-page-actions')).toHaveCount(0);
+    await expect(page.locator('.cbi-map input, .cbi-map select')).toHaveCount(0);
   });
 }
 
@@ -307,7 +320,8 @@ test('ticket status combines minutes and short expiry with cancellation beside a
 test('cards fit content, actions align at the top, and the captain gets a Pact zone', async ({ page }) => {
   await page.goto(URL);
   await expect(page.locator('#fw-dashboard')).toBeVisible();
-  const captainId = await page.evaluate(async () => (await L.require('uci')).get('familywarden', 'settings', 'ulysses_profile'));
+  const captainId = await page.locator('.fw-card').filter({ has: page.locator('.fw-captain') }).getAttribute('data-profile');
+  expect(captainId).toBeTruthy();
   await mockProfiles(page, () => ({ profiles: {
     short: { ...fixtures.alex, name: 'Short', policy: 'block', devices: [], schedules: [] },
     [captainId]: { ...fixtures.morgan, pact_type: 'until', pact_until: Math.floor(Date.now() / 1000) + 86400 }

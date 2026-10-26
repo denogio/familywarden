@@ -1,7 +1,6 @@
 'use strict';
 'require view';
 'require rpc';
-'require uci';
 'require poll';
 'require ui';
 'require familywarden.ulysses as ulysses';
@@ -25,13 +24,16 @@ var dayLabels = { mon: _('Mon'), tue: _('Tue'), wed: _('Wed'), thu: _('Thu'),
 
 function loadDashboard() {
 	return Promise.all([
-		callList(), uci.load('familywarden'),
+		callList(),
 		L.resolveDefault(callDHCPLeases(), []), L.resolveDefault(callHostHints(), {})
 	]).then(function(data) {
 		var profiles = data[0] && data[0].profiles;
 		if (!profiles || typeof profiles !== 'object' || Array.isArray(profiles))
 			throw new Error(_('Profile status unavailable'));
-		return { profiles: profiles, leases: data[2], hints: data[3] };
+		var configuration = data[0].configuration;
+		if (!configuration || typeof configuration.enabled !== 'boolean' || !['allow', 'block'].includes(configuration.default_policy) || !Array.isArray(configuration.assigned_devices))
+			throw new Error(_('Configuration status unavailable'));
+		return { profiles: profiles, configuration: configuration, leases: data[1], hints: data[2] };
 	});
 }
 
@@ -116,7 +118,7 @@ function fact(label, value) {
 	return E('div', { 'class': 'fw-fact' }, [ E('dt', {}, label), E('dd', {}, value) ]);
 }
 
-function profileCard(id, p, names) {
+function profileCard(id, p, names, configuration) {
 	var url = L.url('admin/services/familywarden/profiles') + '?name=' + encodeURIComponent(id);
 	var devices = Array.isArray(p.devices) ? p.devices : [];
 	var schedules = Array.isArray(p.schedules) ? p.schedules : [];
@@ -136,12 +138,12 @@ function profileCard(id, p, names) {
 		E('div', { 'class': 'fw-card-head' }, [
 			E('h4', { 'class': 'fw-card-name' }, p.name || id),
 			E('span', { 'class': 'fw-card-policy' }, policyLabel(p.policy)),
-			id === ulysses.captainId() ? E('span', { 'class': 'fw-captain' }, _('Captain')) : '',
+			id === ulysses.captainId(configuration) ? E('span', { 'class': 'fw-captain' }, _('Captain')) : '',
 			E('a', { 'class': 'fw-card-edit', 'href': url, 'data-focus': id + ':edit',
 				'aria-label': _('Edit profile %s').format(p.name || id) }, _('Edit'))
 		]),
 		statusPanel(p), E('dl', { 'class': 'fw-facts' }, facts), note || '',
-		E('div', { 'class': 'fw-card-foot' }, cardButtons(id, p))
+		E('div', { 'class': 'fw-card-foot' }, cardButtons(id, p, configuration))
 	]);
 }
 
@@ -166,7 +168,7 @@ function actionButton(id, label, key, fn) {
 		} }, label);
 }
 
-function cardButtons(id, p) {
+function cardButtons(id, p, configuration) {
 	if (!knownStatus(p)) return [];
 	var btns = [], bound = ulysses.isBound(p);
 	var ticket = p.override === 'allow' && +p.override_expires > Date.now() / 1000;
@@ -218,13 +220,13 @@ function cardButtons(id, p) {
 		]));
 	}
 	if (bound) btns.unshift(E('p', { 'class': 'fw-held' }, _('Bound by the pact: Allow and internet tickets are unavailable.')));
-	if (id === ulysses.captainId()) {
+	if (id === ulysses.captainId(configuration)) {
 		var label = !bound ? _('Make a pact') : p.pact_type === 'until' ? _('Extend pact') : p.pact_in_window ? _('Amend pact') : null;
 		if (label) btns.push(E('div', { 'class': 'fw-act-zone fw-pact-actions', 'role': 'group',
 			'aria-label': _('Pact for %s').format(p.name || id) }, [
 			E('span', { 'class': 'fw-actions-label' }, _('Pact')),
 			E('div', { 'class': 'fw-act-row' }, [
-				actionButton(id, label, 'pact', function() { return ulysses.showPactModal(p.name, p); })
+				actionButton(id, label, 'pact', function() { return ulysses.showPactModal(p.name, p, configuration); })
 			])
 		]));
 	}
@@ -234,13 +236,11 @@ function cardButtons(id, p) {
 function notices(data) {
 	var profiles = data.profiles, out = [];
 	var bound = Object.keys(profiles).some(function(id) { return ulysses.isBound(profiles[id]); });
-	if (uci.get('familywarden', 'settings', 'enabled') === '0' && !bound)
+	if (!data.configuration.enabled && !bound)
 		out.push(E('div', { 'class': 'fw-notice' }, _('FamilyWarden is switched off in Settings: nothing is enforced.')));
-	if (uci.get('familywarden', 'settings', 'default_policy') === 'block') {
+	if (data.configuration.default_policy === 'block') {
 		var assigned = {};
-		uci.sections('familywarden', 'profile').forEach(function(p) {
-			L.toArray(p.device).forEach(function(mac) { assigned[mac.toLowerCase()] = true; });
-		});
+		data.configuration.assigned_devices.forEach(function(mac) { assigned[String(mac).toLowerCase()] = true; });
 		var names = hostMap(data), seen = {};
 		var unassigned = (data.leases || []).filter(function(l) {
 			var mac = (l.macaddr || '').toLowerCase();
@@ -277,7 +277,7 @@ function renderContent(data) {
 		E('div', { 'class': 'fw-notices' }, notices(data)),
 		E('div', { 'class': 'fw-section-head' }, [ E('h3', {}, _('Profiles')),
 			E('p', {}, _('Quick actions change whole-profile internet access immediately.')) ]),
-		keys.length ? E('div', { 'class': 'fw-grid' }, keys.map(function(id) { return profileCard(id, profiles[id], names); })) :
+		keys.length ? E('div', { 'class': 'fw-grid' }, keys.map(function(id) { return profileCard(id, profiles[id], names, data.configuration); })) :
 			E('div', { 'class': 'fw-empty' }, [ E('h3', {}, _('No profiles configured yet.')),
 				E('a', { 'href': L.url('admin/services/familywarden/profiles') }, _('Create your first profile')) ])
 	]);

@@ -6,6 +6,8 @@
 'require familywarden.ulysses as ulysses';
 'require familywarden.ui as fwui';
 
+var callConfigurationOwner = rpc.declare({ object: 'familywarden', method: 'configuration_status', expect: { '': {} } });
+
 var callReload = rpc.declare({
 	object: 'familywarden',
 	method: 'reload'
@@ -57,7 +59,8 @@ return view.extend({
 			});
 		});
 		return Promise.all([ callList(), callProfiles(), callMast(window.location.hostname),
-			L.resolveDefault(callDnsStatus(), {}) ]).then(function(data) {
+			L.resolveDefault(callDnsStatus(), {}), callConfigurationOwner() ]).then(function(data) {
+			if (!data[4] || !['legacy', 'core'].includes(data[4].owner)) throw new Error(_('Configuration ownership unavailable'));
 			var status = data[0], directory = data[1];
 			if (!status || status.error || !status.profiles || typeof status.profiles !== 'object' || Array.isArray(status.profiles) ||
 				Object.keys(status.profiles).some(function(id) {
@@ -74,6 +77,10 @@ return view.extend({
 	},
 
 	render: function(data) {
+		if (data[4].owner === 'core') {
+			this.handleSave = this.handleSaveApply = this.handleReset = null;
+			return E('div', {}, [ E('h2', {}, _('Core-managed configuration')), E('p', {}, _('Legacy UCI editing is disabled. Use the core configuration API with revision checks and confirmation.')) ]);
+		}
 		var m, s, o;
 		var profiles = data[0].profiles;
 		var directory = data[1].profiles;

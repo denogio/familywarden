@@ -1265,6 +1265,93 @@ assert_json "core down: LuCI gets an explicit error" "$(call devices)" '@.error'
 start_core
 
 echo ""
+echo "=== Opt-in core configuration authority / CAS / recovery ==="
+stop_core
+mv /etc/familywarden/core /tmp/legacy-core-tested
+rm -f /etc/familywarden/pact /etc/familywarden/pact.snap /etc/familywarden/pact.dns /etc/familywarden/release
+cat > /etc/config/familywarden <<'EOF'
+config global 'settings'
+ option enabled '1'
+ option default_policy 'block'
+ option ulysses_profile 'alex'
+ option ulysses_delay '24'
+config profile 'alex'
+ option name 'Alex'
+ option enabled '1'
+ option policy 'scheduled'
+ option apps '1'
+ option screen_minutes '10'
+ list device 'aa:bb:cc:00:00:01'
+config profile 'taylor'
+ option name 'Taylor'
+ option enabled '0'
+ option policy 'allow'
+ option dns_client_id 'fw-preserved'
+config schedule 'alex_week'
+ option profile 'alex'
+ option days 'mon tue wed thu fri'
+ option start '07:00'
+ option stop '20:00'
+EOF
+"$BIN" reload >/dev/null
+start_core
+call pact "{\"until\":$(( $(date +%s) + 3600 ))}" >/dev/null
+uci set familywarden.alex.screen_minutes=999
+uci commit familywarden
+"$BIN" reload >/dev/null
+"$BIN" sail-request >/dev/null
+cfg_api() { printf '%s' "${2:-{\}}" | /usr/sbin/familywardend -socket "$CORE_SOCK" api "$1"; }
+exported=$(cfg_api configuration_export)
+revision=$(echo "$exported" | jsonfilter -e '@.configuration.revision')
+release_before=$(cat /etc/familywarden/release)
+assert_json "explicit core import succeeds" "$(cfg_api configuration_import "{\"revision\":\"$revision\"}")" '@.status' ok
+assert_json "configuration ownership is now core" "$(cfg_api configuration_export)" '@.owner' core
+assert_json "legacy UCI editor can detect core ownership" "$(call configuration_status)" '@.owner' core
+assert_json "import preserves configured app edits" "$(cfg_api configuration_export)" '@.configuration.current.profiles[@.id="alex"].screen_minutes' 999
+assert_json "import preserves frozen app rules" "$(cfg_api configuration_export)" '@.configuration.pact.frozen.profiles[@.id="alex"].screen_minutes' 10
+assert_json "import preserves the release deadline" "$(cfg_api configuration_export)" '@.configuration.pact.release_at' "$release_before"
+assert_json "import keeps disabled profiles and ClientIDs" "$(cfg_api configuration_export)" '@.configuration.current.profiles[@.id="taylor"].client_id' fw-preserved
+usign -G -p /tmp/owned-phone.pub -s /tmp/owned-phone.key >/dev/null
+v2payload owned-phone fw-owned "$N1" >/dev/null
+assert_json "owned mode approves a bound phone" "$(call device_approve "{\"device\":\"fw-owned\",\"profile\":\"alex\",\"fingerprint\":\"$(fpr owned-phone)\"}")" '@.status' ok
+assert_json "owned policy still uses the frozen limit" "$(v3payload owned-phone fw-owned "$N1" - '' apps-v1,screen-time-v1)" '@.apps.screen.mon' 10
+assert_json "owned binding cannot escape its pact" "$(call device_update '{"device":"fw-owned","profile":"taylor"}')" '@.error' 'bound by Ulysses pact'
+# A complete configuration edit uses the read revision and requires confirmation.
+exported=$(cfg_api configuration_export)
+revision=$(echo "$exported" | jsonfilter -e '@.configuration.revision')
+current=$(echo "$exported" | jsonfilter -e '@.configuration.current' | sed 's/"Taylor"/"Robin"/')
+applied=$(cfg_api configuration_apply "{\"revision\":\"$revision\",\"current\":$current}")
+assert_json "core edit requires connection confirmation" "$applied" '@.status' confirmation_required
+assert_json "candidate is the actual policy/profile reader" "$(call profiles)" '@.profiles[@.id="taylor"].name' Robin
+assert_json "stale editor cannot overwrite a pending change" "$(cfg_api configuration_apply "{\"revision\":\"$revision\",\"current\":$current}")" '@.error' 'confirmation pending'
+new_revision=$(echo "$applied" | jsonfilter -e '@.revision'); confirm_token=$(echo "$applied" | jsonfilter -e '@.token')
+assert_json "wrong confirmation is refused" "$(cfg_api configuration_confirm "{\"revision\":\"$new_revision\",\"token\":\"wrong\"}")" '@.error' 'configuration conflict'
+assert_json "matching confirmation commits" "$(cfg_api configuration_confirm "{\"revision\":\"$new_revision\",\"token\":\"$confirm_token\"}")" '@.status' ok
+assert_json "stale revision is refused after confirmation" "$(cfg_api configuration_apply "{\"revision\":\"$revision\",\"current\":$current}")" '@.error' 'configuration conflict'
+# Direct legacy UCI changes must not be re-imported or become policy authority.
+uci set familywarden.taylor.name='Legacy edit'
+uci commit familywarden
+assert_json "reimport never overwrites core edits" "$(cfg_api configuration_import '{}')" '@.already_imported' true
+call reload >/dev/null
+assert_json "legacy reload restores the core projection" "$(call profiles)" '@.profiles[@.id="taylor"].name' Robin
+# A crash/restart during confirmation restores the durable prior state, including
+# its active pact. Removing the RAM projection also exercises boot reconstruction.
+exported=$(cfg_api configuration_export); revision=$(echo "$exported" | jsonfilter -e '@.configuration.revision')
+current=$(echo "$exported" | jsonfilter -e '@.configuration.current' | sed 's/"Robin"/"Jordan"/')
+assert_json "second edit is pending" "$(cfg_api configuration_apply "{\"revision\":\"$revision\",\"current\":$current}")" '@.status' confirmation_required
+stop_core
+rm -f /var/run/familywarden/familywarden
+start_core
+assert_json "restart rolls back an unconfirmed edit" "$(call profiles)" '@.profiles[@.id="taylor"].name' Robin
+assert_json "restart preserves the active pact and release" "$(cfg_api configuration_export)" '@.configuration.pact.release_at' "$release_before"
+cp /etc/familywarden/core/configuration.json /tmp/owned-configuration.keep
+sed -i 's/"version":1/"version":99/' /etc/familywarden/core/configuration.json
+[ -n "$(cfg_api configuration_export | jsonfilter -e '@.error')" ] && pass "future core configuration refuses reads" || fail "future schema fell back to UCI"
+mast2 owned-phone fw-owned "$N1" | head -1 | grep -q '^Status: 500' && pass "future configuration never signs legacy fallback" || fail "future configuration produced a policy"
+mv /tmp/owned-configuration.keep /etc/familywarden/core/configuration.json
+assert_json "restored valid owner remains readable" "$(cfg_api configuration_export)" '@.owner' core
+
+echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All integration checks passed!"
 else

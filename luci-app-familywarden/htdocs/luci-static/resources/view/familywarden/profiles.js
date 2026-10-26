@@ -8,6 +8,8 @@
 'require familywarden.ulysses as ulysses';
 'require familywarden.ui as fwui';
 
+var callConfigurationOwner = rpc.declare({ object: 'familywarden', method: 'configuration_status', expect: { '': {} } });
+
 var callStatus = rpc.declare({
 	object: 'familywarden',
 	method: 'status',
@@ -261,11 +263,19 @@ return view.extend({
 			callHostHints(),
 			// Optional: AdGuard Home may not be configured (or reachable)
 			L.resolveDefault(callDnsServices(), []),
-			L.resolveDefault(callDnsStatus(), {})
-		]);
+			L.resolveDefault(callDnsStatus(), {}),
+			callConfigurationOwner()
+		]).then(function(data) {
+			if (!data[6] || !['legacy', 'core'].includes(data[6].owner)) throw new Error(_('Configuration ownership unavailable'));
+			return data;
+		});
 	},
 
 	render: function(data) {
+		if (data[6].owner === 'core') {
+			this.handleSave = this.handleSaveApply = this.handleReset = null;
+			return E('div', {}, [ E('h2', {}, _('Core-managed configuration')), E('p', {}, _('Legacy UCI editing is disabled. Use the core configuration API with revision checks and confirmation.')) ]);
+		}
 		var allProfiles = data[0] || {};
 		var leases = data[2] || [];
 		var hostHints = data[3] || {};

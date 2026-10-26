@@ -299,6 +299,42 @@ are still work in progress. No editable API or deployment is implied by the expo
 Go vet/race, syntax and real OpenWrt integration pass with live-vs-frozen edits,
 disabled profiles, anonymous IDs, ClientIDs and missing-snapshot refusal covered.
 
+### Configuration authority (core 0.12.0 / backend 0.11.0_rc9, 2026-10-26)
+
+`core/internal/configuration` now owns one version-1 configuration document
+(`$FW_PERSIST/core/configuration.json`) with a content revision, and the shell stops
+writing to it once the document exists:
+
+- **Opt-in activation:** `configuration_import` accepts the legacy export only with its
+  exact revision. Import is explicit; a fresh router stays legacy until activated.
+- **CAS:** `configuration_apply` compares the read revision inside the transaction; a
+  pending edit survives its browser session and returns `confirmation_required`.
+  `configuration_confirm` completes it with the revision + token. An unconfirmed edit
+  expires after two minutes (`configuration_tick`/deadline) or a core restart — the
+  previous configuration is restored and the revision seal is not lost.
+- **Transaction order:** core mutex → platform state lock + ticket lock → legacy facts
+  → validate → pending save → `core-apply-configuration` renders the effective UCI and
+  fw4 include under the inherited state fd → confirm or rollback. A failed apply leaves
+  the authority fail-closed (`blocked`) until restart recovery; future or corrupt
+  documents refuse both reads and the signed legacy fallback.
+- **Pact ownership moves with the document:** while the document exists the shell's
+  `gc_pact`, sail request/cancel, tick, reload, pact and DNS ClientID writes short-circuit
+  to the core. `list` now reports `configuration` (enabled, default_policy, captain,
+  waiting period, assigned devices) so LuCI never loads the UCI collection to render
+  ownership facts; `profiles`/`settings` disable Save/Reset and `reload` re-applies the
+  projection when the owner is core. Legacy `ubus_pact`/sail keep working untouched when
+  no document exists.
+- **Validation:** apply-time revalidation rejects duplicate identities, malformed JSON
+  (duplicate keys, trailing data), unbounded or non-decimal limits and invalid
+  DNS/ClientID state; DNS ClientIDs are allocated inside the transaction when missing.
+
+Verified on the final immutable inputs: Go vet/race, syntax, the full real OpenWrt
+integration suite (import → CAS → confirm → stale refusal → re-import no-op → restart
+rollback → fail-closed future schema), 55 packaged-LuCI Playwright tests including the
+new owned-mode profiles/settings gate, and a disposable real-procd QEMU router (import
+of an active pact, visible pending edit, reboot rollback with pact, release deadline
+and signing key intact). Core/backend versions are prepared; **no deployment**.
+
 ### Authoritative configuration cutover: traced callers and required transaction
 
 Do not import only the Profiles form and leave competing UCI consumers behind:
