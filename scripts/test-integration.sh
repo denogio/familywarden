@@ -16,7 +16,7 @@ if [ "$1" != "--inside" ]; then
     if [ -n "$FW_CORE_BIN" ]; then cp "$FW_CORE_BIN" "$CORE_DIR/familywardend"
     else (cd "$REPO/core" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o "$CORE_DIR/familywardend" ./cmd/familywardend) || exit 1
     fi
-    docker run --rm --cap-add NET_ADMIN -v "$REPO:/src:ro" -v "$CORE_DIR:/core:ro" "$IMAGE" \
+    docker run --rm --memory=768m --cpus=2 --cap-add NET_ADMIN -v "$REPO:/src:ro" -v "$CORE_DIR:/core:ro" "$IMAGE" \
         sh /src/scripts/test-integration.sh --inside
     exit $?
 fi

@@ -219,7 +219,28 @@ on older cores, renders gaps/zero honestly and labels chart days accessibly in E
 This is a read-summary addition, not a profile/pact store migration or a signed phone
 policy change. Core 0.10.0 is prepared, not deployed. Go vet/race, six Node tests and
 53 browser tests pass with the compiled source binary/UI overlaid in disposable LuCI;
-new package/release installation remains a separate gate.
+new package/release installation remained a separate gate at that local checkpoint.
+Follow-up [CI 40279978074](https://github.com/denogio/familywarden/actions/runs/40279978074)
+passes the x86 SDK build, package install/postinst/reinstall/remove smoke tests,
+aarch64 core build, packaged LuCI e2e and Android checks. It does not deploy or release.
+
+### Partial identity patches (core 0.10.0-r2, 2026-10-26)
+
+The current device writer had a lost-update race: `Update` copied omitted profile,
+name and administrator fields before the final write lock. A later name-only patch
+could undo a concurrent administrator change. Omitted fields now resolve from the
+current row under the same core mutex as context checks, validation and persistence.
+A deterministic context-gate test reproduces the stale administrator restoration on
+the prior code; no timing sleeps or statistical race loops are needed.
+
+This repairs one real current writer, without introducing a parallel configuration
+store, a new RPC contract or a signed-policy change. Explicit edits to the same field
+still follow existing last-writer semantics; this is not configuration CAS. The
+platform's context lock still ends before the core write: shared cross-process pact
+transactions and the authoritative configuration cutover below remain incomplete.
+Go vet/race, syntax and the full real OpenWrt integration suite pass on the final
+immutable inputs. The throwaway integration router is capped at 768 MiB/two CPUs;
+its container is removed after the run. No deployment.
 
 ### Authoritative configuration cutover: traced callers and required transaction
 

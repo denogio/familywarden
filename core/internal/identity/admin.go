@@ -154,12 +154,24 @@ func (s *Service) Approve(c Change) Reply {
 }
 
 func (s *Service) Update(c Change) Reply {
-	if !validDevice.MatchString(c.Device) {
+	approves, keep := "", c.Approves == nil
+	if !keep {
+		approves = *c.Approves
+	}
+	return s.write(c.Device, c.Profile, c.Name, c.Administrator, "", "", approves, keep)
+}
+
+// write is shared by approve/update and refuses changes to a pact-frozen phone.
+func (s *Service) write(id, profile, name, admin, key, fpr, approves string, keepApproves bool) Reply {
+	if !validDevice.MatchString(id) {
 		return fail("invalid device")
 	}
 	s.mu.Lock()
-	profile, name, admin := c.Profile, c.Name, c.Administrator
-	if i := s.find(c.Device); i >= 0 {
+	defer s.mu.Unlock()
+	i := s.find(id)
+	// An update's omitted fields come from the current row under the same lock
+	// as validation and persistence, never from an earlier snapshot.
+	if key == "" && i >= 0 {
 		d := s.devices[i]
 		if profile == "" {
 			profile = d.Profile
@@ -171,21 +183,8 @@ func (s *Service) Update(c Change) Reply {
 			admin = "1"
 		}
 	}
-	s.mu.Unlock()
 	if admin == "" {
 		admin = "0"
-	}
-	approves, keep := "", c.Approves == nil
-	if !keep {
-		approves = *c.Approves
-	}
-	return s.write(c.Device, profile, name, admin, "", "", approves, keep)
-}
-
-// write is shared by approve/update and refuses changes to a pact-frozen phone.
-func (s *Service) write(id, profile, name, admin, key, fpr, approves string, keepApproves bool) Reply {
-	if !validDevice.MatchString(id) {
-		return fail("invalid device")
 	}
 	if admin != "0" && admin != "1" {
 		return fail("administrator must be 0 or 1")
@@ -201,9 +200,6 @@ func (s *Service) write(id, profile, name, admin, key, fpr, approves string, kee
 	if _, ok := ctx.Profiles[profile]; !ok {
 		return fail("profile not found")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	i := s.find(id)
 	if i >= 0 && frozen(s.devices[i], ctx) {
 		return fail("bound by Ulysses pact")
 	}

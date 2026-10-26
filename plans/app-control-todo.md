@@ -94,6 +94,12 @@ Overview-only notes are historical. App control is implemented; the separate sha
 control-interface prototype is reviewed but not yet a production-wide replacement.
 See [the prototype review](../docs/design/control-prototype-review.md).
 
+Current writer hardening (#103): partial identity updates resolve omitted fields
+under the core's final validation/save mutex, preventing stale patches from restoring
+old administrator/profile/name values. Deterministic regression, Go vet/race and real
+OpenWrt integration pass. Core 0.10.0-r2 is prepared, not deployed; this does not finish
+the separate cross-process configuration/pact transaction or CAS cutover.
+
 ## P0 — Establish the implementation baseline
 
 - [x] Create the branch from the merged v0.9.1 commit.
@@ -323,7 +329,8 @@ Depends on P2/P5 and chosen accounting rules.
 - [x] Distinguish missing administrator weekly reports from measured zero (#102):
       core-owned `reported` metadata, conservative legacy fallback and EN/DA chart
       labels. Go vet/race, six Node tests and 53 browser tests pass; core 0.10.0 is
-      prepared, not deployed.
+      prepared, not deployed. Follow-up CI 40279978074 also passes package smoke,
+      aarch64 build, packaged LuCI e2e and Android checks.
 - [x] Keep local counters/enforcement usable offline with the last trusted policy.
 - [ ] Measure/review checkpoint write frequency and battery cost; throttle safely without
       making persisted grant consumption refill after a crash.

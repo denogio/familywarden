@@ -78,7 +78,10 @@ from the core's router-local day, not the fixture shell's timezone, and the asse
 uses the actual submitted date to avoid a midnight race. The browser tests cover
 both EN and DA gaps, zero values and legacy coverage. A freshly compiled core binary
 and changed UI were overlaid on matching development packages for runtime testing;
-new release-package installation has not been claimed. No production deployment.
+that local checkpoint did not claim new release-package installation. Follow-up
+[CI 40279978074](https://github.com/denogio/familywarden/actions/runs/40279978074)
+passes SDK/package smoke tests, aarch64 core build, packaged LuCI e2e and Android checks.
+No production deployment or release.
 
 ## Still to implement
 
