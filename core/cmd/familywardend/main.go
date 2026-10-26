@@ -337,6 +337,11 @@ func main() {
 			log.Fatal(err)
 		}
 		return
+	case "agh-sync":
+		if err := aghSync(os.Stdin, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
 	case "status":
 		status(*socket, os.Stdout)
 		return

@@ -26,7 +26,11 @@ if [ "$1" != "--inside" ]; then
         rm -rf "$CONF"
     }
     trap cleanup EXIT
-    mkdir -p "$CONF/conf" "$CONF/work"
+    mkdir -p "$CONF/conf" "$CONF/work" "$CONF/core"
+    # The reconciliation itself runs in the Go core (agh-sync).
+    if [ -n "$FW_CORE_BIN" ]; then cp "$FW_CORE_BIN" "$CONF/core/familywardend"
+    else (cd "$REPO/core" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o "$CONF/core/familywardend" ./cmd/familywardend)
+    fi
     HASH=$(printf 'test-password' | docker run --rm -i httpd:2.4-alpine htpasswd -niB -C 5 familywarden | cut -d: -f2-)
     # Minimal config: an existing client and access list that must survive.
     cat > "$CONF/conf/AdGuardHome.yaml" <<EOF
@@ -80,7 +84,7 @@ EOF
     sleep 3
     docker logs "$AGH" 2>&1 | grep -iE 'fatal|error' | head -5 || true
     set +e
-    docker run --rm --network "$NET" -e AGH_IP="$AGH_IP" -v "$REPO:/src:ro" "$OPENWRT_IMAGE" \
+    docker run --rm --network "$NET" -e AGH_IP="$AGH_IP" -v "$REPO:/src:ro" -v "$CONF/core:/core:ro" "$OPENWRT_IMAGE" \
         sh /src/scripts/test-agh.sh --inside
     exit $?
 fi
@@ -104,6 +108,7 @@ client() { agh clients | jsonfilter -e "@.clients[@.name='$1']$2"; }
 mkdir -p /var/lock /var/etc /var/run /usr/libexec/rpcd
 cp /src/familywarden/usr/lib/rpcd/familywarden "$BIN"
 chmod 755 "$BIN"
+cp /core/familywardend /usr/sbin/familywardend
 
 for _ in $(seq 1 30); do agh status >/dev/null 2>&1 && break; sleep 1; done
 agh status >/dev/null 2>&1 && pass "AdGuard Home API reachable with Basic auth" || { fail "AGH not reachable at $URL"; exit 1; }

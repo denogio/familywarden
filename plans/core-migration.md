@@ -372,6 +372,29 @@ without refreshing `pact.frozen`; the next apply outside the window restores the
 rules. Core edits cannot create this state (`ValidateEdit` refuses captain edits outside
 the window and refreshes the snapshot inside it).
 
+### AdGuard Home reconciliation in Go (core 0.13.0 / backend 0.11.0_rc10, 2026-10-26)
+
+`core/internal/agh` now owns the AGH protocol and FamilyWarden's ownership boundary:
+own `familywarden-<ClientID>` clients only, never taking over a foreign client's id,
+deleting only own stale clients, adding/removing only owned `allowed_clients` entries
+after a fresh re-read, never touching an empty (open) allow list, verifying the list
+after `access/set`, and acknowledging a profile only after AGH accepted its client
+(a failed profile keeps its previous acknowledgement). Legacy ClientID derivation
+(`Slug`, numeric suffixes against every taken id) is reproduced exactly.
+
+The shell's `_dns_sync_locked` keeps only platform duties: the desired profiles (live
+DNS plus the captain's pact snapshot, frozen domain), credentials, and storing the
+stateless `familywardend agh-sync` result (acks, owned ids, legacy ClientID
+allocations to UCI). Its HTTP/reconciliation helpers are removed; the service
+catalogue (`dns_services`) still reads AGH from the shell. An older core without
+`agh-sync` fails the sync and keeps the last acknowledged DNS policy.
+
+Evidence: Go unit tests against an in-memory AGH API, and the unchanged
+`scripts/test-agh.sh` (58 checks against a real AdGuard Home v0.107.79 container,
+now driving the Go reconciler) plus 460 integration checks. A mutant that writes an
+empty allow list fails the real-container check. Next: compute the desired DNS set
+from the core document in owned mode instead of the projection.
+
 ### Authoritative configuration cutover: traced callers and required transaction
 
 Do not import only the Profiles form and leave competing UCI consumers behind:

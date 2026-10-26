@@ -1855,13 +1855,13 @@ cli_core_legacy_devices_remove() {
 # allowed list (everyone allowed) is never touched. A profile's DNS reaches the
 # phone's policy only after AGH accepted its client ($FW_DNS_ACK), never from
 # UCI alone. The ClientID is derived from the profile name once, stored as
-# dns_client_id, and never renamed afterwards.
+# dns_client_id, and never renamed afterwards. The reconciliation itself is the
+# core's stateless `familywardend agh-sync` (core/internal/agh); this plugin only
+# supplies the desired profiles and stores acks, owned ids and new ClientIDs.
 #
 # Credentials: $FW_AGH_AUTH holds the Basic auth token, base64("user:password")
 # (root only, written by dns_auth). AGH sends no auth challenge on its API, so
 # the header is sent up front.
-
-FW_AGH_PREFIX="familywarden-"
 
 # $1 GET|POST, $2 path below /control/, $3 body file (POST). Body on stdout.
 _agh() {
@@ -1873,37 +1873,10 @@ _agh() {
     fi
 }
 
-# Display name -> DNS-safe ClientID base (a-z, 0-9, -; at most 40 chars)
-_dns_slug() {
-    printf '%s' "$1" | tr 'A-Z' 'a-z' |
-        sed 's/æ/ae/g; s/Æ/ae/g; s/ø/oe/g; s/Ø/oe/g; s/å/aa/g; s/Å/aa/g; s/ä/ae/g; s/Ä/ae/g; s/ö/oe/g; s/Ö/oe/g; s/ü/ue/g; s/Ü/ue/g; s/é/e/g; s/è/e/g' |
-        sed 's/[^a-z0-9]\{1,\}/-/g; s/^-*//; s/-*$//' | cut -c1-40 | sed 's/-*$//'
-}
-
-_valid_client_id() {
-    case "$1" in ''|-*|*-|*[!a-z0-9-]*) return 1 ;; esac
-    [ "${#1}" -le 63 ]
-}
-
-_dns_collect_id() {
+_dns_taken_cb() {
     local v
     config_get v "$1" dns_client_id ""
-    [ -n "$v" ] && _dns_taken="$_dns_taken $v "
-}
-
-# A ClientID nobody uses yet: not in AGH (clients, access lists) and not
-# stored for another profile. $1 profile id
-_dns_new_id() {
-    local name base id n=1
-    config_get name "$1" name "$1"
-    base=$(_dns_slug "$name")
-    [ -n "$base" ] || base="profile"
-    id="$base"
-    while case "$_dns_taken" in *" $id "*) true ;; *) false ;; esac; do
-        n=$((n + 1))
-        id="$base-$n"
-    done
-    echo "$id"
+    [ -z "$v" ] || json_add_string "" "$v"
 }
 
 _dns_prot_cb() { case "$_dns_prot" in *" $1 "*) ;; *) _dns_prot="$_dns_prot $1 " ;; esac; }
@@ -1925,57 +1898,6 @@ _dns_lists() {
     config_list_foreach "$1" dns_service _dns_svc_cb
     for x in $(_dns_snap "$1" prot); do _dns_prot_cb "$x"; done
     for x in $(_dns_snap "$1" svc); do _dns_svc_cb "$x"; done
-}
-
-# Client fields for AGH (into the open json object). $1 profile, $2 ClientID
-_dns_client_fields() {
-    local p="$1" id="$2" s ss
-    _dns_lists "$p"
-    has() { case "$_dns_prot" in *" $1 "*) echo 1 ;; *) echo 0 ;; esac; }
-    json_add_string "name" "$FW_AGH_PREFIX$id"
-    json_add_array "ids"
-    json_add_string "" "$id"
-    json_close_array
-    json_add_boolean "use_global_settings" 0
-    json_add_boolean "filtering_enabled" "$(has filter_lists)"
-    json_add_boolean "safebrowsing_enabled" "$(has safe_browsing)"
-    json_add_boolean "parental_enabled" "$(has parental)"
-    ss=$(has safe_search)
-    json_add_object "safe_search"
-    for s in enabled bing duckduckgo ecosia google pixabay yandex youtube; do
-        json_add_boolean "$s" "$ss"
-    done
-    json_close_object
-    json_add_boolean "use_global_blocked_services" 0
-    json_add_array "blocked_services"
-    for s in $_dns_svc; do
-        case "$s" in *[!a-z0-9_]*) ;; *) json_add_string "" "$s" ;; esac
-    done
-    json_close_array
-    json_add_array "upstreams"
-    json_close_array
-    json_add_array "tags"
-    json_close_array
-    json_add_boolean "ignore_querylog" 0
-    json_add_boolean "ignore_statistics" 0
-}
-
-# Ack line for a synced profile: "<profile> <clientid> <domain> <protections> <services>"
-_dns_ack_line() {
-    local p s
-    _dns_lists "$1"
-    p=""
-    for s in filter_lists safe_browsing parental safe_search; do
-        case "$_dns_prot" in *" $s "*) p="$p,$s" ;; esac
-    done
-    p=${p#,}
-    s=$(echo $_dns_svc | tr ' ' ',')
-    echo "$1 $2 $3 ${p:--} ${s:--}"
-}
-
-# Is $1 a line of the newline-separated list $2?
-_in_list() {
-    printf '%s\n' "$2" | grep -qxF -- "$1"
 }
 
 _dns_profile_cb() {
@@ -2020,9 +1942,7 @@ cli_dns_sync() {
 }
 
 _dns_sync_locked() {
-    local domain url d p id ids name allowed disallowed hosts owned new_allowed new_owned
-    ids=""
-    local ack="" err="" changed=0 x keep="" old
+    local domain url p id name x res err complete
     rm -f "$FW_DNS_DIRTY"
     config_load familywarden
     config_get domain settings dns_domain ""
@@ -2052,138 +1972,64 @@ _dns_sync_locked() {
     _agh_auth=$(cat "$FW_AGH_AUTH" 2>/dev/null)
     [ -n "$_agh_auth" ] || { _dns_status "AdGuard Home credentials not set"; return 1; }
 
-    d=$(mktemp -d) || return 1
-    if ! _agh GET clients > "$d/clients" || ! _agh GET access/list > "$d/access"; then
-        rm -rf "$d"
-        _dns_status "AdGuard Home unreachable or credentials rejected"
-        return 1
+    # The core reconciles AdGuard Home (core/internal/agh); this side only supplies
+    # the desired profiles from the configuration and stores the result.
+    json_init
+    json_add_string url "$_agh_url"
+    json_add_string auth "$_agh_auth"
+    json_add_string domain "$domain"
+    json_add_array owned
+    if [ -f "$FW_AGH_OWNED" ]; then
+        while IFS= read -r x; do [ -z "$x" ] || json_add_string "" "$x"; done < "$FW_AGH_OWNED"
     fi
-    allowed=$(jsonfilter -i "$d/access" -e '@.allowed_clients[*]' 2>/dev/null)
-    _dns_taken=" $(jsonfilter -i "$d/clients" -e '@.clients[*].ids[*]' 2>/dev/null | tr '\n' ' ') $(echo "$allowed" | tr '\n' ' ') $(jsonfilter -i "$d/access" -e '@.disallowed_clients[*]' 2>/dev/null | tr '\n' ' ') "
-    config_foreach _dns_collect_id profile
-    owned=$(cat "$FW_AGH_OWNED" 2>/dev/null)
-
-    # 1. Our clients: add or update
+    json_close_array
+    json_add_array taken
+    config_foreach _dns_taken_cb profile
+    json_close_array
+    json_add_array profiles
     for p in $_dns_profiles; do
         config_get id "$p" dns_client_id ""
         [ -n "$id" ] || id=$(_dns_snap "$p" id)
-        if [ -z "$id" ]; then
-            id=$(_dns_new_id "$p")
-            if configuration_owned; then
-                _dns_status "error" "core-owned profile has no ClientID"
-                return 1
-            fi
-            uci set "familywarden.$p.dns_client_id=$id"
-            uci commit familywarden
-            _dns_taken="$_dns_taken $id "
-            logger -t familywarden "DNS: profile $p gets ClientID $id"
+        if [ -z "$id" ] && configuration_owned; then
+            _dns_status "core-owned profile has no ClientID"
+            return 1
         fi
-        _valid_client_id "$id" || { err="invalid ClientID for $p"; continue; }
-        keep="$keep$id
-"
-        # On failure below, keep this profile's last acknowledged policy
-        old=$(awk -v p="$p" '$1 == p { print; exit }' "$FW_DNS_ACK" 2>/dev/null)
-        name="$FW_AGH_PREFIX$id"
-        # Someone else's client already claims this id: never take it over
-        if jsonfilter -i "$d/clients" -e "@.clients[@.name!='$name'].ids[*]" 2>/dev/null | grep -qx "$id"; then
-            err="ClientID $id is used by another AdGuard Home client"
-            [ -n "$old" ] && ack="$ack$old
-"
-            continue
-        fi
-        json_init
-        if jsonfilter -i "$d/clients" -e '@.clients[*].name' 2>/dev/null | grep -qx "$name"; then
-            json_add_string "name" "$name"
-            json_add_object "data"
-            _dns_client_fields "$p" "$id"
-            json_close_object
-            json_dump > "$d/body"
-            _agh POST clients/update "$d/body" >/dev/null || { err="updating $name failed"; [ -n "$old" ] && ack="$ack$old
-"; continue; }
-        else
-            _dns_client_fields "$p" "$id"
-            json_dump > "$d/body"
-            _agh POST clients/add "$d/body" >/dev/null || { err="adding $name failed"; [ -n "$old" ] && ack="$ack$old
-"; continue; }
-        fi
-        ids="$ids$id
-"
-        ack="$ack$(_dns_ack_line "$p" "$id" "$domain")
-"
+        config_get name "$p" name "$p"
+        _dns_lists "$p"
+        json_add_object ""
+        json_add_string id "$p"
+        json_add_string name "$name"
+        json_add_string client_id "$id"
+        json_add_array protections
+        for x in $_dns_prot; do json_add_string "" "$x"; done
+        json_close_array
+        json_add_array services
+        for x in $_dns_svc; do json_add_string "" "$x"; done
+        json_close_array
+        json_add_string ack "$(awk -v p="$p" '$1 == p { print; exit }' "$FW_DNS_ACK" 2>/dev/null)"
+        json_close_object
     done
-
-    # 2. Our clients that no longer belong to a DNS profile
-    for name in $(jsonfilter -i "$d/clients" -e '@.clients[*].name' 2>/dev/null | grep "^$FW_AGH_PREFIX"); do
-        # Still a DNS profile (even if its update failed above): keep it
-        _in_list "${name#$FW_AGH_PREFIX}" "$keep" && continue
-        json_init
-        json_add_string "name" "$name"
-        json_dump > "$d/body"
-        _agh POST clients/delete "$d/body" >/dev/null || err="deleting $name failed"
+    json_close_array
+    res=$(json_dump | "$FW_CORE_BIN" agh-sync) || { _dns_status "DNS sync helper failed"; return 1; }
+    for p in $_dns_profiles; do
+        id=$(echo "$res" | jsonfilter -e "@.allocated[@.profile='$p'].client_id")
+        [ -n "$id" ] || continue
+        uci set "familywarden.$p.dns_client_id=$id"
+        uci commit familywarden
+        logger -t familywarden "DNS: profile $p gets ClientID $id"
     done
-
-    # 3. allowed_clients: add our missing ids, drop ids we own that are no longer used
-    if [ -n "$allowed" ]; then
-        _agh GET access/list > "$d/access" || { rm -rf "$d"; _dns_status "AdGuard Home access list unreadable"; return 1; }
-        allowed=$(jsonfilter -i "$d/access" -e '@.allowed_clients[*]' 2>/dev/null)
-        new_allowed=""
-        new_owned=""
-        for x in $allowed; do
-            if _in_list "$x" "$owned" && ! _in_list "$x" "$keep"; then
-                changed=1
-                continue
-            fi
-            new_allowed="$new_allowed$x
-"
-            _in_list "$x" "$owned" && new_owned="$new_owned$x
-"
-        done
-        for x in $ids; do
-            _in_list "$x" "$allowed" && continue
-            new_allowed="$new_allowed$x
-"
-            new_owned="$new_owned$x
-"
-            changed=1
-        done
-        if [ "$changed" = "1" ]; then
-            json_init
-            json_add_array "allowed_clients"
-            for x in $new_allowed; do json_add_string "" "$x"; done
-            json_close_array
-            json_add_array "disallowed_clients"
-            jsonfilter -i "$d/access" -e '@.disallowed_clients[*]' 2>/dev/null > "$d/dis"
-            while IFS= read -r x; do json_add_string "" "$x"; done < "$d/dis"
-            json_close_array
-            json_add_array "blocked_hosts"
-            jsonfilter -i "$d/access" -e '@.blocked_hosts[*]' 2>/dev/null > "$d/hosts"
-            while IFS= read -r x; do json_add_string "" "$x"; done < "$d/hosts"
-            json_close_array
-            json_dump > "$d/body"
-            if ! _agh POST access/set "$d/body" >/dev/null; then
-                rm -rf "$d"
-                _dns_status "updating AdGuard Home allowed clients failed"
-                return 1
-            fi
-            # Verify: exactly the intended list, the rest untouched
-            _agh GET access/list > "$d/after" || { rm -rf "$d"; _dns_status "access list not readable after update"; return 1; }
-            if [ "$(jsonfilter -i "$d/after" -e '@.allowed_clients[*]' | sort)" != "$(printf '%s' "$new_allowed" | sort)" ] ||
-               [ "$(jsonfilter -i "$d/after" -e '@.disallowed_clients[*]')" != "$(cat "$d/dis")" ] ||
-               [ "$(jsonfilter -i "$d/after" -e '@.blocked_hosts[*]')" != "$(cat "$d/hosts")" ]; then
-                rm -rf "$d"
-                _dns_status "AdGuard Home access list changed unexpectedly; check it manually"
-                return 1
-            fi
+    err=$(echo "$res" | jsonfilter -e '@.error')
+    complete=$(echo "$res" | jsonfilter -e '@.complete')
+    if [ "$complete" = "true" ]; then
+        if [ "$(echo "$res" | jsonfilter -e '@.write_owned')" = "true" ]; then
+            echo "$res" | jsonfilter -e '@.owned[*]' > "$FW_AGH_OWNED.new"
+            mv "$FW_AGH_OWNED.new" "$FW_AGH_OWNED"
         fi
-        printf '%s' "$new_owned" > "$FW_AGH_OWNED.new"
-        mv "$FW_AGH_OWNED.new" "$FW_AGH_OWNED"
+        echo "$res" | jsonfilter -e '@.ack[*]' > "$FW_DNS_ACK.new"
+        mv "$FW_DNS_ACK.new" "$FW_DNS_ACK"
     fi
-    rm -rf "$d"
-
-    printf '%s' "$ack" > "$FW_DNS_ACK.new"
-    mv "$FW_DNS_ACK.new" "$FW_DNS_ACK"
     _dns_status "$err"
-    [ -z "$err" ]
+    [ -z "$err" ] && [ "$complete" = "true" ]
 }
 
 # Called every minute by the init script: sync AGH after a config change, and

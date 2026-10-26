@@ -540,8 +540,9 @@ Depends on P4/P5/P11. Move only responsibilities assigned to Go; this is not a r
 
 - [ ] Preserve root-private secrets, approved devices, router keys, ClientIDs, ownership
       records, DNS acknowledgements and all pact snapshots.
-- [ ] Port AGH reconciliation with the existing real-container tests: own clients only,
+- [x] Port AGH reconciliation with the existing real-container tests: own clients only,
       preserve foreign settings, no empty-allowlist lockout, verify changes before ack.
+      (`core/internal/agh`, `familywardend agh-sync`; desired set still from the projection.)
 - [ ] Preserve strict DNS/no automatic unfiltered fallback and handset applied/probe status.
 - [ ] Add idempotent migration, backup and interruption tests; stop dual writers.
 - [ ] Define rollback limits after schema changes; never restore a backup that silently
