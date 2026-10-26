@@ -11,10 +11,11 @@ import (
 
 // fake is a minimal in-memory AdGuard Home control API.
 type fake struct {
-	clients []map[string]any
-	acc     access
-	calls   []string
-	tamper  bool // access/set stores something else than asked
+	clients      []map[string]any
+	acc          access
+	calls        []string
+	tamper       bool // access/set stores something else than asked
+	ignoreClient bool // Return success without installing the requested protection.
 }
 
 func (f *fake) serve(w http.ResponseWriter, r *http.Request) {
@@ -34,11 +35,17 @@ func (f *fake) serve(w http.ResponseWriter, r *http.Request) {
 	case "access/list":
 		_ = json.NewEncoder(w).Encode(access{nonNil(f.acc.Allowed), nonNil(f.acc.Disallowed), nonNil(f.acc.Blocked)})
 	case "clients/add":
+		if f.ignoreClient {
+			body["filtering_enabled"] = false
+		}
 		f.clients = append(f.clients, body)
 	case "clients/update":
 		for i, c := range f.clients {
 			if c["name"] == body["name"] {
 				f.clients[i] = body["data"].(map[string]any)
+				if f.ignoreClient {
+					f.clients[i]["filtering_enabled"] = false
+				}
 			}
 		}
 	case "clients/delete":
@@ -210,5 +217,80 @@ func TestIncompleteAccessListsNeverTriggerWrites(t *testing.T) {
 				t.Fatal(res, writes)
 			}
 		})
+	}
+}
+
+func TestClientSuccessWithoutAppliedProtectionIsNeverAcknowledged(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		for _, old := range []string{"", "alex fwalex dns.example.net - -"} {
+			f := household()
+			if existing {
+				f.clients = append(f.clients, fields(Profile{ID: "alex"}, "fwalex"))
+			}
+			f.ignoreClient = true
+			res := run(t, f, Input{Acks: []string{old}, Profiles: []Profile{{ID: "alex", ClientID: "fwalex", Protections: []string{"filter_lists"}}}})
+			if res.Error == "" {
+				t.Fatal("ignored client setting reported as applied", existing, res)
+			}
+			want := []string{}
+			if old != "" {
+				want = append(want, old)
+			}
+			if !reflect.DeepEqual(res.Ack, want) || contains(f.acc.Allowed, "fwalex") {
+				t.Fatal("unverified DNS policy was acknowledged or allow-listed", existing, res, f.acc)
+			}
+		}
+	}
+}
+
+func TestClientReadbackChecksRestrictionFields(t *testing.T) {
+	p := Profile{ID: "alex", ClientID: "fwalex", Protections: []string{"filter_lists", "safe_browsing", "parental", "safe_search"}, Services: []string{"youtube"}}
+	raw, _ := json.Marshal(fields(p, p.ClientID))
+	yes := true
+	for name, mutate := range map[string]func(*client){
+		"global settings":         func(c *client) { c.UseGlobalSettings = &yes },
+		"filter lists":            func(c *client) { *c.FilteringEnabled = false },
+		"missing filtering field": func(c *client) { c.FilteringEnabled = nil },
+		"safe browsing":           func(c *client) { *c.SafeBrowsingEnabled = false },
+		"parental":                func(c *client) { *c.ParentalEnabled = false },
+		"SafeSearch":              func(c *client) { c.SafeSearch["enabled"] = false },
+		"YouTube SafeSearch":      func(c *client) { c.SafeSearch["youtube"] = false },
+		"global services":         func(c *client) { c.UseGlobalBlockedServices = &yes },
+		"blocked services":        func(c *client) { c.BlockedServices = nil },
+		"custom upstreams":        func(c *client) { c.Upstreams = []string{"https://dns.example.net/dns-query"} },
+		"query log":               func(c *client) { c.IgnoreQuerylog = true },
+		"statistics":              func(c *client) { c.IgnoreStatistics = true },
+		"aliases":                 func(c *client) { c.IDs = append(c.IDs, "unexpected_alias") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			var got client
+			if err := json.Unmarshal(raw, &got); err != nil || !clientMatches(got, p) {
+				t.Fatal("valid client rejected", err)
+			}
+			mutate(&got)
+			if clientMatches(got, p) {
+				t.Fatal("mismatched client accepted", name)
+			}
+		})
+	}
+}
+
+func TestUnreadableClientsAfterUpdateNeverReplaceAcknowledgements(t *testing.T) {
+	f := household()
+	reads := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/control/clients" {
+			reads++
+			if reads == 2 {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+		}
+		f.serve(w, r)
+	}))
+	defer srv.Close()
+	res := Sync(Input{URL: srv.URL, Auth: "dG9rZW4=", Domain: "dns.example.net", Acks: []string{"alex fwalex dns.example.net - -"}, Profiles: []Profile{{ID: "alex", ClientID: "fwalex"}}}, srv.Client())
+	if res.Complete || res.WriteOwned || res.Error != "AdGuard Home clients unreadable after update" || contains(f.calls, "POST access/set") {
+		t.Fatal(res, f.calls)
 	}
 }

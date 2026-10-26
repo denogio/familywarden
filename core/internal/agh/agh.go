@@ -71,8 +71,19 @@ type Allocation struct {
 }
 
 type client struct {
-	Name string   `json:"name"`
-	IDs  []string `json:"ids"`
+	Name                     string          `json:"name"`
+	IDs                      []string        `json:"ids"`
+	UseGlobalSettings        *bool           `json:"use_global_settings"`
+	FilteringEnabled         *bool           `json:"filtering_enabled"`
+	SafeBrowsingEnabled      *bool           `json:"safebrowsing_enabled"`
+	ParentalEnabled          *bool           `json:"parental_enabled"`
+	SafeSearch               map[string]bool `json:"safe_search"`
+	UseGlobalBlockedServices *bool           `json:"use_global_blocked_services"`
+	BlockedServices          []string        `json:"blocked_services"`
+	Upstreams                []string        `json:"upstreams"`
+	Tags                     []string        `json:"tags"`
+	IgnoreQuerylog           bool            `json:"ignore_querylog"`
+	IgnoreStatistics         bool            `json:"ignore_statistics"`
 }
 
 type access struct {
@@ -247,6 +258,41 @@ func equal(a, b []string) bool {
 	return true
 }
 
+func previousAck(lines []string, profile string) string {
+	for _, line := range lines {
+		if strings.HasPrefix(line, profile+" ") {
+			return line
+		}
+	}
+	return ""
+}
+
+func clientMatches(c client, p Profile) bool {
+	if c.Name != Prefix+p.ClientID || len(c.IDs) != 1 || c.IDs[0] != p.ClientID {
+		return false
+	}
+	for _, flag := range []struct {
+		got  *bool
+		want bool
+	}{
+		{c.UseGlobalSettings, false}, {c.FilteringEnabled, contains(p.Protections, "filter_lists")},
+		{c.SafeBrowsingEnabled, contains(p.Protections, "safe_browsing")}, {c.ParentalEnabled, contains(p.Protections, "parental")},
+		{c.UseGlobalBlockedServices, false},
+	} {
+		if flag.got == nil || *flag.got != flag.want {
+			return false
+		}
+	}
+	wanted := fields(p, p.ClientID)
+	for key, value := range wanted["safe_search"].(map[string]bool) {
+		if c.SafeSearch[key] != value {
+			return false
+		}
+	}
+	return equal(sorted(c.BlockedServices), sorted(wanted["blocked_services"].([]string))) &&
+		len(c.Upstreams) == 0 && len(c.Tags) == 0 && !c.IgnoreQuerylog && !c.IgnoreStatistics
+}
+
 // Sync brings AdGuard Home in line with in.Profiles.
 func Sync(in Input, hc *http.Client) Result {
 	res := Result{Allocated: []Allocation{}, Ack: []string{}}
@@ -266,6 +312,7 @@ func Sync(in Input, hc *http.Client) Result {
 	taken = append(append(taken, acc.Allowed...), acc.Disallowed...)
 
 	var keep, ids []string
+	var applied []Profile
 	for _, p := range in.Profiles {
 		p.Protections, p.Services = unique(p.Protections), unique(p.Services)
 		id := p.ClientID
@@ -288,11 +335,8 @@ func Sync(in Input, hc *http.Client) Result {
 		keep = append(keep, id)
 		name := Prefix + id
 		keepOld := func() {
-			for _, line := range in.Acks {
-				if strings.HasPrefix(line, p.ID+" ") {
-					res.Ack = append(res.Ack, line)
-					return
-				}
+			if line := previousAck(in.Acks, p.ID); line != "" {
+				res.Ack = append(res.Ack, line)
 			}
 		}
 		exists, foreign := false, false
@@ -320,7 +364,57 @@ func Sync(in Input, hc *http.Client) Result {
 			continue
 		}
 		ids = append(ids, id)
+		p.ClientID = id
+		applied = append(applied, p)
 		res.Ack = append(res.Ack, AckLine(p, id, in.Domain))
+	}
+
+	// A successful POST is not proof that the requested filtering settings
+	// were installed. Read once after all writes, before acknowledging or
+	// adding their IDs to a restrictive access list.
+	if len(applied) > 0 {
+		var after struct {
+			Clients []client `json:"clients"`
+		}
+		if a.do("GET", "clients", nil, &after) != nil || after.Clients == nil {
+			res.Error = "AdGuard Home clients unreadable after update"
+			return res
+		}
+		bad := map[string]string{}
+		badIDs := map[string]bool{}
+		for _, p := range applied {
+			matches := 0
+			for _, c := range after.Clients {
+				if clientMatches(c, p) {
+					matches++
+				}
+			}
+			if matches != 1 {
+				res.Error = "verifying " + Prefix + p.ClientID + " failed"
+				bad[p.ID] = previousAck(in.Acks, p.ID)
+				badIDs[p.ClientID] = true
+			}
+		}
+		if len(bad) > 0 {
+			acks := []string{}
+			for _, line := range res.Ack {
+				if old, failed := bad[strings.SplitN(line, " ", 2)[0]]; failed {
+					if old != "" {
+						acks = append(acks, old)
+					}
+				} else {
+					acks = append(acks, line)
+				}
+			}
+			res.Ack = acks
+			verified := []string{}
+			for _, id := range ids {
+				if !badIDs[id] {
+					verified = append(verified, id)
+				}
+			}
+			ids = verified
+		}
 	}
 
 	// Our clients that no longer belong to a DNS profile (even a failed update keeps its client).

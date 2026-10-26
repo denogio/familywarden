@@ -546,6 +546,22 @@ captain/collection fields. An additional unmocked router check imports nullable
 lists, creates an active captain pact, edits another profile through real LuCI
 CAS/confirm, and verifies the captain's frozen null fields and pact are unchanged.
 
+### Verify AGH client read-back before acknowledgement (core 0.13.0-r7)
+
+Client add/update success is now followed by one fresh `/control/clients` read before
+acknowledging new policy or adding its ID to a restrictive allow list. Verification
+checks exact owned name/ID, explicit per-client/global flags, filtering/Safe Browsing/
+parental settings, SafeSearch switches, blocked services and absence of custom
+upstream/tag/logging overrides. A mismatched profile keeps its prior acknowledgement
+(or none) and is not newly allow-listed; verified other profiles can still sync. An
+unreadable/malformed read-back refuses the complete acknowledgement replacement.
+
+The new regression first demonstrated that a fake AGH server returning success while
+ignoring `filtering_enabled` was optimistically acknowledged. It now retains the old
+ack instead, with additional mismatch cases for each restriction and a failed read-back
+HTTP response. The real AGH v0.107.79 suite exercises the same read-back path. This is
+server-configuration verification, not a claim of physical handset DNS/runtime tests.
+
 ### Authoritative configuration cutover: traced callers and required transaction
 
 Do not import only the Profiles form and leave competing UCI consumers behind:
