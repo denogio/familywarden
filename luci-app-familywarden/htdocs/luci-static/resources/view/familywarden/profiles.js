@@ -21,7 +21,7 @@ var callStatus = rpc.declare({
 var callList = rpc.declare({
 	object: 'familywarden',
 	method: 'list',
-	expect: { profiles: {} }
+	expect: { '': {} }
 });
 
 var callBlock = rpc.declare({
@@ -81,6 +81,8 @@ var selectedProfile = null;
 var statusNode = null;
 // Core-owned mode: the configuration export {configuration, ...}, else null.
 var owned = null;
+// Ownership facts from `list` (captain, waiting period); never read from UCI.
+var listed = null;
 
 // Persist the browser's UCI edits. Legacy: commit UCI with the rollback timer
 // and confirm explicitly before navigating away (uci.apply() resolves before
@@ -136,7 +138,7 @@ function refreshStatus() {
 // Pact button, only on the captain's profile: make a pact, extend an "until"
 // pact, or amend an ongoing one inside its window
 function pactButtonLabel(id, p) {
-	if (id !== ulysses.captainId()) return null;
+	if (id !== ulysses.captainId(listed)) return null;
 	if (!ulysses.isBound(p)) return _('Make a pact');
 	if (p.pact_type === 'until') return _('Extend pact');
 	if (p.pact_in_window) return _('Amend pact');
@@ -173,7 +175,7 @@ function fillStatus(node, data) {
 	var pactLabel = known ? pactButtonLabel(selectedProfile, data) : null;
 	if (pactLabel)
 		btns.push(E('button', { 'type': 'button', 'class': 'cbi-button fw-btn-pact', 'click': L.ui.createHandlerFn(this, function(ev) {
-			return doAction(ev, function() { return ulysses.showPactModal(data.name, data); });
+			return doAction(ev, function() { return ulysses.showPactModal(data.name, data, listed); });
 		}) }, [fwui.icon('mast'), pactLabel]));
 
 	while (node.firstChild) node.removeChild(node.firstChild);
@@ -294,6 +296,9 @@ return view.extend({
 			L.resolveDefault(fwconfig.configurationExport(), null)
 		]).then(function(data) {
 			if (!data[6] || !['legacy', 'core'].includes(data[6].owner)) throw new Error(_('Configuration ownership unavailable'));
+			listed = data[0] && data[0].configuration;
+			if (!listed || !data[0].profiles || typeof data[0].profiles !== 'object')
+				throw new Error(_('Profile status unavailable'));
 			owned = null;
 			if (data[6].owner === 'core') {
 				var exported = data[7];
@@ -318,7 +323,7 @@ return view.extend({
 	},
 
 	render: function(data) {
-		var allProfiles = data[0] || {};
+		var allProfiles = data[0].profiles;
 		var leases = data[2] || [];
 		var hostHints = data[3] || {};
 		var dnsServices = data[4] || [];

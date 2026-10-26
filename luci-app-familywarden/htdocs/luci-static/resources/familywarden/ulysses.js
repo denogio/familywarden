@@ -1,7 +1,6 @@
 'use strict';
 'require baseclass';
 'require rpc';
-'require uci';
 'require ui';
 
 // Shared Ulysses helpers for the overview, profile and settings views.
@@ -48,8 +47,7 @@ function windowLabel(w) {
 return baseclass.extend({
 	// The configured captain profile id (pact or not), or ''
 	captainId: function(configuration) {
-		if (configuration) return configuration.captain || '';
-		return uci.get('familywarden', 'settings', 'ulysses_profile') || '';
+		return (configuration && configuration.captain) || '';
 	},
 
 	// Captain bound by an active pact
@@ -118,9 +116,8 @@ return baseclass.extend({
 		typeOngoing.addEventListener('change', sync);
 		sync();
 
-		var delay = configuration
-			? (bound && typeof configuration.pact_delay_seconds === 'number' ? configuration.pact_delay_seconds / 3600 : configuration.delay_hours || '24')
-			: uci.get('familywarden', 'settings', 'ulysses_delay') || '24';
+		var delay = bound && typeof configuration.pact_delay_seconds === 'number'
+			? configuration.pact_delay_seconds / 3600 : configuration.delay_hours || '24';
 
 		return new Promise(function(resolve) {
 			ui.showModal('⚓ ' + _('Bind to the mast') + ' · ' + (name || ''), [
