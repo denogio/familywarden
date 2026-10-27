@@ -395,6 +395,21 @@ report the partial failure; do not enable an unconfigured/bypassable DNS path.
 
 ## Ulysses behavior
 
+**Owned-core implementation update (0.13.0-r9 / backend rc10-r6 / LuCI r4):**
+outside the amendment window, the frozen profile's Save & Apply uses an explicitly
+confirmed, revision-bound `configuration_dns_update`, not ordinary apply/confirm.
+It accepts only captain DNS fields. The desired future record may disable/remove
+DNS settings, but the active pact and frozen captain retain every accumulated
+protection/service and the bound identity/domain. Re-enabling DNS allocates an
+identity only if none is already bound. Full explicit window amendment may loosen
+it; no save/disconnection timeout can roll back a newly committed tightening.
+
+This cumulative behavior is tested in Go, with real AGH (including removal and
+restart), and through authenticated unmocked LuCI. The legacy shell's snapshot-plus-
+live union is not equivalent: this update is scoped to explicitly migrated routers.
+The UI reports the last router-verified AGH identity, not confirmed handset
+application; existing signed-phone and handset-applied status remain separate.
+
 - Freeze the captain's effective DNS preset and applicable policy settings in the pact
   snapshot, just like schedule/device settings. Use `fw_load`, not live UCI, for decisions.
 - Resolve changing addresses from frozen MAC membership; freezing a stale IP forever is

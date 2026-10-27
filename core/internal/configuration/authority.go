@@ -222,7 +222,7 @@ func (a *Authority) Policy(profile string, version int) (platform.Policy, error)
 		return platform.Policy{}, err
 	}
 	if !found {
-		return p, nil
+		return normalizePhoneWindows(p)
 	}
 	p.Context, err = AppContext(d.Configuration, p.Context, a.at(p.Context))
 	if err != nil {
@@ -424,10 +424,7 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 		if d.Pending != nil {
 			return fail(errors.New("confirmation pending"))
 		}
-		var req struct {
-			Revision string                  `json:"revision"`
-			Current  rules.ConfigurationData `json:"current"`
-		}
+		var req editRequest
 		if err := decode(raw, &req); err != nil {
 			return fail(err)
 		}

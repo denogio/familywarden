@@ -317,12 +317,16 @@ return view.extend({
 	handleSaveApply: function(ev, mode) {
 		if (!this.ownedMap)
 			return this.super('handleSaveApply', [ev, mode]);
-		var amend = this.ownedAmendment;
-		if (amend && !window.confirm(_('Commit these changes to the pact? They take effect immediately and are not rolled back if this page disconnects.')))
+		var amend = this.ownedAmendment, dns = this.ownedDNSUpdate;
+		if ((amend || dns) && !window.confirm(amend
+			? _('Commit these changes to the pact? They take effect immediately and are not rolled back if this page disconnects.')
+			: _('Save DNS changes for this pact? Added protections apply after verified sync; existing protections stay until the pact ends or is explicitly amended. These changes have no automatic rollback.')))
 			return Promise.resolve();
 		return this.ownedMap.parse().then(function() {
-			if (amend)
-				return fwconfig.amend(owned.configuration, fwconfig.fromUci(owned.configuration.current)).then(function() { return callReload(); });
+			if (amend || dns) {
+				var current = dns ? fwconfig.dnsFromUci(owned.configuration.current, selectedProfile) : fwconfig.fromUci(owned.configuration.current);
+				return fwconfig[amend ? 'amend' : 'updateDNS'](owned.configuration, current).then(function() { return callReload(); });
+			}
 			return writeConfiguration();
 		}).then(function() {
 			window.location.reload();
@@ -404,6 +408,7 @@ return view.extend({
 		// applies additions at once and removals only when the pact ends.
 		var frozen = ulysses.isFrozen(status);
 		this.ownedAmendment = !!(owned && ulysses.isBound(status) && status.pact_type === 'ongoing' && status.pact_in_window);
+		this.ownedDNSUpdate = !!(owned && ulysses.isBound(status) && frozen);
 
 		var s = m.section(form.NamedSection, selectedProfile, 'profile', _('Profile and internet access'));
 		s.addremove = false;
@@ -462,7 +467,7 @@ return view.extend({
 		dnsOption.rmempty = true;
 		dnsOption.default = '0';
 		if (ulysses.isBound(status))
-			dnsOption.description += ' ' + _('Bound by the pact: DNS can only be tightened. Added protections and services apply now; removing them or switching DNS off waits until the pact ends (or its weekly window).');
+			dnsOption.description += ' ' + _('Bound by the pact: DNS can only be tightened. Added protections and services apply after verified router sync; removing them or switching DNS off waits until the pact ends (or its weekly window).');
 
 		var protOption = s.option(form.MultiValue, 'dns_protection', _('DNS protections'),
 			_('Settings of this profile\'s AdGuard Home client. "Filter lists" are the lists configured globally in AdGuard Home; AdGuard Home has no separate lists per client.'));
@@ -488,16 +493,19 @@ return view.extend({
 		svcOption.rmempty = true;
 		svcOption.depends('dns', '1');
 
+		var requiredDNS = owned && ulysses.isBound(status) && owned.configuration.pact && owned.configuration.pact.dns && owned.configuration.pact.dns.enabled === '1';
 		var idOption = s.option(form.DummyValue, '_dns_identity', _('DNS identity'));
-		idOption.depends('dns', '1');
+		if (!requiredDNS) idOption.depends('dns', '1');
 		idOption.cfgvalue = function(section_id) {
 			var synced = (dnsStatus.profiles || {})[section_id];
 			if (synced)
-				return _('%s (active in AdGuard Home)').format(synced.hostname);
-			var id = uci.get('familywarden', section_id, 'dns_client_id');
+				return _('%s (last verified in AdGuard Home)').format(synced.hostname);
+			var id = uci.get('familywarden', section_id, 'dns_client_id') || (requiredDNS && owned.configuration.pact.dns.client_id);
 			if (dnsStatus.error)
 				return _('Not active: %s').format(dnsStatus.error);
-			return id ? _('ClientID %s, waiting for sync').format(id) : _('Created on the next sync from the profile name, and kept when the profile is renamed.');
+			return id ? _('ClientID %s, waiting for sync').format(id) : owned
+				? _('Allocated by the core when DNS is enabled, and kept when the profile is renamed.')
+				: _('Created on the next sync from the profile name, and kept when the profile is renamed.');
 		};
 
 		// --- Screen time and apps on this profile's phones (Family Link model, D9) ---
@@ -675,14 +683,14 @@ return view.extend({
 		o.readonly = frozen;
 		o.rmempty = true;
 		o.validate = function(section_id, value) {
-			return (!value || /^\d{2}:\d{2}$/.test(value)) ? true : _('Use HH:MM format');
+			return (!value || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) ? true : _('Use HH:MM from 00:00 to 23:59');
 		};
 		o = ds.option(form.Value, 'stop', _('Stop'));
 		o.placeholder = '07:00';
 		o.readonly = frozen;
 		o.rmempty = true;
 		o.validate = function(section_id, value) {
-			return (!value || /^\d{2}:\d{2}$/.test(value)) ? true : _('Use HH:MM format');
+			return (!value || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) ? true : _('Use HH:MM from 00:00 to 23:59');
 		};
 
 		// --- Delete profile ---
@@ -746,7 +754,9 @@ return view.extend({
 				statusBar,
 				E('p', { 'class': 'fw-immediate-note' }, self.ownedAmendment
 					? _('Pact edits require explicit confirmation and are committed immediately, without automatic rollback.')
-					: _('Status and quick actions above are live. Form edits below do not change access until Save & Apply.')),
+					: self.ownedDNSUpdate
+						? _('DNS edits require confirmation. Existing protections stay active until the pact ends or is amended; added restrictions have no automatic rollback.')
+						: _('Status and quick actions above are live. Form edits below do not change access until Save & Apply.')),
 				frozen ? E('div', { 'class': 'fw-profile-lock' }, [
 					E('strong', {}, _('Held by the pact')),
 					E('p', {}, _('Internet rules, devices and schedules are read-only outside the amendment window. DNS stays editable: protections can be added now; loosening waits until the pact ends or its window. Phone bindings stay frozen throughout the pact.'))

@@ -686,6 +686,17 @@ assert_json "fresh nonce echoed" "$payload" '@.nonce' "$N2"
 assert_json "captain rules for the captain's phone" "$payload" '@.rules.policy' "scheduled"
 [ -z "$(call devices | jsonfilter -e '@.pending[*].id')" ] && pass "approved phone leaves the pending list" || fail "still pending"
 assert_json "LuCI lists the approved phone" "$(call devices)" '@.devices[0].fingerprint' "$(sed -n 2p /tmp/phoneA.pub | tr -d '\n' | sha256sum | cut -d' ' -f1)"
+# Legacy-owned routers also need valid mobile midnight times, not only the
+# optional authoritative-document path exercised at the end of this suite.
+legacy_stop=$(uci -q get familywarden.kid_school.stop)
+uci set familywarden.kid_school.stop=24:00
+uci commit familywarden
+"$BIN" reload >/dev/null && pass "legacy midnight schedule applies" || fail "legacy midnight schedule failed"
+assert_json "legacy signed phone window has a mobile-valid midnight" "$(v2payload phoneA fw-a1 "$N1")" '@.rules.windows[0].stop' '00:00'
+assert_rule "legacy midnight schedule and phone policy share the kernel boundary" 'aa:bb:cc:00:00:01 meta hour >= "07:00" meta day .* accept'
+uci set "familywarden.kid_school.stop=$legacy_stop"
+uci commit familywarden
+"$BIN" reload >/dev/null
 
 newphone phoneB
 payload=$(v2payload phoneB fw-a1 "$N1")

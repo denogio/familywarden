@@ -140,6 +140,30 @@ test('owned profile edits preserve nullable captain fields and collections', asy
   for (const key of ['schedules', 'apps', 'downtime']) expect(actual[key]).toEqual(current[key]);
 });
 
+test('owned downtime rejects unsupported clock values before RPC', async ({ page }) => {
+  const exported = await ownedExport(page);
+  const calls = await mockCoreConfiguration(page, {
+    configuration_status: () => ({ owner: 'core' }),
+    configuration_export: () => exported,
+    configuration_apply: () => ({ status: 'confirmation_required', revision: 'r2', token: 'tok' }),
+    configuration_confirm: () => ({ status: 'ok', revision: 'r2' }),
+    reload: () => ({ status: 'ok' })
+  });
+  await page.goto(`${URL}/profiles?name=alex`);
+  const section = page.locator('#cbi-familywarden-app_downtime');
+  await section.locator('.cbi-button-add').click();
+  await section.locator('input[data-day="mon"]').last().check();
+  await section.locator('input[id*="start"]').last().fill('21:00');
+  await section.locator('input[id*="stop"]').last().fill('24:00');
+  await page.locator('li').filter({ hasText: /^Save & Apply$/ }).click();
+  await expect(page.getByText(/Could not save the configuration:/)).toBeVisible();
+  expect(calls.filter(c => c.method === 'configuration_apply')).toHaveLength(0);
+  // Midnight is represented by the valid mobile time 00:00, not 24:00.
+  await section.locator('input[id*="stop"]').last().fill('00:00');
+  await page.locator('li').filter({ hasText: /^Save & Apply$/ }).click();
+  await expect.poll(() => calls.some(c => c.method === 'configuration_confirm')).toBeTruthy();
+});
+
 async function ownedAmendmentWindow(page) {
   const exported = await ownedExport(page);
   const listed = await page.evaluate(async () => {
@@ -150,6 +174,61 @@ async function ownedAmendmentWindow(page) {
   Object.assign(listed.profiles.alex, { captain: true, pact_type: 'ongoing', pact_in_window: true,
     pact_window: 'sun 10:00-11:00' });
   return { exported, listed };
+}
+
+for (const decision of ['cancel', 'confirm', 'conflict']) {
+  test(`owned pact DNS edit outside window: ${decision}`, async ({ page }) => {
+    const { exported, listed } = await ownedAmendmentWindow(page);
+    listed.profiles.alex.pact_in_window = false;
+    exported.configuration.pact = { captain: 'alex', type: 'ongoing', dns: {
+      enabled: '1', client_id: 'fwalex', domain: 'dns.example.net', protections: ['filter_lists'], services: ['youtube']
+    } };
+    const uciWrites = [];
+    page.on('request', r => {
+      if (/"uci",\s*"(add|set|delete|commit|apply)"/.test(r.postData() || '')) uciWrites.push(r.postData());
+    });
+    const calls = await mockCoreConfiguration(page, {
+      list: () => listed,
+      configuration_status: () => ({ owner: 'core' }),
+      configuration_export: () => exported,
+      configuration_dns_update: () => decision === 'conflict' ? { error: 'configuration conflict' } : { status: 'ok', revision: 'r2' },
+      configuration_apply: () => ({ error: 'wrong operation' }),
+      configuration_amend: () => ({ error: 'wrong operation' }),
+      configuration_confirm: () => ({ error: 'wrong operation' }),
+      reload: () => ({ status: 'ok' })
+    });
+    await page.goto(`${URL}/profiles?name=alex`);
+    await expect(page.locator('#cbi-familywarden-alex-name input')).not.toBeEditable();
+    await expect(page.getByText('DNS edits require confirmation. Existing protections stay active until the pact ends or is amended; added restrictions have no automatic rollback.')).toBeVisible();
+    const checkbox = page.locator('#cbi-familywarden-alex-dns input[type="checkbox"]');
+    await checkbox.check();
+    let prompted = false;
+    page.once('dialog', async dialog => {
+      prompted = true;
+      expect(dialog.message()).toContain('after verified sync');
+      expect(dialog.message()).toContain('no automatic rollback');
+      if (decision === 'cancel') await dialog.dismiss(); else await dialog.accept();
+    });
+    await page.locator('li').filter({ hasText: /^Save & Apply$/ }).click();
+    expect(prompted).toBeTruthy();
+    if (decision === 'cancel') {
+      expect(calls.filter(c => c.method === 'configuration_dns_update')).toHaveLength(0);
+      await expect(checkbox).toBeChecked();
+    } else {
+      await expect.poll(() => calls.some(c => c.method === 'configuration_dns_update')).toBeTruthy();
+      const params = calls.find(c => c.method === 'configuration_dns_update').params;
+      expect(params.revision).toBe('r1');
+      expect(params.current.profiles.find(p => p.id === 'alex').dns).toBe('1');
+      const nonDNS = p => Object.fromEntries(Object.entries(p).filter(([k]) => !['dns', 'client_id', 'protections', 'services'].includes(k)));
+      expect(params.current.profiles.map(nonDNS)).toEqual(exported.configuration.current.profiles.map(nonDNS));
+      if (decision === 'conflict') {
+        await expect(page.getByText('Could not save the configuration: configuration conflict')).toBeVisible();
+        await expect(checkbox).toBeChecked();
+      }
+    }
+    expect(calls.filter(c => ['configuration_apply', 'configuration_amend', 'configuration_confirm'].includes(c.method))).toHaveLength(0);
+    expect(uciWrites).toEqual([]);
+  });
 }
 
 for (const decision of ['cancel', 'confirm', 'window closed']) {

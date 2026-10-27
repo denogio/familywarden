@@ -19,6 +19,12 @@ var callAmend = rpc.declare({
 	params: [ 'revision', 'current' ]
 });
 
+var callDNSUpdate = rpc.declare({
+	object: 'familywarden',
+	method: 'configuration_dns_update',
+	params: [ 'revision', 'current' ]
+});
+
 var callConfirm = rpc.declare({
 	object: 'familywarden',
 	method: 'configuration_confirm',
@@ -48,8 +54,12 @@ function list(v) {
 function read(type, fields, lists) {
 	return uci.sections('familywarden', type).map(function(s) {
 		var out = {};
-		Object.keys(fields).forEach(function(k) { out[k] = text(s[fields[k]]); });
-		Object.keys(lists || {}).forEach(function(k) { out[k] = list(s[lists[k]]); });
+		// sections() enumerates live IDs but retains stale properties for locally
+		// deleted options. get() honors those staged unsets without saving UCI.
+		Object.keys(fields).forEach(function(k) {
+			out[k] = text(fields[k] === '.name' ? s['.name'] : uci.get('familywarden', s['.name'], fields[k]));
+		});
+		Object.keys(lists || {}).forEach(function(k) { out[k] = list(uci.get('familywarden', s['.name'], lists[k])); });
 		return out;
 	});
 }
@@ -79,6 +89,16 @@ function canonical(current) {
 function ensure(res) {
 	if (!res || res.error)
 		throw new Error(res && res.error || 'Configuration write failed');
+}
+
+function commitImmediate(call, configuration, current) {
+	return call(configuration.revision, current).then(function(res) {
+		ensure(res);
+		if (res.status !== 'ok' || typeof res.revision !== 'string')
+			throw new Error('Invalid committed configuration reply');
+		configuration.revision = res.revision;
+		return configuration;
+	});
 }
 
 // configurationExport() returns {owner, configuration, pending};
@@ -119,6 +139,16 @@ return baseclass.extend({
 		});
 		return out;
 	},
+	// A frozen form may normalize readonly defaults while parsing. A DNS-only
+	// write must keep those unrelated values exact, not stage profile changes.
+	dnsFromUci: function(current, id) {
+		var edited = this.fromUci(current).profiles.find(function(p) { return p.id === id; });
+		if (!edited) throw new Error('Profile unavailable');
+		return Object.assign({}, current, { profiles: current.profiles.map(function(p) {
+			return p.id !== id ? p : Object.assign({}, p, { dns: edited.dns, client_id: edited.client_id,
+				protections: edited.protections, services: edited.services });
+		}) });
+	},
 	// True when the loaded UCI projection still equals the exported document;
 	// otherwise editing it would overwrite core state the form never showed.
 	matchesUci: function(current) {
@@ -127,13 +157,11 @@ return baseclass.extend({
 	// Explicit pact amendment: committed immediately, no connection rollback.
 	// The caller must obtain the user's acknowledgement before invoking this.
 	amend: function(configuration, current) {
-		return callAmend(configuration.revision, current).then(function(res) {
-			ensure(res);
-			if (res.status !== 'ok' || typeof res.revision !== 'string')
-				throw new Error('Invalid pact amendment reply');
-			configuration.revision = res.revision;
-			return configuration;
-		});
+		return commitImmediate(callAmend, configuration, current);
+	},
+	// Only DNS may change; the core retains the pact's accumulated minimum.
+	updateDNS: function(configuration, current) {
+		return commitImmediate(callDNSUpdate, configuration, current);
 	},
 	commit: function(configuration, current) {
 		return callApply(configuration.revision, current).then(function(res) {

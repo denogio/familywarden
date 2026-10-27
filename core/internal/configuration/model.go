@@ -1,8 +1,6 @@
 package configuration
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +16,32 @@ import (
 
 var identifier = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 var appPackage = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$`)
+
+var nextWindowDay = map[string]string{"sun": "mon", "mon": "tue", "tue": "wed", "wed": "thu", "thu": "fri", "fri": "sat", "sat": "sun"}
+
+func windowDays(s string) []string {
+	return strings.FieldsFunc(s, func(r rune) bool { return r == ' ' || r == '\t' || r == '\n' })
+}
+
+func knownDay(day string) bool { _, ok := nextWindowDay[day]; return ok }
+
+func validWindowDays(s string) bool {
+	days := windowDays(s)
+	if len(days) == 0 {
+		return false
+	}
+	for _, day := range days {
+		if !knownDay(day) {
+			return false
+		}
+	}
+	return true
+}
+
+type editRequest struct {
+	Revision string                  `json:"revision"`
+	Current  rules.ConfigurationData `json:"current"`
+}
 
 func integer(s string) int64 { n, _ := strconv.ParseInt(s, 10, 64); return n }
 func decimal(s string) bool {
@@ -118,7 +142,7 @@ func Validate(c rules.Configuration) error {
 		}
 		s, ok := minute(p.WindowStart)
 		e, ok2 := minute(p.WindowStop)
-		if p.Type == "ongoing" && (!ok || !ok2 || s >= e || !strings.Contains(" sun mon tue wed thu fri sat ", " "+p.WindowDay+" ")) {
+		if p.Type == "ongoing" && (!ok || !ok2 || s >= e || !knownDay(p.WindowDay)) {
 			return errors.New("invalid frozen amendment window")
 		}
 		if err := validateData(p.Frozen); err != nil {
@@ -255,13 +279,20 @@ func ValidateEdit(old rules.Configuration, next *rules.Configuration, now time.T
 			}
 		}
 	}
+	if !reflect.DeepEqual(old.Current.Schedules, next.Current.Schedules) {
+		for _, w := range next.Current.Schedules {
+			if !validWindowDays(w.Days) {
+				return errors.New("invalid schedule days")
+			}
+		}
+	}
 	if !reflect.DeepEqual(old.Current.Downtime, next.Current.Downtime) {
 		for _, w := range next.Current.Downtime {
 			start, okStart := minute(w.Start)
 			stop, okStop := minute(w.Stop)
 			// App-policy compilation and Android LocalTime require 00:00..23:59.
 			// Do not save a new downtime that compatibility normalization drops.
-			if !okStart || !okStop || start >= 1440 || stop >= 1440 || len(strings.Fields(w.Days)) == 0 {
+			if !okStart || !okStop || start >= 1440 || stop >= 1440 || !validWindowDays(w.Days) {
 				return errors.New("invalid app downtime")
 			}
 		}
@@ -287,34 +318,8 @@ func ValidateEdit(old rules.Configuration, next *rules.Configuration, now time.T
 			return errors.New("captain configuration is bound by Ulysses pact")
 		}
 	}
-	used := map[string]bool{}
-	for _, p := range next.Current.Profiles {
-		if p.ClientID != "" {
-			if used[p.ClientID] {
-				return errors.New("duplicate DNS ClientID")
-			}
-			used[p.ClientID] = true
-		}
-	}
-	for i := range next.Current.Profiles {
-		p := &next.Current.Profiles[i]
-		if p.DNS == "1" && p.ClientID == "" {
-			if next.Current.Settings.DNSDomain == "" {
-				return errors.New("DNS domain required before enabling DNS")
-			}
-			for {
-				var id [16]byte
-				if _, err := rand.Read(id[:]); err != nil {
-					return err
-				}
-				candidate := "fw" + hex.EncodeToString(id[:])
-				if !used[candidate] {
-					p.ClientID = candidate
-					used[candidate] = true
-					break
-				}
-			}
-		}
+	if err := assignDNSClientIDs(next, next.Current.Settings.DNSDomain); err != nil {
+		return err
 	}
 	if err := validateDNSEdit(old, *next); err != nil {
 		return err
@@ -349,14 +354,13 @@ func others(data rules.ConfigurationData, captain string) rules.ConfigurationDat
 
 func PactOperation(method string, raw []byte, c *rules.Configuration, now time.Time) error {
 	switch method {
+	case "configuration_dns_update":
+		return updateBoundDNS(c, raw, now)
 	case "configuration_amend":
 		if !Active(c.Pact, now) || !InWindow(c.Pact, now) {
 			return errors.New("pact amendment window is closed")
 		}
-		var req struct {
-			Revision string                  `json:"revision"`
-			Current  rules.ConfigurationData `json:"current"`
-		}
+		var req editRequest
 		if err := decode(raw, &req); err != nil {
 			return err
 		}
@@ -411,7 +415,7 @@ func PactOperation(method string, raw []byte, c *rules.Configuration, now time.T
 		}
 		s, ok := minute(req.Start)
 		e, ok2 := minute(req.Stop)
-		if !ok || !ok2 || s >= e || !strings.Contains(" sun mon tue wed thu fri sat ", " "+req.Day+" ") {
+		if !ok || !ok2 || s >= e || !knownDay(req.Day) {
 			return errors.New("invalid amendment window")
 		}
 		if Active(c.Pact, now) {

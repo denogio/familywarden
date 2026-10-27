@@ -1,6 +1,8 @@
 package configuration
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"reflect"
 	"regexp"
@@ -86,29 +88,166 @@ func validateDNSEdit(old, next rules.Configuration) error {
 		if !edited && !domainChanged {
 			continue
 		}
-		if p.ClientID != "" && !agh.ValidClientID(p.ClientID) {
-			return errors.New("invalid DNS ClientID")
+		if err := validateDNSProfile(p, domain); err != nil {
+			return err
 		}
-		for _, v := range p.Protections {
-			switch v {
-			case "filter_lists", "safe_browsing", "parental", "safe_search":
-			default:
-				return errors.New("invalid DNS protection")
-			}
+	}
+	return nil
+}
+
+func validateDNSProfile(p rules.ConfigurationProfile, domain string) error {
+	if p.ClientID != "" && !agh.ValidClientID(p.ClientID) {
+		return errors.New("invalid DNS ClientID")
+	}
+	for _, v := range p.Protections {
+		switch v {
+		case "filter_lists", "safe_browsing", "parental", "safe_search":
+		default:
+			return errors.New("invalid DNS protection")
 		}
-		for _, v := range p.Services {
-			if !dnsService.MatchString(v) {
-				return errors.New("invalid DNS service")
-			}
+	}
+	for _, v := range p.Services {
+		if !dnsService.MatchString(v) {
+			return errors.New("invalid DNS service")
 		}
-		if p.DNS == "1" {
-			if domain == "" {
-				return errors.New("DNS domain required before enabling DNS")
+	}
+	if p.DNS == "1" {
+		if domain == "" {
+			return errors.New("DNS domain required before enabling DNS")
+		}
+		if !validDNSHostname(p.ClientID + "." + domain) {
+			return errors.New("invalid DNS hostname")
+		}
+	}
+	return nil
+}
+
+func assignDNSClientIDs(next *rules.Configuration, domain string) error {
+	used := map[string]bool{}
+	for _, p := range next.Current.Profiles {
+		if p.ClientID != "" {
+			if used[p.ClientID] {
+				return errors.New("duplicate DNS ClientID")
 			}
-			if !validDNSHostname(p.ClientID + "." + domain) {
-				return errors.New("invalid DNS hostname")
+			used[p.ClientID] = true
+		}
+	}
+	for i := range next.Current.Profiles {
+		p := &next.Current.Profiles[i]
+		if p.DNS != "1" || p.ClientID != "" {
+			continue
+		}
+		if domain == "" {
+			return errors.New("DNS domain required before enabling DNS")
+		}
+		for {
+			var id [16]byte
+			if _, err := rand.Read(id[:]); err != nil {
+				return err
+			}
+			candidate := "fw" + hex.EncodeToString(id[:])
+			if !used[candidate] {
+				p.ClientID = candidate
+				used[candidate] = true
+				break
 			}
 		}
 	}
+	return nil
+}
+
+func dnsUnion(groups ...[]string) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, group := range groups {
+		for _, v := range group {
+			if v != "" && !seen[v] {
+				out = append(out, v)
+				seen[v] = true
+			}
+		}
+	}
+	return out
+}
+
+// DNS edits during a pact are explicit, irreversible transactions, separate
+// from ordinary confirmed configuration edits and full window amendments.
+// Current keeps the requested future policy; the pact accumulates every DNS
+// restriction already in effect plus additions. Only a later explicit window
+// amendment or pact end may loosen that enforced set.
+func updateBoundDNS(c *rules.Configuration, raw []byte, now time.Time) error {
+	if !Active(c.Pact, now) {
+		return errors.New("active pact required")
+	}
+	var req editRequest
+	if err := decode(raw, &req); err != nil {
+		return err
+	}
+	if req.Revision != c.Revision {
+		return errors.New("configuration conflict")
+	}
+	cap := c.Pact.Captain
+	before := profile(c.Current, cap)
+	next := clone(*c)
+	next.Current = req.Current
+	after := profile(next.Current, cap)
+	if before == nil || after == nil {
+		return errors.New("captain profile not found")
+	}
+	// No profile/device/app/schedule/settings change may ride along with DNS.
+	left, right := clone(*c), clone(next)
+	for _, doc := range []*rules.Configuration{&left, &right} {
+		p := profile(doc.Current, cap)
+		p.DNS, p.ClientID = "", ""
+		p.Protections, p.Services = nil, nil
+	}
+	if !reflect.DeepEqual(left.Current, right.Current) {
+		return errors.New("separate DNS updates from other configuration edits")
+	}
+	if after.ClientID != before.ClientID {
+		return errors.New("DNS identity is bound by Ulysses pact")
+	}
+	snap := c.Pact.DNS
+	domain := snap.Domain
+	if domain == "" {
+		domain = c.Current.Settings.DNSDomain
+	}
+	stableID := before.ClientID
+	if stableID == "" {
+		stableID = snap.ClientID
+	}
+	if stableID == "" && (before.DNS == "1" || snap.Enabled == "1") {
+		return errors.New("bound DNS identity unavailable")
+	}
+	after.ClientID = stableID
+	if err := assignDNSClientIDs(&next, domain); err != nil {
+		return err
+	}
+	if err := validateDNSProfile(*after, domain); err != nil {
+		return err
+	}
+	on := "0"
+	if snap.Enabled == "1" || before.DNS == "1" || after.DNS == "1" {
+		on = "1"
+	}
+	snap = rules.ConfigurationDNS{Enabled: on, ClientID: after.ClientID, Domain: domain,
+		Protections: dnsUnion(snap.Protections, before.Protections, after.Protections),
+		Services:    dnsUnion(snap.Services, before.Services, after.Services)}
+	// Also validate the accumulated state, not just the future requested fields.
+	if err := validateDNSProfile(rules.ConfigurationProfile{DNS: snap.Enabled, ClientID: snap.ClientID, Protections: snap.Protections, Services: snap.Services}, domain); err != nil {
+		return err
+	}
+	next.Pact.DNS = snap
+	frozen := profile(next.Pact.Frozen, cap)
+	if frozen == nil {
+		return errors.New("frozen captain profile not found")
+	}
+	frozen.DNS, frozen.ClientID = snap.Enabled, snap.ClientID
+	frozen.Protections = append([]string{}, snap.Protections...)
+	frozen.Services = append([]string{}, snap.Services...)
+	if err := Validate(next); err != nil {
+		return err
+	}
+	*c = next
 	return nil
 }

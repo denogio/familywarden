@@ -340,6 +340,32 @@ mv /usr/sbin/familywardend.real /usr/sbin/familywardend
 "$BIN" dns-sync && pass "DNS sync recovers after matching core returns" || fail "matching core did not recover DNS"
 
 echo ""
+echo "=== Core pact DNS edits accumulate outside the amendment window ==="
+assert_eq "owned DNS pact created" "$(api configuration_pact "{\"until\":$(( $(date +%s) + 3600 ))}" | jsonfilter -e '@.status')" "ok"
+pact_dns_edit() {
+    local exported current revision
+    exported=$(api configuration_export)
+    revision=$(echo "$exported" | jsonfilter -e '@.configuration.revision')
+    current=$(echo "$exported" | ucode -l fs -e "$1")
+    api configuration_dns_update "{\"revision\":\"$revision\",\"current\":$current}"
+}
+assert_eq "DNS-only pact edit commits without a window" "$(pact_dns_edit 'let d=json(fs.stdin.read("all")); for(let p in d.configuration.current.profiles) if(p.id=="alex") {p.protections=["safe_browsing","parental"]; p.services=["tiktok","youtube"]; } print(sprintf("%J",d.configuration.current));' | jsonfilter -e '@.status')" "ok"
+"$BIN" dns-sync && pass "pact DNS additions sync and verify" || fail "pact DNS additions failed"
+assert_eq "added parental protection reaches AGH" "$(client "familywarden-$alex_id" .parental_enabled)" "true"
+assert_eq "DNS-only changes arm no rollback" "$(api configuration_export | jsonfilter -e '@.pending')" "false"
+assert_eq "DNS removals can be staged for after the pact" "$(pact_dns_edit 'let d=json(fs.stdin.read("all")); for(let p in d.configuration.current.profiles) if(p.id=="alex") {p.dns="0"; p.protections=[]; p.services=[];} print(sprintf("%J",d.configuration.current));' | jsonfilter -e '@.status')" "ok"
+"$BIN" dns-sync && pass "deferred DNS removal syncs without loosening" || fail "deferred DNS removal sync failed"
+assert_eq "switching DNS off during pact keeps its identity" "$(client "familywarden-$alex_id" .ids[0])" "$alex_id"
+assert_eq "newly added protection cannot be removed before pact ends" "$(client "familywarden-$alex_id" .parental_enabled)" "true"
+assert_eq "newly added services cannot be removed before pact ends" "$(client "familywarden-$alex_id" '.blocked_services[*]' | sort | tr '\n' ' ')" "tiktok youtube "
+assert_eq "pact DNS identity rotation refused" "$(pact_dns_edit 'let d=json(fs.stdin.read("all")); for(let p in d.configuration.current.profiles) if(p.id=="alex") p.client_id="rotated"; print(sprintf("%J",d.configuration.current));' | jsonfilter -e '@.error')" "DNS identity is bound by Ulysses pact"
+killall familywardend
+(/usr/sbin/familywardend -data /etc/familywarden/core >>/tmp/core.log 2>&1 &)
+for _ in $(seq 1 20); do [ "$(/usr/sbin/familywardend status | jsonfilter -e '@.running')" = true ] && break; sleep 1; done
+"$BIN" dns-sync && pass "pact DNS survives core restart" || fail "pact DNS restart lost the snapshot"
+assert_eq "restart retains accumulated parental restriction" "$(client "familywarden-$alex_id" .parental_enabled)" "true"
+
+echo ""
 echo "=== LuCI helpers ==="
 call dns_services | jsonfilter -e '@.services[*].id' | grep -qx youtube && pass "service catalogue from AGH" || fail "no services"
 call dns_services | jsonfilter -e "@.services[@.id='youtube'].name" | grep -qx YouTube && pass "service names" || fail "no service names"

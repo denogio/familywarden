@@ -544,7 +544,11 @@ Depends on P6–P8 and existing pact compatibility.
 - [ ] Prevent a captain from self-approving extra grants beyond the pool or escaping by
       role/profile/device rebinding; retain the supported sail cooling-off flow.
 - [ ] Test cumulative tightening: removing a restriction added after pact creation must
-      not loosen it. Review current DNS snapshot-plus-live union before reusing it.
+      not loosen it. Owned DNS now has an explicit DNS-only transaction that persists
+      the cumulative minimum: Go/restart tests, real AGH removal attempts and unmocked
+      LuCI deferred-disable checks pass (core 0.13.0-r9/backend rc10-r6/LuCI r4).
+      Legacy-shell/app/pool parity remains open; the old snapshot-plus-live union alone
+      is not sufficient to retain a restriction added after pact creation.
 - [ ] Test amendment windows, expiry, scheduled boundaries, offline use and approved removal.
 
 **Accept:** integration tests demonstrate no new self-approval or DNS/app escape path.

@@ -601,6 +601,53 @@ on unrelated edits. Unit regressions fail against the prior clock implementation
 router tests cover both traffic chains, lockdown, a real signed midnight endpoint
 and rejection of a downtime the app compiler cannot enforce.
 
+### Explicit pact DNS edits (core 0.13.0-r9 / backend rc10-r6 / LuCI r4)
+
+`configuration_dns_update` is a revision-bound, DNS-only transaction for an active
+pact. Unlike an ordinary apply/confirm, it has no connection/deadline rollback;
+LuCI asks explicitly before committing. It rejects any bundled settings, app,
+profile, binding or other-profile edit, identity rotation, stale revision or pending
+configuration. Failed backend application restores the previous document/snapshot.
+An amendment-window save still uses the explicit full `configuration_amend` route.
+
+The current captain record stores the requested future DNS policy. The pact DNS
+snapshot and frozen captain accumulate the previous and added protections/services;
+switching current DNS off or removing entries cannot remove that active minimum.
+Enabling DNS allocates a stable ClientID atomically; an existing bound identity and
+DoT domain are retained. Only explicit full amendment or pact end can loosen the set.
+The router must verify AGH state before its existing acknowledgement/phone path
+advertises the policy; a successful form save alone is not phone enforcement proof.
+
+The DNS-only browser payload preserves every non-DNS field exactly, including
+readonly defaults. All shared form projection now reads options through `uci.get`:
+`uci.sections` enumerates live IDs but retains properties of staged option unsets.
+The real, unmocked LuCI flow exposed an unchecked DNS flag being resubmitted as on;
+the new regression also covers removed last list values and cleared app limits.
+
+Validation: Go/race/vet, syntax, 9 shared-module checks, 487 router checks, 92 real
+AGH checks and 65 browser tests pass. Unmocked authenticated LuCI enabled DNS, then
+saved a deferred disable without UCI writes or apply/confirm; its allocated identity
+and accumulated restrictions survived core restart. These are disposable checks,
+not deployment or a complete upgrade/restoration matrix. The earlier consolidated
+CI `40456639004` passed package/Go/Android-build/LuCI jobs but failed the Android
+request scenario after grant-process restart; that failure remains under investigation.
+
+### Legacy phone clock/day compatibility (core 0.13.0-r9 / LuCI 0.11.0-r4)
+
+Legacy ownership now normalizes the signed phone's internet windows too, not only
+the document-owned path. Only changed clock/day fields are rebuilt; unknown top-level
+and per-window rule fields survive, and ordinary valid legacy policy bytes remain
+unchanged. Day tokenization matches the kernel's ASCII separators: broader Java
+whitespace cannot invent phone allow-days absent from the firewall.
+
+New schedule/app-downtime day edits use that same grammar, and a pact amendment day
+must be exactly one known weekday (not a compound string that happens to be a substring
+of the weekday list). Unsupported app-downtime hours are also rejected by the LuCI
+form before any write, for legacy and owned rendering alike. Unrelated legacy
+normalization remains unchanged. Unit regressions reproduced the legacy `24:00`
+reply and a Unicode-separated downtime that would be discarded; router tests verify
+a real legacy-signed midnight window alongside its installed kernel rule.
+
 ### Authoritative configuration cutover: traced callers and required transaction
 
 Do not import only the Profiles form and leave competing UCI consumers behind:

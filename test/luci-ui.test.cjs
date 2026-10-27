@@ -103,11 +103,14 @@ test('family view model lists waiting and allowed new apps, hides empty profiles
   assert.deepEqual(viewModel({}, {}, 1, undefined).apps, []);
 });
 
-function configurationFixture(rows) {
+function configurationFixture(rows, deleted = {}) {
   const source = readFileSync('luci-app-familywarden/htdocs/luci-static/resources/familywarden/configuration.js', 'utf8');
   return new Function('baseclass', 'rpc', 'uci', source)(
     { extend: value => value }, { declare: () => () => { throw new Error('unexpected RPC'); } },
-    { sections: (_, type) => rows[type] || [] }
+    { sections: (_, type) => rows[type] || [], get: (_, section, key) => {
+      if ((deleted[section] || []).includes(key)) return null;
+      return Object.values(rows).flat().find(s => s['.name'] === section)?.[key];
+    } }
   );
 }
 
@@ -137,4 +140,43 @@ test('configuration projection preserves untouched nullable captain fields and c
   assert.equal(created.profiles.length, 3);
   rows.profile = [rows.profile[0]];
   assert.deepEqual(cfg.fromUci(base).profiles, [captain]);
+});
+
+test('DNS-only form payload cannot normalize unrelated frozen defaults', () => {
+  const rows = { profile: [{ '.name': 'alex', name: 'Alex' }, { '.name': 'taylor', name: 'Taylor' }] };
+  const cfg = configurationFixture(rows);
+  const base = cfg.fromUci({ settings: { captain: 'alex' }, legacy_phones: [] });
+  // Parsing a readonly flag can populate its widget default; do not write it.
+  rows.profile[0].enabled = '1';
+  rows.profile[0].dns = '1';
+  rows.profile[0].dns_protection = ['parental'];
+  const next = cfg.dnsFromUci(base, 'alex');
+  assert.equal(next.profiles[0].enabled, base.profiles[0].enabled);
+  assert.equal(next.profiles[0].dns, '1');
+  assert.deepEqual(next.profiles[0].protections, ['parental']);
+  assert.strictEqual(next.profiles[1], base.profiles[1]);
+  assert.strictEqual(next.settings, base.settings);
+  assert.strictEqual(next.schedules, base.schedules);
+  assert.equal(base.profiles[0].dns, '');
+});
+
+test('configuration projection reads staged option deletions, not stale section properties', () => {
+  const rows = { profile: [{ '.name': 'alex', name: 'Alex', enabled: '1', dns: '1',
+    device: ['aa:bb:cc:00:00:01'], dns_protection: ['filter_lists'], dns_service: ['youtube'],
+    always_allowed: ['org.example.alarm'], screen_weekday: '30' }],
+    app: [{ '.name': 'draw', profile: 'alex', package: 'org.example.draw', minutes: '10', blocked: '1' }] };
+  const deleted = {};
+  const cfg = configurationFixture(rows, deleted);
+  const before = cfg.fromUci({ settings: { captain: 'alex' }, legacy_phones: [] });
+  deleted.alex = ['dns', 'device', 'dns_protection', 'dns_service', 'always_allowed', 'screen_weekday'];
+  deleted.draw = ['minutes', 'blocked'];
+  const after = cfg.fromUci(before);
+  assert.equal(after.profiles[0].dns, '');
+  for (const key of ['devices', 'protections', 'services', 'always_allowed']) assert.deepEqual(after.profiles[0][key], []);
+  assert.equal(after.profiles[0].screen_weekday, '');
+  assert.equal(after.apps[0].minutes, '');
+  assert.equal(after.apps[0].blocked, '');
+  assert.equal(after.profiles[0].enabled, '1');
+  assert.equal(rows.profile[0].dns, '1', 'native sections() retains old deleted-option properties');
+  assert.equal(before.profiles[0].dns, '1', 'do not mutate the exported baseline');
 });
