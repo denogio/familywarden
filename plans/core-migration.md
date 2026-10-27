@@ -643,7 +643,7 @@ from running during the legacy phase or against an ordinary configured router.
 The fixture prepares synthetic resolver settings before the root-only import;
 no public import method is added.
 
-The three tests exercise import, CLI apply/confirm plus browser projection, and
+The tests exercise import, CLI apply/confirm plus browser projection, and
 real authenticated LuCI pact creation/DNS enable/deferred disable. Browser RPC
 capture checks both FamilyWarden operations and UCI mutations (not just
 FamilyWarden calls). The current UCI projection must follow the core document,
@@ -658,6 +658,14 @@ tests pass in a fresh container. Package installation/removal smoke checks, synt
 passes independently; the phase guard skips all three without connecting to a
 router. Broader migration, mixed-version, physical-device and restoration gates
 remain open.
+
+A follow-up fourth owned-browser check forwards the real apply RPC, then restarts
+the daemon before delivering that response to LuCI. The real confirm RPC is
+refused (`no pending confirmation`); LuCI shows the failure and retains the unsaved
+form instead of reporting success or reloading it away. The confirmed document,
+revision and UCI projection are restored; page reload displays the restored name.
+All four owned checks pass together against the validated packages. This is a
+browser interruption gate, not another claim of full restoration coverage.
 
 ### Android request failure evidence
 

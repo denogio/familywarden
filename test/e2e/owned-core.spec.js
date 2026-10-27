@@ -80,6 +80,45 @@ test('an unrelated profile edit flows through apply, confirm and reload', async 
   await expect(page.getByText('Alex (verified)', { exact: true }).first()).toBeVisible();
 });
 
+test('lost confirmation restores the document and leaves the browser edit unsaved', async ({ page }) => {
+  const before = call('configuration_export').configuration;
+  const name = 'Alex (not confirmed)';
+  const operations = [];
+  let interrupted = false;
+  await page.route(/\/ubus(?:\/|$)/, async (route) => {
+    const body = route.request().postDataJSON();
+    const requests = Array.isArray(body) ? body : [body];
+    const methods = requests.filter((c) => c.params?.[1] === 'familywarden').map((c) => c.params[2]);
+    operations.push(...methods);
+    if (!methods.includes('configuration_apply')) return route.continue();
+    // Forward the real RPC, but interrupt between apply and browser confirmation.
+    // No API response is fabricated: restarting the daemon rolls the candidate back.
+    const response = await route.fetch();
+    const pending = call('configuration_export');
+    expect(pending.pending).toBe(true);
+    expect(pending.configuration.current.profiles.find((p) => p.id === 'alex').name).toBe(name);
+    fixture('restart');
+    interrupted = true;
+    await route.fulfill({ response });
+  });
+  await page.goto(`${FW_URL}/profiles?name=alex`);
+  const input = page.locator('#cbi-familywarden-alex-name input');
+  await input.fill(name);
+  await page.locator('li').filter({ hasText: /^Save & Apply$/ }).click();
+  await expect(page.getByText('Could not save the configuration: no pending confirmation', { exact: true })).toBeVisible();
+  expect(interrupted).toBe(true);
+  expect(operations.filter((m) => m === 'configuration_apply')).toHaveLength(1);
+  expect(operations.filter((m) => m === 'configuration_confirm')).toHaveLength(1);
+  await expect(input).toHaveValue(name);
+  const recovered = call('configuration_export');
+  expect(recovered.pending).toBe(false);
+  expect(recovered.configuration).toEqual(before);
+  const confirmedName = before.current.profiles.find((p) => p.id === 'alex').name;
+  expect(shell('uci -q get familywarden.alex.name').trim()).toBe(confirmedName);
+  await page.reload();
+  await expect(input).toHaveValue(confirmedName);
+});
+
 test('captain DNS during a pact is a cumulative, explicit transaction', async ({ page }) => {
   const calls = [];
   page.on('request', (r) => {
