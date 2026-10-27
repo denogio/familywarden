@@ -181,6 +181,24 @@ app** (D2/D3, parent phone may approve offline); a shared budget across a child'
 | A19 | Where configuration is stored | **Core-owned versioned store**, identical on every platform; a backup exports one file. The OpenWrt adapter migrates existing UCI once; afterwards LuCI uses the core API, not UCI | **Decided** (2026-10-24) |
 | A20 | Administrator UI | **One shared web UI** (plain HTML/JS, no heavy framework, own EN/DA i18n, scoped styles using host theme variables) talking only to the core API. Each platform wraps it natively: on OpenWrt a normal LuCI JS view mounts it and calls the core through `rpc.declare` -> rpcd shim -> core socket, so LuCI login/sessions/ACLs apply and no port or password is added. No iframe. Core changes apply immediately (no UCI Save & Apply), so changes that can lock out an administrator need their own confirm-and-rollback in the core. Existing LuCI pages are rewritten gradually as features move to Go. A core-served standalone mode (own login) remains possible later | **Decided** (2026-10-24) |
 
+## Adapter-ready completion criterion (A18 clarification, 2026-10-27)
+
+The user reaffirmed that the goal is a small, well-defined integration effort for
+another router such as pfSense or OPNsense, not merely Go-owned data on OpenWrt.
+A new adapter supplies platform facts, applies core-owned network intent and reports
+application results, with native lifecycle/authentication/UI integration. It must not
+reimplement profiles, schedule/pact semantics, manual action/bonus/grant eligibility,
+DNS policy or app decisions. Platform-specific firewall rendering may remain outside
+Go; shell elimination is not the criterion.
+
+The current migration does **not** meet this criterion yet. Owned policy/context
+still depend on the OpenWrt shell, and bonus/network actions/status contain product
+logic there. The source-backed progress inventory, R0–R7 migration order and acceptance
+checks live in [adapter-portability.md](adapter-portability.md), with execution tracked
+in [app-control-todo.md](app-control-todo.md). FreeBSD compilation is not a working
+pfSense/OPNsense integration. Do not build a speculative second adapter to hide an
+unfinished boundary; first make the production core usable without OpenWrt.
+
 ## Research: what is possible without Device Owner (2026-10-19)
 
 Commercial and open-source blockers without Device Owner (Opal, Qustodio, Kidslox,

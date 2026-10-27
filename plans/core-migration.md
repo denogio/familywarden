@@ -6,7 +6,38 @@ is the interim OpenWrt implementation and only shrinks. Decisions: `app-control.
 A6 (core owns identity/policy/DNS/apps), A18 (router-agnostic), A19 (core-owned store),
 A20 (shared UI embedded natively, on OpenWrt via a LuCI view + rpcd shim).
 
-## Order
+## Current completion status (2026-10-27)
+
+**Not adapter-ready yet.** Completion means a new router implements platform facts,
+network enforcement/application and native host integration, not another copy of
+FamilyWarden product rules. Go owning configuration on OpenWrt is necessary but
+not sufficient. The source-backed inventory, ordered R0–R7 backlog and acceptance
+checklist are in [Router adapter portability](adapter-portability.md).
+
+- **Implemented:** Go identity/requests/grants/usage; portable app-policy compilation
+  and AGH reconciliation; opt-in configuration/pact authority, CAS/recovery, document-
+  derived phone/app policy and LuCI CAS writes. These are not all production-deployed.
+- **Still mixed:** owned policy/context still call the shell; manual overrides,
+  additive network tickets, status evaluation and bonus rules remain shell-owned;
+  DNS lifecycle/state and protected release entry-point responsibilities remain split.
+- **Still OpenWrt-specific:** current daemon construction and adapter contracts require
+  more than platform facts/apply. UCI/nft/fw4/procd are legitimate adapter internals,
+  but the owned core/shared UI must not require them to run on another platform.
+- **Still unproven:** a production-service test without OpenWrt, a complete shared
+  administration surface, safe restore/mixed-version matrix and a real second adapter.
+  A successful FreeBSD cross-build is compile evidence only, not pfSense/OPNsense support.
+
+Next implementation slice: **R1, core-owned bonus first, then manual network actions
+and tickets**, migrating writers/readers together. R2 removes policy-shaped shell
+reads; R3 establishes portable network intent/applied-state semantics. Finishing
+OpenWrt test parity alone does not close these portability gaps. Production deployment
+and actual FreeBSD adapter implementation remain separate authorized work.
+
+The sections below retain chronological checkpoint evidence. Earlier statements about
+UCI/shell ownership describe that checkpoint; this summary and the linked audit define
+current migration status. No percentage or “migration done” claim is implied.
+
+## Original migration sequence (historical)
 
 | Step | Moves to the core | Stays in the shell meanwhile |
 |---|---|---|
@@ -17,10 +48,12 @@ A20 (shared UI embedded natively, on OpenWrt via a LuCI view + rpcd shim).
 | 5 | Optional: firewall compiler as a Go OpenWrt adapter; sail page | init/rpcd/LuCI wrappers |
 
 The existing seam for step 3/5: shell enforcement already reads only the effective
-config (`fw_load` → `/var/run/familywarden/familywarden`). The core will produce that;
-the adapter turns it into nftables. Other platforms get their own applier (pf).
+config (`fw_load` → `/var/run/familywarden/familywarden`). After explicit import,
+the Go OpenWrt adapter now materializes that config from the core document; the shell
+turns it into nftables. Portable network intent and the runtime product-state split
+remain R1–R3 work; a new platform must not reproduce the shell's product decisions.
 
-## Status
+## Step 1 checkpoint (historical)
 
 **Step 1 done (2026-10-24), subsequently deployed (see below).** Initial packages `familywarden` 0.11.0_rc1 (depends on)
 `familywarden-core` 0.2.0. Evidence: 321 router integration checks against the core-backed

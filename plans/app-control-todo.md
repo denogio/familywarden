@@ -1,13 +1,13 @@
 # App control — implementation backlog
 
 Branch: `feature/app-control`, based on `v0.9.1` (`dce92f4`).
-Status (2026-10-26): LAN app control, requests/grants, usage and new-app approval are
+Status (2026-10-27): LAN app control, requests/grants, usage and new-app approval are
 implemented and deployed. Optional Go configuration/pact authority, LuCI CAS writers
 and AGH reconciliation are implemented on this branch, not deployed; broader migration
 validation remains open. Off-home transport remains undecided. Phase evidence below includes historical checkpoints;
 see [core-migration.md](core-migration.md) for current ownership and deployment.
 
-## Current work and remaining scope (reconciled 2026-10-26)
+## Current work and remaining scope (reconciled 2026-10-27)
 
 Checkboxes track the stated implementation or validation item, not the whole product.
 An implemented feature is not automatically physically verified, deployed or released.
@@ -23,7 +23,7 @@ Historical test counts are evidence at that checkpoint, not current suite totals
 | P9 off-home | LAN notifications only | Transport decision, encryption/key distribution and off-home implementation/testing |
 | P10 Android | Child/adult status/history, scoped parent decisions and usage | Parent presentation split is implemented and preview-tested (#94); scoped child selection is implemented and preview-tested (#97); full parent controls remain |
 | P10 shared web | Existing LuCI pages and shared Requests module, now hardened/tested in neutral and LuCI hosts; control prototype reviewed | Production-wide shared presentation layer, core API integration, host adapter and EN/DA; prototype is not shipped code |
-| Core migration | Identity/requests/usage/new-apps; opt-in authoritative configuration/pacts, CAS/confirm/rollback, Settings/Profiles CAS; owned phone/app policy from the document; Go AGH reconciliation/catalogue | Remaining legacy paths and adapter facts, mixed-version/upgrade/interruption validation, imported amendment-window edge; not deployed (#91/P12) |
+| Core migration | Identity/requests/usage/new-apps; opt-in authoritative configuration/pacts, CAS/confirm/rollback, Settings/Profiles CAS; owned phone/app policy from the document; Go AGH reconciliation/catalogue | **Not adapter-ready:** shell-owned bonus/overrides/tickets/status, policy-shaped adapter reads, portable network intent/apply contract, DNS/release orchestration, platform construction/shared UI and P12 safety gates; owned configuration cutover not deployed (#91; [R0–R7](adapter-portability.md)) |
 | P11 adult pool | Existing pact enforcement, not the proposed pool | Final consumption/reset rules, ledger and pact-safe self-service |
 | P13 release validation | Same-key rc3/rc4 router+phone pilot and rc5 phone update | Release-wide security/compatibility/lifecycle acceptance for remaining scope; no blanket production rollout approval |
 
@@ -56,6 +56,35 @@ not permission to silently decide product behavior.
 - Do not restart the compatibility emulator by default. Use fast tests; group emulator
   checks into one run per major milestone. Physical tests require approval.
 - English documentation/default UI, full Danish Android localization, fictional fixtures.
+
+## Adapter-ready core completion gate (A18, clarified 2026-10-27)
+
+Migration is done when a new router supplies facts, applies core-owned enforcement
+intent and provides native service/auth/UI integration **without reimplementing
+product rules**. Passing OpenWrt tests or owning UCI's replacement data alone is
+not enough. Source evidence and dependencies: [adapter portability audit](adapter-portability.md).
+
+- [x] R0: audit active owned-mode and legacy dependencies; separate implementation,
+      portability, validation and deployment status without a speculative percentage.
+- [ ] R1: migrate bonus, manual overrides and additive network-ticket product state,
+      writers/readers and expiry/eligibility into core; start with bonus.
+- [ ] R2: replace owned policy-shaped `core-context`/`core-policy` reads with explicit
+      runtime/application facts; isolate legacy import in OpenWrt compatibility code.
+- [ ] R3: define portable network intent/status and applied-state/error semantics;
+      retain native nft rendering but remove independent shell product decisions.
+- [ ] R4: complete portable DNS lifecycle/state and protected-release orchestration;
+      retain native secret/auth/lifecycle integration and verification-before-ack.
+- [ ] R5: separate platform construction and finish shared core-backed administration
+      with thin host bridges (P10), not a new framework or standalone login.
+- [ ] R6: run the production service and shared UI against a recording/failing adapter
+      with no shell/UCI/ubus/fw4/OpenWrt paths, then preserve real OpenWrt parity.
+- [ ] R7: close P12 upgrade/import/interruption, compatibility and safe restore gates
+      before removing legacy paths or claiming production-cutover readiness.
+
+No pfSense/OPNsense adapter is implemented yet. The FreeBSD cross-build succeeds,
+but still selects OpenWrt and is not runtime support. Existing fake-adapter unit tests
+are useful evidence, not the completed R6 production-composition gate. Actual second-
+platform implementation and production deployment remain separate scope/authorization.
 
 ## Baseline and migration inventory
 
@@ -556,6 +585,9 @@ Depends on P6–P8 and existing pact compatibility.
 ## P12 — Migrate existing DNS/identity responsibilities safely
 
 Depends on P4/P5/P11. Move only responsibilities assigned to Go; this is not a rewrite mandate.
+P12 closes migration safety, not the whole router-agnostic architecture. The separate
+[adapter-ready R0–R7 gate](adapter-portability.md) also requires migrating runtime
+product decisions and proving a production service that does not depend on OpenWrt.
 
 - [ ] Preserve root-private secrets, approved devices, router keys, ClientIDs, ownership
       records, DNS acknowledgements and all pact snapshots.
