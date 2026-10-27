@@ -14,9 +14,9 @@ import (
 
 type bonusBackend struct{ *appBackend }
 
-func (b *bonusBackend) ConfigurationTransaction(fn func(rules.Configuration, platform.Context, func(rules.Configuration) error) error) error {
-	return b.fakeBackend.ConfigurationTransaction(func(c rules.Configuration, _ platform.Context, apply func(rules.Configuration) error) error {
-		return fn(c, b.facts, apply)
+func (b *bonusBackend) ConfigurationTransaction(fn func(rules.Configuration, platform.Context, map[string]platform.NetworkOverride, func(rules.Configuration, platform.NetworkIntent) error) error) error {
+	return b.fakeBackend.ConfigurationTransaction(func(c rules.Configuration, _ platform.Context, overrides map[string]platform.NetworkOverride, apply func(rules.Configuration, platform.NetworkIntent) error) error {
+		return fn(c, b.facts, overrides, apply)
 	})
 }
 

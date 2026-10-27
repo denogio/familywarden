@@ -20,10 +20,13 @@ checklist are in [Router adapter portability](adapter-portability.md).
 - **Still mixed:** owned policy/context no longer read policy-shaped shell output: the
   versioned `core-facts` envelope (handshakes, timezone, captains, profile presence,
   volatile override/verified DNS) feeds the document-derived `AppContext`/`PhonePolicy`
-  (latest core r14/backend rc10-r11). Bonus and manual network/grant-repair, owned
-  pact-permit revocation and the status/expiry report run in core. Network RAM
-  storage and native apply remain adapter-backed. Shell still owns the legacy status
-  path and expiry/cache cleanup; DNS lifecycle/state and protected release
+  (facts introduced in core r14/backend rc10-r11). Bonus and manual network/grant-repair,
+  owned pact-permit revocation, status/expiry and ordered network intent run in core.
+  Core r15/backend rc10-r12 stages `network-intent-v1`, rendered by the Go OpenWrt
+  adapter; shell retains LAN discovery, validation and fw4 apply, not owned product
+  eligibility or expiry GC. Intent IDs/revisions bind the synchronous apply receipt;
+  `network_application` reports acknowledgement, not live dataplane verification.
+  DNS lifecycle/state and protected release
   entry-point responsibilities remain split.
 - **Still OpenWrt-specific:** current daemon construction and adapter contracts require
   more than platform facts/apply. UCI/nft/fw4/procd are legitimate adapter internals,
@@ -32,15 +35,14 @@ checklist are in [Router adapter portability](adapter-portability.md).
   administration and safe restore/mixed-version matrix. No second-router implementation
   or cross-platform build is a current workstream or prerequisite for this migration.
 
-Next implementation slice: **R3 portable network intent/applied-state semantics**
-(retain native nft rendering, remove independent shell product decisions). R2 is
-complete: the owned `Context`/`Policy`/`WithContext` and `configuration_bonus_read`
-paths read the versioned `core-facts` runtime envelope instead of
-`core-context`/`core-policy`; legacy mode keeps the shell as policy owner. R1b passed
-its focused checks (13 bonus, 34 network, 42 pact-network, 22 status), R2 passes 11
-new `core-facts` checks plus focused Go/race and adapter facts checks. No full
-browser e2e, emulator run or deployment for these slices. OpenWrt test parity alone
-does not close the remaining boundaries. No other router is being implemented.
+Next implementation slice: **R4 DNS lifecycle/state and protected-release orchestration**.
+R2's runtime facts and R3's portable ordered network intent/exact apply acknowledgement
+are implemented. Configuration/network apply and recovery receive core-computed intents
+under the existing locks; the owned native renderer does not reconstruct eligibility
+from UCI or RAM. Legacy mode keeps the shell as policy owner. Evidence and explicit
+limits (including the existing fw4 reload gap and acknowledgement versus live
+verification) are recorded in [adapter-portability.md](adapter-portability.md).
+OpenWrt test parity alone does not close R4–R7. No other router is being implemented.
 
 The sections below retain chronological checkpoint evidence. Earlier statements about
 UCI/shell ownership describe that checkpoint; this summary and the linked audit define
@@ -65,8 +67,9 @@ not the default per edit. Details and R1a evidence: [adapter-portability.md](ada
 The existing seam for step 3/5: shell enforcement already reads only the effective
 config (`fw_load` → `/var/run/familywarden/familywarden`). After explicit import,
 the Go OpenWrt adapter now materializes that config from the core document; the shell
-turns it into nftables. Portable network intent and the runtime product-state split
-remain R1–R3 work; a new platform must not reproduce the shell's product decisions.
+used to turn it into nftables. Since R3, owned nft rendering instead consumes the
+core's ordered network intent; the UCI projection remains for interim facts/host views.
+A new platform must not reproduce the shell's legacy product decisions.
 
 ## Step 1 checkpoint (historical)
 

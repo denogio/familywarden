@@ -70,7 +70,7 @@ func profileNetworkRow(c rules.Configuration, effective rules.ConfigurationData,
 	if err != nil {
 		return nil, err
 	}
-	allowed := effective.Settings.Enabled != "1"
+	allowed := or(effective.Settings.Enabled, "1") != "1"
 	if !allowed {
 		switch s.Mode {
 		case "allow":
@@ -163,7 +163,7 @@ func (a *Authority) networkReport(d document, single *string) (map[string]any, e
 		for _, p := range effective.Profiles {
 			assigned = append(assigned, p.Devices...)
 		}
-		configuration := map[string]any{"enabled": effective.Settings.Enabled == "1",
+		configuration := map[string]any{"enabled": or(effective.Settings.Enabled, "1") == "1",
 			"default_policy": or(effective.Settings.DefaultPolicy, "allow"), "captain": Captain(d.Configuration, now),
 			"delay_hours": or(effective.Settings.DelayHours, "24"), "assigned_devices": assigned}
 		if Active(d.Configuration.Pact, now) {

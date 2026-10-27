@@ -76,9 +76,9 @@ func (f *fakeBackend) WithContext(fn func(platform.Context) error) error {
 	c, _ := f.Context()
 	return fn(c)
 }
-func (f *fakeBackend) ConfigurationTransaction(fn func(rules.Configuration, platform.Context, func(rules.Configuration) error) error) error {
+func (f *fakeBackend) ConfigurationTransaction(fn func(rules.Configuration, platform.Context, map[string]platform.NetworkOverride, func(rules.Configuration, platform.NetworkIntent) error) error) error {
 	c, _ := f.Context()
-	return fn(clone(f.current), c, func(next rules.Configuration) error {
+	return fn(clone(f.current), c, f.networkMap(), func(next rules.Configuration, _ platform.NetworkIntent) error {
 		f.applies++
 		if f.fail > 0 {
 			f.fail--
@@ -88,13 +88,17 @@ func (f *fakeBackend) ConfigurationTransaction(fn func(rules.Configuration, plat
 		return nil
 	})
 }
-func (f *fakeBackend) NetworkTransaction(id string, fn func(platform.Context, platform.NetworkOverride, func(platform.NetworkOverride) error) error) error {
-	c, _ := f.Context()
-	current, ok := f.network[id]
-	if !ok {
-		current.Mode = "none"
+func (f *fakeBackend) networkMap() map[string]platform.NetworkOverride {
+	m := map[string]platform.NetworkOverride{}
+	for id, s := range f.network {
+		m[id] = s
 	}
-	return fn(c, current, func(next platform.NetworkOverride) error {
+	return m
+}
+func (f *fakeBackend) NetworkTransaction(id string, fn func(platform.Context, map[string]platform.NetworkOverride, func(platform.NetworkOverride, platform.NetworkIntent, platform.NetworkIntent) error) error) error {
+	c, _ := f.Context()
+	m := f.networkMap()
+	return fn(c, m, func(next platform.NetworkOverride, _, _ platform.NetworkIntent) error {
 		f.networkApplies++
 		if f.networkFail {
 			return errors.New("network apply failed")

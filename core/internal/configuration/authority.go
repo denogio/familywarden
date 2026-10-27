@@ -27,13 +27,18 @@ type Storage interface {
 
 // Backend owns platform locking, import and projection, not product decisions.
 // apply runs synchronously inside the same transaction as the callback, with
-// ticket-before-state lock order and no callback into the core socket.
+// ticket-before-state lock order and no callback into the core socket. The
+// callbacks also receive the platform's volatile override map so the core can
+// compute the renderer-ready NetworkIntent that apply stages with the
+// projected configuration.
 type Backend interface {
-	ConfigurationTransaction(func(rules.Configuration, platform.Context, func(rules.Configuration) error) error) error
+	ConfigurationTransaction(func(rules.Configuration, platform.Context, map[string]platform.NetworkOverride, func(rules.Configuration, platform.NetworkIntent) error) error) error
 	// NetworkTransaction serializes a volatile override snapshot through apply.
-	// A failed apply attempts to restore previous state/enforcement and reports
+	// apply receives the new override, the intent for the post-change state and
+	// the intent for the pre-change state (restored when the apply fails). A
+	// failed apply attempts to restore previous state/enforcement and reports
 	// failure (including restoration errors), never success.
-	NetworkTransaction(string, func(platform.Context, platform.NetworkOverride, func(platform.NetworkOverride) error) error) error
+	NetworkTransaction(string, func(platform.Context, map[string]platform.NetworkOverride, func(platform.NetworkOverride, platform.NetworkIntent, platform.NetworkIntent) error) error) error
 	// NetworkSnapshot serializes a read of the platform's volatile network state
 	// and facts with the platform's writers. The callback receives one consistent
 	// snapshot and must not call the adapter again.
@@ -61,7 +66,8 @@ type Authority struct {
 	mu      sync.Mutex
 	Now     func() time.Time
 	timer   *time.Timer
-	blocked error // uncertain persistence/apply requires restart reconciliation, never legacy fallback
+	blocked error               // uncertain persistence/apply requires restart reconciliation, never legacy fallback
+	applied *networkApplication // process-local acknowledgement, never a live dataplane verification
 }
 
 func New(ad platform.Adapter, backend Backend, st Storage) (*Authority, error) {
@@ -78,7 +84,7 @@ func New(ad platform.Adapter, backend Backend, st Storage) (*Authority, error) {
 		d.Configuration = d.Pending.Before
 		d.Pending = nil
 	}
-	if err := a.backend.ConfigurationTransaction(func(_ rules.Configuration, facts platform.Context, apply func(rules.Configuration) error) error {
+	if err := a.backend.ConfigurationTransaction(func(_ rules.Configuration, facts platform.Context, overrides map[string]platform.NetworkOverride, apply func(rules.Configuration, platform.NetworkIntent) error) error {
 		if facts.BonusFormat != bonusFormat {
 			return errors.New("incompatible bonus adapter: upgrade core and backend together")
 		}
@@ -89,7 +95,11 @@ func New(ad platform.Adapter, backend Backend, st Storage) (*Authority, error) {
 				return err
 			}
 		}
-		if err := apply(d.Configuration); err != nil {
+		intent, err := a.intentFor(d.Configuration, facts, overrides)
+		if err != nil {
+			return err
+		}
+		if err := a.applyConfiguration(apply, d.Configuration, intent); err != nil {
 			return err
 		}
 		d.NeedsApply = false
@@ -189,13 +199,17 @@ func (a *Authority) refresh() error {
 	if !changed {
 		return nil
 	}
-	return a.backend.ConfigurationTransaction(func(_ rules.Configuration, _ platform.Context, apply func(rules.Configuration) error) error {
+	return a.backend.ConfigurationTransaction(func(_ rules.Configuration, facts platform.Context, overrides map[string]platform.NetworkOverride, apply func(rules.Configuration, platform.NetworkIntent) error) error {
 		d.NeedsApply = true
 		if err := a.save(d); err != nil {
 			a.blocked = err
 			return err
 		}
-		if err := apply(d.Configuration); err != nil {
+		intent, err := a.intentFor(d.Configuration, facts, overrides)
+		if err != nil {
+			return err
+		}
+		if err := a.applyConfiguration(apply, d.Configuration, intent); err != nil {
 			a.blocked = err
 			return err
 		}
@@ -407,6 +421,33 @@ func (a *Authority) at(facts platform.Context) time.Time {
 	return a.Now().In(loc)
 }
 
+// intentFor computes the renderer-ready network intent for a configuration at
+// the platform's current time, with the given volatile overrides.
+func (a *Authority) intentFor(c rules.Configuration, facts platform.Context, overrides map[string]platform.NetworkOverride) (platform.NetworkIntent, error) {
+	return BuildNetworkIntent(c, a.at(facts), overrides)
+}
+
+// Acknowledgements are deliberately volatile: startup must reconcile again.
+// They describe the exact last native apply, not live rule/phone verification.
+type networkApplication struct {
+	State    string `json:"state"`
+	IntentID string `json:"intent_id"`
+	Revision string `json:"revision"`
+	At       int64  `json:"acknowledged_at"`
+}
+
+func (a *Authority) acknowledgeNetwork(i platform.NetworkIntent) {
+	a.applied = &networkApplication{State: "acknowledged", IntentID: i.ID, Revision: i.Revision, At: a.Now().Unix()}
+}
+
+func (a *Authority) applyConfiguration(apply func(rules.Configuration, platform.NetworkIntent) error, c rules.Configuration, i platform.NetworkIntent) error {
+	if err := apply(c, i); err != nil {
+		return err
+	}
+	a.acknowledgeNetwork(i)
+	return nil
+}
+
 func (a *Authority) API(method string, raw []byte) map[string]any {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -424,7 +465,11 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 		if found {
 			owner = "core"
 		}
-		return map[string]any{"owner": owner}
+		result := map[string]any{"owner": owner}
+		if found {
+			result["network_application"] = a.applied
+		}
+		return result
 	case "configuration_block", "configuration_allow", "configuration_reset", "configuration_ticket":
 		if !found {
 			return fail(errors.New("configuration import required"))
@@ -517,7 +562,7 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 			return fail(err)
 		}
 		var imported rules.Configuration
-		err := a.backend.ConfigurationTransaction(func(c rules.Configuration, facts platform.Context, apply func(rules.Configuration) error) error {
+		err := a.backend.ConfigurationTransaction(func(c rules.Configuration, facts platform.Context, overrides map[string]platform.NetworkOverride, apply func(rules.Configuration, platform.NetworkIntent) error) error {
 			if err := Validate(c); err != nil {
 				return err
 			}
@@ -537,7 +582,11 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 			if err := a.save(d); err != nil {
 				return err
 			}
-			if err := apply(c); err != nil {
+			intent, err := a.intentFor(c, facts, overrides)
+			if err != nil {
+				return err
+			}
+			if err := a.applyConfiguration(apply, c, intent); err != nil {
 				return err
 			}
 			d.NeedsApply = false
@@ -576,7 +625,7 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 		}
 		var pending *pendingChange
 		attempted := false
-		err := a.backend.ConfigurationTransaction(func(_ rules.Configuration, facts platform.Context, apply func(rules.Configuration) error) error {
+		err := a.backend.ConfigurationTransaction(func(_ rules.Configuration, facts platform.Context, overrides map[string]platform.NetworkOverride, apply func(rules.Configuration, platform.NetworkIntent) error) error {
 			if err := ValidateEdit(d.Configuration, &next, a.at(facts)); err != nil {
 				return err
 			}
@@ -592,8 +641,16 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 			if err := a.save(candidate); err != nil {
 				return err
 			}
-			if err := apply(next); err != nil {
-				if restore := apply(d.Configuration); restore != nil {
+			intent, err := a.intentFor(next, facts, overrides)
+			if err != nil {
+				return err
+			}
+			restoreIntent, err := a.intentFor(d.Configuration, facts, overrides)
+			if err != nil {
+				return err
+			}
+			if err := a.applyConfiguration(apply, next, intent); err != nil {
+				if restore := a.applyConfiguration(apply, d.Configuration, restoreIntent); restore != nil {
 					return fmt.Errorf("apply failed; recovery required: %w", restore)
 				}
 				if restore := a.save(d); restore != nil {
@@ -646,8 +703,12 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 		if !found {
 			return fail(errors.New("configuration import required"))
 		}
-		err := a.backend.ConfigurationTransaction(func(_ rules.Configuration, _ platform.Context, apply func(rules.Configuration) error) error {
-			return apply(d.Configuration)
+		err := a.backend.ConfigurationTransaction(func(_ rules.Configuration, facts platform.Context, overrides map[string]platform.NetworkOverride, apply func(rules.Configuration, platform.NetworkIntent) error) error {
+			intent, err := a.intentFor(d.Configuration, facts, overrides)
+			if err != nil {
+				return err
+			}
+			return a.applyConfiguration(apply, d.Configuration, intent)
 		})
 		if err != nil {
 			a.blocked = err
@@ -663,7 +724,7 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 		}
 		next := d.Configuration
 		attempted := false
-		err := a.backend.ConfigurationTransaction(func(_ rules.Configuration, facts platform.Context, apply func(rules.Configuration) error) error {
+		err := a.backend.ConfigurationTransaction(func(_ rules.Configuration, facts platform.Context, overrides map[string]platform.NetworkOverride, apply func(rules.Configuration, platform.NetworkIntent) error) error {
 			if err := PactOperation(method, raw, &next, a.at(facts)); err != nil {
 				return err
 			}
@@ -679,8 +740,16 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 			if err := a.save(document{Version: 1, Configuration: next, NeedsApply: true, Bonus: d.Bonus}); err != nil {
 				return err
 			}
-			if err := apply(next); err != nil {
-				if restore := apply(d.Configuration); restore != nil {
+			intent, err := a.intentFor(next, facts, overrides)
+			if err != nil {
+				return err
+			}
+			restoreIntent, err := a.intentFor(d.Configuration, facts, overrides)
+			if err != nil {
+				return err
+			}
+			if err := a.applyConfiguration(apply, next, intent); err != nil {
+				if restore := a.applyConfiguration(apply, d.Configuration, restoreIntent); restore != nil {
 					return restore
 				}
 				if restore := a.save(d); restore != nil {

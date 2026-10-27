@@ -17,6 +17,96 @@ type NetworkOverride struct {
 	Expires int64  `json:"expires"`
 }
 
+// NetworkIntent is the versioned, renderer-ready description of the desired
+// firewall state. The core computes it from its authoritative document plus
+// the platform's volatile overrides; the adapter renders and applies it
+// (native rule syntax, atomic apply, validation) without re-deriving
+// eligibility. Every product decision the native renderer used to make from
+// UCI/RAM/pact files lives in the core; a renderer may only translate these
+// fields into its platform's rule syntax.
+const NetworkIntentFormat = "network-intent-v1"
+
+type NetworkIntent struct {
+	Format   string `json:"format"`
+	ID       string `json:"id"`
+	Revision string `json:"revision"`
+	// Enabled is the global toggle after any pact freeze; false keeps the
+	// platform's chains but with no rules.
+	Enabled bool `json:"enabled"`
+	// DefaultPolicy is "allow" or "block" (never empty): what to do with
+	// forwarded LAN traffic from MACs not assigned to any profile.
+	DefaultPolicy string          `json:"default_policy"`
+	AssignedMACs  []string        `json:"assigned_macs"`
+	Profiles      []ProfileIntent `json:"profiles"`
+	// Ordered decisions; adapters translate these without policy eligibility checks.
+	Forward []NetworkRule `json:"forward"`
+	Router  []NetworkRule `json:"router"`
+	// Tickets are the only active timed allows; the platform enforces them
+	// with native expiry (e.g. a timeout set) and derives the remaining
+	// seconds from Expires at render time.
+	Tickets []TicketIntent `json:"tickets"`
+	// Captain is set only when the core has decided the router must be in
+	// Ulysses lockdown right now; nil means an empty lockdown chain.
+	Captain *CaptainIntent `json:"captain,omitempty"`
+}
+
+// ProfileIntent is one profile's renderer slice. Override is the permanent
+// classification decided by the core: "none", "allow" (no deadline) or
+// "block"; timed allows are Tickets, never here. Windows are the profile's
+// allow windows; a scheduled profile with no windows is blocked 24/7.
+type ProfileIntent struct {
+	ID          string   `json:"id"`
+	Enabled     bool     `json:"enabled"`
+	Policy      string   `json:"policy"`
+	BlockRouter bool     `json:"block_router"`
+	Devices     []string `json:"devices"`
+	Override    string   `json:"override"`
+	Windows     []Window `json:"windows"`
+}
+
+// NetworkRule is an ordered decision for a set of source devices. Windows
+// constrain an accept; no windows means unconditional. Router rules use TCP
+// only; Recovery exempts the protected-release service from a router drop.
+type NetworkRule struct {
+	Profile  string   `json:"profile"`
+	Devices  []string `json:"devices"`
+	Windows  []Window `json:"windows,omitempty"`
+	Action   string   `json:"action"`
+	Reason   string   `json:"reason"`
+	Recovery bool     `json:"recovery,omitempty"`
+}
+
+type TicketIntent struct {
+	Mac     string `json:"mac"`
+	Expires int64  `json:"expires"`
+}
+
+// CaptainIntent is the renderer slice of an active Ulysses lockdown. Devices
+// lists the captain's MACs; Windows (possibly empty) are the allow windows the
+// renderer must accept inside the lockdown chain for any source. PactType is
+// "until" or "ongoing": Until (epoch, 0 for ongoing) bounds the until-pact
+// drop, and WindowDay/WindowStart/WindowStop are the ongoing amendment window.
+type CaptainIntent struct {
+	ID          string   `json:"id"`
+	Devices     []string `json:"devices"`
+	Windows     []Window `json:"windows"`
+	PactType    string   `json:"pact_type"`
+	Until       int64    `json:"until"`
+	WindowDay   string   `json:"window_day"`
+	WindowStart string   `json:"window_start"`
+	WindowStop  string   `json:"window_stop"`
+}
+
+// Window is one schedule entry in renderer-ready form: lowercase three-letter
+// day names, HH:MM boundaries. start==stop allows the whole listed days;
+// start>stop crosses midnight onto the following days; 24:00 is a valid
+// exclusive stop. Native boundary translation is the renderer's job.
+type Window struct {
+	Days  []string `json:"days"`
+	Start string   `json:"start"`
+	Stop  string   `json:"stop"`
+}
+
 // Profile is what the core needs to know about a profile it does not own yet.
 type Profile struct {
 	Name     string           `json:"name"`
@@ -31,8 +121,9 @@ type Profile struct {
 
 // Context is one consistent snapshot of platform state.
 type Context struct {
-	NetworkFormat     string `json:"network_format,omitempty"`
-	PactNetworkFormat string `json:"pact_network_format,omitempty"`
+	NetworkIntentFormat string `json:"network_intent_format,omitempty"`
+	NetworkFormat       string `json:"network_format,omitempty"`
+	PactNetworkFormat   string `json:"pact_network_format,omitempty"`
 	// Legacy bonus import is a versioned snapshot under the configuration lock.
 	// Empty input is meaningful only when BonusFormat explicitly matches.
 	BonusFormat string `json:"bonus_format,omitempty"`

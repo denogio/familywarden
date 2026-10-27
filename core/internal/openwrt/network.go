@@ -128,6 +128,13 @@ func (a Adapter) mastSeenFile() string {
 	return "/tmp/familywarden.mast"
 }
 
+func (a Adapter) networkIntentFile() string {
+	if a.IntentFile != "" {
+		return a.IntentFile
+	}
+	return "/var/run/familywarden/network-intent"
+}
+
 func readNetworkFile(path string) ([]byte, bool, error) {
 	raw, err := os.ReadFile(path)
 	absent := os.IsNotExist(err)
@@ -247,7 +254,7 @@ func (a Adapter) projectPactPermit(c rules.Configuration, now time.Time) (func()
 
 // NetworkTransaction keeps RAM persistence, native firewall application and its
 // acknowledgement under the same locks as all participating legacy writers.
-func (a Adapter) NetworkTransaction(profile string, fn func(platform.Context, platform.NetworkOverride, func(platform.NetworkOverride) error) error) error {
+func (a Adapter) NetworkTransaction(profile string, fn func(platform.Context, map[string]platform.NetworkOverride, func(platform.NetworkOverride, platform.NetworkIntent, platform.NetworkIntent) error) error) error {
 	if profile == "" || strings.ContainsAny(profile, ".=\r\n") {
 		return fmt.Errorf("invalid network profile")
 	}
@@ -257,7 +264,7 @@ func (a Adapter) NetworkTransaction(profile string, fn func(platform.Context, pl
 		if err != nil {
 			return err
 		}
-		current, err := readOverride(raw, profile)
+		overrides, err := readAllOverrides(raw)
 		if err != nil {
 			return err
 		}
@@ -265,39 +272,46 @@ func (a Adapter) NetworkTransaction(profile string, fn func(platform.Context, pl
 		if err := a.runLocked(&facts, state, "core-network-facts"); err != nil {
 			return err
 		}
-		compile := func() error {
+		if facts.NetworkIntentFormat != platform.NetworkIntentFormat {
+			return fmt.Errorf("incompatible network intent adapter: upgrade core and backend together")
+		}
+		compile := func(intent platform.NetworkIntent) error {
+			if err := a.stageIntent(intent); err != nil {
+				return err
+			}
 			var reply struct {
-				Status string `json:"status"`
+				Status   string `json:"status"`
+				IntentID string `json:"intent_id"`
 			}
 			if err := a.runFiles(&reply, []*os.File{state, ticket}, "core-apply-network"); err != nil {
 				return err
 			}
-			if reply.Status != "ok" {
+			if reply.Status != "ok" || reply.IntentID != intent.ID {
 				return fmt.Errorf("network apply not acknowledged")
 			}
 			return nil
 		}
-		apply := func(next platform.NetworkOverride) error {
+		apply := func(next platform.NetworkOverride, intent, restore platform.NetworkIntent) error {
 			// Validate the output representation, not the core's policy decision.
 			if (next.Mode != "none" && next.Mode != "allow" && next.Mode != "block") || next.Expires < 0 {
 				return fmt.Errorf("invalid network intent")
 			}
 			err := replaceFile(path, renderOverride(raw, profile, next))
 			if err == nil {
-				err = compile()
+				err = compile(intent)
 			}
 			if err != nil {
-				restore := restoreNetworkFile(path, raw, absent)
-				if restore == nil {
-					restore = compile() // Restore prior enforcement, never retry the requested change.
+				restored := restoreNetworkFile(path, raw, absent)
+				if restored == nil {
+					restored = compile(restore) // Restore prior enforcement, never retry the requested change.
 				}
-				if restore != nil {
-					return fmt.Errorf("network apply failed (%v); restore failed: %w", err, restore)
+				if restored != nil {
+					return fmt.Errorf("network apply failed (%v); restore failed: %w", err, restored)
 				}
 				return err
 			}
 			return nil
 		}
-		return fn(facts, current, apply)
+		return fn(facts, overrides, apply)
 	})
 }

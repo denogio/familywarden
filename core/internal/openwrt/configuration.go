@@ -2,6 +2,7 @@ package openwrt
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,7 +18,7 @@ const pactNetworkFormat = "pact-network-v1"
 
 // ConfigurationTransaction retains ticket/state descriptors across import,
 // durable core writes and the stateless projection/apply command.
-func (a Adapter) ConfigurationTransaction(fn func(rules.Configuration, platform.Context, func(rules.Configuration) error) error) error {
+func (a Adapter) ConfigurationTransaction(fn func(rules.Configuration, platform.Context, map[string]platform.NetworkOverride, func(rules.Configuration, platform.NetworkIntent) error) error) error {
 	// ponytail: the OpenWrt projection uses its procd layout. Refuse custom
 	// data paths rather than let a second ownership marker silently diverge.
 	if a.ConfigFile != "" && a.ConfigFile != "/etc/familywarden/core/configuration.json" {
@@ -37,10 +38,14 @@ func (a Adapter) ConfigurationTransaction(fn func(rules.Configuration, platform.
 		if err := a.runLocked(&facts, state, "core-configuration-facts"); err != nil {
 			return err
 		}
-		if facts.PactNetworkFormat != pactNetworkFormat {
+		if facts.PactNetworkFormat != pactNetworkFormat || facts.NetworkIntentFormat != platform.NetworkIntentFormat {
 			return fmt.Errorf("incompatible pact network adapter: upgrade core and backend together")
 		}
-		apply := func(c rules.Configuration) error {
+		overrides, err := a.stateOverrides()
+		if err != nil {
+			return err
+		}
+		apply := func(c rules.Configuration, intent platform.NetworkIntent) error {
 			undo, err := a.projectPactPermit(c, time.Now())
 			if err != nil {
 				return err
@@ -49,13 +54,17 @@ func (a Adapter) ConfigurationTransaction(fn func(rules.Configuration, platform.
 				if err := a.materialize(c, facts.TimeZone); err != nil {
 					return err
 				}
+				if err := a.stageIntent(intent); err != nil {
+					return err
+				}
 				var reply struct {
-					Status string `json:"status"`
+					Status   string `json:"status"`
+					IntentID string `json:"intent_id"`
 				}
 				if err := a.runFiles(&reply, []*os.File{state, ticket}, "core-apply-configuration", pactNetworkFormat); err != nil {
 					return err
 				}
-				if reply.Status != "ok" {
+				if reply.Status != "ok" || reply.IntentID != intent.ID {
 					return fmt.Errorf("configuration apply not acknowledged")
 				}
 				return nil
@@ -67,8 +76,43 @@ func (a Adapter) ConfigurationTransaction(fn func(rules.Configuration, platform.
 			}
 			return err
 		}
-		return fn(current, facts, apply)
+		return fn(current, facts, overrides, apply)
 	})
+}
+
+// stateOverrides reads the adapter's own volatile RAM under the held state
+// lock. It is platform access, not a product decision: the core computes the
+// intent from this raw map.
+func (a Adapter) stateOverrides() (map[string]platform.NetworkOverride, error) {
+	raw, absent, err := readNetworkFile(a.networkStateFile())
+	if err != nil {
+		return nil, err
+	}
+	if absent {
+		return map[string]platform.NetworkOverride{}, nil
+	}
+	return readAllOverrides(raw)
+}
+
+// stageIntent atomically publishes the core's renderer-ready intent next to
+// the materialized projection. The owned native apply renders it; a missing
+// or foreign-format file fails the compile closed.
+func (a Adapter) stageIntent(intent platform.NetworkIntent) error {
+	if intent.Format != platform.NetworkIntentFormat {
+		return fmt.Errorf("invalid network intent format %q", intent.Format)
+	}
+	data, err := json.MarshalIndent(&intent, "", "  ")
+	if err != nil {
+		return err
+	}
+	native, err := renderNetworkIntent(intent, time.Now())
+	if err != nil {
+		return err
+	}
+	if err := replaceFile(a.networkIntentFile(), append(data, '\n')); err != nil {
+		return err
+	}
+	return replaceFile(a.networkIntentFile()+".nft", native)
 }
 
 func q(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }

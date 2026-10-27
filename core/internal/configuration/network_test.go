@@ -93,10 +93,10 @@ func TestNetworkTicketDeadlineOverflowIsRefused(t *testing.T) {
 
 type oldNetworkBackend struct{ *fakeBackend }
 
-func (b *oldNetworkBackend) NetworkTransaction(id string, fn func(platform.Context, platform.NetworkOverride, func(platform.NetworkOverride) error) error) error {
-	return b.fakeBackend.NetworkTransaction(id, func(c platform.Context, s platform.NetworkOverride, apply func(platform.NetworkOverride) error) error {
+func (b *oldNetworkBackend) NetworkTransaction(id string, fn func(platform.Context, map[string]platform.NetworkOverride, func(platform.NetworkOverride, platform.NetworkIntent, platform.NetworkIntent) error) error) error {
+	return b.fakeBackend.NetworkTransaction(id, func(c platform.Context, overrides map[string]platform.NetworkOverride, apply func(platform.NetworkOverride, platform.NetworkIntent, platform.NetworkIntent) error) error {
 		c.NetworkFormat = ""
-		return fn(c, s, apply)
+		return fn(c, overrides, apply)
 	})
 }
 

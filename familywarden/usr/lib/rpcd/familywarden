@@ -1049,6 +1049,31 @@ gen_profile_scheduled() {
     done
 }
 
+# Only interface discovery and native application remain here in owned mode.
+# Missing/foreign intent must retain the last include, never fall back to UCI.
+generate_intent_include() {
+    local native="/var/run/familywarden/network-intent.nft" first lan escaped
+    [ -f "$native" ] || return 1
+    IFS= read -r first < "$native"
+    [ "$first" = '# network-intent-v1' ] || return 1
+    _network_intent_id=$(sed -n '2s/^# intent-id //p' "$native")
+    [ "${#_network_intent_id}" = 64 ] || return 1
+    case "$_network_intent_id" in *[!0-9a-f]*) return 1;; esac
+    mkdir -p "$(dirname "$FW_INCLUDE")" || return 1
+    lan=$(lan_devices | sed 's/.*/"&"/' | tr '\n' ',' | sed 's/,$//; s/,/, /g')
+    if [ -z "$lan" ]; then
+        # Do not acknowledge a default-block policy that was not rendered.
+        if grep -q '@FAMILYWARDEN_LAN@' "$native"; then
+            logger -t familywarden "network intent: LAN devices unavailable"
+            return 1
+        fi
+        cp "$native" "$FW_INCLUDE_NEW"
+    else
+        escaped=$(printf '%s' "$lan" | sed 's/[\\&|]/\\&/g')
+        sed "s|@FAMILYWARDEN_LAN@|$escaped|g" "$native" > "$FW_INCLUDE_NEW"
+    fi
+}
+
 compile_and_apply() {
     if [ "$1" = held-v1 ]; then
         _compile_and_apply_locked 200>&3
@@ -1064,12 +1089,19 @@ _compile_and_apply_locked() (
 
         # GC expired tickets/pacts, then resolve Ulysses locks into the
         # effective config that everything below reads
-        gc_expired_tickets
-        gc_pact
+        if ! configuration_owned; then
+            gc_expired_tickets
+            gc_pact
+        fi
         ulysses_sync || { echo '{"error":"effective policy compilation failed"}'; return 1; }
 
-        # Generate the new include file
-        generate_include
+        # Owned mode receives native rules translated from the core's intent.
+        # Never reconstruct eligibility from the materialized UCI/RAM files.
+        if configuration_owned; then
+            generate_intent_include || { echo '{"error":"network intent unavailable"}'; return 1; }
+        else
+            generate_include
+        fi
 
         # Validate syntax before applying. The include is an fw4 fragment
         # (chain decls, no table), so wrap it in table context for nft -c.
@@ -1093,7 +1125,7 @@ EOF
         rm -f /tmp/fw_validation_err
 
         # Atomic swap
-        mv "$FW_INCLUDE_NEW" "$FW_INCLUDE"
+        mv "$FW_INCLUDE_NEW" "$FW_INCLUDE" || { echo '{"error":"include activation failed"}'; return 1; }
 
         # Drop any pre-existing chain so fw4 recreates it cleanly from the
         # include. Without this, fw4 reload errors ("chain already exists with
@@ -1112,7 +1144,11 @@ EOF
         # table, so rules are idempotent and survive reboot.
         fw4 reload 2>/dev/null || { echo '{"error":"firewall reload failed"}'; return 1; }
 
-        echo '{"status":"ok"}'
+        if configuration_owned; then
+            printf '{"status":"ok","intent_id":"%s"}\n' "$_network_intent_id"
+        else
+            echo '{"status":"ok"}'
+        fi
 )
 
 # ---- Ubus handlers ----
@@ -2388,6 +2424,7 @@ EOF
         json_init
         json_add_string timezone "$(uci -q get system.@system[0].zonename)"
         json_add_string network_format network-actions-v1
+        json_add_string network_intent_format network-intent-v1
         json_dump
         ;;
     core-apply-network)
@@ -2403,6 +2440,7 @@ EOF
         json_add_string timezone "$(uci -q get system.@system[0].zonename)"
         json_add_string bonus_format bonus-state-v1
         json_add_string pact_network_format pact-network-v1
+        json_add_string network_intent_format network-intent-v1
         json_add_string legacy_bonus "$legacy_bonus"
         json_dump
         ;;

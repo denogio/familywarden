@@ -111,7 +111,7 @@ func (a *Authority) addBonus(d document, raw []byte) (map[string]any, error) {
 		return nil, errors.New("invalid package")
 	}
 	total := n
-	err = a.backend.ConfigurationTransaction(func(_ rules.Configuration, facts platform.Context, _ func(rules.Configuration) error) error {
+	err = a.backend.ConfigurationTransaction(func(_ rules.Configuration, facts platform.Context, _ map[string]platform.NetworkOverride, _ func(rules.Configuration, platform.NetworkIntent) error) error {
 		if facts.BonusFormat != bonusFormat {
 			return errors.New("incompatible bonus adapter")
 		}

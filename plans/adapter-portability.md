@@ -46,13 +46,13 @@ is required to finish this boundary.
 | Workstream | Current implementation | Portability status |
 |---|---|---|
 | Identity, enrollment, roles/scopes, signatures, requests/grants, usage/new-app ledgers | Go `internal/identity`, `internal/protocol`, `internal/store`, `internal/usign`; fake adapters test product behavior | Substantial portable implementation; runtime still uses the broad adapter context and home-ticket bridge |
-| Household configuration and pacts | Go `internal/configuration` + `internal/rules/configuration.go`: explicit import, CAS, confirm/rollback, effective snapshots, amendment/release, cumulative DNS minimum | Implemented after opt-in import, not the production default; policy/context still depend on shell output |
-| Phone/app policy | Go `PhonePolicy`, `AppContext` and app compilers derive owned configuration/frozen rules and core-owned bonus | Mixed boundary: shell still supplies other policy-shaped runtime input and verified DNS data |
+| Household configuration and pacts | Go `internal/configuration` + `internal/rules/configuration.go`: explicit import, CAS, confirm/rollback, effective snapshots, amendment/release, cumulative DNS minimum | Implemented after opt-in import, not the production default; runtime facts and native host projections remain adapter-backed |
+| Phone/app policy | Go `PhonePolicy`, `AppContext` and app compilers derive owned configuration/frozen rules and core-owned bonus | Owned policy is document-derived; the adapter supplies only explicit runtime facts, including verified DNS data |
 | Bonus | Owned-mode validation, durable runtime entries, day/cap/pact decisions and policy/list readers now use core; legacy mode retains its explicitly gated writer | First R1 slice implemented/tested; no active owned-mode shell bonus writer |
-| Manual network actions/grant repair | Owned block/allow/reset, additive-ticket and approved-grant eligibility now run in Go; the adapter stores RAM state and applies native rules under shared locks | Action/repair, owned pact-permit revocation and the status/expiry report are Go-owned; native rendering/compilation remains R3 work |
+| Manual network actions/grant repair | Owned block/allow/reset, additive-ticket and approved-grant eligibility now run in Go; the adapter stores RAM state and applies native rules under shared locks | Action/repair, owned pact-permit revocation and the status/expiry report are Go-owned; owned native rendering consumes the core's ordered `network-intent-v1` decisions; shell UCI rule generators are legacy-only |
 | Status/expiry reporting | Go `configuration/status.go` evaluates override precedence, allow windows, read-time expiry, pact captain details and bonus totals from one locked runtime snapshot; the adapter reads the volatile state under the shared lock | Owned `list`/`status` RPCs forward to `configuration_report`; legacy shell status remains until R3/native retirement |
 | DNS reconciliation | Go `internal/agh` owns desired client/access reconciliation and verification; owned desired DNS comes from the document | Shell still orchestrates credentials, dirty/retry scheduling, acknowledgements and persisted ownership state |
-| Platform enforcement and administration | Go OpenWrt adapter + shell nft/fw4 renderer; LuCI rpcd/session/ACL bridge; shared Requests UI | Working OpenWrt integration, not a platform-neutral enforcement contract or complete shared administration UI |
+| Platform enforcement and administration | Go OpenWrt nft renderer + shell validation/fw4 apply; LuCI rpcd/session/ACL bridge; shared Requests UI | Versioned portable network intent and exact apply acknowledgement; shared administration, composition and test-adapter proof remain unfinished |
 | Scope | OpenWrt only; preserve future options | No second-router implementation or cross-platform build workstream |
 
 ## Concrete boundary debts (source evidence)
@@ -63,10 +63,10 @@ and the explicit authority cutover has completed.
 | Boundary | Evidence | Why a new adapter is not simple yet |
 |---|---|---|
 | Broad interim adapter | `core/internal/platform/platform.go`: `Context`, `Policy`, `Configuration`, `WithContext`, `Facts`, `FactsContext`, `RouterKey`, legacy phone import/removal, `EnsureTicket` | `Context`/`Policy`/`WithContext` are now the legacy policy path only; owned mode uses the explicit `Facts`/`FactsContext` reads. The broad surface stays an interim contract, not the final implementation checklist for every router |
-| Extra apply contract | `core/internal/configuration/authority.go`: `Backend.ConfigurationTransaction`, `Backend.NetworkTransaction`; `core/internal/openwrt/configuration.go`, `network.go` | Configuration apply/recovery and volatile network mutation exist outside `platform.Adapter`. The callback currently carries raw configuration plus a synchronous apply function; a new backend still has to understand how effective intent and runtime facts are assembled |
+| Extra apply contract | `core/internal/configuration/authority.go`: `Backend.ConfigurationTransaction`, `Backend.NetworkTransaction`; `core/internal/openwrt/configuration.go`, `network.go` | Configuration apply/recovery and volatile network mutation exist outside `platform.Adapter`. Callbacks now receive raw volatile overrides and apply a core-computed `NetworkIntent` alongside the compatibility configuration projection. The core supplies ordered decisions; adapters must preserve synchronous apply/rollback guarantees without reproducing eligibility |
 | Shell required even after import | `Authority.Context`, `Authority.Policy`, `Authority.WithContext` call `Facts`/`FactsContext` in owned mode; legacy mode keeps `core-context`/`core-policy` | The owned document no longer pulls policy-shaped shell output: `AppContext` checks profile presence only, `PhonePolicy` checks the platform captain and reads the volatile override/verified DNS facts. The legacy shell path remains the policy owner until R3/native retirement |
-| Remaining product writers/readers | Shell `gc_expired_tickets` and legacy status helpers; `_clear_allow` is now legacy-only | Owned bonus, action, grant-repair, pact-permit revocation and status/expiry consumers are Go-owned. Native expiry cleanup stays with the kernel/adapter. Preserve RAM-versus-durable semantics |
-| Status and network compilation | Shell `gen_*`, `generate_include` render native rules; Go `status.go` decides precedence and allow windows | Status evaluation and precedence are core-owned and shared by the report. The shell's legacy status path and nft syntax remain; the adapter must render/apply without independently deciding whether a profile deserves access |
+| Remaining product writers/readers | Shell `gc_expired_tickets`, legacy status helpers and `_clear_allow` are legacy-only | Owned bonus, action, grant-repair, pact-permit revocation and status/expiry consumers are Go-owned. Native expiry cleanup stays with the kernel/adapter. Preserve RAM-versus-durable semantics |
+| Status and network compilation | Core `configuration/intent.go` compiles ordered decisions; OpenWrt `intent.go` renders nft syntax; shell `generate_intent_include` discovers LAN interfaces and stages validation | Status evaluation and precedence are core-owned and shared by the report. Owned rendering consumes ordered forward/router decisions, deadlines, assigned MACs and the core-selected lockdown. It does not inspect profile eligibility, UCI, pact files or volatile overrides. Legacy generators remain pre-import only |
 | Grant-to-network bridge | Owned `Authority.EnsureTicket` uses shared Go decisions and `Backend.NetworkTransaction`; legacy `cli_core_ticket` refuses owned mode | Owned repair no longer asks shell to decide eligibility: it never shortens, replaces a manual block or opens a pact. The remaining native bridge owns RAM storage, locks and application acknowledgement only; legacy import/path retirement remains separate |
 | DNS lifecycle/state | Shell `_dns_sync_locked`, `cli_dns_tick`, `_json_dns`; Go `internal/agh`, `configuration/dns.go` | The reconciler is portable, but a new router still needs more than an AGH HTTP client. Separate core-owned acknowledgement/ownership semantics and retry orchestration from secret access, storage paths and service wakeups. Never advertise desired DNS as verified enforcement |
 | Ulysses recovery entry point | Go `PactOperation` handles owned release/cancel timing; shell `cli_sail_*` and `www-familywarden/cgi-bin/sail` handle status, root authentication, answer check and throttling | Release timing is substantially migrated; protected entry-point/phrase semantics and transport/auth plumbing remain mixed. Preserve a distinct protected release route, not an ordinary administrator bypass |
@@ -108,14 +108,14 @@ contracts needed by each migrated caller.
 
 - [x] **R0 — Audit the real boundary and reconcile status.** This document records
   active owned-mode dependencies as well as legacy-only compatibility paths.
-- [ ] **R1 — Move remaining runtime product state/actions to core.** Migrate bonus,
+- [x] **R1 — Move remaining runtime product state/actions to core.** Migrate bonus,
   block/allow/reset, manual additive tickets, expiry and eligibility checks with their
   writers/readers/locks together. Preserve grant-ticket behavior, pact restrictions,
   day boundaries, failure rollback and existing persistence semantics. Do not leave
   duplicate active writers in owned mode. Legacy routing may remain explicitly gated.
   - [x] R1a: core-owned bonus (core 0.13.0-r10 / backend rc10-r7), including one-time
     legacy import/owned upgrade and policy/list readers; focused tests below.
-  - [ ] R1b: finish manual network state and expiry/status consumers.
+  - [x] R1b: finish manual network state and expiry/status consumers.
     - [x] Owned manual block/allow/reset/ticket and grant-repair decisions plus native
       transaction/rollback bridge (core r11/backend rc10-r8; evidence below).
     - [x] Owned pact-permit revocation in core (core r12/backend rc10-r9), including
@@ -132,7 +132,7 @@ contracts needed by each migrated caller.
       `pact_captain`/`mast_captain`, profile presence and per-profile volatile facts
       (manual override, verified DNS). No policy content crosses the boundary; the
       authoritative document supplies it (core r14/backend rc10-r11; evidence below).
-- [ ] **R3 — Define portable network intent and applied-state contract.** Move common
+- [x] **R3 — Define portable network intent and applied-state contract.** Move common
   status/precedence/schedule decisions out of the nft renderer, then adapt the current
   OpenWrt compiler. Include device mappings, LAN/default policy, router-access control,
   lockdown/recovery exceptions, deadlines, revisions and atomic apply failure behavior.
@@ -156,11 +156,9 @@ contracts needed by each migrated caller.
   import/upgrade/interruption and safe backup/restore matrix before removing legacy
   paths or declaring production cutover ready. Deployment still needs authorization.
 
-R1 continues with the remaining status/expiry consumers after the
-owned bonus and network-action slices. Inventory the relevant callers before changing state
-ownership; do not add an unused parallel store. Exact function signatures and storage
-changes are implementation decisions to review against existing behavior, not settled
-by this planning document.
+R1–R3 now cover owned runtime actions/status, facts and ordered network intent.
+Inventory relevant callers before each remaining ownership change; do not add unused
+parallel stores. R4–R7 remain required before adapter-ready or production-cutover claims.
 
 ## R1a evidence: core-owned bonus (development, not deployed)
 
@@ -339,6 +337,58 @@ section gains nine `core-facts` checks (missing/foreign handshake, envelope vers
 volatile override, no app input, held-v1 fd and foreign-fd refusal, unknown mode).
 Full integration, the network/bonus/pact-network focuses, syntax and LuCI e2e verify
 no regression. No production router/phone access.
+
+## R3 network-intent evidence (core r15/backend rc10-r12, development only)
+
+`BuildNetworkIntent` compiles the authoritative effective configuration and one locked
+volatile override snapshot into `platform.NetworkIntent` (`network-intent-v1`). Core
+owns global/pact freeze, assigned-device exclusions (including disabled profiles),
+override/ticket eligibility, ordered forward/router decisions, scheduled allow windows,
+router-drop recovery exemptions and captain-lockdown selection. Timed allows carry
+absolute deadlines; the native renderer translates windows into kernel rules and
+splits overnight windows, including the exclusive 24:00 endpoint. No polling is added.
+The existing router-access semantics are preserved: a manual block affects forwarding;
+router access follows the profile's `block_router`/policy, not a new independent drop.
+
+Configuration and network transactions expose all raw override rows under the existing
+locks. Core supplies candidate and recovery intents; OpenWrt stages JSON diagnostics
+and an nft fragment under `/var/run/familywarden/`. The Go native renderer consumes
+ordered decisions, not profile eligibility. The owned shell only discovers LAN
+interfaces, checks the version/intent marker, validates the staged fragment and invokes
+the existing fw4 apply. Missing/foreign intent retains the previous include instead of
+falling back to UCI; unavailable LAN mapping refuses a requested default-block apply.
+Owned compilation no longer runs shell override-expiry GC. RAM remains RAM; intents
+and acknowledgements are derived runtime data, not another durable policy store.
+
+Each intent carries its configuration revision and a content-derived ID (volatile
+network actions change the ID, not the configuration revision). Native apply returns
+that exact ID only after successful validation/reload; the Go adapter refuses missing
+or mismatched receipts. `configuration_status.network_application` exposes the last
+process-local acknowledgement, revision and timestamp, explicitly **not** a live
+verification of the dataplane or phone. Startup reconciles before publishing a fresh
+receipt. Failed application remains an error, restores prior RAM/native intent where
+possible, and blocks uncertain policy service until restart reconciliation. A restored
+intent is not success for the failed request. The historical fw4 chain-reload gap is
+unchanged: this is not a claim of a new atomic dataplane or independent kernel readback.
+
+Both transaction fact handshakes advertise the intent format before their callback;
+upgrade core/backend together. Legacy imports/renderers stay gated before ownership.
+Focused Go/race tests cover intent precedence, windows/deadlines, pact freeze/revocation,
+receipt identity, failed apply and old-bridge refusal; absent global enabled/policy values
+retain their legacy defaults in rendering and status. Go tests/race/vet and syntax pass.
+Real OpenWrt: 495 full checks, 44 network, 42 pact-network, 24 status and 13 bonus checks
+pass. Network adds exact receipt/revision, missing/foreign intent and last-include
+retention checks, plus injected include-activation failure: a failed swap cannot delete
+active chains or acknowledge a new intent, and prior RAM/include are retained. Fresh SDK packages pass install/reinstall/removal smoke tests and
+browser tests (65 legacy-phase passes / 4 skipped, plus all 4 owned-core tests).
+
+The first browser milestone exposed a shared busy-state race: Cancel ticket looked
+enabled while the preceding extension's action guard still ignored clicks. LuCI r5
+now disables all action buttons for the shared busy interval, retaining stale-data
+lockout; a held-response regression makes this interleaving deterministic. The focused
+regression and the full fresh-package browser rerun pass. No Android emulator or
+production router/phone access; R4–R7 and the complete P12 migration/restore matrix
+remain open.
 
 ## Acceptance checklist for adapter-ready completion
 

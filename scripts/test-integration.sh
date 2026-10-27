@@ -308,6 +308,11 @@ if [ "${FW_TEST_FOCUS:-}" = network ]; then
     assert_rule "native block is applied" 'familywarden:kid:override:block'
     assert_json "owned reset succeeds" "$(call reset '{"profile":"kid"}')" '@.status' ok
     refute_rule "reset removes the static override" 'familywarden:kid:override:'
+    intent_id=$(jsonfilter -i /var/run/familywarden/network-intent -e '@.id')
+    receipt=$(network_api configuration_status)
+    assert_json "apply receipt identifies the exact core intent" "$receipt" '@.network_application.intent_id' "$intent_id"
+    assert_json "apply receipt is an acknowledgement, not live verification" "$receipt" '@.network_application.state' acknowledged
+    assert_json "intent preserves configuration revision" "$(cat /var/run/familywarden/network-intent)" '@.revision' "$revision"
     assert_json "owned ticket succeeds" "$(call ticket '{"profile":"kid","minutes":1}')" '@.status' ok
     first=$(awk -F= '$1=="kid.override_expires" { print $2 }' /tmp/familywarden.state)
     assert_json "second owned ticket extends" "$(call ticket '{"profile":"kid","minutes":2}')" '@.status' ok
@@ -334,6 +339,19 @@ if [ "${FW_TEST_FOCUS:-}" = network ]; then
     nft list set inet fw4 familywarden_ticket | grep -qi 'aa:bb:cc:00:00:01.*timeout' && pass "failed apply restores prior native enforcement" || fail "prior enforcement missing"
     stop_core
     start_core
+    # An include swap failure must not acknowledge the requested intent or
+    # delete the previously active chains. Inject only in this disposable copy.
+    cp "$BIN" /tmp/network-plugin-before-swap
+    cp /var/etc/familywarden.include /tmp/network-include-before-swap
+    cp /tmp/familywarden.state /tmp/network-state-before-swap
+    sed -i 's/^        mv "\$FW_INCLUDE_NEW" "\$FW_INCLUDE"/        false/' "$BIN"
+    out=$(call block '{"profile":"kid"}')
+    cp /tmp/network-plugin-before-swap "$BIN"
+    [ -n "$(echo "$out" | jsonfilter -e '@.error')" ] && pass "include activation failure cannot acknowledge intent" || fail "failed include swap reported success"
+    cmp -s /tmp/network-state-before-swap /tmp/familywarden.state && pass "include activation failure restores RAM" || fail "failed include swap changed RAM"
+    cmp -s /tmp/network-include-before-swap /var/etc/familywarden.include && pass "include activation failure retains previous include" || fail "failed include swap replaced include"
+    stop_core
+    start_core
     # A disposable fixture shortens the absolute deadline to test native expiry
     # without waiting minutes or adding a polling daemon.
     expiry=$(( $(date +%s) + 5 ))
@@ -350,6 +368,19 @@ if [ "${FW_TEST_FOCUS:-}" = network ]; then
     assert_rule "captain block reaches the native firewall" 'familywarden:kid:override:block'
     assert_json "captain reset remains available" "$(call reset '{"profile":"kid"}')" '@.status' ok
     stop_core
+    cp /var/run/familywarden/network-intent.nft /tmp/network-native-before
+    cp /var/etc/familywarden.include /tmp/network-include-before
+    for broken in missing foreign; do
+        if [ "$broken" = missing ]; then
+            rm /var/run/familywarden/network-intent.nft
+        else
+            sed '1s/network-intent-v1/network-intent-foreign/' /tmp/network-native-before > /var/run/familywarden/network-intent.nft
+        fi
+        out=$( (flock -x 4; "$BIN" core-apply-network) 4>/var/lock/familywarden.lock.ticket 3>/var/lock/familywarden.lock )
+        assert_json "$broken native intent fails without legacy fallback" "$out" '@.error' 'network intent unavailable'
+        cmp -s /tmp/network-include-before /var/etc/familywarden.include && pass "$broken intent retains the last include" || fail "$broken intent replaced the include"
+    done
+    cp /tmp/network-native-before /var/run/familywarden/network-intent.nft
     cp /tmp/familywarden.state /tmp/network-core-down
     assert_json "core-down manual action cannot fall back to shell" "$(call allow '{"profile":"kid"}')" '@.error' 'core not reachable'
     cmp -s /tmp/familywarden.state /tmp/network-core-down && pass "core-down action leaves RAM untouched" || fail "core-down action wrote RAM"

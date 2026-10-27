@@ -88,7 +88,7 @@ func (a *Authority) applyNetwork(d document, profileID, action string, value int
 	}
 	var next platform.NetworkOverride
 	opened := false
-	err := a.backend.NetworkTransaction(profileID, func(facts platform.Context, current platform.NetworkOverride, apply func(platform.NetworkOverride) error) error {
+	err := a.backend.NetworkTransaction(profileID, func(facts platform.Context, overrides map[string]platform.NetworkOverride, apply func(platform.NetworkOverride, platform.NetworkIntent, platform.NetworkIntent) error) error {
 		if facts.NetworkFormat != networkFormat {
 			return errors.New("incompatible network adapter: upgrade core and backend together")
 		}
@@ -98,6 +98,7 @@ func (a *Authority) applyNetwork(d document, profileID, action string, value int
 			return errors.New("profile not found")
 		}
 		bound := Active(d.Configuration.Pact, now) && d.Configuration.Pact.Captain == profileID
+		current := normalizeOverride(overrides[profileID])
 		var err error
 		next, opened, err = decideNetwork(current, action, now.Unix(), value, bound)
 		if err != nil || !opened {
@@ -106,10 +107,24 @@ func (a *Authority) applyNetwork(d document, profileID, action string, value int
 		if action == "grant" && next == current {
 			return nil // Existing permanent/longer permission, as in the legacy bridge.
 		}
-		if err := apply(next); err != nil {
+		post := make(map[string]platform.NetworkOverride, len(overrides)+1)
+		for id, row := range overrides {
+			post[id] = row
+		}
+		post[profileID] = next
+		intent, err := BuildNetworkIntent(d.Configuration, now, post)
+		if err != nil {
+			return err
+		}
+		restore, err := BuildNetworkIntent(d.Configuration, now, overrides)
+		if err != nil {
+			return err
+		}
+		if err := apply(next, intent, restore); err != nil {
 			a.blocked = err // Uncertain enforcement must not yield a successful policy.
 			return err
 		}
+		a.acknowledgeNetwork(intent)
 		return nil
 	})
 	return next, opened && err == nil, err
