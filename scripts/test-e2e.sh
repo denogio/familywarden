@@ -25,10 +25,10 @@ if [ -z "$APK_DIR" ]; then
 fi
 APK_DIR="$(cd "$APK_DIR" && pwd)"
 
-cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
+cleanup() { docker rm -f "$NAME" "${NAME}-owned" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
-docker run -d --name "$NAME" --cap-add NET_ADMIN -p "127.0.0.1:$PORT:80" \
+docker run -d --name "$NAME" --memory=768m --cpus=2 --cap-add NET_ADMIN -p "127.0.0.1:$PORT:80" \
     -v "$APK_DIR:/apk:ro" -v "$REPO:/src:ro" "$IMAGE" sleep infinity >/dev/null
 docker exec -e PASSWORD="$PASSWORD" "$NAME" sh /src/scripts/e2e-container-setup.sh \
     || { echo "container setup failed"; exit 1; }
@@ -37,3 +37,18 @@ echo "LuCI up on http://127.0.0.1:$PORT - running Playwright"
 cd "$REPO/test/e2e"
 FW_BASE_URL="http://127.0.0.1:$PORT" FW_PASSWORD="$PASSWORD" FW_E2E_ALLOW_PACT=1 \
     FW_E2E_CONTAINER="$NAME" npx playwright test "${@:2}"
+
+# Phase 2: the core owns the configuration (import, CAS, pact DNS). Only the
+# runner may set FW_E2E_OWNED=1: it starts a second, fresh container so the
+# cutover never runs against a pact-active router or a user-configured QEMU.
+if [ "${FW_E2E_OWNED:-}" = 1 ]; then
+    OWNED_NAME="${NAME}-owned"
+    OWNED_PORT="${E2E_OWNED_PORT:-18091}"
+    docker run -d --name "$OWNED_NAME" --memory=768m --cpus=2 --cap-add NET_ADMIN -p "127.0.0.1:$OWNED_PORT:80" \
+        -v "$APK_DIR:/apk:ro" -v "$REPO:/src:ro" "$IMAGE" sleep infinity >/dev/null
+    docker exec -e PASSWORD="$PASSWORD" "$OWNED_NAME" sh /src/scripts/e2e-container-setup.sh
+    echo "Owned-core phase on http://127.0.0.1:$OWNED_PORT"
+    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    FW_BASE_URL="http://127.0.0.1:$OWNED_PORT" FW_PASSWORD="$PASSWORD" FW_E2E_ALLOW_PACT=1 \
+        FW_E2E_CONTAINER="$OWNED_NAME" FW_E2E_OWNED_PHASE=1 npx playwright test owned-core.spec.js
+fi

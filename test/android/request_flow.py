@@ -349,10 +349,27 @@ touch /tmp/drop-next-app-response
         'parent_device_owner': False, 'child_grant_id': grant_id, 'checks': 'passed'}, indent=2))
     print('All focused P8 native checks passed', flush=True)
 except BaseException:
-    (a.out / 'android.log').write_text(adb('logcat', '-d', '-s', 'UlyssesMast:*', 'AndroidRuntime:E', check=False))
-    (a.out / 'core.log').write_text(router('cat /tmp/core.log'))
+    # Only disposable guest state; never copy preferences or signing-key files.
+    # A diagnostic failure must not mask the original assertion/timeout.
+    diagnostics = {
+        'android.log': lambda: adb('logcat', '-d', '-s', 'UlyssesMast:*', 'AndroidRuntime:E', check=False),
+        'android-system.log': lambda: adb('logcat', '-d', '-v', 'threadtime', '-t', '2000', check=False),
+        'activity.log': lambda: adb('shell', 'dumpsys', 'activity', 'activities', check=False),
+        'services.log': lambda: adb('shell', 'dumpsys', 'activity', 'services', PKG, check=False),
+        'power.log': lambda: adb('shell', 'dumpsys', 'power', check=False),
+        'usage-events.log': lambda: adb('shell', 'dumpsys', 'usagestats', check=False),
+        'app-usage.json': lambda: json.dumps(usage(), indent=2),
+        'router-requests.json': lambda: json.dumps(call('requests'), indent=2),
+        'router-usage.json': lambda: json.dumps(call('usage'), indent=2),
+        'core.log': lambda: router('cat /tmp/core.log'),
+    }
+    for name, collect in diagnostics.items():
+        try:
+            (a.out / name).write_text(collect())
+        except Exception as error:
+            print('Diagnostic unavailable:', name, type(error).__name__, flush=True)
     try:
         ui('failure')
-    except BaseException:
+    except Exception:
         pass
     raise

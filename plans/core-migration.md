@@ -626,11 +626,51 @@ the new regression also covers removed last list values and cleared app limits.
 
 Validation: Go/race/vet, syntax, 9 shared-module checks, 487 router checks, 92 real
 AGH checks and 65 browser tests pass. Unmocked authenticated LuCI enabled DNS, then
-saved a deferred disable without UCI writes or apply/confirm; its allocated identity
-and accumulated restrictions survived core restart. These are disposable checks,
+saved a deferred disable without browser-side UCI mutations or apply/confirm; its
+allocated identity and accumulated restrictions survived core restart. The OpenWrt
+adapter still materializes current configuration into `/etc/config/familywarden`
+and the effective frozen rules into `/var/run/familywarden/familywarden`; these
+copies are expected to change and are not competing configuration authorities. These are disposable checks,
 not deployment or a complete upgrade/restoration matrix. The earlier consolidated
 CI `40456639004` passed package/Go/Android-build/LuCI jobs but failed the Android
 request scenario after grant-process restart; that failure remains under investigation.
+
+### Unmocked owned-core browser gate
+
+CI enables a second e2e phase in a fresh disposable OpenWrt container, separate
+from the legacy suite's pact state. An explicit phase flag prevents import tests
+from running during the legacy phase or against an ordinary configured router.
+The fixture prepares synthetic resolver settings before the root-only import;
+no public import method is added.
+
+The three tests exercise import, CLI apply/confirm plus browser projection, and
+real authenticated LuCI pact creation/DNS enable/deferred disable. Browser RPC
+capture checks both FamilyWarden operations and UCI mutations (not just
+FamilyWarden calls). The current UCI projection must follow the core document,
+while the accumulated pact DNS minimum and revision survive core restart.
+A byte-identical UCI-file assertion was incorrect: the adapter intentionally
+rewrites that projection. No product change was needed to satisfy this contract.
+
+Validation on an immutable snapshot with freshly built packages: 65 legacy-phase
+browser tests pass (the three owned tests are skipped), then all three owned-phase
+tests pass in a fresh container. Package installation/removal smoke checks, syntax,
+9 shared-module checks and Go race/vet checks pass. The focused owned run also
+passes independently; the phase guard skips all three without connecting to a
+router. Broader migration, mixed-version, physical-device and restoration gates
+remain open.
+
+### Android request failure evidence
+
+The consolidated CI grant-consumption failure after process restart remains
+unexplained. An unchanged local run using the failed CI packages passed; this is
+not proof of an environmental/timing cause. Failure-only synthetic diagnostics
+now preserve activity/service/power/usage state, router requests/usage and logs,
+with CI artifact upload. Each collector is isolated so its failure cannot mask
+the original assertion. Grant-input construction logs failures without changing
+policy, enforcement or timeouts. Local validation: 199 Android unit tests,
+`lintDebug`, `assembleDebug`, and an injected collector-failure check pass.
+The first local build lost its Gradle daemon; a resource-bounded build passed.
+No new emulator or physical-device success is claimed by these diagnostics.
 
 ### Legacy phone clock/day compatibility (core 0.13.0-r9 / LuCI 0.11.0-r4)
 

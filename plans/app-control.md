@@ -1,8 +1,10 @@
 # App control: Family Link and Switchly alternative
 
 Status: **implementation authorized**, branch `feature/app-control`, based on v0.9.1.
-No app-control feature code has been written yet. The phased checklist and acceptance
-gates live in [app-control-todo.md](app-control-todo.md).
+LAN app control, requests/grants, usage and new-app approval are implemented;
+the opt-in configuration/pact authority and broader shared administration UI are
+still being validated or developed. Current deployment status, remaining scope
+and acceptance gates live in [app-control-todo.md](app-control-todo.md).
 Decisions below are the user's unless marked *proposed*. Production deployment and
 physical-device tests still require separate authorization.
 

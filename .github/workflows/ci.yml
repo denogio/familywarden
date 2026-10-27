@@ -141,6 +141,8 @@ jobs:
       - name: Run against LuCI in an OpenWrt container
         env:
           OPENWRT_IMAGE: openwrt/rootfs:x86-64-${{ env.OPENWRT_VERSION }}
+          # Phase 2: core-owned configuration (import, CAS, pact DNS) in a second fresh container
+          FW_E2E_OWNED: '1'
         run: ./scripts/test-e2e.sh apk
 
       - uses: actions/upload-artifact@v7
@@ -216,7 +218,22 @@ jobs:
         run: ./scripts/test-mast-emulator.sh apk mast/ulysses-mast-debug.apk
 
       - name: Signed child requests and ordinary parent approvals on Android 15
+        env:
+          OUT: ${{ runner.temp }}/familywarden-requests
         run: ./scripts/test-requests-emulator.sh apk mast/ulysses-mast-debug.apk
+
+      - name: Preserve synthetic request diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mast-requests-diagnostics
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/familywarden-requests/*.log
+            ${{ runner.temp }}/familywarden-requests/*.json
+            ${{ runner.temp }}/familywarden-requests/*.xml
+            ${{ runner.temp }}/familywarden-requests/*.png
 
   release:
     name: Release

@@ -188,7 +188,7 @@ class AppControlService : Service() {
             val essential = enforcer.essentialPackages() + nonLaunchableSystem
             val input = runCatching {
                 val payload = org.json.JSONObject(requireNotNull(store.payload))
-                check(payload.getString("nonce") == state.requestNonce)
+                check(payload.getString("nonce") == state.requestNonce) { "policy cache changed during enforcement read" }
                 val binding = requireNotNull(state.binding)
                 val pin = Usign.parsePublicKey(requireNotNull(store.publicKey)).fingerprint
                 val users = installed.filter {
@@ -197,7 +197,7 @@ class AppControlService : Service() {
                 GrantInput("$pin|${store.phoneKey.fingerprint}|${binding.deviceId}|${binding.profileId}", binding.deviceId,
                     payload.getJSONObject("apps").toString(), store.policyClock(state), users,
                     state.shared?.day.orEmpty(), state.shared?.millis.orEmpty())
-            }.getOrNull()
+            }.onFailure { Log.w(TAG, "grant input unavailable", it) }.getOrNull()
             val sample = monitor?.let { m ->
                 runCatching { m.sample(essential + basePolicy.alwaysAllowed, input) }
                     .onFailure {
