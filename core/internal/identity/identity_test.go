@@ -34,6 +34,14 @@ type fakeAdapter struct {
 }
 
 func (f *fakeAdapter) Context() (platform.Context, error) { return f.ctx, f.ctxErr }
+func (f *fakeAdapter) Facts() (platform.Context, error)   { return f.ctx, f.ctxErr }
+func (f *fakeAdapter) FactsContext(fn func(platform.Context) error) error {
+	ctx, err := f.Context()
+	if err != nil {
+		return err
+	}
+	return fn(ctx)
+}
 func (f *fakeAdapter) Configuration() (rules.Configuration, error) {
 	return rules.Configuration{Version: 1}, f.ctxErr
 }

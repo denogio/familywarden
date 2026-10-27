@@ -67,7 +67,13 @@ type appBackend struct {
 }
 
 func (b *appBackend) Context() (platform.Context, error) { return b.facts, nil }
+func (b *appBackend) Facts() (platform.Context, error)   { return b.facts, nil }
 func (b *appBackend) WithContext(fn func(platform.Context) error) error {
+	b.locked = true
+	defer func() { b.locked = false }()
+	return fn(b.facts)
+}
+func (b *appBackend) FactsContext(fn func(platform.Context) error) error {
 	b.locked = true
 	defer func() { b.locked = false }()
 	return fn(b.facts)
@@ -84,8 +90,8 @@ func TestOwnedPhoneAndMutationContextsUseTheSameAppRevision(t *testing.T) {
 	c.Current.Profiles[0].Apps = "1"
 	c.Current.Profiles[0].ScreenMinutes = "10"
 	_ = c.Seal()
-	b := &appBackend{fakeBackend: &fakeBackend{current: c}, facts: platform.Context{BonusFormat: bonusFormat, TimeZone: "UTC", Profiles: map[string]platform.Profile{
-		"alex":   {AppInput: &rules.AppConfig{Version: 1, Enabled: "1", ScreenMinutes: "999"}},
+	b := &appBackend{fakeBackend: &fakeBackend{current: c}, facts: platform.Context{BonusFormat: bonusFormat, TimeZone: "UTC", MastCaptain: "alex", Profiles: map[string]platform.Profile{
+		"alex":   {AppInput: &rules.AppConfig{Version: 1, Enabled: "1", ScreenMinutes: "999"}, Override: "none"},
 		"taylor": {AppInput: &rules.AppConfig{Version: 1}},
 	}}}
 	a, err := New(b, b, &memory{})
@@ -127,7 +133,7 @@ func TestOwnedPhoneAndMutationContextsUseTheSameAppRevision(t *testing.T) {
 func TestAppContextRefusesUnavailableFactsOrInvalidCoreBonus(t *testing.T) {
 	c := sample()
 	c.Current.Profiles[0].Apps = "1"
-	for _, kind := range []string{"missing profile", "missing input", "malformed bonus", "divergent pact"} {
+	for _, kind := range []string{"missing profile", "malformed bonus", "divergent pact"} {
 		t.Run(kind, func(t *testing.T) {
 			facts := platform.Context{BonusFormat: bonusFormat, Profiles: map[string]platform.Profile{
 				"alex":   {AppInput: &rules.AppConfig{Version: 1}},
@@ -137,8 +143,6 @@ func TestAppContextRefusesUnavailableFactsOrInvalidCoreBonus(t *testing.T) {
 			switch kind {
 			case "missing profile":
 				delete(facts.Profiles, "alex")
-			case "missing input":
-				facts.Profiles["alex"] = platform.Profile{}
 			case "malformed bonus":
 				bonus["alex"] = "bonus|total|invalid|2027-01-15"
 			case "divergent pact":

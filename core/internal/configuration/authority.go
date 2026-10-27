@@ -214,15 +214,27 @@ func (a *Authority) Context() (platform.Context, error) {
 	if err := a.refresh(); err != nil {
 		return platform.Context{}, err
 	}
-	c, err := a.Adapter.Context()
+	_, found, err := a.load()
+	if err != nil {
+		return platform.Context{}, err
+	}
+	if !found {
+		c, err := a.Adapter.Context()
+		if err != nil {
+			return platform.Context{}, err
+		}
+		return c, nil
+	}
+	c, err := a.Adapter.Facts()
 	if err != nil {
 		return platform.Context{}, err
 	}
 	return a.appContext(c)
 }
 
-// Called with the authority mutex held; adapter.WithContext additionally holds
-// the platform state lock through compilation and the caller's mutation.
+// Called with the authority mutex held; rebuilds the snapshot's profiles from
+// the authoritative document. The platform supplies facts only (handshakes,
+// timezone, captains, profile presence, volatile overrides/DNS).
 func (a *Authority) appContext(c platform.Context) (platform.Context, error) {
 	d, found, err := a.load()
 	if err != nil {
@@ -244,27 +256,40 @@ func (a *Authority) Policy(profile string, version int) (platform.Policy, error)
 	if err := a.refresh(); err != nil {
 		return platform.Policy{}, err
 	}
-	p, err := a.Adapter.Policy(profile, version)
-	if err != nil {
-		return p, err
-	}
 	d, found, err := a.load()
 	if err != nil {
 		return platform.Policy{}, err
 	}
 	if !found {
+		p, err := a.Adapter.Policy(profile, version)
+		if err != nil {
+			return p, err
+		}
 		return normalizePhoneWindows(p)
+	}
+	facts, err := a.Adapter.Facts()
+	if err != nil {
+		return platform.Policy{}, err
 	}
 	if d.Bonus == nil {
 		return platform.Policy{}, errors.New("bonus recovery required")
 	}
-	now := a.at(p.Context)
-	p.Context, err = AppContext(d.Configuration, p.Context, now, d.Bonus.lines(now.Format(time.DateOnly)))
+	now := a.at(facts)
+	c, err := AppContext(d.Configuration, facts, now, d.Bonus.lines(now.Format(time.DateOnly)))
 	if err != nil {
 		return platform.Policy{}, err
 	}
-	p.Apps = nil
-	if prof, ok := p.Context.Profiles[profile]; ok && version == 3 {
+	p := platform.Policy{Context: c}
+	if prof, ok := facts.Profiles[profile]; ok {
+		p.DNS = prof.DNS
+		if b, err := json.Marshal(map[string]string{"override": prof.Override}); err == nil {
+			p.Rules = b
+		}
+	}
+	if facts.MastCaptain == profile {
+		p.Captain = profile
+	}
+	if prof, ok := c.Profiles[profile]; ok && version == 3 && prof.AppInput != nil {
 		apps, _, err := prof.AppInput.Compile()
 		if err != nil {
 			return platform.Policy{}, err
@@ -285,7 +310,14 @@ func (a *Authority) WithContext(fn func(platform.Context) error) error {
 	if err := a.refresh(); err != nil {
 		return err
 	}
-	return a.Adapter.WithContext(func(c platform.Context) error {
+	_, found, err := a.load()
+	if err != nil {
+		return err
+	}
+	if !found {
+		return a.Adapter.WithContext(fn)
+	}
+	return a.Adapter.FactsContext(func(c platform.Context) error {
 		compiled, err := a.appContext(c)
 		if err != nil {
 			return err
@@ -419,7 +451,7 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 		if !found || d.Bonus == nil {
 			return fail(errors.New("configuration import required"))
 		}
-		facts, err := a.Adapter.Context()
+		facts, err := a.Adapter.Facts()
 		if err != nil {
 			return fail(err)
 		}

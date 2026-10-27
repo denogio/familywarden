@@ -27,8 +27,7 @@ func AppContext(c rules.Configuration, facts platform.Context, now time.Time, bo
 	out.PactCaptain = captain
 	out.Profiles = make(map[string]platform.Profile, len(effective.Profiles))
 	for _, p := range effective.Profiles {
-		runtime, ok := facts.Profiles[p.ID]
-		if !ok || runtime.AppInput == nil {
+		if _, ok := facts.Profiles[p.ID]; !ok {
 			return platform.Context{}, fmt.Errorf("runtime app facts unavailable for %s", p.ID)
 		}
 		input := rules.AppConfig{Version: 1, Enabled: p.Apps, SuspendNew: p.SuspendNew,

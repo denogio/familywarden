@@ -16,6 +16,49 @@ import (
 // opening a second lock and deadlocking against its own parent. Taking only the
 // state lock is safe because callbacks never acquire ticket/bonus/apply locks.
 func (a Adapter) WithContext(fn func(platform.Context) error) error {
+	var c platform.Context
+	return a.withExclusiveStateLock(func(lock *os.File) error {
+		if err := a.runLocked(&c, lock, "core-context", appFormat, "held-v1"); err != nil {
+			return err
+		}
+		if err := compileContext(&c); err != nil {
+			return err
+		}
+		return fn(c)
+	})
+}
+
+const runtimeFactsFormat = "runtime-facts-v1"
+
+// Facts is the owned-mode read: handshakes, timezone, captains and per-profile
+// volatile facts. No policy content.
+func (a Adapter) Facts() (platform.Context, error) {
+	var c platform.Context
+	if err := a.run(&c, "core-facts", runtimeFactsFormat); err != nil {
+		return c, err
+	}
+	if c.RuntimeFormat != runtimeFactsFormat {
+		return c, fmt.Errorf("incompatible runtime facts adapter %q: upgrade core and backend together", c.RuntimeFormat)
+	}
+	return c, nil
+}
+
+// FactsContext serializes an owned-mode mutation with the platform's writers:
+// the state lock is held through the facts read and the callback.
+func (a Adapter) FactsContext(fn func(platform.Context) error) error {
+	var c platform.Context
+	return a.withExclusiveStateLock(func(lock *os.File) error {
+		if err := a.runLocked(&c, lock, "core-facts", runtimeFactsFormat, "held-v1"); err != nil {
+			return err
+		}
+		if c.RuntimeFormat != runtimeFactsFormat {
+			return fmt.Errorf("incompatible runtime facts adapter %q: upgrade core and backend together", c.RuntimeFormat)
+		}
+		return fn(c)
+	})
+}
+
+func (a Adapter) withExclusiveStateLock(fn func(lock *os.File) error) error {
 	path := a.LockFile
 	if path == "" {
 		path = "/var/lock/familywarden.lock"
@@ -31,14 +74,7 @@ func (a Adapter) WithContext(fn func(platform.Context) error) error {
 		return fmt.Errorf("state transaction: %w", err)
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
-	var c platform.Context
-	if err := a.runLocked(&c, lock, "core-context", appFormat, "held-v1"); err != nil {
-		return err
-	}
-	if err := compileContext(&c); err != nil {
-		return err
-	}
-	return fn(c)
+	return fn(lock)
 }
 
 // withStateLocks shares the established ticket-before-state lock order between

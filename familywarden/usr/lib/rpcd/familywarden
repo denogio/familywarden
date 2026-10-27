@@ -1822,6 +1822,50 @@ cli_core_context() {
     ) 200>"$FW_LOCK"
 }
 
+# Owned-mode runtime facts (plans/adapter-portability.md R2): handshakes,
+# timezone, captains and per-profile volatile facts only. No policy content -
+# the authoritative configuration document supplies that. Same locking as
+# core-context; held-v1 reuses the inherited state lock on fd 3.
+cli_core_facts() {
+    [ "$1" = "runtime-facts-v1" ] || { _json_error "incompatible core: upgrade required"; return 1; }
+    case "$2" in ''|held-v1) ;; *) _json_error "invalid transaction mode"; return 1 ;; esac
+    (
+        if [ "$2" = "held-v1" ]; then
+            [ /proc/self/fd/3 -ef "$FW_LOCK" ] && flock -n -x 3 || {
+                _json_error "state transaction required"
+                exit 1
+            }
+        else
+            flock -s 200 || exit 1
+        fi
+        fw_load
+        json_init
+        _core_facts_fields
+        json_dump
+    ) 200>"$FW_LOCK"
+}
+
+_core_facts_profile_cb() {
+    json_add_object "$1"
+    json_add_string override "$(state_get "${1}.override" none)"
+    _json_dns "$1"
+    json_close_object
+}
+
+_core_facts_fields() {
+    local tz
+    tz=$(uci -q get system.@system[0].zonename)
+    case "$tz" in ''|*[!A-Za-z0-9_+/-]*) tz="" ;; esac
+    json_add_string runtime_format runtime-facts-v1
+    json_add_string bonus_format bonus-state-v1
+    json_add_string timezone "$tz"
+    json_add_string pact_captain "$(pact_captain)"
+    json_add_string mast_captain "$(_mast_captain_now)"
+    json_add_object profiles
+    config_foreach _core_facts_profile_cb profile
+    json_close_object
+}
+
 # Policy content of one profile for a phone reply, plus the context it was
 # computed with (one consistent snapshot under one lock).
 cli_core_policy() {
@@ -2373,6 +2417,9 @@ EOF
         ;;
     core-context)
         cli_core_context "$2" "$3"
+        ;;
+    core-facts)
+        cli_core_facts "$2" "$3"
         ;;
     core-policy)
         # $2 profile, $3 wire version (2 or 3)

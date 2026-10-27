@@ -22,7 +22,11 @@ type Profile struct {
 	Name     string           `json:"name"`
 	AppsRev  string           `json:"apps_rev"`            // computed by the core, "" = app control off
 	Requires []string         `json:"requires"`            // computed by the core
-	AppInput *rules.AppConfig `json:"app_input,omitempty"` // interim effective configuration
+	AppInput *rules.AppConfig `json:"app_input,omitempty"` // interim effective configuration (legacy mode)
+	// Owned-mode runtime facts: the profile's volatile manual override and its
+	// verified DNS data. Absent in the legacy (policy-shaped) context.
+	Override string          `json:"override,omitempty"`
+	DNS      json.RawMessage `json:"dns,omitempty"`
 }
 
 // Context is one consistent snapshot of platform state.
@@ -31,15 +35,20 @@ type Context struct {
 	PactNetworkFormat string `json:"pact_network_format,omitempty"`
 	// Legacy bonus import is a versioned snapshot under the configuration lock.
 	// Empty input is meaningful only when BonusFormat explicitly matches.
-	BonusFormat string             `json:"bonus_format,omitempty"`
-	LegacyBonus string             `json:"legacy_bonus,omitempty"`
-	AppFormat   string             `json:"app_format"`   // versioned interim compiler input
-	TimeZone    string             `json:"timezone"`     // IANA name or ""
-	PactCaptain string             `json:"pact_captain"` // profile bound by an active pact, or ""
-	Profiles    map[string]Profile `json:"profiles"`     // effective profiles
+	BonusFormat string `json:"bonus_format,omitempty"`
+	LegacyBonus string `json:"legacy_bonus,omitempty"`
+	AppFormat   string `json:"app_format"`   // versioned interim compiler input
+	TimeZone    string `json:"timezone"`     // IANA name or ""
+	PactCaptain string `json:"pact_captain"` // profile bound by an active pact, or ""
+	// MastCaptain is the platform's current captain: an active pact's captain,
+	// else the platform's configured one. Owned-mode facts only.
+	MastCaptain string             `json:"mast_captain,omitempty"`
+	Profiles    map[string]Profile `json:"profiles"` // effective profiles
 	// MastLastSync is the router's last signed-payload fetch epoch: informational
 	// only, never confirmed phone enforcement. Core fills it from platform state.
 	MastLastSync int64 `json:"mast_last_sync,omitempty"`
+	// RuntimeFormat marks the owned-mode facts envelope (no policy content).
+	RuntimeFormat string `json:"runtime_format,omitempty"`
 }
 
 // Policy is the policy content of one profile for a phone reply. Interim: it
@@ -76,6 +85,16 @@ type Adapter interface {
 	// enforcement/apply work runs after this method releases the platform lock.
 	WithContext(func(Context) error) error
 	Policy(profile string, version int) (Policy, error)
+	// Facts is the owned-mode read: versioned handshakes and platform facts
+	// (timezone, captains) plus per-profile volatile facts (manual override,
+	// verified DNS). It carries no policy content: the authoritative
+	// configuration document supplies that.
+	Facts() (Context, error)
+	// FactsContext serializes an owned-mode mutation with the platform's writers:
+	// it holds the platform state lock, reads Facts under it and runs the
+	// callback exactly once while the lock is held. The callback must not call
+	// the adapter again. Callers take their core mutex first.
+	FactsContext(func(Context) error) error
 	RouterKey() (usign.SecretKey, error)
 	LegacyDevices() ([]LegacyDevice, error)
 	RemoveLegacyDevices() error

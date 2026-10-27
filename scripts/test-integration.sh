@@ -416,6 +416,8 @@ if [ "${FW_TEST_FOCUS:-}" = status ]; then
     assert_json "allow reads allowed" "$(call status '{"profile":"teen"}')" '@.status' 'allowed'
     assert_json "owned block outranks allow" "$(call block '{"profile":"teen"}')" '@.status' ok
     assert_json "block reads blocked" "$(call status '{"profile":"teen"}')" '@.status' 'blocked'
+    assert_json "facts expose the owned manual override" "$("$BIN" core-facts runtime-facts-v1)" '@.profiles.teen.override' 'block'
+    assert_json "facts keep the unmodified profile" "$("$BIN" core-facts runtime-facts-v1)" '@.profiles.kid.override' 'none'
     assert_json "owned reset restores the policy" "$(call reset '{"profile":"teen"}')" '@.status' ok
     # Read-time expiry: the kernel set keeps the ticket until its own timeout,
     # but the report must show it as none immediately after the deadline.
@@ -1140,6 +1142,16 @@ assert_json "new adapter format is explicit" "$("$BIN" core-context go-apps-v3)"
 assert_json "held context requires inherited state fd" "$("$BIN" core-context go-apps-v3 held-v1 3>&-)" '@.error' "state transaction required"
 assert_json "held context rejects a foreign fd" "$("$BIN" core-context go-apps-v3 held-v1 3>/tmp/foreign-state-lock)" '@.error' "state transaction required"
 assert_json "unknown transaction mode is refused" "$("$BIN" core-context go-apps-v3 unknown)" '@.error' "invalid transaction mode"
+# R2: the owned-mode runtime facts carry no policy content; a missing or foreign
+# handshake is refused, and held-v1 needs the inherited state lock.
+assert_json "facts without a handshake are refused" "$("$BIN" core-facts)" '@.error' "incompatible core: upgrade required"
+assert_json "foreign facts handshake is refused" "$("$BIN" core-facts runtime-facts-v2)" '@.error' "incompatible core: upgrade required"
+assert_json "facts envelope is versioned" "$("$BIN" core-facts runtime-facts-v1)" '@.runtime_format' "runtime-facts-v1"
+assert_json "facts report the volatile override" "$("$BIN" core-facts runtime-facts-v1)" '@.profiles.kid.override' "none"
+[ -z "$("$BIN" core-facts runtime-facts-v1 | jsonfilter -e '@.profiles.kid.app_input')" ] && pass "facts expose no app configuration" || fail "facts leaked app input"
+assert_json "held facts require the inherited state fd" "$("$BIN" core-facts runtime-facts-v1 held-v1 3>&-)" '@.error' "state transaction required"
+assert_json "held facts reject a foreign fd" "$("$BIN" core-facts runtime-facts-v1 held-v1 3>/tmp/foreign-state-lock)" '@.error' "state transaction required"
+assert_json "unknown facts transaction mode is refused" "$("$BIN" core-facts runtime-facts-v1 unknown)" '@.error' "invalid transaction mode"
 raw_policy=$("$BIN" core-policy kid 3 go-apps-v3)
 [ -z "$(echo "$raw_policy" | jsonfilter -e '@.apps')" ] && pass "shell no longer builds signed app policy" || fail "shell still supplies apps"
 assert_json "shell supplies raw versioned app configuration" "$raw_policy" '@.context.profiles.kid.app_input.version' "1"

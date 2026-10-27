@@ -49,6 +49,29 @@ func (f *fakeBackend) Context() (platform.Context, error) {
 	}
 	return platform.Context{Profiles: p, TimeZone: "UTC", BonusFormat: bonusFormat, NetworkFormat: networkFormat, MastLastSync: f.mastSync}, nil
 }
+
+// Facts is the owned-mode read: no policy content, only facts. The fake's
+// volatile network map doubles as the raw manual-override fact.
+func (f *fakeBackend) Facts() (platform.Context, error) {
+	p := map[string]platform.Profile{}
+	for _, v := range f.current.Current.Profiles {
+		row := platform.Profile{Override: "none"}
+		if s, ok := f.network[v.ID]; ok {
+			row.Override = s.Mode
+		}
+		p[v.ID] = row
+	}
+	captain := ""
+	if c := f.current.Current.Settings.Captain; c != "" {
+		captain = c
+	}
+	return platform.Context{RuntimeFormat: "runtime-facts-v1", Profiles: p, TimeZone: "UTC",
+		BonusFormat: bonusFormat, NetworkFormat: networkFormat, MastCaptain: captain}, nil
+}
+func (f *fakeBackend) FactsContext(fn func(platform.Context) error) error {
+	c, _ := f.Facts()
+	return fn(c)
+}
 func (f *fakeBackend) WithContext(fn func(platform.Context) error) error {
 	c, _ := f.Context()
 	return fn(c)

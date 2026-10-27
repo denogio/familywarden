@@ -62,9 +62,9 @@ and the explicit authority cutover has completed.
 
 | Boundary | Evidence | Why a new adapter is not simple yet |
 |---|---|---|
-| Broad interim adapter | `core/internal/platform/platform.go`: `Context`, `Policy`, `Configuration`, `WithContext`, `RouterKey`, legacy phone import/removal, `EnsureTicket` | Mixes legacy import, product-policy-shaped input, locking, key access and network side effects. Existing methods are an interim contract, not the final implementation checklist for every router |
+| Broad interim adapter | `core/internal/platform/platform.go`: `Context`, `Policy`, `Configuration`, `WithContext`, `Facts`, `FactsContext`, `RouterKey`, legacy phone import/removal, `EnsureTicket` | `Context`/`Policy`/`WithContext` are now the legacy policy path only; owned mode uses the explicit `Facts`/`FactsContext` reads. The broad surface stays an interim contract, not the final implementation checklist for every router |
 | Extra apply contract | `core/internal/configuration/authority.go`: `Backend.ConfigurationTransaction`, `Backend.NetworkTransaction`; `core/internal/openwrt/configuration.go`, `network.go` | Configuration apply/recovery and volatile network mutation exist outside `platform.Adapter`. The callback currently carries raw configuration plus a synchronous apply function; a new backend still has to understand how effective intent and runtime facts are assembled |
-| Shell required even after import | `Authority.Context`, `Authority.Policy`, `Authority.WithContext` in `authority.go` call the wrapped adapter; `openwrt.go` calls `core-context`/`core-policy` | The owned document does not remove the shell round trip. `AppContext` still requires per-profile runtime entries and matching pact facts (bonus now comes from core-owned state); `PhonePolicy` checks shell captain/override, and preserves the verified DNS input. Split these into explicit runtime/application facts, not another policy compiler |
+| Shell required even after import | `Authority.Context`, `Authority.Policy`, `Authority.WithContext` call `Facts`/`FactsContext` in owned mode; legacy mode keeps `core-context`/`core-policy` | The owned document no longer pulls policy-shaped shell output: `AppContext` checks profile presence only, `PhonePolicy` checks the platform captain and reads the volatile override/verified DNS facts. The legacy shell path remains the policy owner until R3/native retirement |
 | Remaining product writers/readers | Shell `gc_expired_tickets` and legacy status helpers; `_clear_allow` is now legacy-only | Owned bonus, action, grant-repair, pact-permit revocation and status/expiry consumers are Go-owned. Native expiry cleanup stays with the kernel/adapter. Preserve RAM-versus-durable semantics |
 | Status and network compilation | Shell `gen_*`, `generate_include` render native rules; Go `status.go` decides precedence and allow windows | Status evaluation and precedence are core-owned and shared by the report. The shell's legacy status path and nft syntax remain; the adapter must render/apply without independently deciding whether a profile deserves access |
 | Grant-to-network bridge | Owned `Authority.EnsureTicket` uses shared Go decisions and `Backend.NetworkTransaction`; legacy `cli_core_ticket` refuses owned mode | Owned repair no longer asks shell to decide eligibility: it never shortens, replaces a manual block or opens a pact. The remaining native bridge owns RAM storage, locks and application acknowledgement only; legacy import/path retirement remains separate |
@@ -123,10 +123,15 @@ contracts needed by each migrated caller.
     - [x] Owned status/expiry report in core (core r13/backend rc10-r10): precedence,
       allow-window evaluation, read-time expiry, pact details and bonus from one locked
       runtime snapshot; `list`/`status` forward to `configuration_report`. Evidence below.
-- [ ] **R2 — Replace policy-shaped adapter reads with runtime facts.** After R1, owned
+- [x] **R2 — Replace policy-shaped adapter reads with runtime facts.** After R1, owned
   identity/request/policy paths must run without `core-context`/`core-policy` or UCI.
   Keep legacy import behind the OpenWrt compatibility path; root-private keys and
   verified application facts must still be available without weakening trust.
+    - [x] Owned `Context`/`Policy`/`WithContext` and `configuration_bonus_read` now read
+      the versioned `core-facts` envelope (`runtime-facts-v1`): handshakes, timezone,
+      `pact_captain`/`mast_captain`, profile presence and per-profile volatile facts
+      (manual override, verified DNS). No policy content crosses the boundary; the
+      authoritative document supplies it (core r14/backend rc10-r11; evidence below).
 - [ ] **R3 — Define portable network intent and applied-state contract.** Move common
   status/precedence/schedule decisions out of the nft renderer, then adapt the current
   OpenWrt compiler. Include device mappings, LAN/default policy, router-access control,
@@ -300,6 +305,40 @@ override precedence, read-time expiry without recompile or RAM rewrite, core bon
 pact captain fields with a standing pre-pact allow revoked, and core-down refusal. The
 full integration run, the network/bonus/pact-network focuses, syntax and LuCI e2e
 verify no regression. No production router/phone access.
+
+## R2 runtime-facts evidence (core r14/backend rc10-r11, development only)
+
+Owned mode no longer reads policy-shaped shell output. `platform.Adapter` gains two
+explicit methods: `Facts()` and `FactsContext(fn)`. Both run the shell's new
+`core-facts` command (handshake `runtime-facts-v1`, shared state lock; `held-v1`
+reuses the inherited exclusive lock on fd 3 exactly like `core-context`). The
+envelope carries versioned handshakes, timezone, `pact_captain` (drift check against
+the document's active pact), `mast_captain` (drift check against the document's
+captain), the profile id set (presence check) and per-profile volatile facts: the raw
+manual override and the verified DNS data. It carries no profile names, app input,
+captain/pact/rules projections.
+
+`Authority` branches on the document: owned `Context`/`Policy`/`WithContext` and
+`configuration_bonus_read` consume the facts and rebuild everything else from the
+authoritative document (`AppContext` now checks profile presence only; `PhonePolicy`
+reads the captain's manual override from the facts and keeps the verified DNS as is;
+the obsolete platform-projection log is gone). The legacy `core-context`/`core-policy`
+path is unchanged and remains the policy owner before import. `platform.Profile` gains
+`Override`/`DNS` facts fields; `platform.Context` gains `MastCaptain` and
+`RuntimeFormat`.
+
+Focused validation: Go/race unit checks for the owned policy from facts (captain
+override fact, verified DNS passthrough, mast-captain divergence refusal, non-captain
+shape, `FactsContext` lock flag), `configuration` suite regression (owned
+context/mutation revision parity, bonus readers, backend downgrade refusal now rides
+on the facts handshake); OpenWrt adapter checks for the facts envelope, incompatible/
+broken envelope refusal, and the inherited-fd lock through the callback with release
+on success and failure. Real OpenWrt: `FW_TEST_FOCUS=status` gains two owned checks
+(the facts report the owned manual override and leave others untouched) and the core
+section gains nine `core-facts` checks (missing/foreign handshake, envelope version,
+volatile override, no app input, held-v1 fd and foreign-fd refusal, unknown mode).
+Full integration, the network/bonus/pact-network focuses, syntax and LuCI e2e verify
+no regression. No production router/phone access.
 
 ## Acceptance checklist for adapter-ready completion
 

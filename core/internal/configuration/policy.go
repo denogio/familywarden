@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"log"
 	"strings"
 	"time"
 
@@ -140,8 +139,8 @@ func Captain(c rules.Configuration, now time.Time) string {
 }
 
 // PhonePolicy replaces a platform policy's captain, "pact" and "rules" with the
-// values computed from the authoritative document. The platform only supplies
-// runtime facts: the captain's manual override (and DNS/app input, kept as is).
+// values computed from the authoritative document. The platform supplies facts
+// only: the captain's manual override in Rules (and verified DNS, kept as is).
 func PhonePolicy(c rules.Configuration, platformPolicy platform.Policy, id string, now time.Time) (platform.Policy, error) {
 	out := platformPolicy
 	captain := Captain(c, now)
@@ -186,9 +185,6 @@ func PhonePolicy(c rules.Configuration, platformPolicy platform.Policy, id strin
 	if out.Rules, err = json.Marshal(r); err != nil {
 		return platform.Policy{}, err
 	}
-	if !sameJSON(out.Pact, platformPolicy.Pact) || !sameJSON(out.Rules, platformPolicy.Rules) {
-		log.Printf("phone policy for %s: platform projection differs from the configuration; using the configuration", id)
-	}
 	return out, nil
 }
 
@@ -197,14 +193,4 @@ func or(v, fallback string) string {
 		return fallback
 	}
 	return v
-}
-
-func sameJSON(a, b json.RawMessage) bool {
-	var x, y any
-	if json.Unmarshal(a, &x) != nil || json.Unmarshal(b, &y) != nil {
-		return false
-	}
-	ja, _ := json.Marshal(x)
-	jb, _ := json.Marshal(y)
-	return bytes.Equal(ja, jb)
 }

@@ -79,6 +79,75 @@ func TestMutationContextRefusesBadSnapshotAndReleasesLock(t *testing.T) {
 	}
 }
 
+// factsAdapter mirrors transactionAdapter for the owned-mode facts command.
+func factsAdapter(t *testing.T, raw string) Adapter {
+	t.Helper()
+	dir := t.TempDir()
+	a := Adapter{Shell: filepath.Join(dir, "adapter"), LockFile: filepath.Join(dir, "state.lock")}
+	script := fmt.Sprintf(`#!/bin/sh
+case "$*" in
+	'core-facts runtime-facts-v1') ;;
+	'core-facts runtime-facts-v1 held-v1') [ /proc/self/fd/3 -ef %q ] || exit 2; flock -n -x 3 || exit 3;;
+	*) exit 1;;
+esac
+printf '%%s' '%s'
+`, a.LockFile, raw)
+	if err := os.WriteFile(a.Shell, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	return a
+}
+
+const transactionFacts = `{"runtime_format":"runtime-facts-v1","bonus_format":"bonus-state-v1","timezone":"UTC","pact_captain":"","mast_captain":"alex","profiles":{"alex":{"override":"block","dns":{"hostname":"alex.fw","protections":["adult"],"services":["blocking"]}}}}`
+
+func TestFactsReadsRuntimeEnvelope(t *testing.T) {
+	a := factsAdapter(t, transactionFacts)
+	c, err := a.Facts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.RuntimeFormat != "runtime-facts-v1" || c.BonusFormat != "bonus-state-v1" || c.TimeZone != "UTC" || c.MastCaptain != "alex" {
+		t.Fatal("unexpected facts", c)
+	}
+	prof := c.Profiles["alex"]
+	if prof.Override != "block" || string(prof.DNS) == "" {
+		t.Fatal("volatile facts missing", prof)
+	}
+}
+
+func TestFactsRefuseIncompatibleOrBrokenEnvelope(t *testing.T) {
+	for _, raw := range []string{`not-json`, `{"error":"unavailable"}`, `{"runtime_format":"runtime-facts-v2","profiles":{}}`} {
+		if _, err := factsAdapter(t, raw).Facts(); err == nil {
+			t.Fatal("incompatible facts accepted", raw)
+		}
+	}
+}
+
+func TestFactsContextHoldsInheritedLockThroughCallback(t *testing.T) {
+	for _, callbackError := range []bool{false, true} {
+		t.Run(fmt.Sprint(callbackError), func(t *testing.T) {
+			a := factsAdapter(t, transactionFacts)
+			wantErr := errors.New("save failed")
+			calls := 0
+			err := a.FactsContext(func(c platform.Context) error {
+				calls++
+				probeStateLock(t, a.LockFile, true)
+				if c.RuntimeFormat != "runtime-facts-v1" || c.Profiles["alex"].Override != "block" {
+					t.Fatal("incorrect facts snapshot", c)
+				}
+				if callbackError {
+					return wantErr
+				}
+				return nil
+			})
+			if calls != 1 || (callbackError && !errors.Is(err, wantErr)) || (!callbackError && err != nil) {
+				t.Fatal(calls, err)
+			}
+			probeStateLock(t, a.LockFile, false)
+		})
+	}
+}
+
 func TestStateLockCancellationDoesNotWaitOrStealLock(t *testing.T) {
 	a := transactionAdapter(t, transactionContext)
 	owner, err := os.OpenFile(a.LockFile, os.O_CREATE|os.O_RDWR, 0600)
