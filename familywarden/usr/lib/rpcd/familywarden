@@ -1118,6 +1118,12 @@ EOF
 # ---- Ubus handlers ----
 
 ubus_list() {
+    # Owned: the whole report (precedence, windows, expiry, pact and bonus
+    # details) is a core decision from one locked runtime snapshot.
+    if configuration_owned; then
+        core_configuration_api configuration_report '{}'
+        return
+    fi
     # Fetch core-owned bonus before the shell state lock: never call back into
     # the core while holding a lock its refresh/apply path may need.
     local bonus_state="" kind
@@ -1250,7 +1256,18 @@ ubus_list_schedule() {
 }
 
 ubus_status() {
-    local profile="$1"
+    local profile="$1" payload
+    # Owned: the status decision runs in core under the same snapshot as list.
+    if configuration_owned; then
+        if [ -z "$profile" ]; then
+            echo '{"error":"profile not found or disabled"}'
+            return 1
+        fi
+        payload="${2:-}"
+        [ -n "$payload" ] || payload="{\"profile\":\"$profile\"}"
+        core_configuration_api configuration_report "$payload"
+        return
+    fi
 
     (
         flock -s 200 || return 1
@@ -2401,7 +2418,7 @@ EOF
                 read -r input
                 json_load "$input"
                 json_get_var profile profile
-                ubus_status "$profile"
+                ubus_status "$profile" "$input"
                 ;;
             block)
                 read -r input

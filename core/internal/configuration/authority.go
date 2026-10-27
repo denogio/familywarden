@@ -34,6 +34,10 @@ type Backend interface {
 	// A failed apply attempts to restore previous state/enforcement and reports
 	// failure (including restoration errors), never success.
 	NetworkTransaction(string, func(platform.Context, platform.NetworkOverride, func(platform.NetworkOverride) error) error) error
+	// NetworkSnapshot serializes a read of the platform's volatile network state
+	// and facts with the platform's writers. The callback receives one consistent
+	// snapshot and must not call the adapter again.
+	NetworkSnapshot(func(platform.Context, map[string]platform.NetworkOverride) error) error
 }
 
 type pendingChange struct {
@@ -430,6 +434,28 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 			}
 		}
 		return map[string]any{"format": bonusFormat, "day": day, "totals": totals}
+	case "configuration_report":
+		if !found || d.Bonus == nil {
+			return fail(errors.New("configuration import required"))
+		}
+		var req struct {
+			Profile string `json:"profile"`
+		}
+		if err := decode(raw, &req); err != nil {
+			return fail(err)
+		}
+		if req.Profile != "" && !identifier.MatchString(req.Profile) {
+			return fail(errors.New("invalid profile"))
+		}
+		var single *string
+		if req.Profile != "" {
+			single = &req.Profile
+		}
+		report, err := a.networkReport(d, single)
+		if err != nil {
+			return fail(err)
+		}
+		return report
 	case "configuration_dns":
 		if !found {
 			return fail(errors.New("configuration import required"))

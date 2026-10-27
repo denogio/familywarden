@@ -195,3 +195,113 @@ func TestNetworkTransactionRefusesMalformedRAMBeforeCallback(t *testing.T) {
 		probeStateLock(t, a.LockFile+".ticket", false)
 	}
 }
+
+func TestNetworkSnapshotServesLockedStateAndMastSync(t *testing.T) {
+	a := networkAdapter(t)
+	a.MastSeenFile = filepath.Join(filepath.Dir(a.StateFile), "mast")
+	raw := "alex.override=allow\nalex.override_expires=12345\ntaylor.override=block\nother=value\n"
+	if err := os.WriteFile(a.StateFile, []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(a.MastSeenFile, []byte("captain-phone 999\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	err := a.NetworkSnapshot(func(facts platform.Context, state map[string]platform.NetworkOverride) error {
+		probeStateLock(t, a.LockFile, true)
+		if facts.NetworkFormat != "network-actions-v1" || facts.TimeZone != "UTC" || facts.MastLastSync != 999 {
+			t.Fatal(facts)
+		}
+		if state["alex"].Mode != "allow" || state["alex"].Expires != 12345 || state["taylor"].Mode != "block" {
+			t.Fatal(state)
+		}
+		if _, has := state["other"]; has {
+			t.Fatal("unrelated keys leaked into the snapshot", state)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	probeStateLock(t, a.LockFile, false)
+}
+
+func TestNetworkSnapshotReadsAbsentStateAsEmpty(t *testing.T) {
+	a := networkAdapter(t)
+	a.MastSeenFile = filepath.Join(filepath.Dir(a.StateFile), "mast")
+	err := a.NetworkSnapshot(func(_ platform.Context, state map[string]platform.NetworkOverride) error {
+		if len(state) != 0 {
+			t.Fatal(state)
+		}
+		got, err := readAllOverrides(nil)
+		if err != nil || len(got) != 0 {
+			t.Fatal(got, err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal("absent state file must read as empty, not fail", err)
+	}
+	probeStateLock(t, a.LockFile, false)
+}
+
+func TestNetworkSnapshotRejectsMalformedRAMOrFacts(t *testing.T) {
+	for name, mutate := range map[string]func(Adapter) error{
+		"duplicate row": func(a Adapter) error {
+			return os.WriteFile(a.StateFile, []byte("alex.override=allow\nalex.override=block\n"), 0600)
+		},
+		"invalid mode": func(a Adapter) error {
+			return os.WriteFile(a.StateFile, []byte("alex.override=teleport\n"), 0600)
+		},
+		"invalid deadline": func(a Adapter) error {
+			return os.WriteFile(a.StateFile, []byte("alex.override=allow\nalex.override_expires=soon\n"), 0600)
+		},
+		"row without value": func(a Adapter) error {
+			return os.WriteFile(a.StateFile, []byte("alex.override\n"), 0600)
+		},
+		"orphan key": func(a Adapter) error {
+			return os.WriteFile(a.StateFile, []byte(".override=allow\n"), 0600)
+		},
+		"broken facts": func(a Adapter) error {
+			return os.WriteFile(a.Shell, []byte("#!/bin/sh\nexit 1\n"), 0700)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := networkAdapter(t)
+			if err := mutate(a); err != nil {
+				t.Fatal(err)
+			}
+			called := false
+			err := a.NetworkSnapshot(func(platform.Context, map[string]platform.NetworkOverride) error {
+				called = true
+				return nil
+			})
+			if err == nil || called {
+				t.Fatal("corrupt snapshot reached the report", called, err)
+			}
+			probeStateLock(t, a.LockFile, false)
+		})
+	}
+}
+
+func TestMastSeenJournal(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mast")
+	if v, err := mastSeen(path); err != nil || v != 0 {
+		t.Fatal("absent journal must read zero", v, err)
+	}
+	for content, want := range map[string]int64{"": 0, "device 42\n": 42} {
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if v, err := mastSeen(path); err != nil || v != want {
+			t.Fatal(content, v, err)
+		}
+	}
+	for _, content := range []string{"device\n", "device -3\n", "device notanumber\n", "a b c\n"} {
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := mastSeen(path); err == nil {
+			t.Fatal("malformed journal accepted:", content)
+		}
+	}
+}

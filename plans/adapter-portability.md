@@ -49,7 +49,8 @@ is required to finish this boundary.
 | Household configuration and pacts | Go `internal/configuration` + `internal/rules/configuration.go`: explicit import, CAS, confirm/rollback, effective snapshots, amendment/release, cumulative DNS minimum | Implemented after opt-in import, not the production default; policy/context still depend on shell output |
 | Phone/app policy | Go `PhonePolicy`, `AppContext` and app compilers derive owned configuration/frozen rules and core-owned bonus | Mixed boundary: shell still supplies other policy-shaped runtime input and verified DNS data |
 | Bonus | Owned-mode validation, durable runtime entries, day/cap/pact decisions and policy/list readers now use core; legacy mode retains its explicitly gated writer | First R1 slice implemented/tested; no active owned-mode shell bonus writer |
-| Manual network actions/grant repair | Owned block/allow/reset, additive-ticket and approved-grant eligibility now run in Go; the adapter stores RAM state and applies native rules under shared locks | Action/repair and owned pact-permit revocation implemented; shell status/schedule evaluation and expiry cleanup remain R1b/R3 work |
+| Manual network actions/grant repair | Owned block/allow/reset, additive-ticket and approved-grant eligibility now run in Go; the adapter stores RAM state and applies native rules under shared locks | Action/repair, owned pact-permit revocation and the status/expiry report are Go-owned; native rendering/compilation remains R3 work |
+| Status/expiry reporting | Go `configuration/status.go` evaluates override precedence, allow windows, read-time expiry, pact captain details and bonus totals from one locked runtime snapshot; the adapter reads the volatile state under the shared lock | Owned `list`/`status` RPCs forward to `configuration_report`; legacy shell status remains until R3/native retirement |
 | DNS reconciliation | Go `internal/agh` owns desired client/access reconciliation and verification; owned desired DNS comes from the document | Shell still orchestrates credentials, dirty/retry scheduling, acknowledgements and persisted ownership state |
 | Platform enforcement and administration | Go OpenWrt adapter + shell nft/fw4 renderer; LuCI rpcd/session/ACL bridge; shared Requests UI | Working OpenWrt integration, not a platform-neutral enforcement contract or complete shared administration UI |
 | Scope | OpenWrt only; preserve future options | No second-router implementation or cross-platform build workstream |
@@ -64,8 +65,8 @@ and the explicit authority cutover has completed.
 | Broad interim adapter | `core/internal/platform/platform.go`: `Context`, `Policy`, `Configuration`, `WithContext`, `RouterKey`, legacy phone import/removal, `EnsureTicket` | Mixes legacy import, product-policy-shaped input, locking, key access and network side effects. Existing methods are an interim contract, not the final implementation checklist for every router |
 | Extra apply contract | `core/internal/configuration/authority.go`: `Backend.ConfigurationTransaction`, `Backend.NetworkTransaction`; `core/internal/openwrt/configuration.go`, `network.go` | Configuration apply/recovery and volatile network mutation exist outside `platform.Adapter`. The callback currently carries raw configuration plus a synchronous apply function; a new backend still has to understand how effective intent and runtime facts are assembled |
 | Shell required even after import | `Authority.Context`, `Authority.Policy`, `Authority.WithContext` in `authority.go` call the wrapped adapter; `openwrt.go` calls `core-context`/`core-policy` | The owned document does not remove the shell round trip. `AppContext` still requires per-profile runtime entries and matching pact facts (bonus now comes from core-owned state); `PhonePolicy` checks shell captain/override, and preserves the verified DNS input. Split these into explicit runtime/application facts, not another policy compiler |
-| Remaining product writers/readers | Shell `effective_override`, `gc_expired_tickets` and status helpers; `_clear_allow` is now legacy-only | Owned bonus, action, grant-repair and pact-permit revocation decisions are Go-owned. Status/expiry consumers remain to migrate. Preserve RAM-versus-durable semantics |
-| Status and network compilation | Shell `_now_match_schedule`, `profile_effective_status`, `gen_*`, `generate_include` | Status evaluation and precedence are mixed with nft syntax. Core must define precedence/allow windows/network intent; adapter must render/apply it without independently deciding whether a profile deserves access |
+| Remaining product writers/readers | Shell `gc_expired_tickets` and legacy status helpers; `_clear_allow` is now legacy-only | Owned bonus, action, grant-repair, pact-permit revocation and status/expiry consumers are Go-owned. Native expiry cleanup stays with the kernel/adapter. Preserve RAM-versus-durable semantics |
+| Status and network compilation | Shell `gen_*`, `generate_include` render native rules; Go `status.go` decides precedence and allow windows | Status evaluation and precedence are core-owned and shared by the report. The shell's legacy status path and nft syntax remain; the adapter must render/apply without independently deciding whether a profile deserves access |
 | Grant-to-network bridge | Owned `Authority.EnsureTicket` uses shared Go decisions and `Backend.NetworkTransaction`; legacy `cli_core_ticket` refuses owned mode | Owned repair no longer asks shell to decide eligibility: it never shortens, replaces a manual block or opens a pact. The remaining native bridge owns RAM storage, locks and application acknowledgement only; legacy import/path retirement remains separate |
 | DNS lifecycle/state | Shell `_dns_sync_locked`, `cli_dns_tick`, `_json_dns`; Go `internal/agh`, `configuration/dns.go` | The reconciler is portable, but a new router still needs more than an AGH HTTP client. Separate core-owned acknowledgement/ownership semantics and retry orchestration from secret access, storage paths and service wakeups. Never advertise desired DNS as verified enforcement |
 | Ulysses recovery entry point | Go `PactOperation` handles owned release/cancel timing; shell `cli_sail_*` and `www-familywarden/cgi-bin/sail` handle status, root authentication, answer check and throttling | Release timing is substantially migrated; protected entry-point/phrase semantics and transport/auth plumbing remain mixed. Preserve a distinct protected release route, not an ordinary administrator bypass |
@@ -119,8 +120,9 @@ contracts needed by each migrated caller.
       transaction/rollback bridge (core r11/backend rc10-r8; evidence below).
     - [x] Owned pact-permit revocation in core (core r12/backend rc10-r9), including
       failed-apply RAM undo and a post-lock legacy cutover guard; focused evidence below.
-    - [ ] Move remaining status/expiry product decisions; distinguish the core
-      decision from native rendering/cache cleanup.
+    - [x] Owned status/expiry report in core (core r13/backend rc10-r10): precedence,
+      allow-window evaluation, read-time expiry, pact details and bonus from one locked
+      runtime snapshot; `list`/`status` forward to `configuration_report`. Evidence below.
 - [ ] **R2 — Replace policy-shaped adapter reads with runtime facts.** After R1, owned
   identity/request/policy paths must run without `core-context`/`core-policy` or UCI.
   Keep legacy import behind the OpenWrt compatibility path; root-private keys and
@@ -266,6 +268,38 @@ no captain ticket/permanent escape, unrelated-profile preservation and no resurr
 on zero-delay root-only fixture release. Reapply/startup clear stale bound permits;
 captain blocks and the legacy behavior remain intact. No full browser e2e, emulator,
 package build matrix, production router/phone access or other-platform work.
+
+## R1b status/expiry evidence (core r13/backend rc10-r10, development only)
+
+The owned `list` and `status` replies are now one core decision. `Authority`
+`configuration_report` (optional `profile` field) asks the backend for one locked
+runtime snapshot: the volatile overrides, the last signed-payload fetch epoch and the
+versioned network facts. `status.go` then applies the same precedence the legacy shell
+used (global disable, manual override, policy, allow windows), expires overrides at
+read time, projects the frozen pact captain, revokes standing captain allows through
+`PactNetworkOverride`, and reports today's core-owned bonus total. It makes no RAM
+writes and triggers no compilation: a lapsed ticket reads as `none` immediately, while
+the kernel's timeout element expires natively.
+
+`platform.Context` gains `MastLastSync` (informational fetch epoch, never confirmed
+phone enforcement). The `configuration.Backend` contract gains `NetworkSnapshot`; the
+OpenWrt adapter takes the shared state lock, parses every volatile row (duplicate or
+malformed rows fail closed), reads the mast journal and serves facts through the
+existing `core-network-facts` handshake (`network-actions-v1`). The shell's
+`ubus_list`/`ubus_status` forward to `configuration_report` in owned mode and keep the
+legacy path otherwise; a core-down report is refused, never answered from legacy state.
+
+Focused validation: Go/race unit checks for precedence, window boundaries (daytime,
+overnight, equal endpoints, 24:00), read-time expiry, pact captain details/permit
+revocation, bonus totals, single-profile shape and strict decoding; OpenWrt adapter
+checks for the locked snapshot, absent-state-as-empty, malformed RAM/journal/facts
+refusal and lock release; `FW_TEST_FOCUS=status sh scripts/test-integration.sh` passes
+22 real OpenWrt checks covering legacy pre-import behavior, explicit cutover, owned
+list/status through the original RPCs, a deterministic 00:00-24:00 schedule window,
+override precedence, read-time expiry without recompile or RAM rewrite, core bonus,
+pact captain fields with a standing pre-pact allow revoked, and core-down refusal. The
+full integration run, the network/bonus/pact-network focuses, syntax and LuCI e2e
+verify no regression. No production router/phone access.
 
 ## Acceptance checklist for adapter-ready completion
 

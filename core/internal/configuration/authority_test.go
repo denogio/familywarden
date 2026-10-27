@@ -38,6 +38,7 @@ type fakeBackend struct {
 	network        map[string]platform.NetworkOverride
 	networkApplies int
 	networkFail    bool
+	mastSync       int64
 }
 
 func (f *fakeBackend) Configuration() (rules.Configuration, error) { return clone(f.current), nil }
@@ -46,7 +47,7 @@ func (f *fakeBackend) Context() (platform.Context, error) {
 	for _, v := range f.current.Current.Profiles {
 		p[v.ID] = platform.Profile{Name: v.Name, AppInput: &rules.AppConfig{Version: 1}}
 	}
-	return platform.Context{Profiles: p, TimeZone: "UTC", BonusFormat: bonusFormat, NetworkFormat: networkFormat}, nil
+	return platform.Context{Profiles: p, TimeZone: "UTC", BonusFormat: bonusFormat, NetworkFormat: networkFormat, MastLastSync: f.mastSync}, nil
 }
 func (f *fakeBackend) WithContext(fn func(platform.Context) error) error {
 	c, _ := f.Context()
@@ -81,6 +82,15 @@ func (f *fakeBackend) NetworkTransaction(id string, fn func(platform.Context, pl
 		f.network[id] = next
 		return nil
 	})
+}
+
+func (f *fakeBackend) NetworkSnapshot(fn func(platform.Context, map[string]platform.NetworkOverride) error) error {
+	c, _ := f.Context()
+	state := map[string]platform.NetworkOverride{}
+	for id, s := range f.network {
+		state[id] = s
+	}
+	return fn(c, state)
 }
 
 func sample() rules.Configuration {

@@ -5,7 +5,7 @@
 #   ./scripts/test-integration.sh              # host: starts the container
 #   OPENWRT_IMAGE=openwrt/rootfs:x86-64-25.12.4 ./scripts/test-integration.sh
 #
-# FW_TEST_FOCUS=bonus, network or pact-network runs only that narrow bridge slice.
+# FW_TEST_FOCUS=bonus, network, status or pact-network runs only that narrow bridge slice.
 # Needs docker and CAP_NET_ADMIN (nftables runs in the container's own netns).
 
 if [ "$1" != "--inside" ]; then
@@ -388,6 +388,55 @@ if [ "${FW_TEST_FOCUS:-}" = bonus ]; then
     assert_json "core-down bonus fails instead of using legacy" "$(call bonus '{"profile":"kid","minutes":15}')" '@.error' 'core not reachable'
     assert_json "core-down totals are unavailable, not zero" "$(call list)" '@.error' 'core not reachable'
     [ "$FAILED" = 0 ] && echo 'All focused bonus checks passed!'
+    exit "$FAILED"
+fi
+
+if [ "${FW_TEST_FOCUS:-}" = status ]; then
+    echo "=== focused owned status/expiry reporting through core ==="
+    uci set familywarden.kid.apps=1
+    uci set familywarden.settings.ulysses_profile=kid
+    # One 00:00-24:00 window on every day makes the scheduled status
+    # deterministic at any time of day:
+    uci add familywarden schedule
+    uci set familywarden.@schedule[-1].profile=kid
+    uci set familywarden.@schedule[-1].days='sun mon tue wed thu fri sat'
+    uci set familywarden.@schedule[-1].start='00:00'
+    uci set familywarden.@schedule[-1].stop='24:00'
+    uci commit familywarden
+    "$BIN" reload >/dev/null
+    assert_json "legacy list remains available before import" "$(call list)" '@.profiles.kid.name' 'Kid'
+    assert_json "legacy status remains available before import" "$(call status '{"profile":"kid"}')" '@.name' 'Kid'
+    status_api() { printf '%s' "${2:-{\}}" | /usr/sbin/familywardend -socket "$CORE_SOCK" api "$1"; }
+    revision=$(status_api configuration_export | jsonfilter -e '@.configuration.revision')
+    assert_json "status cutover imports explicitly" "$(status_api configuration_import "{\"revision\":\"$revision\"}")" '@.status' ok
+    assert_json "owned status uses the original RPC" "$(call status '{"profile":"kid"}')" '@.name' 'Kid'
+    assert_json "owned schedule window reads allowed" "$(call status '{"profile":"kid"}')" '@.status' 'allowed'
+    assert_json "owned block policy reads blocked" "$(call status '{"profile":"teen"}')" '@.status' 'blocked'
+    assert_json "owned allow outranks the policy" "$(call allow '{"profile":"teen"}')" '@.status' ok
+    assert_json "allow reads allowed" "$(call status '{"profile":"teen"}')" '@.status' 'allowed'
+    assert_json "owned block outranks allow" "$(call block '{"profile":"teen"}')" '@.status' ok
+    assert_json "block reads blocked" "$(call status '{"profile":"teen"}')" '@.status' 'blocked'
+    assert_json "owned reset restores the policy" "$(call reset '{"profile":"teen"}')" '@.status' ok
+    # Read-time expiry: the kernel set keeps the ticket until its own timeout,
+    # but the report must show it as none immediately after the deadline.
+    call ticket '{"profile":"teen","minutes":1}' >/dev/null
+    sed -i "s/^teen.override_expires=.*/teen.override_expires=$(( $(date +%s) - 1 ))/" /tmp/familywarden.state
+    assert_json "expired ticket reads none without recompile" "$(call status '{"profile":"teen"}')" '@.override' none
+    assert_json "list agrees with the expired status" "$(call list)" '@.profiles.teen.override' none
+    [ "$(awk -F= '$1=="teen.override" { print $2 }' /tmp/familywarden.state)" = allow ] && pass "report does not rewrite RAM state" || fail "report mutated RAM state"
+    call bonus '{"profile":"kid","minutes":30}' >/dev/null
+    assert_json "list reports core-owned bonus" "$(call list)" '@.profiles.kid.bonus_today' 30
+    # A standing pre-pact allow must read as revoked for the bound captain.
+    call allow '{"profile":"kid"}' >/dev/null
+    assert_json "owned pact creation succeeds" "$(call pact "{\"until\":$(( $(date +%s) + 3600 ))}")" '@.status' ok
+    assert_json "bound captain reports the pact" "$(call status '{"profile":"kid"}')" '@.captain' true
+    assert_json "bound captain permit reads revoked" "$(call status '{"profile":"kid"}')" '@.override' none
+    assert_json "bound captain shows the sync journal" "$(call status '{"profile":"kid"}')" '@.mast_last_sync' 0
+    assert_json "list carries the frozen delay" "$(call list)" '@.configuration.pact_delay_seconds' 86400
+    stop_core
+    assert_json "core-down status fails instead of using legacy" "$(call status '{"profile":"kid"}')" '@.error' 'core not reachable'
+    assert_json "core-down list fails instead of using legacy" "$(call list)" '@.error' 'core not reachable'
+    [ "$FAILED" = 0 ] && echo 'All focused status checks passed!'
     exit "$FAILED"
 fi
 

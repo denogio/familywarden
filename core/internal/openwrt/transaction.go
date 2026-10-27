@@ -27,7 +27,7 @@ func (a Adapter) WithContext(fn func(platform.Context) error) error {
 	defer lock.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	if err := acquireStateLock(ctx, lock); err != nil {
+	if err := acquireLock(ctx, lock, false); err != nil {
 		return fmt.Errorf("state transaction: %w", err)
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
@@ -55,7 +55,7 @@ func (a Adapter) withStateLocks(fn func(state, ticket *os.File) error) error {
 		return err
 	}
 	defer ticket.Close()
-	if err := acquireStateLock(ctx, ticket); err != nil {
+	if err := acquireLock(ctx, ticket, false); err != nil {
 		return err
 	}
 	defer syscall.Flock(int(ticket.Fd()), syscall.LOCK_UN)
@@ -64,19 +64,23 @@ func (a Adapter) withStateLocks(fn func(state, ticket *os.File) error) error {
 		return err
 	}
 	defer state.Close()
-	if err := acquireStateLock(ctx, state); err != nil {
+	if err := acquireLock(ctx, state, false); err != nil {
 		return err
 	}
 	defer syscall.Flock(int(state.Fd()), syscall.LOCK_UN)
 	return fn(state, ticket)
 }
 
-func acquireStateLock(ctx context.Context, lock *os.File) error {
+func acquireLock(ctx context.Context, lock *os.File, shared bool) error {
+	flag := syscall.LOCK_EX
+	if shared {
+		flag = syscall.LOCK_SH
+	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		err := syscall.Flock(int(lock.Fd()), flag|syscall.LOCK_NB)
 		if err == nil {
 			return nil
 		}

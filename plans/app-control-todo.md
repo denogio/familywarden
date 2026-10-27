@@ -23,7 +23,7 @@ Historical test counts are evidence at that checkpoint, not current suite totals
 | P9 off-home | LAN notifications only | Transport decision, encryption/key distribution and off-home implementation/testing |
 | P10 Android | Child/adult status/history, scoped parent decisions and usage | Parent presentation split is implemented and preview-tested (#94); scoped child selection is implemented and preview-tested (#97); full parent controls remain |
 | P10 shared web | Existing LuCI pages and shared Requests module, now hardened/tested in neutral and LuCI hosts; control prototype reviewed | Production-wide shared presentation layer, core API integration, host adapter and EN/DA; prototype is not shipped code |
-| Core migration | Identity/requests/usage/new-apps; opt-in authoritative configuration/pacts, CAS/confirm/rollback, Settings/Profiles CAS; owned phone/app policy from the document; Go AGH reconciliation/catalogue | **Not adapter-ready:** owned bonus and manual-network/grant decisions migrated/tested; owned pact-permit revocation also migrated/tested; shell status/expiry consumers, policy-shaped adapter reads, portable network intent/apply contract, DNS/release orchestration, platform construction/shared UI and P12 safety gates; owned configuration cutover not deployed (#91; [R0–R7](adapter-portability.md)) |
+| Core migration | Identity/requests/usage/new-apps; opt-in authoritative configuration/pacts, CAS/confirm/rollback, Settings/Profiles CAS; owned phone/app policy from the document; Go AGH reconciliation/catalogue | **Not adapter-ready:** owned bonus, manual-network/grant, pact-permit revocation and status/expiry reporting migrated/tested; policy-shaped adapter reads, portable network intent/apply contract, DNS/release orchestration, platform construction/shared UI and P12 safety gates; owned configuration cutover not deployed (#91; [R0–R7](adapter-portability.md)) |
 | P11 adult pool | Existing pact enforcement, not the proposed pool | Final consumption/reset rules, ledger and pact-safe self-service |
 | P13 release validation | Same-key rc3/rc4 router+phone pilot and rc5 phone update | Release-wide security/compatibility/lifecycle acceptance for remaining scope; no blanket production rollout approval |
 
@@ -82,7 +82,7 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
       - [x] R1a: owned bonus migrated with one-time import/upgrade, core policy/list
         readers and legacy-writer isolation (core 0.13.0-r10/backend rc10-r7).
         Go/race and 13 focused OpenWrt bridge checks pass; no full e2e/emulator run.
-      - [ ] R1b: complete network state/expiry/status consumers.
+      - [x] R1b: complete network state/expiry/status consumers.
         - [x] Owned block/allow/reset/ticket and grant-repair decisions in Go, with
           shared RAM/native apply transaction and rollback (core r11/backend rc10-r8).
           Focused Go/race, affected adapter/configuration tests and 34 real OpenWrt
@@ -91,8 +91,11 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
           retaining blocks/other profiles and undoing RAM changes on failed apply.
           Legacy post-lock cutover guard and versioned apply handshake are covered by
           focused Go/race and 42 real OpenWrt pact-network checks; no full e2e/emulator.
-        - [ ] Move remaining status/schedule/expiry product decisions; preserve native
-          kernel enforcement mechanisms and distinguish cleanup from policy authority.
+        - [x] Owned status/expiry report in core (core r13/backend rc10-r10): owned
+          `list`/`status` forward to `configuration_report`; precedence, allow windows,
+          read-time expiry, pact details and bonus come from one locked runtime snapshot.
+          Focused Go/race, adapter snapshot checks and 22 real OpenWrt status checks
+          pass; native expiry cleanup stays kernel/adapter-owned; no full e2e/emulator.
 - [ ] R2: replace owned policy-shaped `core-context`/`core-policy` reads with explicit
       runtime/application facts; isolate legacy import in OpenWrt compatibility code.
 - [ ] R3: define portable network intent/status and applied-state/error semantics;

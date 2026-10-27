@@ -19,11 +19,12 @@ import (
 )
 
 type Adapter struct {
-	Shell      string // the familywarden plugin, e.g. /usr/libexec/rpcd/familywarden
-	KeyFile    string // usign secret key, e.g. /etc/familywarden/mast.key
-	LockFile   string // interim state transaction lock; empty uses the OpenWrt default
-	ConfigFile string // core household document (OpenWrt currently uses the default layout)
-	StateFile  string // volatile override projection; empty uses /tmp/familywarden.state
+	Shell        string // the familywarden plugin, e.g. /usr/libexec/rpcd/familywarden
+	KeyFile      string // usign secret key, e.g. /etc/familywarden/mast.key
+	LockFile     string // interim state transaction lock; empty uses the OpenWrt default
+	ConfigFile   string // core household document (OpenWrt currently uses the default layout)
+	StateFile    string // volatile override projection; empty uses /tmp/familywarden.state
+	MastSeenFile string // volatile last signed-payload fetch; empty uses /tmp/familywarden.mast
 }
 
 const maxOutput = 1 << 20

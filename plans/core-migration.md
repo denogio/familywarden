@@ -18,10 +18,11 @@ checklist are in [Router adapter portability](adapter-portability.md).
   and AGH reconciliation; opt-in configuration/pact authority, CAS/recovery, document-
   derived phone/app policy and LuCI CAS writes. These are not all production-deployed.
 - **Still mixed:** owned policy/context still call the shell. Bonus and manual
-  network/grant-repair and owned pact-permit revocation decisions now run in core
-  (latest core r12/backend rc10-r9). Network RAM storage and native apply remain
-  adapter-backed. Shell still evaluates status/schedules and expiry/cache cleanup;
-  DNS lifecycle/state and protected release entry-point responsibilities remain split.
+  network/grant-repair, owned pact-permit revocation and the status/expiry report now
+  run in core (latest core r13/backend rc10-r10). Network RAM storage and native
+  apply remain adapter-backed. Shell still owns the legacy status path and
+  expiry/cache cleanup; DNS lifecycle/state and protected release entry-point
+  responsibilities remain split.
 - **Still OpenWrt-specific:** current daemon construction and adapter contracts require
   more than platform facts/apply. UCI/nft/fw4/procd are legitimate adapter internals,
   but the owned core/shared UI must not require them to run on another platform.
@@ -29,13 +30,14 @@ checklist are in [Router adapter portability](adapter-portability.md).
   administration and safe restore/mixed-version matrix. No second-router implementation
   or cross-platform build is a current workstream or prerequisite for this migration.
 
-Next implementation slice: **remaining R1b status/expiry consumers**, migrating
-writers/readers together. Owned bonus passed 13 focused OpenWrt checks; manual
-actions/grant repair passed 34; core-owned pact-permit revocation now passes 42,
-including deterministic queued-legacy cutover refusal and failed-creation rollback
-for permanent/timed allows. Focused Go/race and affected adapter checks also pass.
-No full browser e2e, emulator run or deployment for these slices. R2 removes policy-shaped shell reads;
-R3 establishes portable network intent/applied-state semantics. OpenWrt test parity
+Next implementation slice: **R2 policy-shaped adapter reads** (owned
+`core-context`/`core-policy` replacement). R1b is complete: owned bonus passed 13
+focused OpenWrt checks; manual actions/grant repair passed 34; core-owned
+pact-permit revocation passed 42; the owned status/expiry report passes 22, including
+read-time expiry without recompile, deterministic schedule windows, pact captain
+details and core-down refusal. Focused Go/race and affected adapter checks also
+pass. No full browser e2e, emulator run or deployment for these slices. R3
+establishes portable network intent/applied-state semantics. OpenWrt test parity
 alone does not close those boundaries. No other router is being implemented.
 
 The sections below retain chronological checkpoint evidence. Earlier statements about

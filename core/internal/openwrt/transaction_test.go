@@ -96,7 +96,7 @@ func TestStateLockCancellationDoesNotWaitOrStealLock(t *testing.T) {
 	defer contender.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := acquireStateLock(ctx, contender); !errors.Is(err, context.Canceled) {
+	if err := acquireLock(ctx, contender, false); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	probeStateLock(t, a.LockFile, true)

@@ -1,11 +1,13 @@
 package openwrt
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/denogio/familywarden/core/internal/configuration"
@@ -43,6 +45,59 @@ func readOverride(raw []byte, profile string) (platform.NetworkOverride, error) 
 	return out, nil
 }
 
+// readAllOverrides parses every profile's volatile rows without deciding
+// eligibility or expiry. Unrelated lines are ignored; duplicate or malformed
+// rows fail closed. A profile with no mode row reads as "none".
+func readAllOverrides(raw []byte) (map[string]platform.NetworkOverride, error) {
+	out := map[string]platform.NetworkOverride{}
+	seen := map[string]bool{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		key, value, found := strings.Cut(line, "=")
+		suffix := ""
+		switch {
+		case strings.HasSuffix(key, ".override"):
+			suffix = ".override"
+		case strings.HasSuffix(key, ".override_expires"):
+			suffix = ".override_expires"
+		default:
+			continue
+		}
+		if !found {
+			return nil, errors.New("invalid network state row")
+		}
+		profileID := key[:len(key)-len(suffix)]
+		if profileID == "" {
+			return nil, errors.New("invalid network state row")
+		}
+		rowKey := profileID + suffix
+		if seen[rowKey] {
+			return nil, errors.New("duplicate network state")
+		}
+		seen[rowKey] = true
+		row := out[profileID]
+		if suffix == ".override" {
+			row.Mode = value
+		} else if value != "" {
+			n, err := strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				return nil, errors.New("invalid network deadline")
+			}
+			row.Expires = n
+		}
+		out[profileID] = row
+	}
+	for id, row := range out {
+		if row.Mode == "" {
+			row.Mode = "none"
+		}
+		if row.Mode != "none" && row.Mode != "allow" && row.Mode != "block" {
+			return nil, fmt.Errorf("invalid network state for %s", id)
+		}
+		out[id] = row
+	}
+	return out, nil
+}
+
 func renderOverride(raw []byte, profile string, next platform.NetworkOverride) []byte {
 	var out strings.Builder
 	for _, line := range strings.Split(string(raw), "\n") {
@@ -66,6 +121,13 @@ func (a Adapter) networkStateFile() string {
 	return "/tmp/familywarden.state"
 }
 
+func (a Adapter) mastSeenFile() string {
+	if a.MastSeenFile != "" {
+		return a.MastSeenFile
+	}
+	return "/tmp/familywarden.mast"
+}
+
 func readNetworkFile(path string) ([]byte, bool, error) {
 	raw, err := os.ReadFile(path)
 	absent := os.IsNotExist(err)
@@ -87,6 +149,70 @@ func restoreNetworkFile(path string, raw []byte, absent bool) error {
 		return err
 	}
 	return replaceFile(path, raw)
+}
+
+// mastSeen reports the router's last signed-payload fetch epoch. An absent or
+// empty journal reads as zero; malformed content fails closed.
+func mastSeen(path string) (int64, error) {
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	fields := strings.Fields(string(raw))
+	if len(fields) == 0 {
+		return 0, nil
+	}
+	if len(fields) != 2 {
+		return 0, errors.New("invalid mast sync journal")
+	}
+	epoch, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil || epoch < 0 {
+		return 0, errors.New("invalid mast sync journal")
+	}
+	return epoch, nil
+}
+
+// NetworkSnapshot takes the shared state lock, reads the volatile overrides and
+// the mast journal, and serves one consistent facts snapshot to the callback.
+// Platform writers hold the exclusive lock; the callback must not call the
+// adapter.
+func (a Adapter) NetworkSnapshot(fn func(platform.Context, map[string]platform.NetworkOverride) error) error {
+	path := a.LockFile
+	if path == "" {
+		path = "/var/lock/familywarden.lock"
+	}
+	lock, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := acquireLock(ctx, lock, true); err != nil {
+		return fmt.Errorf("network snapshot: %w", err)
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	raw, _, err := readNetworkFile(a.networkStateFile())
+	if err != nil {
+		return err
+	}
+	state, err := readAllOverrides(raw)
+	if err != nil {
+		return err
+	}
+	synced, err := mastSeen(a.mastSeenFile())
+	if err != nil {
+		return err
+	}
+	var facts platform.Context
+	if err := a.runLocked(&facts, lock, "core-network-facts"); err != nil {
+		return err
+	}
+	facts.MastLastSync = synced
+	return fn(facts, state)
 }
 
 // projectPactPermit is called with the configuration transaction's locks already

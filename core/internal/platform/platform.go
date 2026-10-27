@@ -37,6 +37,9 @@ type Context struct {
 	TimeZone    string             `json:"timezone"`     // IANA name or ""
 	PactCaptain string             `json:"pact_captain"` // profile bound by an active pact, or ""
 	Profiles    map[string]Profile `json:"profiles"`     // effective profiles
+	// MastLastSync is the router's last signed-payload fetch epoch: informational
+	// only, never confirmed phone enforcement. Core fills it from platform state.
+	MastLastSync int64 `json:"mast_last_sync,omitempty"`
 }
 
 // Policy is the policy content of one profile for a phone reply. Interim: it
