@@ -296,5 +296,6 @@ func (a Adapter) materialize(c rules.Configuration, zone string) error {
 			return err
 		}
 	}
-	return os.WriteFile("/tmp/familywarden.dns.dirty", nil, 0600)
+	// Owned DNS reconciliation detects the desired-state fingerprint itself.
+	return nil
 }

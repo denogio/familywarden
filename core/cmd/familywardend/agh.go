@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 	"unicode/utf8"
 
 	"github.com/denogio/familywarden/core/internal/agh"
@@ -27,11 +26,7 @@ func aghSync(in io.Reader, out io.Writer) error {
 
 // Like uclient-fetch --no-proxy: AGH is on the LAN, never via a proxy.
 func lanClient() *http.Client {
-	return &http.Client{Transport: &http.Transport{Proxy: nil}, Timeout: 10 * time.Second,
-		// Never forward credentials to a redirected endpoint (including a
-		// less-trusted child subdomain) or change the meaning of a POST.
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
+	return agh.NewHTTPClient()
 }
 
 func decodeAGH(in io.Reader, v any, max int64) error {

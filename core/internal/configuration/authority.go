@@ -295,10 +295,13 @@ func (a *Authority) Policy(profile string, version int) (platform.Policy, error)
 	}
 	p := platform.Policy{Context: c}
 	if prof, ok := facts.Profiles[profile]; ok {
-		p.DNS = prof.DNS
 		if b, err := json.Marshal(map[string]string{"override": prof.Override}); err == nil {
 			p.Rules = b
 		}
+	}
+	p.DNS, err = a.verifiedDNS(profile)
+	if err != nil {
+		return platform.Policy{}, err
 	}
 	if facts.MastCaptain == profile {
 		p.Captain = profile
@@ -533,6 +536,20 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 			return fail(err)
 		}
 		return report
+	case "configuration_sail_status":
+		if !found {
+			return fail(errors.New("configuration import required"))
+		}
+		return a.releaseStatus(d.Configuration)
+	case "configuration_dns_status", "configuration_dns_sync", "configuration_dns_tick", "configuration_dns_auth", "configuration_dns_services":
+		if !found {
+			return fail(errors.New("configuration import required"))
+		}
+		r, err := a.dnsAPI(method, raw, d)
+		if err != nil {
+			return fail(err)
+		}
+		return r
 	case "configuration_dns":
 		if !found {
 			return fail(errors.New("configuration import required"))

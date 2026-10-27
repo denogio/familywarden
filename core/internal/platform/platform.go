@@ -164,6 +164,21 @@ type LegacyDevice struct {
 	Approves      string `json:"approves"`
 }
 
+// DNSRuntime contains native secrets and one-time legacy import data, not
+// desired policy. The core owns acknowledgements, ownership and retry state.
+type DNSRuntime struct {
+	Auth        string
+	LegacyOwned []string
+	LegacyAcks  []string
+}
+
+// DNSPlatform serializes legacy cutover/secret access with native DNS writers.
+// The callback must not call the adapter again; no socket callbacks are allowed.
+type DNSPlatform interface {
+	DNSTransaction(func(DNSRuntime) error) error
+	SetDNSCredentials(username, password string) error
+}
+
 type Adapter interface {
 	Context() (Context, error)
 	// Configuration exports configured and frozen state together for migration.

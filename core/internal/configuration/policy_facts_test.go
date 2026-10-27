@@ -35,7 +35,8 @@ func policyFacts(t *testing.T, mastCaptain, alexOverride string, alexDNS json.Ra
 }
 
 func TestOwnedPhonePolicyUsesPlatformFacts(t *testing.T) {
-	a, b := policyFacts(t, "alex", "block", json.RawMessage(`{"hostname":"alex.fw"}`))
+	a, b := policyFacts(t, "alex", "block", json.RawMessage(`{"hostname":"unverified.example.test"}`))
+	b.dnsRuntime.LegacyAcks = []string{"alex fw-alex dns.example.test - -"}
 	p, err := a.Policy("alex", 3)
 	if err != nil {
 		t.Fatal(err)
@@ -46,8 +47,11 @@ func TestOwnedPhonePolicyUsesPlatformFacts(t *testing.T) {
 	if err := json.Unmarshal(p.Rules, &r); err != nil || r.Override != "block" {
 		t.Fatal("captain override fact not applied", string(p.Rules))
 	}
-	if string(p.DNS) != `{"hostname":"alex.fw"}` {
-		t.Fatal("verified DNS input dropped", p.DNS)
+	var dns struct {
+		Hostname string `json:"hostname"`
+	}
+	if err := json.Unmarshal(p.DNS, &dns); err != nil || dns.Hostname != "fw-alex.dns.example.test" {
+		t.Fatal("core-owned DNS acknowledgement not used", string(p.DNS), err)
 	}
 	if p.Captain != "alex" {
 		t.Fatal("mast captain fact missing", p.Captain)

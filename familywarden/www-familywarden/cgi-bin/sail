@@ -43,6 +43,8 @@ if [ "$REQUEST_METHOD" != "POST" ]; then
     exit 0
 fi
 
+case "${CONTENT_LENGTH:-0}" in *[!0-9]*|'') error "bad request";; esac
+[ "${CONTENT_LENGTH:-0}" -le 8192 ] || error "bad request"
 body=$(head -c "${CONTENT_LENGTH:-0}")
 json_load "$body" 2>/dev/null || error "bad request"
 json_get_var action action
@@ -56,6 +58,16 @@ flock 9
 if ! check_password "$password"; then
     sleep 3
     error "wrong password"
+fi
+
+# Root authentication/throttling remain native; owned product decisions use
+# the core's dedicated protected-release route, never the administrator API.
+if [ -f /etc/familywarden/core/configuration.json ]; then
+    case "$action" in release) op=request;; cancel) op=cancel;; *) error "unknown action";; esac
+    json_init
+    [ "$op" != request ] || json_add_string answer "$answer"
+    reply "$(json_dump | /usr/sbin/familywardend release "$op")"
+    exit 0
 fi
 
 case "$action" in

@@ -23,7 +23,7 @@ Historical test counts are evidence at that checkpoint, not current suite totals
 | P9 off-home | LAN notifications only | Transport decision, encryption/key distribution and off-home implementation/testing |
 | P10 Android | Child/adult status/history, scoped parent decisions and usage | Parent presentation split is implemented and preview-tested (#94); scoped child selection is implemented and preview-tested (#97); full parent controls remain |
 | P10 shared web | Existing LuCI pages and shared Requests module, now hardened/tested in neutral and LuCI hosts; control prototype reviewed | Production-wide shared presentation layer, core API integration, host adapter and EN/DA; prototype is not shipped code |
-| Core migration | Identity/requests/usage/new-apps; opt-in authoritative configuration/pacts, CAS/confirm/rollback, Settings/Profiles CAS; owned phone/app policy from the document; Go AGH reconciliation/catalogue | **Not adapter-ready:** owned bonus, manual-network/grant, pact-permit revocation, status/expiry, runtime facts and portable network intent/exact apply receipts migrated/tested; DNS/release orchestration, platform construction/shared UI and P12 safety gates; owned configuration cutover not deployed (#91; [R0–R7](adapter-portability.md)) |
+| Core migration | Identity/requests/usage/new-apps; opt-in authoritative configuration/pacts, CAS/confirm/rollback, Settings/Profiles CAS; owned phone/app policy from the document; Go AGH reconciliation/catalogue | **Not adapter-ready:** owned bonus, manual-network/grant, pact-permit revocation, status/expiry, runtime facts, portable network intent/exact apply receipts and DNS/release orchestration migrated/tested; platform construction/shared UI and P12 safety gates; owned configuration cutover not deployed (#91; [R0–R7](adapter-portability.md)) |
 | P11 adult pool | Existing pact enforcement, not the proposed pool | Final consumption/reset rules, ledger and pact-safe self-service |
 | P13 release validation | Same-key rc3/rc4 router+phone pilot and rc5 phone update | Release-wide security/compatibility/lifecycle acceptance for remaining scope; no blanket production rollout approval |
 
@@ -114,8 +114,11 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
       network/pact/status/bonus checks, fresh-package smoke and 65+4 browser tests pass.
       LuCI r5 fixes the browser-discovered shared action busy-state race with a
       deterministic held-response regression. No emulator or production deployment.
-- [ ] R4: complete portable DNS lifecycle/state and protected-release orchestration;
-      retain native secret/auth/lifecycle integration and verification-before-ack.
+- [x] R4: core-owned DNS lifecycle/ownership/verified acknowledgements and retry
+      fingerprints in independent `dns.json`; native secrets/locked legacy import only.
+      Protected release phrase/status use a dedicated core route, with native root auth
+      and throttling retained. Go/race/vet, 495 integration, 42 pact-network and 96 real
+      AGH checks pass (core r16/backend rc10-r13); no deployment.
 - [ ] R5: separate platform construction and finish shared core-backed administration
       with thin host bridges (P10), not a new framework or standalone login.
 - [ ] R6: run the production service and shared UI against a recording/failing adapter

@@ -26,8 +26,8 @@ checklist are in [Router adapter portability](adapter-portability.md).
   adapter; shell retains LAN discovery, validation and fw4 apply, not owned product
   eligibility or expiry GC. Intent IDs/revisions bind the synchronous apply receipt;
   `network_application` reports acknowledgement, not live dataplane verification.
-  DNS lifecycle/state and protected release
-  entry-point responsibilities remain split.
+  R4 additionally owns DNS lifecycle/state and release phrase/status; native credential
+  access and authenticated/throttled recovery entry-point integration stay in OpenWrt.
 - **Still OpenWrt-specific:** current daemon construction and adapter contracts require
   more than platform facts/apply. UCI/nft/fw4/procd are legitimate adapter internals,
   but the owned core/shared UI must not require them to run on another platform.
@@ -35,7 +35,12 @@ checklist are in [Router adapter portability](adapter-portability.md).
   administration and safe restore/mixed-version matrix. No second-router implementation
   or cross-platform build is a current workstream or prerequisite for this migration.
 
-Next implementation slice: **R4 DNS lifecycle/state and protected-release orchestration**.
+Next implementation slice: **R5 portable service composition and shared administration**.
+R4 now owns DNS acknowledgements/ownership/retries in independent `dns.json` and
+protected release phrase/status behind `/release/`; native secrets, root authentication
+and throttling remain in OpenWrt (core r16/backend rc10-r13). Go/race/vet, 495 full
+integration, 42 pact-network and 96 real AGH checks pass. Package/UI validation follows
+with R5; nothing has been deployed to a production router.
 R2's runtime facts and R3's portable ordered network intent/exact apply acknowledgement
 are implemented. Configuration/network apply and recovery receive core-computed intents
 under the existing locks; the owned native renderer does not reconstruct eligibility

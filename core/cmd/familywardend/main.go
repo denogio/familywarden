@@ -133,7 +133,8 @@ func handler(st *store.Store, id *identity.Service) http.Handler {
 
 func configurationHandler(base http.Handler, cfg *configuration.Authority) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || !strings.HasPrefix(r.URL.Path, "/api/configuration_") {
+		recovery := strings.HasPrefix(r.URL.Path, "/release/")
+		if r.Method != http.MethodPost || (!recovery && !strings.HasPrefix(r.URL.Path, "/api/configuration_")) {
 			base.ServeHTTP(w, r)
 			return
 		}
@@ -142,7 +143,13 @@ func configurationHandler(base http.Handler, cfg *configuration.Authority) http.
 			writeJSON(w, map[string]any{"error": "malformed configuration request"})
 			return
 		}
-		writeJSON(w, cfg.API(strings.TrimPrefix(r.URL.Path, "/api/"), b))
+		if recovery {
+			writeJSON(w, cfg.Recovery(strings.TrimPrefix(r.URL.Path, "/release/"), b))
+		} else if strings.HasPrefix(r.URL.Path, "/api/configuration_sail_") {
+			writeJSON(w, map[string]any{"error": "protected release entry point required"})
+		} else {
+			writeJSON(w, cfg.API(strings.TrimPrefix(r.URL.Path, "/api/"), b))
+		}
 	})
 }
 
@@ -286,9 +293,13 @@ func api(socket, method string, in io.Reader, out io.Writer) {
 	if strings.HasPrefix(method, "configuration_") {
 		limit = 1 << 20
 	}
+	localRequest(socket, "/api/"+method, limit, in, out)
+}
+
+func localRequest(socket, path string, limit int, in io.Reader, out io.Writer) {
 	b, _ := io.ReadAll(io.LimitReader(in, int64(limit+1)))
 	b = withoutSession(b)
-	resp, err := client(socket).Post("http://core/api/"+method, "application/json", bytes.NewReader(b))
+	resp, err := client(socket).Post("http://core"+path, "application/json", bytes.NewReader(b))
 	if err == nil {
 		defer resp.Body.Close()
 		var v map[string]any
@@ -358,6 +369,9 @@ func main() {
 		return
 	case "api":
 		api(*socket, flag.Arg(1), os.Stdin, os.Stdout)
+		return
+	case "release":
+		localRequest(*socket, "/release/"+flag.Arg(1), maxAPI, os.Stdin, os.Stdout)
 		return
 	}
 

@@ -13,6 +13,17 @@ import (
 	"github.com/denogio/familywarden/core/internal/store"
 )
 
+func TestProtectedReleaseCannotUseAdministratorRoute(t *testing.T) {
+	h := configurationHandler(http.NotFoundHandler(), nil)
+	for _, method := range []string{"request", "cancel", "status"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/configuration_sail_"+method, strings.NewReader(`{"answer":"press on"}`)))
+		if !strings.Contains(rec.Body.String(), "protected release entry point required") {
+			t.Fatal(rec.Body.String())
+		}
+	}
+}
+
 func TestHealthAndVersion(t *testing.T) {
 	st, err := store.Open(t.TempDir())
 	if err != nil {

@@ -270,7 +270,7 @@ EOF
         refute_rule "$permit no permanent input escape" 'familywarden:kid:override:allow:input' familywarden_input
         nft list set inet fw4 familywarden_ticket | grep -qi 'aa:bb:cc:00:00:01' && fail "captain ticket survived pact" || pass "$permit no captain kernel ticket"
         # Root-only, zero-delay release in this disposable fixture; never a public RPC.
-        pact_api configuration_sail_request >/dev/null
+        printf '%s' '{"answer":"press on"}' | /usr/sbin/familywardend -socket "$CORE_SOCK" release request >/dev/null
         pact_api configuration_tick >/dev/null
         [ "$(ram_override kid)" = none ] && pass "$permit release never resurrects the old permit" || fail "release revived permission"
     done

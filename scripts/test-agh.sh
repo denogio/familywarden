@@ -287,9 +287,11 @@ mkdir -p /var/run/familywarden-core /etc/familywarden/core
 for _ in $(seq 1 20); do [ "$(/usr/sbin/familywardend status | jsonfilter -e '@.running')" = true ] && break; sleep 1; done
 api() { printf '%s' "${2:-{\}}" | /usr/sbin/familywardend api "$1"; }
 rev=$(api configuration_export | jsonfilter -e '@.configuration.revision')
+cp /etc/familywarden/dns.ack /tmp/legacy-ack-at-cutover
 assert_eq "core import" "$(api configuration_import "{\"revision\":\"$rev\"}" | jsonfilter -e '@.status')" "ok"
+owned_ack() { jsonfilter -i /etc/familywarden/core/dns.json -e '@.acks[*]'; }
 "$BIN" dns-sync && pass "owned sync succeeds" || fail "owned sync failed: $(cat /tmp/familywarden.dns.status)"
-grep -q '^gran grandma-2 ' /etc/familywarden/dns.ack && pass "owned sync keeps existing profiles" || fail "ack: $(cat /etc/familywarden/dns.ack)"
+owned_ack | grep -q '^gran grandma-2 ' && pass "owned sync keeps existing profiles" || fail "ack: $(cat /etc/familywarden/dns.ack)"
 exported=$(api configuration_export)
 invalid=$(echo "$exported" | ucode -l fs -e 'let d=json(fs.stdin.read("all")); d.configuration.current.settings.dns_domain=""; for(let p in d.configuration.current.profiles) if(p.id=="alex") p.dns="1"; print(sprintf("%J",d.configuration.current));')
 assert_eq "existing ClientID cannot enable DNS without a domain" "$(api configuration_apply "{\"revision\":\"$(echo "$exported" | jsonfilter -e '@.configuration.revision')\",\"current\":$invalid}" | jsonfilter -e '@.error')" "DNS domain required before enabling DNS"
@@ -304,38 +306,40 @@ assert_eq "the legacy ClientID survives the import" "$alex_id" "aalex-junior"
 "$BIN" dns-sync && pass "owned sync after the edit" || fail "owned sync failed: $(cat /tmp/familywarden.dns.status)"
 assert_eq "owned client created" "$(client "familywarden-$alex_id" .ids[0])" "$alex_id"
 assert_eq "owned client protections" "$(client "familywarden-$alex_id" .safebrowsing_enabled)" "true"
-grep -q "^alex $alex_id dns.example.net safe_browsing tiktok$" /etc/familywarden/dns.ack && pass "owned profile acknowledged" || fail "ack: $(cat /etc/familywarden/dns.ack)"
+cmp -s /tmp/legacy-ack-at-cutover /etc/familywarden/dns.ack && pass "owned sync never rewrites the legacy acknowledgement file" || fail "legacy acknowledgement remains an active writer"
+assert_eq "owned status exposes core acknowledgements" "$(call dns_status | jsonfilter -e '@.profiles.alex.hostname')" "$alex_id.dns.example.net"
+owned_ack | grep -q "^alex $alex_id dns.example.net safe_browsing tiktok$" && pass "owned profile acknowledged" || fail "ack: $(cat /etc/familywarden/dns.ack)"
 assert_eq "existing client still untouched" "$(agh clients | jsonfilter -e "@.clients[@.name='Grandma tablet']")" "$grandma_before"
 # The projection is not authority: a direct UCI edit must not switch DNS off.
 uci set familywarden.gran.dns='0'
 uci set familywarden.settings.agh_url='http://127.0.0.1:1'
 uci commit familywarden
 "$BIN" dns-sync && pass "owned DNS ignores a divergent UCI endpoint" || fail "UCI endpoint became DNS authority"
-grep -q '^gran grandma-2 ' /etc/familywarden/dns.ack && pass "owned DNS ignores direct UCI edits" || fail "UCI edit became DNS authority"
+owned_ack | grep -q '^gran grandma-2 ' && pass "owned DNS ignores direct UCI edits" || fail "UCI edit became DNS authority"
 
 echo ""
 echo "=== Mixed-version DNS configuration must preserve acknowledged policy ==="
-cp /etc/familywarden/dns.ack /tmp/mixed-dns-ack.before
+cp /etc/familywarden/core/dns.json /tmp/mixed-dns-ack.before
 mv /usr/sbin/familywardend /usr/sbin/familywardend.real
 cat > /usr/sbin/familywardend <<'MIXED_CORE'
 #!/bin/sh
 case "$*" in
-    *"api configuration_dns")
-        # Emulate the pre-endpoint private API (older core): no format or URL.
-        /usr/sbin/familywardend.real "$@" | ucode -l fs -e 'let d=json(fs.stdin.read("all")); delete d.format; delete d.input.url; print(sprintf("%J",d));'
+    *"api configuration_dns_sync"|*"api configuration_dns_status"|*"api configuration_dns_tick")
+        # Emulate an old core without the owned lifecycle, never an empty state.
+        echo '{"status":"ok"}'
         ;;
+    *"api configuration_dns_services") echo '{"error":"unknown method"}' ;;
     *) exec /usr/sbin/familywardend.real "$@" ;;
 esac
 MIXED_CORE
 chmod 755 /usr/sbin/familywardend
 "$BIN" dns-sync && fail "mixed DNS configuration format accepted" || pass "mixed DNS configuration format refused"
-cmp -s /tmp/mixed-dns-ack.before /etc/familywarden/dns.ack && pass "mixed DNS configuration keeps the last acknowledgement" || fail "mixed core dropped acknowledged DNS policy"
-assert_eq "mixed catalogue refuses incompatible configuration" "$(call dns_services | jsonfilter -e '@.error')" "DNS configuration unavailable"
-# Even a matching format marker cannot make an omitted required URL an
-# intentional empty value. Require the response's complete typed shape too.
-sed -i 's/delete d.format; //' /usr/sbin/familywardend
+cmp -s /tmp/mixed-dns-ack.before /etc/familywarden/core/dns.json && pass "mixed DNS configuration keeps the last acknowledgement" || fail "mixed core dropped acknowledged DNS policy"
+assert_eq "mixed catalogue refuses incompatible configuration" "$(call dns_services | jsonfilter -e '@.error')" "unknown method"
+# Even a matching marker cannot make missing acknowledgement fields empty.
+sed -i 's/{"status":"ok"}/{"format":"dns-state-v1","credentials":true,"pending":false,"time":0,"error":""}/' /usr/sbin/familywardend
 "$BIN" dns-sync && fail "incomplete DNS configuration accepted" || pass "incomplete DNS configuration refused"
-cmp -s /tmp/mixed-dns-ack.before /etc/familywarden/dns.ack && pass "incomplete DNS configuration keeps the last acknowledgement" || fail "incomplete DNS configuration dropped acknowledged policy"
+cmp -s /tmp/mixed-dns-ack.before /etc/familywarden/core/dns.json && pass "incomplete DNS configuration keeps the last acknowledgement" || fail "incomplete DNS configuration dropped acknowledged policy"
 mv /usr/sbin/familywardend.real /usr/sbin/familywardend
 "$BIN" dns-sync && pass "DNS sync recovers after matching core returns" || fail "matching core did not recover DNS"
 
@@ -372,6 +376,11 @@ call dns_services | jsonfilter -e "@.services[@.id='youtube'].name" | grep -qx Y
 touch /tmp/familywarden.dns.dirty
 "$BIN" dns-tick
 [ -f /tmp/familywarden.dns.dirty ] && fail "tick did not sync a dirty config" || pass "tick syncs after a config change"
+
+cp /etc/familywarden/core/dns.json /tmp/dns-core-down-before
+killall familywardend
+"$BIN" dns-sync && fail "core-down DNS silently fell back" || pass "core-down DNS cannot fall back to shell"
+cmp -s /tmp/dns-core-down-before /etc/familywarden/core/dns.json && pass "core-down DNS retains verified state" || fail "core-down DNS changed verified state"
 
 echo ""
 [ "$FAILED" -eq 0 ] && echo "All AdGuard Home checks passed!" || echo "Some AdGuard Home checks FAILED"

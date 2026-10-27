@@ -51,7 +51,7 @@ is required to finish this boundary.
 | Bonus | Owned-mode validation, durable runtime entries, day/cap/pact decisions and policy/list readers now use core; legacy mode retains its explicitly gated writer | First R1 slice implemented/tested; no active owned-mode shell bonus writer |
 | Manual network actions/grant repair | Owned block/allow/reset, additive-ticket and approved-grant eligibility now run in Go; the adapter stores RAM state and applies native rules under shared locks | Action/repair, owned pact-permit revocation and the status/expiry report are Go-owned; owned native rendering consumes the core's ordered `network-intent-v1` decisions; shell UCI rule generators are legacy-only |
 | Status/expiry reporting | Go `configuration/status.go` evaluates override precedence, allow windows, read-time expiry, pact captain details and bonus totals from one locked runtime snapshot; the adapter reads the volatile state under the shared lock | Owned `list`/`status` RPCs forward to `configuration_report`; legacy shell status remains until R3/native retirement |
-| DNS reconciliation | Go `internal/agh` owns desired client/access reconciliation and verification; owned desired DNS comes from the document | Shell still orchestrates credentials, dirty/retry scheduling, acknowledgements and persisted ownership state |
+| DNS reconciliation | Go `internal/agh` owns desired client/access reconciliation and verification; owned desired DNS comes from the document | Owned core persists acknowledgements/ownership/retry state; native secrets and pre-import compatibility remain in OpenWrt |
 | Platform enforcement and administration | Go OpenWrt nft renderer + shell validation/fw4 apply; LuCI rpcd/session/ACL bridge; shared Requests UI | Versioned portable network intent and exact apply acknowledgement; shared administration, composition and test-adapter proof remain unfinished |
 | Scope | OpenWrt only; preserve future options | No second-router implementation or cross-platform build workstream |
 
@@ -68,9 +68,9 @@ and the explicit authority cutover has completed.
 | Remaining product writers/readers | Shell `gc_expired_tickets`, legacy status helpers and `_clear_allow` are legacy-only | Owned bonus, action, grant-repair, pact-permit revocation and status/expiry consumers are Go-owned. Native expiry cleanup stays with the kernel/adapter. Preserve RAM-versus-durable semantics |
 | Status and network compilation | Core `configuration/intent.go` compiles ordered decisions; OpenWrt `intent.go` renders nft syntax; shell `generate_intent_include` discovers LAN interfaces and stages validation | Status evaluation and precedence are core-owned and shared by the report. Owned rendering consumes ordered forward/router decisions, deadlines, assigned MACs and the core-selected lockdown. It does not inspect profile eligibility, UCI, pact files or volatile overrides. Legacy generators remain pre-import only |
 | Grant-to-network bridge | Owned `Authority.EnsureTicket` uses shared Go decisions and `Backend.NetworkTransaction`; legacy `cli_core_ticket` refuses owned mode | Owned repair no longer asks shell to decide eligibility: it never shortens, replaces a manual block or opens a pact. The remaining native bridge owns RAM storage, locks and application acknowledgement only; legacy import/path retirement remains separate |
-| DNS lifecycle/state | Shell `_dns_sync_locked`, `cli_dns_tick`, `_json_dns`; Go `internal/agh`, `configuration/dns.go` | The reconciler is portable, but a new router still needs more than an AGH HTTP client. Separate core-owned acknowledgement/ownership semantics and retry orchestration from secret access, storage paths and service wakeups. Never advertise desired DNS as verified enforcement |
-| Ulysses recovery entry point | Go `PactOperation` handles owned release/cancel timing; shell `cli_sail_*` and `www-familywarden/cgi-bin/sail` handle status, root authentication, answer check and throttling | Release timing is substantially migrated; protected entry-point/phrase semantics and transport/auth plumbing remain mixed. Preserve a distinct protected release route, not an ordinary administrator bypass |
-| OpenWrt layout and locks | `openwrt/configuration.go`: fixed ownership path, UCI/effective/pact projections, DNS dirty marker; `transaction.go`: inherited file locks; shell uses `/proc/self/fd/3` | These mechanisms belong in the OpenWrt adapter. New adapters must satisfy consistency/recovery guarantees, not emulate these paths, Linux descriptor checks or UCI files. The adapter already writes the DNS dirty marker; it is not missing from Go |
+| DNS lifecycle/state | Shell `_dns_sync_locked`, `cli_dns_tick`, `_json_dns`; Go `internal/agh`, `configuration/dns.go` | Owned lifecycle now lives in `configuration/dns_runtime.go`; the native DNS transaction provides secrets/one-time legacy import under its writer lock. Native tick only wakes the core retry decision. Desired DNS is never advertised as verified enforcement |
+| Ulysses recovery entry point | Go `PactOperation` handles owned release/cancel timing; shell `cli_sail_*` and `www-familywarden/cgi-bin/sail` handle status, root authentication, answer check and throttling | Core `Recovery` owns phrase/status/timing behind a dedicated route; native CGI retains password authentication and throttling. Ordinary administrator API routing refuses protected release methods |
+| OpenWrt layout and locks | `openwrt/configuration.go`: fixed ownership path, UCI/effective/pact projections; `transaction.go`: inherited file locks; shell uses `/proc/self/fd/3` | These mechanisms belong in the OpenWrt adapter. New adapters must satisfy consistency/recovery guarantees, not emulate these paths, Linux descriptor checks or UCI files. Owned DNS uses a desired/credential fingerprint, not the legacy DNS dirty marker |
 | Executable composition | `core/cmd/familywardend/main.go` directly constructs `openwrt.Adapter`; OpenWrt paths are defaults | Compiling for FreeBSD still selects OpenWrt. Separate reusable service composition from platform selection/layout, without a general plugin framework |
 | UI/API surface | Existing Profiles/Settings use core CAS but LuCI CBI/UCI as a local form projection; overview/actions and sail use OpenWrt endpoints. Shared module: `luci-app-familywarden/htdocs/luci-static/resources/familywarden/shared/family.js` | A new platform cannot simply mount the complete administration UI yet. Finish shared controls on portable core APIs; host adapters retain native authentication/session/ACL and transport integration |
 | Restore/upgrade boundary | Core state spans configuration, devices, request/grant and usage documents; keys and AGH state are additional files | Configuration export alone is not a complete transferable household backup. A19's single backup artifact remains a goal; identity, spent grants, pact minima and enforcement acknowledgements must not be replayed or silently weakened |
@@ -137,7 +137,7 @@ contracts needed by each migrated caller.
   OpenWrt compiler. Include device mappings, LAN/default policy, router-access control,
   lockdown/recovery exceptions, deadlines, revisions and atomic apply failure behavior.
   Rendering native schedules is allowed; reimplementing product eligibility is not.
-- [ ] **R4 — Complete DNS and protected-release orchestration.** Reuse Go reconciliation
+- [x] **R4 — Complete DNS and protected-release orchestration.** Reuse Go reconciliation
   and owned pact operations. Move remaining portable state/decisions out of shell while
   retaining native secret access, authenticated release isolation, verification-before-
   ack, retry safety and a recovery entry point reachable during lockdown. Depends on
@@ -389,6 +389,38 @@ lockout; a held-response regression makes this interleaving deterministic. The f
 regression and the full fresh-package browser rerun pass. No Android emulator or
 production router/phone access; R4–R7 and the complete P12 migration/restore matrix
 remain open.
+
+## R4 DNS and protected-release evidence (core r16/backend rc10-r13, development only)
+
+Owned DNS lifecycle now runs in `configuration/dns_runtime.go`. The separate versioned
+`dns.json` runtime document atomically retains acknowledged profiles, owned ClientIDs,
+attempt fingerprint/time and errors across restarts and configuration rollback.
+The OpenWrt adapter supplies secrets and locked one-time legacy import data only;
+owned sync never rewrites `dns.ack`/`agh.owned`. Core uses the existing AGH reconciler
+and shared no-proxy/no-redirect HTTP client, publishes only verified completed results,
+retains previous acknowledgements on failure and refuses unsupported/corrupt runtime.
+Desired-state and credential fingerprints trigger reconciliation; failed unchanged
+attempts retry after five minutes. Native tick is only a wakeup, not a retry decision.
+Credentials remain write-only in the root-private adapter file. Owned phone policy
+reads core-owned acknowledgements, not DNS-shaped shell facts. Shell lifecycle commands
+forward to the versioned core API and fail visibly on incompatible/missing replies;
+queued legacy writers recheck ownership under their DNS lock.
+
+Core `Recovery` owns the release phrase and document-derived status. The dedicated
+root-only `/release/` route is separate from administrator API routing; ordinary
+`/api/configuration_sail_*` requests are refused. The native CGI retains root-password
+verification, session destruction, serialized attempts and failure delay, bounds its
+input and forwards only the answer after authentication. Existing privileged root CLI
+recovery stays supported. Cooling-off/cancel semantics remain the existing core pact
+operations; no ordinary administrator bypass or new public listener is added.
+
+Go unit/race/vet and syntax checks, all 495 OpenWrt integration checks, 42 focused
+pact-network checks and 96 real AdGuard Home checks pass. Coverage includes import-once,
+verified readback, persistence failure, retry cadence, credential changes, malformed/
+future state, native secret locking, mixed-version/core-down refusal, untouched legacy
+acks, cumulative pact DNS after restart and protected-route/phrase isolation. Package
+and shared-UI milestone validation follows with R5; no production router or phone access.
+R5–R7 remain open.
 
 ## Acceptance checklist for adapter-ready completion
 

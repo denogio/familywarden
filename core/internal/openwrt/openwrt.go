@@ -26,6 +26,7 @@ type Adapter struct {
 	StateFile    string // volatile override projection; empty uses /tmp/familywarden.state
 	MastSeenFile string // volatile last signed-payload fetch; empty uses /tmp/familywarden.mast
 	IntentFile   string // renderer-ready network intent; empty uses /var/run/familywarden/network-intent
+	DNSLockFile  string // native DNS import/secret lock; empty uses the OpenWrt default
 }
 
 const maxOutput = 1 << 20

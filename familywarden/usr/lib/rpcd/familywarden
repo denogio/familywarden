@@ -64,25 +64,29 @@ core_configuration_api() {
     printf '%s\n' "$response"
     [ "$code" = 0 ] && [ -z "$(printf '%s' "$response" | jsonfilter -e '@.error')" ]
 }
-# Private desired-DNS contract: an older core's missing fields must never be
-# interpreted as explicitly empty settings (which could drop acknowledged DNS).
-core_dns_configuration() {
-    local response kind key
-    response=$(core_configuration_api configuration_dns '{}') || return 1
-    [ "$(printf '%s' "$response" | jsonfilter -e '@.format')" = "dns-config-v1" ] || return 1
-    json_load "$response" || return 1
-    json_get_type kind captain
-    [ "$kind" = string ] || return 1
-    json_get_type kind input
-    [ "$kind" = object ] || return 1
-    json_select input || return 1
-    for key in domain url; do
+# A missing lifecycle feature is never an explicitly empty acknowledgement set.
+core_dns_runtime() {
+    local response code kind key valid=1
+    response=$(core_configuration_api "$1" '{}')
+    code=$?
+    [ "$(printf '%s' "$response" | jsonfilter -e '@.format')" = dns-state-v1 ] || {
+        _json_error "DNS core unavailable or incompatible"
+        return 1
+    }
+    json_load "$response" || valid=0
+    for key in credentials pending; do
         json_get_type kind "$key"
-        [ "$kind" = string ] || return 1
+        [ "$kind" = boolean ] || valid=0
     done
     json_get_type kind profiles
-    [ "$kind" = array ] || return 1
+    [ "$kind" = object ] || valid=0
+    json_get_type kind time
+    [ "$kind" = int ] || valid=0
+    json_get_type kind error
+    [ "$kind" = string ] || valid=0
+    [ "$valid" = 1 ] || { _json_error "incomplete DNS core state"; return 1; }
     printf '%s\n' "$response"
+    return "$code"
 }
 # AdGuard Home management (see "DNS: AdGuard Home sync")
 FW_AGH_AUTH="$FW_PERSIST/agh.auth"
@@ -2062,6 +2066,7 @@ _dns_profile_cb() {
 }
 
 _json_dns() {
+    configuration_owned && return 0
     local line x
     [ -s "$FW_DNS_ACK" ] || return 0
     line=$(awk -v p="$1" '$1 == p { print; exit }' "$FW_DNS_ACK")
@@ -2089,6 +2094,10 @@ _dns_status() {
 # Bring AGH in line with UCI (live config: DNS is not frozen by a pact).
 # Returns 0 when everything is in sync, 1 otherwise (status in $FW_DNS_STATUS).
 cli_dns_sync() {
+    if configuration_owned; then
+        core_dns_runtime configuration_dns_sync
+        return
+    fi
     (
         flock -x 201 || return 1
         _dns_sync_locked
@@ -2096,24 +2105,12 @@ cli_dns_sync() {
 }
 
 _dns_sync_locked() {
-    local domain url p id name x res err complete core=""
+    configuration_owned && { _json_error "DNS ownership changed; retry"; return 1; }
+    local domain url p id name x res err complete
     rm -f "$FW_DNS_DIRTY"
     config_load familywarden
     config_get url settings agh_url ""
-    if configuration_owned; then
-        # The core owns the desired DNS set: live DNS plus a bound captain's
-        # snapshot and frozen domain (configuration.DNS).
-        core=$(core_dns_configuration) || { _dns_status "DNS configuration unavailable"; return 1; }
-        url=$(echo "$core" | jsonfilter -e '@.input.url')
-        domain=$(echo "$core" | jsonfilter -e '@.input.domain')
-        _dns_cap=$(echo "$core" | jsonfilter -e '@.captain')
-        _dns_profiles=$(echo "$core" | jsonfilter -e '@.input.profiles[*].id' | tr '\n' ' ')
-        if [ -n "$(echo "$core" | jsonfilter -e "@.input.profiles[@.client_id=''].id")" ]; then
-            _dns_status "core-owned profile has no ClientID"
-            return 1
-        fi
-    else
-        config_get domain settings dns_domain ""
+    config_get domain settings dns_domain ""
         # Captain bound by a pact: its DNS and the DNS domain can only be tightened
         _dns_cap=""
         if pact_active && [ -s "$FW_PACT_DNS" ]; then
@@ -2127,7 +2124,6 @@ _dns_sync_locked() {
         if [ "$(_dns_snap "$_dns_cap" dns)" = "1" ]; then
             case " $_dns_profiles " in *" $_dns_cap "*) ;; *) _dns_profiles="$_dns_profiles $_dns_cap" ;; esac
         fi
-    fi
     if [ -z "$domain" ] || [ -z "$url" ]; then
         # Clearing the settings is no way out of a pact either
         [ -n "$_dns_cap" ] || rm -f "$FW_DNS_ACK"
@@ -2142,10 +2138,7 @@ _dns_sync_locked() {
 
     # The core reconciles AdGuard Home (core/internal/agh); this side only supplies
     # the desired profiles (legacy routers) and stores the result.
-    if [ -n "$core" ]; then
-        json_load "$(echo "$core" | jsonfilter -e '@.input')"
-    else
-        json_init
+    json_init
         json_add_string domain "$domain"
         json_add_array taken
         config_foreach _dns_taken_cb profile
@@ -2169,7 +2162,6 @@ _dns_sync_locked() {
             json_close_object
         done
         json_close_array
-    fi
     json_add_string url "$_agh_url"
     json_add_string auth "$_agh_auth"
     json_add_array owned
@@ -2207,6 +2199,13 @@ _dns_sync_locked() {
 # Called every minute by the init script: sync AGH after a config change, and
 # keep retrying (at most every 5 minutes) while it fails.
 cli_dns_tick() {
+    if configuration_owned; then
+        local response code
+        response=$(core_dns_runtime configuration_dns_tick)
+        code=$?
+        [ "$(printf '%s' "$response" | jsonfilter -e '@.format')" != dns-state-v1 ] || rm -f "$FW_DNS_DIRTY"
+        return "$code"
+    fi
     local t=0 now
     now=$(date +%s)
     [ -f "$FW_DNS_STATUS" ] && t=$(jsonfilter -i "$FW_DNS_STATUS" -e '@.time' 2>/dev/null)
@@ -2216,6 +2215,10 @@ cli_dns_tick() {
 }
 
 ubus_dns_status() {
+    if configuration_owned; then
+        core_dns_runtime configuration_dns_status
+        return
+    fi
     local domain
     config_load familywarden
     config_get domain settings dns_domain ""
@@ -2246,6 +2249,18 @@ ubus_dns_sync() {
 
 # Write-only: LuCI never reads the password back
 ubus_dns_auth() {
+    if configuration_owned; then
+        json_init
+        json_add_string username "$1"
+        json_add_string password "$2"
+        core_configuration_api configuration_dns_auth "$(json_dump)"
+        return
+    fi
+    ( flock -x 201 || return 1; _dns_auth_legacy "$1" "$2" ) 201>"$FW_DNS_LOCK"
+}
+
+_dns_auth_legacy() {
+    configuration_owned && { _json_error "DNS ownership changed; retry"; return 1; }
     case "$1$2" in *"
 "*) _json_error "invalid credentials"; return 1 ;; esac
     case "$1" in ''|*:*) _json_error "invalid username"; return 1 ;; esac
@@ -2265,12 +2280,11 @@ ubus_dns_auth() {
 ubus_dns_services() {
     local url core
     if configuration_owned; then
-        core=$(core_dns_configuration) || { _json_error "DNS configuration unavailable"; return 1; }
-        url=$(echo "$core" | jsonfilter -e '@.input.url')
-    else
-        config_load familywarden
-        config_get url settings agh_url ""
+        core_configuration_api configuration_dns_services '{}'
+        return
     fi
+    config_load familywarden
+    config_get url settings agh_url ""
     _agh_auth=$(cat "$FW_AGH_AUTH" 2>/dev/null)
     [ -n "$url" ] && [ -n "$_agh_auth" ] || { _json_error "AdGuard Home not configured"; return 1; }
     json_init
@@ -2282,6 +2296,10 @@ ubus_dns_services() {
 # ---- Sail page backend (CLI only; called by the CGI on $FW_SAIL_PORT) ----
 
 cli_sail_status() {
+    if configuration_owned; then
+        printf '{}' | "$FW_CORE_BIN" -socket "$FW_CORE_SOCK" release status
+        return
+    fi
     local captain="" active=0
     pact_active && active=1 && captain=$(pact_get captain)
     json_init
@@ -2298,9 +2316,9 @@ cli_sail_status() {
 
 cli_sail_request() {
     if configuration_owned; then
-        local response
-        response=$(core_configuration_api configuration_sail_request '{}') || { printf '%s\n' "$response"; return 1; }
-        cli_sail_status
+        # Root-only CLI recovery retains its existing privilege; the CGI
+        # supplies the user's answer through the protected core route instead.
+        printf '%s' '{"answer":"press on"}' | "$FW_CORE_BIN" -socket "$FW_CORE_SOCK" release request
         return
     fi
     pact_active || { echo '{"error":"there is no pact"}'; return 1; }
@@ -2313,9 +2331,7 @@ cli_sail_request() {
 
 cli_sail_cancel() {
     if configuration_owned; then
-        local response
-        response=$(core_configuration_api configuration_sail_cancel '{}') || { printf '%s\n' "$response"; return 1; }
-        cli_sail_status
+        printf '{}' | "$FW_CORE_BIN" -socket "$FW_CORE_SOCK" release cancel
         return
     fi
     rm -f "$FW_RELEASE"

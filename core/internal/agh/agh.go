@@ -25,6 +25,14 @@ import (
 
 const Prefix = "familywarden-"
 
+// NewHTTPClient accesses the LAN directly and never forwards credentials to a
+// redirect target or changes the meaning of a POST during reconciliation.
+func NewHTTPClient() *http.Client {
+	return &http.Client{Transport: &http.Transport{Proxy: nil, IdleConnTimeout: 30 * time.Second}, Timeout: 10 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+}
+
 // ValidEndpoint accepts a base HTTP(S) URL, never embedded credentials, query
 // parameters or fragments. Credentials are supplied separately and privately.
 func ValidEndpoint(raw string) bool {

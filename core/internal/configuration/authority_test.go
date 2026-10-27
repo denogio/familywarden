@@ -12,20 +12,31 @@ import (
 
 type memory struct {
 	data []byte
+	dns  []byte
 	fail bool
 }
 
-func (s *memory) ReadDocument(_ string, v any) (bool, error) {
+func (s *memory) ReadDocument(name string, v any) (bool, error) {
+	if name == dnsDocument {
+		if len(s.dns) == 0 {
+			return false, nil
+		}
+		return true, json.Unmarshal(s.dns, v)
+	}
 	if len(s.data) == 0 {
 		return false, nil
 	}
 	return true, json.Unmarshal(s.data, v)
 }
-func (s *memory) WriteDocument(_ string, v any) error {
+func (s *memory) WriteDocument(name string, v any) error {
 	if s.fail {
 		return errors.New("disk full")
 	}
 	b, e := json.Marshal(v)
+	if name == dnsDocument {
+		s.dns = b
+		return e
+	}
 	s.data = b
 	return e
 }
@@ -39,6 +50,15 @@ type fakeBackend struct {
 	networkApplies int
 	networkFail    bool
 	mastSync       int64
+	dnsRuntime     platform.DNSRuntime
+}
+
+func (f *fakeBackend) DNSTransaction(fn func(platform.DNSRuntime) error) error {
+	return fn(f.dnsRuntime)
+}
+func (f *fakeBackend) SetDNSCredentials(username, password string) error {
+	f.dnsRuntime.Auth = username + ":" + password
+	return nil
 }
 
 func (f *fakeBackend) Configuration() (rules.Configuration, error) { return clone(f.current), nil }
