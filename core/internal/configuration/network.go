@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/denogio/familywarden/core/internal/platform"
+	"github.com/denogio/familywarden/core/internal/rules"
 )
 
 const networkFormat = "network-actions-v1"
@@ -17,6 +18,23 @@ var errNetworkBound = errors.New("bound by Ulysses pact")
 
 func validOverride(s platform.NetworkOverride) bool {
 	return (s.Mode == "none" || s.Mode == "allow" || s.Mode == "block") && s.Expires >= 0
+}
+
+// PactNetworkOverride revokes every pre-pact allow for the bound captain,
+// including permanent and timed permits. Blocks and other profiles are retained.
+// Apply this during every configuration reconciliation, not just pact creation,
+// so imported/restarted pacts cannot resurrect an earlier permission.
+func PactNetworkOverride(c rules.Configuration, id string, current platform.NetworkOverride, now time.Time) (platform.NetworkOverride, error) {
+	if !Active(c.Pact, now) || c.Pact.Captain != id {
+		return current, nil
+	}
+	if !validOverride(current) {
+		return current, errors.New("invalid network state")
+	}
+	if current.Mode == "allow" {
+		return platform.NetworkOverride{Mode: "none"}, nil
+	}
+	return current, nil
 }
 
 // decideNetwork shares manual actions and approved-grant repair precedence.

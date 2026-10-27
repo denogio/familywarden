@@ -13,6 +13,8 @@ import (
 	"github.com/denogio/familywarden/core/internal/rules"
 )
 
+const pactNetworkFormat = "pact-network-v1"
+
 // ConfigurationTransaction retains ticket/state descriptors across import,
 // durable core writes and the stateless projection/apply command.
 func (a Adapter) ConfigurationTransaction(fn func(rules.Configuration, platform.Context, func(rules.Configuration) error) error) error {
@@ -35,20 +37,35 @@ func (a Adapter) ConfigurationTransaction(fn func(rules.Configuration, platform.
 		if err := a.runLocked(&facts, state, "core-configuration-facts"); err != nil {
 			return err
 		}
+		if facts.PactNetworkFormat != pactNetworkFormat {
+			return fmt.Errorf("incompatible pact network adapter: upgrade core and backend together")
+		}
 		apply := func(c rules.Configuration) error {
-			if err := a.materialize(c, facts.TimeZone); err != nil {
+			undo, err := a.projectPactPermit(c, time.Now())
+			if err != nil {
 				return err
 			}
-			var reply struct {
-				Status string `json:"status"`
+			err = func() error {
+				if err := a.materialize(c, facts.TimeZone); err != nil {
+					return err
+				}
+				var reply struct {
+					Status string `json:"status"`
+				}
+				if err := a.runFiles(&reply, []*os.File{state, ticket}, "core-apply-configuration", pactNetworkFormat); err != nil {
+					return err
+				}
+				if reply.Status != "ok" {
+					return fmt.Errorf("configuration apply not acknowledged")
+				}
+				return nil
+			}()
+			if err != nil && undo != nil {
+				if restore := undo(); restore != nil {
+					return fmt.Errorf("configuration apply failed (%v); permit restore failed: %w", err, restore)
+				}
 			}
-			if err := a.runFiles(&reply, []*os.File{state, ticket}, "core-apply-configuration"); err != nil {
-				return err
-			}
-			if reply.Status != "ok" {
-				return fmt.Errorf("configuration apply not acknowledged")
-			}
-			return nil
+			return err
 		}
 		return fn(current, facts, apply)
 	})

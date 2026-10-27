@@ -8,7 +8,43 @@ import (
 	"time"
 
 	"github.com/denogio/familywarden/core/internal/platform"
+	"github.com/denogio/familywarden/core/internal/rules"
 )
+
+func TestPactNetworkOverrideRevokesOnlyBoundCaptainAllows(t *testing.T) {
+	now := time.Unix(1000, 0)
+	allow := platform.NetworkOverride{Mode: "allow"}
+	for _, tc := range []struct {
+		name, id, kind, until, release string
+		current, want                  platform.NetworkOverride
+		fail                           bool
+	}{
+		{"permanent captain allow", "alex", "ongoing", "0", "", allow, platform.NetworkOverride{Mode: "none"}, false},
+		{"timed captain allow", "alex", "ongoing", "0", "", platform.NetworkOverride{Mode: "allow", Expires: 2000}, platform.NetworkOverride{Mode: "none"}, false},
+		{"elapsed captain allow", "alex", "ongoing", "0", "", platform.NetworkOverride{Mode: "allow", Expires: 500}, platform.NetworkOverride{Mode: "none"}, false},
+		{"block retained", "alex", "ongoing", "0", "", platform.NetworkOverride{Mode: "block"}, platform.NetworkOverride{Mode: "block"}, false},
+		{"no override retained", "alex", "ongoing", "0", "", platform.NetworkOverride{Mode: "none"}, platform.NetworkOverride{Mode: "none"}, false},
+		{"other profile retained", "taylor", "ongoing", "0", "", allow, allow, false},
+		{"expired pact", "alex", "until", "1000", "", allow, allow, false},
+		{"live until pact", "alex", "until", "1001", "", allow, platform.NetworkOverride{Mode: "none"}, false},
+		{"released pact", "alex", "ongoing", "0", "1000", allow, allow, false},
+		{"waiting for release", "alex", "ongoing", "0", "1001", allow, platform.NetworkOverride{Mode: "none"}, false},
+		{"invalid bound state", "alex", "ongoing", "0", "", platform.NetworkOverride{Mode: "bad"}, platform.NetworkOverride{Mode: "bad"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := sample()
+			c.Current.Settings.Captain = "taylor" // The bound captain wins over ignored edits.
+			c.Pact = &rules.ConfigurationPact{Captain: "alex", Type: tc.kind, Until: tc.until, ReleaseAt: tc.release}
+			got, err := PactNetworkOverride(c, tc.id, tc.current, now)
+			if got != tc.want || (err != nil) != tc.fail {
+				t.Fatal(got, err)
+			}
+		})
+	}
+	if got, err := PactNetworkOverride(sample(), "alex", allow, now); err != nil || got != allow {
+		t.Fatal("configured captain without a pact lost permission", got, err)
+	}
+}
 
 func TestNetworkDecisionPrecedenceAndDeadlines(t *testing.T) {
 	none := platform.NetworkOverride{Mode: "none"}

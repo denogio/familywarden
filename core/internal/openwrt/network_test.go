@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/denogio/familywarden/core/internal/platform"
+	"github.com/denogio/familywarden/core/internal/rules"
 )
 
 func networkAdapter(t *testing.T) Adapter {
@@ -33,6 +35,71 @@ esac
 		t.Fatal(err)
 	}
 	return a
+}
+
+func TestPactPermitProjectionPreservesBlocksAndCanUndoFailedApply(t *testing.T) {
+	for _, mode := range []string{"allow", "block", "none"} {
+		t.Run(mode, func(t *testing.T) {
+			a := networkAdapter(t)
+			raw := "alex.override=" + mode + "\nalex.override_expires=2000\ntaylor.override=allow\nother=value\n"
+			if err := os.WriteFile(a.StateFile, []byte(raw), 0600); err != nil {
+				t.Fatal(err)
+			}
+			c := rules.Configuration{Pact: &rules.ConfigurationPact{Captain: "alex", Type: "ongoing"}}
+			err := a.withStateLocks(func(_, _ *os.File) error {
+				undo, err := a.projectPactPermit(c, time.Unix(1000, 0))
+				if err != nil {
+					return err
+				}
+				probeStateLock(t, a.LockFile, true)
+				probeStateLock(t, a.LockFile+".ticket", true)
+				got, err := os.ReadFile(a.StateFile)
+				if err != nil {
+					return err
+				}
+				if mode != "allow" {
+					if undo != nil || string(got) != raw {
+						t.Fatal("non-allow state changed", string(got))
+					}
+					return nil
+				}
+				if undo == nil || string(got) != "taylor.override=allow\nother=value\nalex.override=none\nalex.override_expires=\n" {
+					t.Fatal("wrong permit projection", string(got))
+				}
+				if err := undo(); err != nil {
+					return err
+				}
+				got, err = os.ReadFile(a.StateFile)
+				if err != nil || string(got) != raw {
+					t.Fatal("failed-apply undo lost original RAM", string(got), err)
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			probeStateLock(t, a.LockFile, false)
+			probeStateLock(t, a.LockFile+".ticket", false)
+		})
+	}
+}
+
+func TestConfigurationTransactionRejectsOldPactBridgeBeforeCallback(t *testing.T) {
+	a := networkAdapter(t)
+	script := "#!/bin/sh\ncase \"$1\" in\ncore-configuration) echo '{\"version\":1}';;\ncore-configuration-facts) echo '{\"bonus_format\":\"bonus-state-v1\"}';;\n*) exit 1;;\nesac\n"
+	if err := os.WriteFile(a.Shell, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	err := a.ConfigurationTransaction(func(rules.Configuration, platform.Context, func(rules.Configuration) error) error {
+		called = true
+		return nil
+	})
+	if err == nil || called {
+		t.Fatal("old bridge accepted before revocation guarantee", called, err)
+	}
+	probeStateLock(t, a.LockFile, false)
+	probeStateLock(t, a.LockFile+".ticket", false)
 }
 
 func TestNetworkTransactionUsesInheritedLocksAndPreservesOtherState(t *testing.T) {

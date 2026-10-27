@@ -5,7 +5,7 @@
 #   ./scripts/test-integration.sh              # host: starts the container
 #   OPENWRT_IMAGE=openwrt/rootfs:x86-64-25.12.4 ./scripts/test-integration.sh
 #
-# FW_TEST_FOCUS=bonus or network runs only that narrow legacy/owned bridge slice.
+# FW_TEST_FOCUS=bonus, network or pact-network runs only that narrow bridge slice.
 # Needs docker and CAP_NET_ADMIN (nftables runs in the container's own netns).
 
 if [ "$1" != "--inside" ]; then
@@ -182,6 +182,116 @@ uci set firewall.@include[-1].path='/var/etc/familywarden.include'
 uci commit firewall
 fw4 start >/dev/null 2>&1
 
+# Shared failure injection for the two focused native transaction checks.
+reject_next_validation() {
+    nft_bin=$(command -v nft)
+    mv "$nft_bin" "$nft_bin.network-real"
+    cat > "$nft_bin" <<EOF
+#!/bin/sh
+if [ "\$1" = -c ] && [ -f /tmp/reject-network-once ]; then
+    cp /tmp/familywarden.state /tmp/rejected-network.state
+    rm /tmp/reject-network-once
+    exit 1
+fi
+exec "$nft_bin.network-real" "\$@"
+EOF
+    chmod 755 "$nft_bin"
+    touch /tmp/reject-network-once
+}
+restore_nft_binary() { mv "$nft_bin.network-real" "$nft_bin"; }
+
+if [ "${FW_TEST_FOCUS:-}" = pact-network ]; then
+    echo "=== focused pact permit revocation and rollback ==="
+    uci set familywarden.settings.ulysses_profile=kid
+    uci set familywarden.settings.ulysses_delay=0
+    uci commit familywarden
+    "$BIN" reload >/dev/null
+    ram_override() { awk -F= -v p="$1" '$1==p".override" { print $2 }' /tmp/familywarden.state; }
+    pact_api() { printf '%s' "${2:-{\}}" | /usr/sbin/familywardend -socket "$CORE_SOCK" api "$1"; }
+    assert_json "legacy permit preparation succeeds" "$(call allow '{"profile":"kid"}')" '@.status' ok
+    assert_json "legacy pact creation still works" "$(call pact "{\"until\":$(( $(date +%s) + 3600 ))}")" '@.status' ok
+    [ "$(ram_override kid)" = none ] && pass "legacy pact still clears its old allow" || fail "legacy revocation changed"
+    "$BIN" sail-request >/dev/null
+    "$BIN" tick >/dev/null
+    # Pause one legacy request after its ownership check, before taking its
+    # first lock. Perform a real import, then let the queued request continue.
+    mkdir -p /tmp/pact-queued-bin
+    real_flock=$(command -v flock)
+    cat > /tmp/pact-queued-bin/flock <<EOF
+#!/bin/sh
+if [ "\$*" = '-x 201' ]; then
+    touch /tmp/pact-queued.ready
+    while [ ! -f /tmp/pact-queued.resume ]; do sleep 1; done
+fi
+exec "$real_flock" "\$@"
+EOF
+    chmod 755 /tmp/pact-queued-bin/flock
+    printf '%s\n' "{\"until\":$(( $(date +%s) + 3600 ))}" | PATH="/tmp/pact-queued-bin:$PATH" "$BIN" call pact > /tmp/pact-queued.reply &
+    queued_pid=$!
+    for _ in $(seq 1 15); do [ -f /tmp/pact-queued.ready ] && break; sleep 1; done
+    [ -f /tmp/pact-queued.ready ] || { fail "legacy pact did not reach queue gate"; exit 1; }
+    revision=$(pact_api configuration_export | jsonfilter -e '@.configuration.revision')
+    assert_json "owned pact test imports explicitly" "$(pact_api configuration_import "{\"revision\":\"$revision\"}")" '@.status' ok
+    touch /tmp/pact-queued.resume
+    wait "$queued_pid" || true
+    assert_json "queued legacy pact cannot mutate after cutover" "$(cat /tmp/pact-queued.reply)" '@.error' 'configuration ownership changed; retry pact'
+    assert_json "queued legacy pact leaves the owned document unchanged" "$(pact_api configuration_export)" '@.configuration.pact.captain' ''
+    assert_json "old untagged core apply is refused" "$("$BIN" core-apply-configuration)" '@.error' 'incompatible configuration core'
+    assert_json "tagged apply still requires inherited locks" "$("$BIN" core-apply-configuration pact-network-v1)" '@.error' 'configuration transaction required'
+    call block '{"profile":"teen"}' >/dev/null
+    call allow '{"profile":"parent"}' >/dev/null
+    for permit in permanent timed; do
+        if [ "$permit" = permanent ]; then
+            prepared=$(call allow '{"profile":"kid"}')
+        else
+            prepared=$(call ticket '{"profile":"kid","minutes":10}')
+        fi
+        assert_json "$permit permit preparation succeeds" "$prepared" '@.status' ok
+        cp /tmp/familywarden.state /tmp/pact-before-failure
+        reject_next_validation
+        out=$(call pact "{\"until\":$(( $(date +%s) + 3600 ))}")
+        [ -n "$(echo "$out" | jsonfilter -e '@.error')" ] && pass "$permit failed pact is reported as failed" || fail "failed pact reported success"
+        restore_nft_binary
+        [ "$(awk -F= '$1=="kid.override" { print $2 }' /tmp/rejected-network.state)" = none ] && pass "$permit permit was revoked before native validation" || fail "revocation did not run before validation"
+        cmp -s /tmp/familywarden.state /tmp/pact-before-failure && pass "$permit failed pact restores exact prior RAM" || fail "failed pact lost prior permit"
+        if [ "$permit" = permanent ]; then
+            assert_rule "failed pact restores permanent native allow" 'familywarden:kid:override:allow'
+        else
+            nft list set inet fw4 familywarden_ticket | grep -qi 'aa:bb:cc:00:00:01.*timeout' && pass "failed pact restores native timed permit" || fail "native timed permit lost"
+        fi
+        [ ! -e /etc/familywarden/pact ] && pass "$permit failed pact restores old pact projection" || fail "failed pact stayed active"
+        stop_core
+        start_core
+        assert_json "$permit failed pact restores old document" "$(pact_api configuration_export)" '@.configuration.pact.captain' ''
+        assert_json "$permit owned pact succeeds" "$(call pact "{\"until\":$(( $(date +%s) + 3600 ))}")" '@.status' ok
+        [ "$(ram_override kid)" = none ] && pass "$permit captain permission revoked by core" || fail "captain permission survived"
+        [ "$(ram_override teen)" = block ] && [ "$(ram_override parent)" = allow ] && pass "$permit other profile state preserved" || fail "unrelated override changed"
+        refute_rule "$permit no permanent forward escape" 'familywarden:kid:override:allow'
+        refute_rule "$permit no permanent input escape" 'familywarden:kid:override:allow:input' familywarden_input
+        nft list set inet fw4 familywarden_ticket | grep -qi 'aa:bb:cc:00:00:01' && fail "captain ticket survived pact" || pass "$permit no captain kernel ticket"
+        # Root-only, zero-delay release in this disposable fixture; never a public RPC.
+        pact_api configuration_sail_request >/dev/null
+        pact_api configuration_tick >/dev/null
+        [ "$(ram_override kid)" = none ] && pass "$permit release never resurrects the old permit" || fail "release revived permission"
+    done
+    call block '{"profile":"kid"}' >/dev/null
+    assert_json "pact with an existing block succeeds" "$(call pact "{\"until\":$(( $(date +%s) + 3600 ))}")" '@.status' ok
+    [ "$(ram_override kid)" = block ] && pass "captain block is retained" || fail "captain block was reset"
+    assert_rule "captain block remains enforced" 'familywarden:kid:override:block'
+    # Simulate stale legacy RAM under an already-bound pact. Both reapply and
+    # startup reconciliation must clear it without a recursive network transaction.
+    sed -i 's/^kid.override=.*/kid.override=allow/' /tmp/familywarden.state
+    assert_json "bound reapply succeeds without nested locks" "$(call reload)" '@.status' ok
+    [ "$(ram_override kid)" = none ] && pass "reapply revokes a stale captain allow" || fail "reapply retained stale permit"
+    stop_core
+    sed -i 's/^kid.override=.*/kid.override=allow/' /tmp/familywarden.state
+    start_core
+    [ "$(ram_override kid)" = none ] && pass "startup revokes a stale captain allow" || fail "startup retained stale permit"
+    stop_core
+    [ "$FAILED" = 0 ] && echo 'All focused pact-network checks passed!'
+    exit "$FAILED"
+fi
+
 if [ "${FW_TEST_FOCUS:-}" = network ]; then
     echo "=== focused owned network actions and native timeout enforcement ==="
     uci set familywarden.settings.ulysses_profile=kid
@@ -216,21 +326,10 @@ if [ "${FW_TEST_FOCUS:-}" = network ]; then
     # Reject the requested compile once; restoration must apply the previous
     # state and still return the original action as failed, never a success.
     cp /tmp/familywarden.state /tmp/network-before-failure
-    nft_bin=$(command -v nft)
-    mv "$nft_bin" "$nft_bin.network-real"
-    cat > "$nft_bin" <<EOF
-#!/bin/sh
-if [ "\$1" = -c ] && [ -f /tmp/reject-network-once ]; then
-    rm /tmp/reject-network-once
-    exit 1
-fi
-exec "$nft_bin.network-real" "\$@"
-EOF
-    chmod 755 "$nft_bin"
-    touch /tmp/reject-network-once
+    reject_next_validation
     out=$(call block '{"profile":"kid"}')
     [ -n "$(echo "$out" | jsonfilter -e '@.error')" ] && pass "native validation failure is reported" || fail "native failure reported success"
-    mv "$nft_bin.network-real" "$nft_bin"
+    restore_nft_binary
     cmp -s /tmp/familywarden.state /tmp/network-before-failure && pass "failed apply restores prior RAM intent" || fail "failed apply left new intent"
     nft list set inet fw4 familywarden_ticket | grep -qi 'aa:bb:cc:00:00:01.*timeout' && pass "failed apply restores prior native enforcement" || fail "prior enforcement missing"
     stop_core

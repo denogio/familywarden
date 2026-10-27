@@ -508,7 +508,8 @@ pact_dns_snapshot() {
 _pds_prot() { echo "prot=$1"; }
 _pds_svc() { echo "svc=$1"; }
 
-# Drop allow overrides and tickets: they must not survive into a pact
+# Legacy pact writer only; owned reconciliation uses core PactNetworkOverride.
+# Drop allow overrides and tickets: they must not survive into a pact.
 _clear_allow() {
     [ "$(state_get "$1.override" none)" = "allow" ] || return 0
     state_set "$1.override" "none"
@@ -1376,6 +1377,7 @@ ubus_pact() {
     # its pact check before activation and write an override after it.
     flock -x 201 || { _json_error "ticket lock failed"; return 1; }
     flock -x 200 || { _json_error "state lock failed"; return 1; }
+    configuration_owned && { _json_error "configuration ownership changed; retry pact"; return 1; }
     local until="${1:-0}" wday="${2:-sun}" wstart="${3:-10:00}" wstop="${4:-11:00}"
     local captain type now delay name default_policy
     now=$(date +%s)
@@ -2339,14 +2341,14 @@ EOF
         json_init
         json_add_string timezone "$(uci -q get system.@system[0].zonename)"
         json_add_string bonus_format bonus-state-v1
+        json_add_string pact_network_format pact-network-v1
         json_add_string legacy_bonus "$legacy_bonus"
         json_dump
         ;;
     core-apply-configuration)
+        # A legacy core must not apply a pact without core-owned permit revocation.
+        [ "$2" = pact-network-v1 ] || { _json_error "incompatible configuration core"; exit 1; }
         [ /proc/self/fd/3 -ef "$FW_LOCK" ] && [ /proc/self/fd/4 -ef "${FW_LOCK}.ticket" ] || { _json_error "configuration transaction required"; exit 1; }
-        # Revoke pre-pact temporary allows before rendering the owned snapshot.
-        captain=$(pact_captain)
-        [ -z "$captain" ] || _clear_allow "$captain"
         compile_and_apply held-v1
         ;;
     core-configuration)

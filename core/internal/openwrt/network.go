@@ -6,8 +6,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/denogio/familywarden/core/internal/configuration"
 	"github.com/denogio/familywarden/core/internal/platform"
+	"github.com/denogio/familywarden/core/internal/rules"
 )
 
 // readOverride parses the existing volatile format, without deciding eligibility
@@ -56,6 +59,66 @@ func renderOverride(raw []byte, profile string, next platform.NetworkOverride) [
 	return []byte(out.String())
 }
 
+func (a Adapter) networkStateFile() string {
+	if a.StateFile != "" {
+		return a.StateFile
+	}
+	return "/tmp/familywarden.state"
+}
+
+func readNetworkFile(path string) ([]byte, bool, error) {
+	raw, err := os.ReadFile(path)
+	absent := os.IsNotExist(err)
+	if err != nil && !absent {
+		return nil, false, err
+	}
+	if len(raw) > maxOutput {
+		return nil, false, fmt.Errorf("network state too large")
+	}
+	return raw, absent, nil
+}
+
+func restoreNetworkFile(path string, raw []byte, absent bool) error {
+	if absent {
+		err := os.Remove(path)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	return replaceFile(path, raw)
+}
+
+// projectPactPermit is called with the configuration transaction's locks already
+// held. Core decides revocation; this adapter only reads/writes its RAM format.
+// The undo is for failed application, not later successful pact release.
+func (a Adapter) projectPactPermit(c rules.Configuration, now time.Time) (func() error, error) {
+	if c.Pact == nil {
+		return nil, nil
+	}
+	path := a.networkStateFile()
+	raw, absent, err := readNetworkFile(path)
+	if err != nil {
+		return nil, err
+	}
+	current, err := readOverride(raw, c.Pact.Captain)
+	if err != nil {
+		return nil, err
+	}
+	next, err := configuration.PactNetworkOverride(c, c.Pact.Captain, current, now)
+	if err != nil || next == current {
+		return nil, err
+	}
+	undo := func() error { return restoreNetworkFile(path, raw, absent) }
+	if err := replaceFile(path, renderOverride(raw, c.Pact.Captain, next)); err != nil {
+		if restore := undo(); restore != nil {
+			return nil, fmt.Errorf("pact permit projection failed (%v); restore failed: %w", err, restore)
+		}
+		return nil, err
+	}
+	return undo, nil
+}
+
 // NetworkTransaction keeps RAM persistence, native firewall application and its
 // acknowledgement under the same locks as all participating legacy writers.
 func (a Adapter) NetworkTransaction(profile string, fn func(platform.Context, platform.NetworkOverride, func(platform.NetworkOverride) error) error) error {
@@ -63,17 +126,10 @@ func (a Adapter) NetworkTransaction(profile string, fn func(platform.Context, pl
 		return fmt.Errorf("invalid network profile")
 	}
 	return a.withStateLocks(func(state, ticket *os.File) error {
-		path := a.StateFile
-		if path == "" {
-			path = "/tmp/familywarden.state"
-		}
-		raw, err := os.ReadFile(path)
-		absent := os.IsNotExist(err)
-		if err != nil && !absent {
+		path := a.networkStateFile()
+		raw, absent, err := readNetworkFile(path)
+		if err != nil {
 			return err
-		}
-		if len(raw) > maxOutput {
-			return fmt.Errorf("network state too large")
 		}
 		current, err := readOverride(raw, profile)
 		if err != nil {
@@ -105,15 +161,7 @@ func (a Adapter) NetworkTransaction(profile string, fn func(platform.Context, pl
 				err = compile()
 			}
 			if err != nil {
-				var restore error
-				if absent {
-					restore = os.Remove(path)
-					if os.IsNotExist(restore) {
-						restore = nil
-					}
-				} else {
-					restore = replaceFile(path, raw)
-				}
+				restore := restoreNetworkFile(path, raw, absent)
 				if restore == nil {
 					restore = compile() // Restore prior enforcement, never retry the requested change.
 				}

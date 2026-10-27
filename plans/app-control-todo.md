@@ -23,7 +23,7 @@ Historical test counts are evidence at that checkpoint, not current suite totals
 | P9 off-home | LAN notifications only | Transport decision, encryption/key distribution and off-home implementation/testing |
 | P10 Android | Child/adult status/history, scoped parent decisions and usage | Parent presentation split is implemented and preview-tested (#94); scoped child selection is implemented and preview-tested (#97); full parent controls remain |
 | P10 shared web | Existing LuCI pages and shared Requests module, now hardened/tested in neutral and LuCI hosts; control prototype reviewed | Production-wide shared presentation layer, core API integration, host adapter and EN/DA; prototype is not shipped code |
-| Core migration | Identity/requests/usage/new-apps; opt-in authoritative configuration/pacts, CAS/confirm/rollback, Settings/Profiles CAS; owned phone/app policy from the document; Go AGH reconciliation/catalogue | **Not adapter-ready:** owned bonus and manual-network/grant decisions migrated/tested; shell status/expiry/pact-projection cleanup, policy-shaped adapter reads, portable network intent/apply contract, DNS/release orchestration, platform construction/shared UI and P12 safety gates; owned configuration cutover not deployed (#91; [R0–R7](adapter-portability.md)) |
+| Core migration | Identity/requests/usage/new-apps; opt-in authoritative configuration/pacts, CAS/confirm/rollback, Settings/Profiles CAS; owned phone/app policy from the document; Go AGH reconciliation/catalogue | **Not adapter-ready:** owned bonus and manual-network/grant decisions migrated/tested; owned pact-permit revocation also migrated/tested; shell status/expiry consumers, policy-shaped adapter reads, portable network intent/apply contract, DNS/release orchestration, platform construction/shared UI and P12 safety gates; owned configuration cutover not deployed (#91; [R0–R7](adapter-portability.md)) |
 | P11 adult pool | Existing pact enforcement, not the proposed pool | Final consumption/reset rules, ledger and pact-safe self-service |
 | P13 release validation | Same-key rc3/rc4 router+phone pilot and rc5 phone update | Release-wide security/compatibility/lifecycle acceptance for remaining scope; no blanket production rollout approval |
 
@@ -87,8 +87,12 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
           shared RAM/native apply transaction and rollback (core r11/backend rc10-r8).
           Focused Go/race, affected adapter/configuration tests and 34 real OpenWrt
           network checks pass; no browser e2e/emulator run or deployment.
-        - [ ] Move remaining pact-projection permit clearing and status/schedule/
-          expiry product decisions; preserve native kernel enforcement mechanisms.
+        - [x] Owned pact-permit revocation moved to core (core r12/backend rc10-r9),
+          retaining blocks/other profiles and undoing RAM changes on failed apply.
+          Legacy post-lock cutover guard and versioned apply handshake are covered by
+          focused Go/race and 42 real OpenWrt pact-network checks; no full e2e/emulator.
+        - [ ] Move remaining status/schedule/expiry product decisions; preserve native
+          kernel enforcement mechanisms and distinguish cleanup from policy authority.
 - [ ] R2: replace owned policy-shaped `core-context`/`core-policy` reads with explicit
       runtime/application facts; isolate legacy import in OpenWrt compatibility code.
 - [ ] R3: define portable network intent/status and applied-state/error semantics;

@@ -27,7 +27,8 @@ type Profile struct {
 
 // Context is one consistent snapshot of platform state.
 type Context struct {
-	NetworkFormat string `json:"network_format,omitempty"`
+	NetworkFormat     string `json:"network_format,omitempty"`
+	PactNetworkFormat string `json:"pact_network_format,omitempty"`
 	// Legacy bonus import is a versioned snapshot under the configuration lock.
 	// Empty input is meaningful only when BonusFormat explicitly matches.
 	BonusFormat string             `json:"bonus_format,omitempty"`
