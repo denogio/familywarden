@@ -657,7 +657,7 @@ _is_captain_bound() {
 # accept inside the captain's allow windows (and the amendment window), then
 # drop. Requires fw_load. Empty without an active pact.
 gen_lockdown_rules() {
-    local captain enabled policy override until wd
+    local captain enabled policy override until wd end_match
     captain=$(pact_captain)
     [ -n "$captain" ] || return 0
     config_get enabled "$captain" enabled "0"
@@ -672,7 +672,11 @@ gen_lockdown_rules() {
     echo "        tcp dport { 53, ${FW_SAIL_PORT} } accept"
     if [ "$(pact_get type)" = "ongoing" ]; then
         wd=$(day_to_num "$(pact_get window_day)")
-        echo "        meta day { ${wd} } meta hour >= $(pact_get window_start) meta hour < $(pact_get window_stop) accept comment \"familywarden:ulysses:window\""
+        end_match="meta hour < $(pact_get window_stop) "
+        # nft's clock stops before 24:00; the day match already supplies
+        # that exclusive endpoint, including the final second of the day.
+        [ "$(pact_get window_stop)" = "24:00" ] && end_match=""
+        echo "        meta day { ${wd} } meta hour >= $(pact_get window_start) ${end_match}accept comment \"familywarden:ulysses:window\""
     fi
     if [ "$policy" = "scheduled" ] && [ "$override" != "block" ]; then
         _cur_profile="$captain"
@@ -725,19 +729,21 @@ _sched_accept_rules() {
     shifted_nums="${shifted_nums#, }"
     [ -z "$day_nums" ] && return
 
-    local smin emin mac src
+    local smin emin mac src end_match
     smin=$(time_to_minutes "$start")
     emin=$(time_to_minutes "$stop")
+    end_match="meta hour < ${stop} "
+    [ "$stop" = "24:00" ] && end_match=""
     for mac in $_sched_devices; do
         # "any" = every source (familywarden_lockdown)
         src="ether saddr ${mac} "
         [ "$mac" = "any" ] && src=""
         if [ "$smin" -lt "$emin" ]; then
-            echo "        ${src}meta hour >= ${start} meta hour < ${stop} meta day { ${day_nums} } ${_sched_match}counter accept comment \"familywarden:${_cur_profile}:sched-allow${_sched_tag}\""
+            echo "        ${src}meta hour >= ${start} ${end_match}meta day { ${day_nums} } ${_sched_match}counter accept comment \"familywarden:${_cur_profile}:sched-allow${_sched_tag}\""
         elif [ "$smin" -gt "$emin" ]; then
             # Overnight: allow start..24:00 on the day, 00:00..stop on next day
-            echo "        ${src}meta hour >= ${start} meta day { ${day_nums} } ${_sched_match}counter accept comment \"familywarden:${_cur_profile}:sched-allow${_sched_tag}\""
-            echo "        ${src}meta hour < ${stop} meta day { ${shifted_nums} } ${_sched_match}counter accept comment \"familywarden:${_cur_profile}:sched-allow${_sched_tag}\""
+            [ "$start" = "24:00" ] || echo "        ${src}meta hour >= ${start} meta day { ${day_nums} } ${_sched_match}counter accept comment \"familywarden:${_cur_profile}:sched-allow${_sched_tag}\""
+            [ "$stop" = "00:00" ] || echo "        ${src}meta hour < ${stop} meta day { ${shifted_nums} } ${_sched_match}counter accept comment \"familywarden:${_cur_profile}:sched-allow${_sched_tag}\""
         else
             # start==stop → allow all day on those days
             echo "        ${src}meta day { ${day_nums} } ${_sched_match}counter accept comment \"familywarden:${_cur_profile}:sched-allow${_sched_tag}\""

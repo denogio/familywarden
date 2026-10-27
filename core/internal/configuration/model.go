@@ -236,6 +236,15 @@ func snapshotDNS(c rules.Configuration, captain string) rules.ConfigurationDNS {
 	return rules.ConfigurationDNS{Enabled: p.DNS, ClientID: p.ClientID, Domain: c.Current.Settings.DNSDomain, Protections: p.Protections, Services: p.Services}
 }
 
+// Refresh only on an explicit pact amendment, never a clock boundary or an
+// unrelated edit. Imported configured values can differ from the enforced ones.
+func freezeCaptain(c *rules.Configuration) {
+	phones := c.Pact.Frozen.LegacyPhones
+	c.Pact.Frozen = frozen(c.Current, c.Pact.Captain)
+	c.Pact.Frozen.LegacyPhones = phones
+	c.Pact.DNS = snapshotDNS(*c, c.Pact.Captain)
+}
+
 func ValidateEdit(old rules.Configuration, next *rules.Configuration, now time.Time) error {
 	// Strict editing is separate from legacy compatibility normalization: never
 	// turn an invalid newly submitted limit into a silently repaired policy.
@@ -243,6 +252,17 @@ func ValidateEdit(old rules.Configuration, next *rules.Configuration, now time.T
 		for _, app := range next.Current.Apps {
 			if !appPackage.MatchString(app.Package) || len(app.Package) > 255 || (app.Blocked != "" && app.Blocked != "0" && app.Blocked != "1") || (app.Minutes != "" && (!decimal(app.Minutes) || integer(app.Minutes) > 1440)) {
 				return errors.New("invalid application rule")
+			}
+		}
+	}
+	if !reflect.DeepEqual(old.Current.Downtime, next.Current.Downtime) {
+		for _, w := range next.Current.Downtime {
+			start, okStart := minute(w.Start)
+			stop, okStop := minute(w.Stop)
+			// App-policy compilation and Android LocalTime require 00:00..23:59.
+			// Do not save a new downtime that compatibility normalization drops.
+			if !okStart || !okStop || start >= 1440 || stop >= 1440 || len(strings.Fields(w.Days)) == 0 {
+				return errors.New("invalid app downtime")
 			}
 		}
 	}
@@ -299,12 +319,6 @@ func ValidateEdit(old rules.Configuration, next *rules.Configuration, now time.T
 	if err := validateDNSEdit(old, *next); err != nil {
 		return err
 	}
-	if Active(old.Pact, now) && InWindow(old.Pact, now) {
-		next.Pact = clone(old).Pact
-		next.Pact.Frozen = frozen(next.Current, old.Pact.Captain)
-		next.Pact.Frozen.LegacyPhones = old.Pact.Frozen.LegacyPhones
-		next.Pact.DNS = snapshotDNS(*next, old.Pact.Captain)
-	}
 	return Validate(*next)
 }
 
@@ -357,6 +371,7 @@ func PactOperation(method string, raw []byte, c *rules.Configuration, now time.T
 		if err := ValidateEdit(*c, &next, now); err != nil {
 			return err
 		}
+		freezeCaptain(&next)
 		*c = next
 		return nil
 	case "configuration_sail_request":
@@ -407,10 +422,7 @@ func PactOperation(method string, raw []byte, c *rules.Configuration, now time.T
 			if !InWindow(c.Pact, now) {
 				return errors.New("the pact can only be extended")
 			}
-			phones := c.Pact.Frozen.LegacyPhones
-			c.Pact.Frozen = frozen(c.Current, c.Pact.Captain)
-			c.Pact.Frozen.LegacyPhones = phones
-			c.Pact.DNS = snapshotDNS(*c, c.Pact.Captain)
+			freezeCaptain(c)
 			c.Pact.WindowDay, c.Pact.WindowStart, c.Pact.WindowStop = req.Day, req.Start, req.Stop
 			if req.Until > 0 {
 				c.Pact.Type = "until"
@@ -453,9 +465,6 @@ func Effective(c rules.Configuration, now time.Time) rules.ConfigurationData {
 	}
 	cap := c.Pact.Captain
 	snap := c.Pact.Frozen
-	if InWindow(c.Pact, now) {
-		snap = frozen(c.Current, cap)
-	}
 	macs := map[string]bool{}
 	for _, p := range snap.Profiles {
 		for _, m := range p.Devices {

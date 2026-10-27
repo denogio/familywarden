@@ -67,13 +67,14 @@ func TestPhonePolicyComesFromTheDocument(t *testing.T) {
 		t.Fatal(string(p.Pact), string(p.Rules))
 	}
 
-	// Inside an ongoing pact's amendment window the live captain applies.
+	// Opening the window alone must not activate ignored configured edits.
+	// Only an explicit amendment may replace the frozen captain.
 	sunday := time.Date(2027, 1, 3, 10, 30, 0, 0, time.UTC)
 	p, err = PhonePolicy(pacted("ongoing"), shellPolicy("alex", "none"), "alex", sunday)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, r = decoded(t, p); r["windows"].([]any)[0].(map[string]any)["stop"] != "23:00" {
+	if _, r = decoded(t, p); r["windows"].([]any)[0].(map[string]any)["stop"] != "20:00" {
 		t.Fatal(string(p.Rules))
 	}
 }

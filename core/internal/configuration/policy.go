@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/denogio/familywarden/core/internal/platform"
@@ -29,6 +30,31 @@ type phoneRules struct {
 	Policy   string        `json:"policy"`
 	Override string        `json:"override"`
 	Windows  []phoneWindow `json:"windows"`
+}
+
+// The document/kernel can express the exclusive endpoint 24:00; Android's
+// LocalTime cannot. Normalize only those windows, preserving day semantics and
+// never turning the empty 24:00..00:00 interval into an all-day allow window.
+func phoneWindowFor(w rules.ConfigurationWindow) (phoneWindow, bool) {
+	out := phoneWindow{w.Days, w.Start, w.Stop}
+	if w.Start == "24:00" {
+		if w.Stop == "00:00" {
+			return phoneWindow{}, false
+		}
+		out.Start = "00:00"
+		if w.Stop != "24:00" {
+			next := map[string]string{"sun": "mon", "mon": "tue", "tue": "wed", "wed": "thu", "thu": "fri", "fri": "sat", "sat": "sun"}
+			days := strings.Fields(w.Days)
+			for i, day := range days {
+				days[i] = next[day]
+			}
+			out.Days = strings.Join(days, " ")
+		}
+	}
+	if w.Stop == "24:00" {
+		out.Stop = "00:00"
+	}
+	return out, true
 }
 
 // Captain is the profile a phone reply treats as captain right now: the one
@@ -74,7 +100,9 @@ func PhonePolicy(c rules.Configuration, platformPolicy platform.Policy, id strin
 		}
 		for _, w := range eff.Schedules {
 			if w.Profile == captain && w.Days != "" && w.Start != "" && w.Stop != "" {
-				r.Windows = append(r.Windows, phoneWindow{w.Days, w.Start, w.Stop})
+				if window, emit := phoneWindowFor(w); emit {
+					r.Windows = append(r.Windows, window)
+				}
 			}
 		}
 	}

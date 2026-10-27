@@ -218,6 +218,40 @@ after=$(nft list ruleset | grep -c familywarden)
 [ "$before" = "$after" ] && pass "rule count stable ($after)" || fail "rule count changed $before → $after"
 
 echo ""
+echo "=== Midnight endpoints stay in the kernel and validate in both chains ==="
+uci set familywarden.midnight_probe=profile
+uci set familywarden.midnight_probe.name='Midnight fixture'
+uci set familywarden.midnight_probe.enabled='1'
+uci set familywarden.midnight_probe.policy=scheduled
+uci set familywarden.midnight_probe.block_router='1'
+uci add_list familywarden.midnight_probe.device='aa:bb:cc:00:00:09'
+for section in midnight_end midnight_start midnight_zero; do
+    uci set "familywarden.$section=schedule"
+    uci set "familywarden.$section.profile=midnight_probe"
+done
+uci set familywarden.midnight_end.days=mon
+uci set familywarden.midnight_end.start=21:00
+uci set familywarden.midnight_end.stop=24:00
+uci set familywarden.midnight_start.days=mon
+uci set familywarden.midnight_start.start=24:00
+uci set familywarden.midnight_start.stop=08:00
+uci set familywarden.midnight_zero.days=fri
+uci set familywarden.midnight_zero.start=22:00
+uci set familywarden.midnight_zero.stop=00:00
+uci commit familywarden
+"$BIN" reload >/dev/null && pass "midnight schedule endpoints compile and apply" || fail "midnight schedule endpoints rejected by nft"
+for chain in familywarden_forward familywarden_input; do
+    assert_rule "end=24:00 keeps the whole end of Monday ($chain)" 'aa:bb:cc:00:00:09 meta hour >= "21:00" meta day "Monday" .* accept' "$chain"
+    assert_rule "start=24:00 begins on Tuesday ($chain)" 'aa:bb:cc:00:00:09 meta hour < "08:00" meta day "Tuesday" .* accept' "$chain"
+    assert_rule "overnight ending at midnight keeps Friday ($chain)" 'aa:bb:cc:00:00:09 meta hour >= "22:00" meta day "Friday" .* accept' "$chain"
+    refute_rule "no invalid 24:00 comparison ($chain)" 'meta hour (>=|<) "24:00"' "$chain"
+    refute_rule "no empty next-day midnight interval ($chain)" 'aa:bb:cc:00:00:09 meta hour < "00:00"' "$chain"
+done
+for section in midnight_probe midnight_end midnight_start midnight_zero; do uci delete "familywarden.$section"; done
+uci commit familywarden
+"$BIN" reload >/dev/null
+
+echo ""
 echo "=== ubus: list / status ==="
 out=$(call list)
 assert_json "list has kid" "$out" '@.profiles.kid.name' "Kid"
@@ -425,6 +459,15 @@ assert_rule "amendment window open" 'meta day .* meta hour >= "10:00" meta hour 
 assert_rule "captain's allowed hours open (any device)" '^[[:space:]]*meta hour >= "07:00" meta hour < "20:00" meta day .* accept' familywarden_lockdown
 assert_rule "everything else dropped" 'meta l4proto tcp counter .* drop comment "familywarden:ulysses:lockdown"' familywarden_lockdown
 assert_rule "block_router leaves the sail page open" 'aa:bb:cc:00:00:01 tcp dport != 7700 counter .* drop' familywarden_input
+
+echo ""
+echo "=== Ulysses: amendment window may end at 24:00 ==="
+sed -i 's/^window_stop=.*/window_stop=24:00/' /etc/familywarden/pact
+"$BIN" reload >/dev/null && pass "24:00 amendment endpoint compiles" || fail "24:00 amendment endpoint rejected by nft"
+assert_rule "midnight amendment uses the day boundary" 'meta day .* meta hour >= "10:00" accept comment "familywarden:ulysses:window"' familywarden_lockdown
+refute_rule "midnight amendment has no invalid clock literal" 'meta hour .*"24:00"' familywarden_lockdown
+sed -i 's/^window_stop=.*/window_stop=11:00/' /etc/familywarden/pact
+"$BIN" reload >/dev/null
 
 echo ""
 echo "=== Ulysses: survives reboot ==="
@@ -1301,6 +1344,10 @@ uci set familywarden.alex_week.stop=23:00
 uci commit familywarden
 "$BIN" reload >/dev/null
 "$BIN" sail-request >/dev/null
+# Import while an amendment window is open, without promoting the loose UCI
+# edits into the original frozen snapshot. A clock window alone is not consent.
+owned_day=$(date +%a | tr A-Z a-z)
+sed -i "s/^type=.*/type=ongoing/; s/^until=.*/until=0/; s/^window_day=.*/window_day=$owned_day/; s/^window_start=.*/window_start=00:00/; s/^window_stop=.*/window_stop=24:00/" /etc/familywarden/pact
 cfg_api() { printf '%s' "${2:-{\}}" | /usr/sbin/familywardend -socket "$CORE_SOCK" api "$1"; }
 exported=$(cfg_api configuration_export)
 revision=$(echo "$exported" | jsonfilter -e '@.configuration.revision')
@@ -1343,6 +1390,8 @@ assert_json "stale editor cannot overwrite a pending change" "$(cfg_api configur
 new_revision=$(echo "$applied" | jsonfilter -e '@.revision'); confirm_token=$(echo "$applied" | jsonfilter -e '@.token')
 assert_json "wrong confirmation is refused" "$(cfg_api configuration_confirm "{\"revision\":\"$new_revision\",\"token\":\"wrong\"}")" '@.error' 'configuration conflict'
 assert_json "matching confirmation commits" "$(cfg_api configuration_confirm "{\"revision\":\"$new_revision\",\"token\":\"$confirm_token\"}")" '@.status' ok
+assert_json "unrelated edit inside the window keeps the imported frozen app limit" "$(v3payload owned-phone fw-owned "$N1" - '' apps-v1,screen-time-v1)" '@.apps.screen.mon' 10
+assert_json "unrelated edit inside the window keeps the imported frozen schedule" "$(v3payload owned-phone fw-owned "$N1" - '' apps-v1,screen-time-v1)" '@.rules.windows[0].stop' '20:00'
 assert_json "stale revision is refused after confirmation" "$(cfg_api configuration_apply "{\"revision\":\"$revision\",\"current\":$current}")" '@.error' 'configuration conflict'
 # Direct legacy UCI changes must not be re-imported or become policy authority.
 uci set familywarden.taylor.name='Legacy edit'
@@ -1374,6 +1423,19 @@ sed -i 's/"version":1/"version":99/' /etc/familywarden/core/configuration.json
 mast2 owned-phone fw-owned "$N1" | head -1 | grep -q '^Status: 500' && pass "future configuration never signs legacy fallback" || fail "future configuration produced a policy"
 mv /tmp/owned-configuration.keep /etc/familywarden/core/configuration.json
 assert_json "restored valid owner remains readable" "$(cfg_api configuration_export)" '@.owner' core
+# A deliberately confirmed amendment may now activate configured values. The
+# kernel accepts 24:00 boundaries, but signed phone windows must use LocalTime.
+exported=$(cfg_api configuration_export)
+revision=$(echo "$exported" | jsonfilter -e '@.configuration.revision')
+current=$(echo "$exported" | ucode -l fs -e 'let d=json(fs.stdin.read("all")); for(let w in d.configuration.current.schedules) if(w.profile=="alex") w.stop="24:00"; print(sprintf("%J",d.configuration.current));')
+assert_json "explicit midnight amendment commits" "$(cfg_api configuration_amend "{\"revision\":\"$revision\",\"current\":$current}")" '@.status' ok
+assert_json "phone receives a parseable midnight endpoint" "$(v3payload owned-phone fw-owned "$N1" - '' apps-v1,screen-time-v1)" '@.rules.windows[0].stop' '00:00'
+assert_rule "amended midnight schedule reaches the kernel" 'aa:bb:cc:00:00:01 meta hour >= "07:00" meta day .* accept'
+exported=$(cfg_api configuration_export)
+revision=$(echo "$exported" | jsonfilter -e '@.configuration.revision')
+invalid=$(echo "$exported" | ucode -l fs -e 'let d=json(fs.stdin.read("all")); d.configuration.current.downtime=[{id:"invalid_clock",profile:"alex",days:"mon",start:"21:00",stop:"24:00"}]; print(sprintf("%J",d.configuration.current));')
+assert_json "app downtime cannot be accepted then silently discarded" "$(cfg_api configuration_amend "{\"revision\":\"$revision\",\"current\":$invalid}")" '@.error' 'invalid app downtime'
+assert_json "rejected app downtime leaves revision unchanged" "$(cfg_api configuration_export)" '@.configuration.revision' "$revision"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

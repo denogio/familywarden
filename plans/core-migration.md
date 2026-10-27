@@ -353,7 +353,7 @@ and signing key intact). Core/backend versions are prepared; **no deployment**.
 When the core owns the configuration, `Authority.Policy` computes the signed reply's
 `captain`, `pact` and `rules` from the document (`configuration.PhonePolicy`: active pact
 with type/until/release, effective enabled/policy and complete captain windows, frozen
-outside the amendment window). The shell's `core-policy` now only contributes runtime
+until an explicit amendment). The shell's `core-policy` now only contributes runtime
 facts in that mode: the captain's manual override, DNS acknowledgement and app input with
 today's bonus. A different captain or a missing override refuses the reply (the phone
 keeps its last trusted policy); any other difference from the shell's projection is
@@ -366,11 +366,9 @@ deadline and a manual block, and the core log shows no shell/core divergence. A 
 that reads live instead of effective configuration fails both the frozen-window and the
 divergence checks.
 
-Known edge: a legacy import whose configured captain differs from its frozen snapshot
-materializes the configured captain if an apply happens inside the amendment window,
-without refreshing `pact.frozen`; the next apply outside the window restores the frozen
-rules. Core edits cannot create this state (`ValidateEdit` refuses captain edits outside
-the window and refreshes the snapshot inside it).
+The imported configured-vs-frozen amendment-window edge was resolved in core
+0.13.0-r8 (see below): neither entering the window nor editing another profile can
+activate previously ignored configured captain rules.
 
 ### AdGuard Home reconciliation in Go (core 0.13.0 / backend 0.11.0_rc10, 2026-10-26)
 
@@ -561,6 +559,47 @@ ignoring `filtering_enabled` was optimistically acknowledged. It now retains the
 ack instead, with additional mismatch cases for each restriction and a failed read-back
 HTTP response. The real AGH v0.107.79 suite exercises the same read-back path. This is
 server-configuration verification, not a claim of physical handset DNS/runtime tests.
+
+### Imported pact stability across amendment windows (core 0.13.0-r8)
+
+The enforced snapshot is now time-independent while the pact remains active:
+`Effective` always uses `pact.frozen`. Opening or closing an amendment window permits
+or refuses an explicit write; it does not itself promote ignored legacy UCI edits.
+Likewise, an ordinary edit to another profile no longer refreshes the captain snapshot.
+Only the explicit `configuration_amend` or pact-amendment operation refreshes frozen
+rules/DNS (preserving frozen phone associations), including a deliberate amendment
+that activates configured values without changing their current representation.
+
+Two regressions first reproduced automatic rule promotion on window entry and during
+an unrelated confirmed edit. Tests now keep the imported 10-minute/20:00 restrictions
+before, inside and after the window, then explicitly amend to 999 minutes/23:00 and
+verify that accepted snapshot persists after the window closes. The router integration
+fixture imports while its ongoing window is already open and repeats the unrelated
+edit checks against real signed phone replies. No new schedule-polling loop or daemon
+is introduced.
+
+### Midnight boundaries remain consistent across kernel and phones
+
+Core 0.13.0-r8 / backend 0.11.0_rc10-r5 preserve the document's accepted `24:00`
+internet/amendment endpoint without emitting an invalid nft clock literal. The
+adapter uses the existing day match as the exclusive end-of-day boundary, skips the
+nonexistent start-day portion of a `24:00` overnight start, and omits empty next-day
+`<00:00` portions. Input, forwarding and lockdown still use kernel-evaluated rules;
+there is no userspace schedule loop or one-second truncation.
+
+Signed internet windows are separately normalized for Android `LocalTime`: end
+`24:00` becomes `00:00`, start `24:00` shifts to the next weekday, equal `24:00`
+bounds retain the documented whole-day meaning, and the empty `24:00..00:00`
+interval emits no allow window (never an accidental all-day allowance). Ordinary
+and existing overnight wire windows remain unchanged, with no new phone feature or
+wire version required.
+
+App downtime retains its existing 00:00..23:59 compiler/mobile contract: new edits
+with `24:00` or no day are rejected before persistence instead of being silently
+discarded by legacy normalization. Unchanged legacy downtime is not reinterpreted
+on unrelated edits. Unit regressions fail against the prior clock implementation;
+router tests cover both traffic chains, lockdown, a real signed midnight endpoint
+and rejection of a downtime the app compiler cannot enforce.
 
 ### Authoritative configuration cutover: traced callers and required transaction
 
