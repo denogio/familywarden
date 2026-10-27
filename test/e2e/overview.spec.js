@@ -533,9 +533,27 @@ test('running tickets extend through the UI and can be cancelled separately', as
   const alex = page.locator('[data-profile="alex"]');
   await expect(alex.locator('.fw-override')).toContainText('Override');
   await expect(alex.locator('.fw-ticket .fw-act-hint')).toHaveCount(0);
+  // Hold the extension reply after the backend commits: querying status alone
+  // must not make Cancel appear ready while the UI's action guard is still busy.
+  let releaseTicket;
+  const ticketReply = new Promise(resolve => { releaseTicket = resolve; });
+  await page.route(/\/ubus(?:\/|$)/, async route => {
+    const body = route.request().postDataJSON();
+    const calls = Array.isArray(body) ? body : [body];
+    if (!calls.some(c => c.params?.[1] === 'familywarden' && c.params?.[2] === 'ticket'))
+      return route.continue();
+    const response = await route.fetch();
+    await ticketReply;
+    await route.fulfill({ response });
+  });
   await alex.getByRole('button', { name: 'Add 10 minutes', exact: true }).click();
-  await expect.poll(async () => (await call('status', { profile: 'alex' })).override_expires)
-    .toBe(initial.override_expires + 600);
+  try {
+    await expect.poll(async () => (await call('status', { profile: 'alex' })).override_expires)
+      .toBe(initial.override_expires + 600);
+    await expect(alex.getByRole('button', { name: 'Cancel ticket', exact: true })).toBeDisabled();
+  } finally {
+    releaseTicket();
+  }
   await expect(alex.getByRole('button', { name: 'Cancel ticket', exact: true })).toBeEnabled();
   await alex.getByRole('button', { name: 'Cancel ticket', exact: true }).click();
   await expect.poll(async () => (await call('status', { profile: 'alex' })).override).toBe('none');

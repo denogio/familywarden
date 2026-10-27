@@ -147,14 +147,20 @@ function profileCard(id, p, names, configuration) {
 	]);
 }
 
+function disableActions(disabled) {
+	dashboardNode.querySelectorAll('button[data-focus]').forEach(function(button) {
+		button.disabled = disabled;
+	});
+}
+
 function actionButton(id, label, key, fn) {
 	var intent = (key.indexOf('ticket-') === 0 || key.indexOf('bonus-') === 0) ? 'grant' : { allow: 'allow', block: 'block', pact: 'pact' }[key];
 	return E('button', { 'type': 'button', 'class': 'cbi-button fw-btn' + (intent ? ' fw-btn-' + intent : ''), 'data-focus': id + ':' + key,
+		'disabled': acting ? '' : null,
 		'click': function(ev) {
 			if (acting) return;
 			acting = true;
-			var button = ev.currentTarget;
-			button.disabled = true;
+			disableActions(true);
 			// Let any in-flight read finish before mutating; otherwise its old reply
 			// can overwrite the result and suppress the action's immediate refresh.
 			return Promise.resolve(refreshing).then(fn).then(function(res) {
@@ -164,7 +170,7 @@ function actionButton(id, label, key, fn) {
 			}).then(function() {
 				acting = false;
 				return refreshDashboard();
-			}).finally(function() { button.disabled = false; });
+			}).finally(function() { disableActions(dashboardNode.classList.contains('is-stale')); });
 		} }, label);
 }
 
