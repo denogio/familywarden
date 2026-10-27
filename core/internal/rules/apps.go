@@ -51,7 +51,8 @@ type AppPolicy struct {
 // legacy configuration is separate from moving its compiler.
 var appPackage = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.]*\.[A-Za-z0-9_]+$`)
 
-func validAppPackage(s string) bool {
+// ValidAppPackage preserves the legacy package grammar for rules and bonus.
+func ValidAppPackage(s string) bool {
 	return len(s) <= 255 && appPackage.MatchString(s) && !strings.Contains(s, "..")
 }
 
@@ -103,7 +104,7 @@ func CompileApps(in AppInput) (*AppPolicy, []string, error) {
 			}
 			p.SuspendNew, newSeen = a == "1", true
 		case "app":
-			if !validAppPackage(a) || packages[a] || (c != "0" && c != "1") {
+			if !ValidAppPackage(a) || packages[a] || (c != "0" && c != "1") {
 				return fail()
 			}
 			packages[a] = true
@@ -152,7 +153,7 @@ func CompileApps(in AppInput) (*AppPolicy, []string, error) {
 			}
 			p.Screen[a], screenTime = n, true
 		case "always":
-			if !validAppPackage(a) || b != "" || c != "" {
+			if !ValidAppPackage(a) || b != "" || c != "" {
 				return fail()
 			}
 			p.AlwaysAllowed = append(p.AlwaysAllowed, a)
@@ -184,7 +185,7 @@ func CompileApps(in AppInput) (*AppPolicy, []string, error) {
 			seen[target], p.Bonus.Day = true, day
 			if target == "total" {
 				p.Bonus.Total = n
-			} else if validAppPackage(target) {
+			} else if ValidAppPackage(target) {
 				p.Bonus.Apps = append(p.Bonus.Apps, AppLimit{target, n})
 			} else {
 				return fail()

@@ -395,6 +395,12 @@ _bonus_today() {
 # 240 minutes per call and 1440 per target and day. Never changes the standing limits.
 # Refused for a Ulysses captain under a pact: adults get no self-approval (A4).
 ubus_bonus() {
+    if configuration_owned; then
+        # Forward the original JSON so core validation also catches duplicate and
+        # malformed fields. The CLI bridge removes only ubus_rpc_session.
+        core_configuration_api configuration_bonus_add "$4"
+        return
+    fi
     local profile="$1" minutes="$2" target="${3:-total}" on name today total
     case "$minutes" in ''|*[!0-9]*) _json_error "minutes must be 1..240"; return 1 ;; esac
     minutes=$(echo "$minutes" | sed 's/^0*//')
@@ -403,6 +409,8 @@ ubus_bonus() {
     (
         flock -x 201 || { _json_error "bonus lock failed"; return 1; }
         flock -x 200 || { _json_error "state lock failed"; return 1; }
+        # Import may have completed while this legacy writer waited for the lock.
+        configuration_owned && { _json_error "configuration ownership changed; retry bonus"; return 1; }
         fw_load
         config_get name "$profile" name ""
         [ -n "$name" ] || { _json_error "profile not found"; return 1; }
@@ -1109,6 +1117,16 @@ EOF
 # ---- Ubus handlers ----
 
 ubus_list() {
+    # Fetch core-owned bonus before the shell state lock: never call back into
+    # the core while holding a lock its refresh/apply path may need.
+    local bonus_state="" kind
+    if configuration_owned; then
+        bonus_state=$(core_configuration_api configuration_bonus_read '{}') || { printf '%s\n' "$bonus_state"; return 1; }
+        [ "$(printf '%s' "$bonus_state" | jsonfilter -e '@.format')" = bonus-state-v1 ] || { _json_error "incompatible bonus core"; return 1; }
+        json_load "$bonus_state" || return 1
+        json_get_type kind totals
+        [ "$kind" = object ] || { _json_error "bonus totals unavailable"; return 1; }
+    fi
     (
         flock -s 200 || return 1
         json_init
@@ -1167,7 +1185,13 @@ EOF
     local apps_on
     config_get apps_on "$profile" apps "0"
     json_add_boolean "apps" "$([ "$apps_on" = 1 ] && echo 1 || echo 0)"
-    json_add_int "bonus_today" "$(_bonus_today "$profile" | awk -F'|' '$2 == "total" { print $3 }' | head -1 | grep . || echo 0)"
+    local bonus_today
+    if [ -n "$bonus_state" ]; then
+        bonus_today=$(printf '%s' "$bonus_state" | jsonfilter -e "@.totals['$profile']")
+    else
+        bonus_today=$(_bonus_today "$profile" | awk -F'|' '$2 == "total" { print $3 }' | head -1)
+    fi
+    json_add_int "bonus_today" "${bonus_today:-0}"
 
     json_add_array "devices"
     config_list_foreach "$profile" device json_add_dev
@@ -1617,7 +1641,11 @@ _core_profile_cb() {
     json_add_object "$1"
     json_add_string "name" "$name"
     json_add_object "app_input"
-    _json_app_config "$1" "$(_bonus_today "$1")"
+    local bonus=""
+    # Owned bonus is compiled directly from core state, not this compatibility
+    # file. In particular this locked context must never call the core socket.
+    configuration_owned || bonus=$(_bonus_today "$1")
+    _json_app_config "$1" "$bonus"
     json_close_object
     json_close_object
 }
@@ -1625,6 +1653,7 @@ _core_profile_cb() {
 _core_context_fields() {
     local tz
     json_add_string "app_format" "go-apps-v3"
+    json_add_string "bonus_format" bonus-state-v1
     tz=$(uci -q get system.@system[0].zonename)
     case "$tz" in ''|*[!A-Za-z0-9_+/-]*) tz="" ;; esac
     json_add_string "timezone" "$tz"
@@ -2283,8 +2312,14 @@ EOF
         cli_mast "$2"
         ;;
     core-configuration-facts)
+        legacy_bonus=""
+        if [ -e "$FW_BONUS" ]; then
+            legacy_bonus=$(cat "$FW_BONUS") || { _json_error "legacy bonus unavailable"; exit 1; }
+        fi
         json_init
         json_add_string timezone "$(uci -q get system.@system[0].zonename)"
+        json_add_string bonus_format bonus-state-v1
+        json_add_string legacy_bonus "$legacy_bonus"
         json_dump
         ;;
     core-apply-configuration)
@@ -2377,7 +2412,7 @@ EOF
                 json_get_var profile profile
                 json_get_var minutes minutes
                 json_get_var package package
-                ubus_bonus "$profile" "$minutes" "$package"
+                ubus_bonus "$profile" "$minutes" "$package" "$input"
                 ;;
             pact)
                 read -r input

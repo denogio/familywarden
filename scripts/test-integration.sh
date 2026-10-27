@@ -5,6 +5,7 @@
 #   ./scripts/test-integration.sh              # host: starts the container
 #   OPENWRT_IMAGE=openwrt/rootfs:x86-64-25.12.4 ./scripts/test-integration.sh
 #
+# FW_TEST_FOCUS=bonus runs only the narrow legacy/owned bonus bridge checks.
 # Needs docker and CAP_NET_ADMIN (nftables runs in the container's own netns).
 
 if [ "$1" != "--inside" ]; then
@@ -16,7 +17,7 @@ if [ "$1" != "--inside" ]; then
     if [ -n "$FW_CORE_BIN" ]; then cp "$FW_CORE_BIN" "$CORE_DIR/familywardend"
     else (cd "$REPO/core" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o "$CORE_DIR/familywardend" ./cmd/familywardend) || exit 1
     fi
-    docker run --rm --memory=768m --cpus=2 --cap-add NET_ADMIN -v "$REPO:/src:ro" -v "$CORE_DIR:/core:ro" "$IMAGE" \
+    docker run --rm --memory=768m --cpus=2 --cap-add NET_ADMIN -e FW_TEST_FOCUS="${FW_TEST_FOCUS:-}" -v "$REPO:/src:ro" -v "$CORE_DIR:/core:ro" "$IMAGE" \
         sh /src/scripts/test-integration.sh --inside
     exit $?
 fi
@@ -180,6 +181,42 @@ uci set firewall.@include[-1].type='nftables'
 uci set firewall.@include[-1].path='/var/etc/familywarden.include'
 uci commit firewall
 fw4 start >/dev/null 2>&1
+
+if [ "${FW_TEST_FOCUS:-}" = bonus ]; then
+    echo "=== focused bonus authority and OpenWrt bridge ==="
+    uci set familywarden.kid.apps=1
+    uci set familywarden.kid.screen_minutes=40
+    uci set familywarden.settings.ulysses_profile=kid
+    uci commit familywarden
+    "$BIN" reload >/dev/null
+    assert_json "legacy bonus remains available before import" "$(call bonus '{"profile":"kid","minutes":15}')" '@.minutes_today' 15
+    # A future entry must survive import too (e.g. after a backwards clock step).
+    echo 'kid|2099-01-15|total|7' >> /etc/familywarden/bonus
+    cp /etc/familywarden/bonus /tmp/legacy-bonus.keep
+    bonus_api() { printf '%s' "${2:-{\}}" | /usr/sbin/familywardend -socket "$CORE_SOCK" api "$1"; }
+    revision=$(bonus_api configuration_export | jsonfilter -e '@.configuration.revision')
+    assert_json "explicit import captures bonus with the configuration lock" "$(bonus_api configuration_import "{\"revision\":\"$revision\"}")" '@.status' ok
+    assert_json "owned bonus uses the original administrator RPC" "$(call bonus '{"profile":"kid","minutes":30,"ubus_rpc_session":"synthetic"}')" '@.minutes_today' 45
+    assert_json "list reports core-owned bonus without a locked socket callback" "$(call list)" '@.profiles.kid.bonus_today' 45
+    cmp -s /etc/familywarden/bonus /tmp/legacy-bonus.keep && pass "owned writes leave legacy bonus untouched" || fail "owned bonus wrote the legacy file"
+    echo 'kid|2000-01-01|total|999' > /etc/familywarden/bonus
+    assert_json "stale legacy state is not reimported" "$(call bonus '{"profile":"kid","minutes":5}')" '@.minutes_today' 50
+    assert_json "duplicate bonus fields are refused by core" "$(call bonus '{"profile":"kid","minutes":15,"minutes":30}')" '@.error' 'duplicate configuration field'
+    stop_core
+    start_core
+    assert_json "owned bonus survives daemon restart" "$(call list)" '@.profiles.kid.bonus_today' 50
+    # Check the actual runtime journal, not only the public configuration export.
+    [ "$(jsonfilter -i /etc/familywarden/core/configuration.json -e '@.bonus.entries[@.day="2099-01-15"].minutes')" = 7 ] && pass "future bonus row retained" || fail "future bonus row lost"
+    assert_json "owned pact creation succeeds" "$(call pact "{\"until\":$(( $(date +%s) + 3600 ))}")" '@.status' ok
+    assert_json "a bound captain cannot receive bonus" "$(call bonus '{"profile":"kid","minutes":15}')" '@.error' 'profile is bound by Ulysses pact'
+    stop_core
+    assert_json "core-down bonus fails instead of using legacy" "$(call bonus '{"profile":"kid","minutes":15}')" '@.error' 'core not reachable'
+    assert_json "core-down totals are unavailable, not zero" "$(call list)" '@.error' 'core not reachable'
+    [ "$FAILED" = 0 ] && echo 'All focused bonus checks passed!'
+    exit "$FAILED"
+fi
+
+[ -z "${FW_TEST_FOCUS:-}" ] || { echo "Unknown test focus: $FW_TEST_FOCUS"; exit 1; }
 
 echo "=== reload: compile + validate + fw4 reload ==="
 out=$("$BIN" reload)

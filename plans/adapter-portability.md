@@ -6,6 +6,26 @@ the user's clarification: adding another router must not require reimplementing
 FamilyWarden product rules. See [migration evidence](core-migration.md),
 [delivery backlog](app-control-todo.md) and [product decisions](app-control.md).
 
+## Current scope and working method (user clarification)
+
+OpenWrt is the only implementation target now. Other router types are future
+possibilities, not current deliverables or build/test targets. Preserve the option
+without designing a generic adapter framework. The earlier FreeBSD compile check
+below is historical evidence only, not a workstream or a completion gate.
+
+Moving product rules into core must not remove necessary adapter capabilities:
+core defines policy meaning and precedence; the adapter may receive schedules,
+prioritized rules and deadlines and choose the native enforcement mechanism.
+Preserve OpenWrt's kernel-driven schedules and ticket expiry without a new polling
+daemon. Apply one bounded migration at a time and verify current OpenWrt behavior.
+
+Use the smallest test that proves each function: focused Go tests for product logic,
+a focused adapter/subprocess or disposable-container check for the bridge, and a
+module/component test for UI changes. Full e2e/emulator runs are milestone checks,
+not the default after each function. Expand only for a concrete affected boundary,
+a demonstrated regression or a larger integrated change; do not repeat already
+covered suites reflexively.
+
 ## What “core migration done” means
 
 A new router integration provides platform facts, applies core-owned network intent,
@@ -27,11 +47,12 @@ is required to finish this boundary.
 |---|---|---|
 | Identity, enrollment, roles/scopes, signatures, requests/grants, usage/new-app ledgers | Go `internal/identity`, `internal/protocol`, `internal/store`, `internal/usign`; fake adapters test product behavior | Substantial portable implementation; runtime still uses the broad adapter context and home-ticket bridge |
 | Household configuration and pacts | Go `internal/configuration` + `internal/rules/configuration.go`: explicit import, CAS, confirm/rollback, effective snapshots, amendment/release, cumulative DNS minimum | Implemented after opt-in import, not the production default; policy/context still depend on shell output |
-| Phone/app policy | Go `PhonePolicy`, `AppContext` and app compilers derive owned configuration/frozen rules | Mixed boundary: shell still supplies policy-shaped runtime input and verified DNS data |
-| Network status/actions and bonus | Shell evaluates status, owns manual overrides/additive tickets and bonus mutations, including pact guards | Product logic still to migrate; not merely firewall syntax |
+| Phone/app policy | Go `PhonePolicy`, `AppContext` and app compilers derive owned configuration/frozen rules and core-owned bonus | Mixed boundary: shell still supplies other policy-shaped runtime input and verified DNS data |
+| Bonus | Owned-mode validation, durable runtime entries, day/cap/pact decisions and policy/list readers now use core; legacy mode retains its explicitly gated writer | First R1 slice implemented/tested; no active owned-mode shell bonus writer |
+| Network status/actions | Shell evaluates status and owns manual overrides/additive tickets, including pact guards | Remaining R1/R3 product logic; not merely firewall syntax |
 | DNS reconciliation | Go `internal/agh` owns desired client/access reconciliation and verification; owned desired DNS comes from the document | Shell still orchestrates credentials, dirty/retry scheduling, acknowledgements and persisted ownership state |
 | Platform enforcement and administration | Go OpenWrt adapter + shell nft/fw4 renderer; LuCI rpcd/session/ACL bridge; shared Requests UI | Working OpenWrt integration, not a platform-neutral enforcement contract or complete shared administration UI |
-| Second platform | FreeBSD/amd64 cross-build succeeds | Compile-only evidence; no pf adapter, package, auth integration or runtime validation |
+| Scope | OpenWrt only; preserve future options | No second-router implementation or cross-platform build workstream |
 
 ## Concrete boundary debts (source evidence)
 
@@ -42,8 +63,8 @@ and the explicit authority cutover has completed.
 |---|---|---|
 | Broad interim adapter | `core/internal/platform/platform.go`: `Context`, `Policy`, `Configuration`, `WithContext`, `RouterKey`, legacy phone import/removal, `EnsureTicket` | Mixes legacy import, product-policy-shaped input, locking, key access and network side effects. Existing methods are an interim contract, not the final implementation checklist for every router |
 | Extra apply contract | `core/internal/configuration/authority.go`: `Backend.ConfigurationTransaction`; `core/internal/openwrt/configuration.go` | Configuration apply/recovery exists outside `platform.Adapter`. The callback currently carries raw configuration plus a synchronous apply function; a new backend still has to understand how effective intent and runtime facts are assembled |
-| Shell required even after import | `Authority.Context`, `Authority.Policy`, `Authority.WithContext` in `authority.go` call the wrapped adapter; `openwrt.go` calls `core-context`/`core-policy` | The owned document does not remove the shell round trip. `AppContext` needs per-profile `AppInput.Bonus` and matching pact facts; `PhonePolicy` checks shell captain/override, and preserves the verified DNS input. Split these into explicit runtime/application facts, not another policy compiler |
-| Remaining product writers | Shell `_set_override`, `ubus_ticket`, `ubus_bonus`, `effective_override`, `gc_expired_tickets` | Pact exclusions, ticket extension, daily caps/expiry and override precedence would otherwise have to be duplicated on FreeBSD. Preserve current RAM-versus-durable semantics unless separately changed |
+| Shell required even after import | `Authority.Context`, `Authority.Policy`, `Authority.WithContext` in `authority.go` call the wrapped adapter; `openwrt.go` calls `core-context`/`core-policy` | The owned document does not remove the shell round trip. `AppContext` still requires per-profile runtime entries and matching pact facts (bonus now comes from core-owned state); `PhonePolicy` checks shell captain/override, and preserves the verified DNS input. Split these into explicit runtime/application facts, not another policy compiler |
+| Remaining product writers | Shell `_set_override`, `ubus_ticket`, `effective_override`, `gc_expired_tickets`; `ubus_bonus` now forwards in owned mode | Ticket extension/expiry, pact exclusions and override precedence still need migration; bonus daily caps/expiry now live in core for owned mode. Preserve current RAM-versus-durable semantics unless separately changed |
 | Status and network compilation | Shell `_now_match_schedule`, `profile_effective_status`, `gen_*`, `generate_include` | Status evaluation and precedence are mixed with nft syntax. Core must define precedence/allow windows/network intent; adapter must render/apply it without independently deciding whether a profile deserves access |
 | Grant-to-network bridge | `identity` calls `Adapter.EnsureTicket`; shell `cli_core_ticket` checks pact/manual block/expiry and applies changes | Grant authority is already Go-owned, but home-network eligibility and existing override state still cross a product-aware shell bridge. Preserve “never shorten, never bypass block/pact” in the portable decision/transaction, with adapter acknowledgement of application |
 | DNS lifecycle/state | Shell `_dns_sync_locked`, `cli_dns_tick`, `_json_dns`; Go `internal/agh`, `configuration/dns.go` | The reconciler is portable, but a new router still needs more than an AGH HTTP client. Separate core-owned acknowledgement/ownership semantics and retry orchestration from secret access, storage paths and service wakeups. Never advertise desired DNS as verified enforcement |
@@ -91,6 +112,9 @@ contracts needed by each migrated caller.
   writers/readers/locks together. Preserve grant-ticket behavior, pact restrictions,
   day boundaries, failure rollback and existing persistence semantics. Do not leave
   duplicate active writers in owned mode. Legacy routing may remain explicitly gated.
+  - [x] R1a: core-owned bonus (core 0.13.0-r10 / backend rc10-r7), including one-time
+    legacy import/owned upgrade and policy/list readers; focused tests below.
+  - [ ] R1b: manual overrides, additive network tickets and their expiry/status consumers.
 - [ ] **R2 — Replace policy-shaped adapter reads with runtime facts.** After R1, owned
   identity/request/policy paths must run without `core-context`/`core-policy` or UCI.
   Keep legacy import behind the OpenWrt compatibility path; root-private keys and
@@ -110,7 +134,7 @@ contracts needed by each migrated caller.
   views/editors with thin host bridges (A20/P10). Native LuCI form projection may stay
   during migration, but cannot be required by the shared product UI. Depends on the
   relevant R1–R4 operations, not an artificial all-at-once UI rewrite.
-- [ ] **R6 — Prove the boundary without OpenWrt.** Run the production core service with
+- [ ] **R6 — Prove the boundary with a test adapter, not a second router.** Run the production core service with
   an in-process recording/failing adapter, no shell/UCI/ubus/fw4 or OpenWrt paths. Test
   the same identities/configuration, schedules/pacts, manual actions/grants/bonus,
   DNS acknowledgements, recovery and shared UI contract. Reuse existing tests; add
@@ -119,11 +143,42 @@ contracts needed by each migrated caller.
   import/upgrade/interruption and safe backup/restore matrix before removing legacy
   paths or declaring production cutover ready. Deployment still needs authorization.
 
-R1 is the next implementation slice: bonus is a bounded first writer, followed by
-manual network actions/tickets. Inventory the relevant callers before changing state
+R1 continues with manual network actions/tickets after the completed owned bonus slice. Inventory the relevant callers before changing state
 ownership; do not add an unused parallel store. Exact function signatures and storage
 changes are implementation decisions to review against existing behavior, not settled
 by this planning document.
+
+## R1a evidence: core-owned bonus (development, not deployed)
+
+The existing household journal now stores bonus runtime entries separately from
+editable/sealed configuration. Import and upgrading an existing owned document
+capture the legacy file once under the configuration transaction lock, including
+future-dated rows. Core owns validation, 1–240 minutes per call, the 1440-minute
+per-target/day cap, additive total/app entries, router-local day selection, pruning
+on mutation, active-captain refusal and persistence. Configuration revision is not
+changed by bonus; configuration confirmation/rollback and pact operations retain it.
+Bonus writes are refused while configuration confirmation is pending.
+
+Owned `bonus` RPC calls forward original JSON to core, including strict duplicate-field
+validation; legacy calls keep the previous implementation. A legacy writer waking
+from the state lock rechecks ownership before writing. Phone/context compilation
+ignores shell-provided bonus, and `list.bonus_today` reads versioned core totals
+before taking the shell lock (no recursive socket/lock dependency). Core-down reads
+and writes fail visibly instead of returning zero or falling back to the legacy file.
+OpenWrt retains native firewall enforcement; bonus needs no firewall apply.
+
+The private `bonus-state-v1` handshake distinguishes an empty import from a missing
+backend feature. Upgrade core/backend together. Older cores reject the added runtime
+journal member; no automatic downgrade or restore safety is claimed. The old file
+is left untouched as compatibility/backup input, not an active owned-mode store.
+
+Validation: focused Go bonus/app-context tests with race detection, the affected
+configuration transaction/recovery tests and rules/adapter tests, plus
+`FW_TEST_FOCUS=bonus sh scripts/test-integration.sh` (13 real OpenWrt bonus bridge
+checks). Covers import, upgrade, independent targets/caps, concurrency, day rollover,
+stale legacy state, duplicate fields, persistence failure, restart, pact refusal,
+rollback and core-down behavior. No full e2e, emulator, package-build matrix or
+production deployment was run for this slice. R1 as a whole remains open.
 
 ## Acceptance checklist for adapter-ready completion
 
@@ -149,10 +204,11 @@ checks with freshly built packages (`41f309b`), then all four owned checks inclu
 lost-confirmation recovery (`c7d3a8d`). Android diagnostic changes passed 199 JVM tests,
 lint and debug compilation. Counts are checkpoint evidence, not portability completion.
 
-This audit also cross-compiled `familywardend` for `GOOS=freebsd GOARCH=amd64`
+The initial audit also cross-compiled `familywardend` for `GOOS=freebsd GOARCH=amd64`
 with `CGO_ENABLED=0`. It still constructs the OpenWrt adapter: no FreeBSD runtime,
-firewall behavior, packaging or UI integration was tested. No source implementation
-was changed and no production router/phone was accessed for this audit.
+firewall behavior, packaging or UI integration was tested. That initial audit changed
+no implementation; the subsequent bonus implementation is recorded above. Neither
+work accessed a production router or phone.
 
 CI `40490235715` targets `41f309b`, not the later fourth browser test. At this audit
 checkpoint its Go, router test, package builds, Android build and LuCI jobs passed;

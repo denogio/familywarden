@@ -43,6 +43,7 @@ type document struct {
 	Configuration rules.Configuration `json:"configuration"`
 	Pending       *pendingChange      `json:"pending,omitempty"`
 	NeedsApply    bool                `json:"needs_apply,omitempty"`
+	Bonus         *bonusState         `json:"bonus,omitempty"`
 }
 
 type Authority struct {
@@ -69,7 +70,17 @@ func New(ad platform.Adapter, backend Backend, st Storage) (*Authority, error) {
 		d.Configuration = d.Pending.Before
 		d.Pending = nil
 	}
-	if err := a.backend.ConfigurationTransaction(func(_ rules.Configuration, _ platform.Context, apply func(rules.Configuration) error) error {
+	if err := a.backend.ConfigurationTransaction(func(_ rules.Configuration, facts platform.Context, apply func(rules.Configuration) error) error {
+		if facts.BonusFormat != bonusFormat {
+			return errors.New("incompatible bonus adapter: upgrade core and backend together")
+		}
+		if d.Bonus == nil {
+			var err error
+			d.Bonus, err = importBonus(facts)
+			if err != nil {
+				return err
+			}
+		}
 		if err := apply(d.Configuration); err != nil {
 			return err
 		}
@@ -110,6 +121,11 @@ func (a *Authority) load() (document, bool, error) {
 	if err := validateSealed(d.Configuration); err != nil {
 		return d, true, err
 	}
+	if d.Bonus != nil {
+		if err := d.Bonus.validate(); err != nil {
+			return d, true, err
+		}
+	}
 	if d.Pending != nil {
 		if err := validateSealed(d.Pending.Before); err != nil {
 			return d, true, err
@@ -148,6 +164,9 @@ func (a *Authority) refresh() error {
 	}
 	if d.NeedsApply {
 		return errors.New("configuration recovery required")
+	}
+	if d.Bonus == nil {
+		return errors.New("bonus recovery required")
 	}
 	changed := false
 	if d.Pending != nil && a.Now().Unix() >= d.Pending.Until {
@@ -204,7 +223,11 @@ func (a *Authority) appContext(c platform.Context) (platform.Context, error) {
 	if !found {
 		return c, nil
 	}
-	return AppContext(d.Configuration, c, a.at(c))
+	if d.Bonus == nil {
+		return platform.Context{}, errors.New("bonus recovery required")
+	}
+	now := a.at(c)
+	return AppContext(d.Configuration, c, now, d.Bonus.lines(now.Format(time.DateOnly)))
 }
 
 func (a *Authority) Policy(profile string, version int) (platform.Policy, error) {
@@ -224,7 +247,11 @@ func (a *Authority) Policy(profile string, version int) (platform.Policy, error)
 	if !found {
 		return normalizePhoneWindows(p)
 	}
-	p.Context, err = AppContext(d.Configuration, p.Context, a.at(p.Context))
+	if d.Bonus == nil {
+		return platform.Policy{}, errors.New("bonus recovery required")
+	}
+	now := a.at(p.Context)
+	p.Context, err = AppContext(d.Configuration, p.Context, now, d.Bonus.lines(now.Format(time.DateOnly)))
 	if err != nil {
 		return platform.Policy{}, err
 	}
@@ -241,7 +268,7 @@ func (a *Authority) Policy(profile string, version int) (platform.Policy, error)
 			}
 		}
 	}
-	return PhonePolicy(d.Configuration, p, profile, a.at(p.Context))
+	return PhonePolicy(d.Configuration, p, profile, now)
 }
 
 func (a *Authority) WithContext(fn func(platform.Context) error) error {
@@ -358,6 +385,34 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 			owner = "core"
 		}
 		return map[string]any{"owner": owner}
+	case "configuration_bonus_add":
+		if !found || d.Bonus == nil {
+			return fail(errors.New("configuration import required"))
+		}
+		r, err := a.addBonus(d, raw)
+		if err != nil {
+			return fail(err)
+		}
+		return r
+	case "configuration_bonus_read":
+		if !found || d.Bonus == nil {
+			return fail(errors.New("configuration import required"))
+		}
+		facts, err := a.Adapter.Context()
+		if err != nil {
+			return fail(err)
+		}
+		if facts.BonusFormat != bonusFormat {
+			return fail(errors.New("incompatible bonus adapter"))
+		}
+		day := a.at(facts).Format(time.DateOnly)
+		totals := map[string]int{}
+		for _, e := range d.Bonus.Entries {
+			if e.Day == day && e.Target == "total" {
+				totals[e.Profile] = e.Minutes
+			}
+		}
+		return map[string]any{"format": bonusFormat, "day": day, "totals": totals}
 	case "configuration_dns":
 		if !found {
 			return fail(errors.New("configuration import required"))
@@ -387,7 +442,7 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 			return fail(err)
 		}
 		var imported rules.Configuration
-		err := a.backend.ConfigurationTransaction(func(c rules.Configuration, _ platform.Context, apply func(rules.Configuration) error) error {
+		err := a.backend.ConfigurationTransaction(func(c rules.Configuration, facts platform.Context, apply func(rules.Configuration) error) error {
 			if err := Validate(c); err != nil {
 				return err
 			}
@@ -399,7 +454,11 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 			}
 			// The original complete snapshot is durable and read back before any
 			// legacy file becomes a projection. Restart can finish a lost import.
-			d := document{Version: 1, Configuration: c, NeedsApply: true}
+			bonus, err := importBonus(facts)
+			if err != nil {
+				return err
+			}
+			d := document{Version: 1, Configuration: c, NeedsApply: true, Bonus: bonus}
 			if err := a.save(d); err != nil {
 				return err
 			}
@@ -453,7 +512,7 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 				return nil
 			}
 			pending = &pendingChange{Before: d.Configuration, Token: hex.EncodeToString(token[:]), Until: a.Now().Add(2 * time.Minute).Unix()}
-			candidate := document{Version: 1, Configuration: next, Pending: pending, NeedsApply: true}
+			candidate := document{Version: 1, Configuration: next, Pending: pending, NeedsApply: true, Bonus: d.Bonus}
 			attempted = true
 			if err := a.save(candidate); err != nil {
 				return err
@@ -542,7 +601,7 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 			attempted = true
 			// Core mutex plus platform transaction prevents any signed observer
 			// seeing a pact that later rolls back after a failed apply.
-			if err := a.save(document{Version: 1, Configuration: next, NeedsApply: true}); err != nil {
+			if err := a.save(document{Version: 1, Configuration: next, NeedsApply: true, Bonus: d.Bonus}); err != nil {
 				return err
 			}
 			if err := apply(next); err != nil {
@@ -554,7 +613,7 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 				}
 				return err
 			}
-			return a.save(document{Version: 1, Configuration: next})
+			return a.save(document{Version: 1, Configuration: next, Bonus: d.Bonus})
 		})
 		if err != nil {
 			if attempted {

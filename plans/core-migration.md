@@ -18,7 +18,8 @@ checklist are in [Router adapter portability](adapter-portability.md).
   and AGH reconciliation; opt-in configuration/pact authority, CAS/recovery, document-
   derived phone/app policy and LuCI CAS writes. These are not all production-deployed.
 - **Still mixed:** owned policy/context still call the shell; manual overrides,
-  additive network tickets, status evaluation and bonus rules remain shell-owned;
+  additive network tickets and status evaluation remain shell-owned. Owned bonus
+  now uses core-owned runtime state and readers (core r10/backend rc10-r7);
   DNS lifecycle/state and protected release entry-point responsibilities remain split.
 - **Still OpenWrt-specific:** current daemon construction and adapter contracts require
   more than platform facts/apply. UCI/nft/fw4/procd are legitimate adapter internals,
@@ -27,8 +28,9 @@ checklist are in [Router adapter portability](adapter-portability.md).
   administration surface, safe restore/mixed-version matrix and a real second adapter.
   A successful FreeBSD cross-build is compile evidence only, not pfSense/OPNsense support.
 
-Next implementation slice: **R1, core-owned bonus first, then manual network actions
-and tickets**, migrating writers/readers together. R2 removes policy-shaped shell
+Next implementation slice: **R1b, manual network actions and tickets**, migrating
+writers/readers together. R1a (owned bonus) is implemented with focused Go/race and
+13 OpenWrt bonus-bridge checks; no full e2e/emulator run or deployment for that slice. R2 removes policy-shaped shell
 reads; R3 establishes portable network intent/applied-state semantics. Finishing
 OpenWrt test parity alone does not close these portability gaps. Production deployment
 and actual FreeBSD adapter implementation remain separate authorized work.
@@ -36,6 +38,12 @@ and actual FreeBSD adapter implementation remain separate authorized work.
 The sections below retain chronological checkpoint evidence. Earlier statements about
 UCI/shell ownership describe that checkpoint; this summary and the linked audit define
 current migration status. No percentage or “migration done” claim is implied.
+
+Working scope: OpenWrt only, preserving future options without implementing another
+router or a generic adapter framework. Core owns product meaning; the OpenWrt adapter
+retains native schedule/priority/deadline enforcement. Test each function/slice at the
+smallest meaningful scope; full e2e and emulator runs are integrated-milestone checks,
+not the default per edit. Details and R1a evidence: [adapter-portability.md](adapter-portability.md).
 
 ## Original migration sequence (historical)
 

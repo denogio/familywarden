@@ -50,7 +50,7 @@ func (c AppConfig) Canonical() (AppInput, error) {
 	lines := map[string]bool{"new|" + suspend + "||": true}
 	apps := map[string]AppSetting{}
 	for _, a := range c.Apps {
-		if !validAppPackage(a.Package) {
+		if !ValidAppPackage(a.Package) {
 			continue
 		}
 		if a.Minutes != "" {
@@ -110,7 +110,7 @@ func (c AppConfig) Canonical() (AppInput, error) {
 		}
 	}
 	for _, pkg := range c.AlwaysAllowed {
-		if validAppPackage(pkg) {
+		if ValidAppPackage(pkg) {
 			lines["always|"+pkg+"||"] = true
 		}
 	}

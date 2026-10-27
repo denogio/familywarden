@@ -20,6 +20,10 @@ type Profile struct {
 
 // Context is one consistent snapshot of platform state.
 type Context struct {
+	// Legacy bonus import is a versioned snapshot under the configuration lock.
+	// Empty input is meaningful only when BonusFormat explicitly matches.
+	BonusFormat string             `json:"bonus_format,omitempty"`
+	LegacyBonus string             `json:"legacy_bonus,omitempty"`
 	AppFormat   string             `json:"app_format"`   // versioned interim compiler input
 	TimeZone    string             `json:"timezone"`     // IANA name or ""
 	PactCaptain string             `json:"pact_captain"` // profile bound by an active pact, or ""

@@ -43,7 +43,7 @@ func (f *fakeBackend) Context() (platform.Context, error) {
 	for _, v := range f.current.Current.Profiles {
 		p[v.ID] = platform.Profile{Name: v.Name, AppInput: &rules.AppConfig{Version: 1}}
 	}
-	return platform.Context{Profiles: p, TimeZone: "UTC"}, nil
+	return platform.Context{Profiles: p, TimeZone: "UTC", BonusFormat: bonusFormat}, nil
 }
 func (f *fakeBackend) WithContext(fn func(platform.Context) error) error {
 	c, _ := f.Context()

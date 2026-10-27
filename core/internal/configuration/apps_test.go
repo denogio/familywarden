@@ -10,7 +10,7 @@ import (
 	"github.com/denogio/familywarden/core/internal/rules"
 )
 
-func TestAppContextUsesDocumentRulesAndRuntimeBonus(t *testing.T) {
+func TestAppContextUsesDocumentRulesAndCoreBonus(t *testing.T) {
 	now := time.Unix(1800000000, 0).UTC()
 	c := sample()
 	c.Current.Profiles[0].Apps = "1"
@@ -25,12 +25,12 @@ func TestAppContextUsesDocumentRulesAndRuntimeBonus(t *testing.T) {
 	}
 	c.Current.Downtime = []rules.ConfigurationWindow{{ID: "bedtime", Profile: "alex", Days: "mon tue", Start: "21:00", Stop: "07:00"}}
 	bonus := "bonus|total|15|2027-01-15"
-	facts := platform.Context{TimeZone: "Europe/Copenhagen", Profiles: map[string]platform.Profile{
+	facts := platform.Context{BonusFormat: bonusFormat, TimeZone: "Europe/Copenhagen", Profiles: map[string]platform.Profile{
 		"alex":   {Name: "Stale label", AppInput: &rules.AppConfig{Version: 1, Enabled: "1", ScreenMinutes: "999", Bonus: bonus}},
 		"taylor": {Name: "Taylor", AppInput: &rules.AppConfig{Version: 1}},
 		"stale":  {Name: "Deleted", AppInput: &rules.AppConfig{Version: 1}},
 	}}
-	got, err := AppContext(c, facts, now)
+	got, err := AppContext(c, facts, now, map[string]string{"alex": bonus})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestAppContextUsesDocumentRulesAndRuntimeBonus(t *testing.T) {
 	c.Current.Profiles[0].ScreenMinutes = "999"
 	c.Current.Apps = nil
 	facts.PactCaptain = "alex"
-	got, err = AppContext(c, facts, now)
+	got, err = AppContext(c, facts, now, map[string]string{"alex": bonus})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestAppContextUsesDocumentRulesAndRuntimeBonus(t *testing.T) {
 		t.Fatal(frozenApps, err)
 	}
 	delete(facts.Profiles, "alex")
-	if _, err = AppContext(c, facts, now); err == nil {
+	if _, err = AppContext(c, facts, now, nil); err == nil {
 		t.Fatal("missing runtime facts accepted")
 	}
 }
@@ -84,7 +84,7 @@ func TestOwnedPhoneAndMutationContextsUseTheSameAppRevision(t *testing.T) {
 	c.Current.Profiles[0].Apps = "1"
 	c.Current.Profiles[0].ScreenMinutes = "10"
 	_ = c.Seal()
-	b := &appBackend{fakeBackend: &fakeBackend{current: c}, facts: platform.Context{TimeZone: "UTC", Profiles: map[string]platform.Profile{
+	b := &appBackend{fakeBackend: &fakeBackend{current: c}, facts: platform.Context{BonusFormat: bonusFormat, TimeZone: "UTC", Profiles: map[string]platform.Profile{
 		"alex":   {AppInput: &rules.AppConfig{Version: 1, Enabled: "1", ScreenMinutes: "999"}},
 		"taylor": {AppInput: &rules.AppConfig{Version: 1}},
 	}}}
@@ -124,26 +124,27 @@ func TestOwnedPhoneAndMutationContextsUseTheSameAppRevision(t *testing.T) {
 	}
 }
 
-func TestAppContextRefusesUnavailableOrInvalidRuntimeFacts(t *testing.T) {
+func TestAppContextRefusesUnavailableFactsOrInvalidCoreBonus(t *testing.T) {
 	c := sample()
 	c.Current.Profiles[0].Apps = "1"
 	for _, kind := range []string{"missing profile", "missing input", "malformed bonus", "divergent pact"} {
 		t.Run(kind, func(t *testing.T) {
-			facts := platform.Context{Profiles: map[string]platform.Profile{
+			facts := platform.Context{BonusFormat: bonusFormat, Profiles: map[string]platform.Profile{
 				"alex":   {AppInput: &rules.AppConfig{Version: 1}},
 				"taylor": {AppInput: &rules.AppConfig{Version: 1}},
 			}}
+			bonus := map[string]string{}
 			switch kind {
 			case "missing profile":
 				delete(facts.Profiles, "alex")
 			case "missing input":
 				facts.Profiles["alex"] = platform.Profile{}
 			case "malformed bonus":
-				facts.Profiles["alex"].AppInput.Bonus = "bonus|total|invalid|2027-01-15"
+				bonus["alex"] = "bonus|total|invalid|2027-01-15"
 			case "divergent pact":
 				facts.PactCaptain = "alex"
 			}
-			if _, err := AppContext(c, facts, time.Unix(1800000000, 0)); err == nil {
+			if _, err := AppContext(c, facts, time.Unix(1800000000, 0), bonus); err == nil {
 				t.Fatal("invalid runtime facts accepted")
 			}
 		})

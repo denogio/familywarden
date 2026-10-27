@@ -9,9 +9,12 @@ import (
 )
 
 // AppContext takes configured app rules from the authoritative document and
-// only runtime bonus/timezone facts from the adapter. Phone replies, request
+// core-owned bonus and runtime timezone facts. Phone replies, request
 // authorization and administrator views must use this same compilation.
-func AppContext(c rules.Configuration, facts platform.Context, now time.Time) (platform.Context, error) {
+func AppContext(c rules.Configuration, facts platform.Context, now time.Time, bonus map[string]string) (platform.Context, error) {
+	if facts.BonusFormat != bonusFormat {
+		return platform.Context{}, fmt.Errorf("incompatible bonus adapter")
+	}
 	effective := Effective(c, now)
 	captain := ""
 	if Active(c.Pact, now) {
@@ -30,7 +33,7 @@ func AppContext(c rules.Configuration, facts platform.Context, now time.Time) (p
 		}
 		input := rules.AppConfig{Version: 1, Enabled: p.Apps, SuspendNew: p.SuspendNew,
 			ScreenMinutes: p.ScreenMinutes, ScreenWeekday: p.ScreenWeekday, ScreenWeekend: p.ScreenWeekend,
-			AlwaysAllowed: append([]string{}, p.AlwaysAllowed...), Bonus: runtime.AppInput.Bonus}
+			AlwaysAllowed: append([]string{}, p.AlwaysAllowed...), Bonus: bonus[p.ID]}
 		for _, a := range effective.Apps {
 			if a.Profile == p.ID {
 				input.Apps = append(input.Apps, rules.AppSetting{Package: a.Package, Minutes: a.Minutes, Blocked: a.Blocked})

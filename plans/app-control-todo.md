@@ -23,7 +23,7 @@ Historical test counts are evidence at that checkpoint, not current suite totals
 | P9 off-home | LAN notifications only | Transport decision, encryption/key distribution and off-home implementation/testing |
 | P10 Android | Child/adult status/history, scoped parent decisions and usage | Parent presentation split is implemented and preview-tested (#94); scoped child selection is implemented and preview-tested (#97); full parent controls remain |
 | P10 shared web | Existing LuCI pages and shared Requests module, now hardened/tested in neutral and LuCI hosts; control prototype reviewed | Production-wide shared presentation layer, core API integration, host adapter and EN/DA; prototype is not shipped code |
-| Core migration | Identity/requests/usage/new-apps; opt-in authoritative configuration/pacts, CAS/confirm/rollback, Settings/Profiles CAS; owned phone/app policy from the document; Go AGH reconciliation/catalogue | **Not adapter-ready:** shell-owned bonus/overrides/tickets/status, policy-shaped adapter reads, portable network intent/apply contract, DNS/release orchestration, platform construction/shared UI and P12 safety gates; owned configuration cutover not deployed (#91; [R0–R7](adapter-portability.md)) |
+| Core migration | Identity/requests/usage/new-apps; opt-in authoritative configuration/pacts, CAS/confirm/rollback, Settings/Profiles CAS; owned phone/app policy from the document; Go AGH reconciliation/catalogue | **Not adapter-ready:** owned bonus is now migrated/tested; shell-owned overrides/tickets/status, policy-shaped adapter reads, portable network intent/apply contract, DNS/release orchestration, platform construction/shared UI and P12 safety gates; owned configuration cutover not deployed (#91; [R0–R7](adapter-portability.md)) |
 | P11 adult pool | Existing pact enforcement, not the proposed pool | Final consumption/reset rules, ledger and pact-safe self-service |
 | P13 release validation | Same-key rc3/rc4 router+phone pilot and rc5 phone update | Release-wide security/compatibility/lifecycle acceptance for remaining scope; no blanket production rollout approval |
 
@@ -57,6 +57,17 @@ not permission to silently decide product behavior.
   checks into one run per major milestone. Physical tests require approval.
 - English documentation/default UI, full Danish Android localization, fictional fixtures.
 
+## Test each slice narrowly
+
+Use a focused Go unit test for core logic, a targeted adapter/subprocess or disposable-
+container check for the platform bridge, and module/component tests for UI changes.
+Full browser e2e and Android emulator suites run at integrated milestones, not after
+every function. Widen the test only for a concrete changed boundary or observed failure.
+OpenWrt is the only current platform target; preserve future options without building
+another router adapter or treating cross-platform builds as routine milestones.
+The adapter must retain native enforcement freedom (schedules, priorities, deadlines),
+while core owns their product semantics. No new schedule-polling daemon is implied.
+
 ## Adapter-ready core completion gate (A18, clarified 2026-10-27)
 
 Migration is done when a new router supplies facts, applies core-owned enforcement
@@ -67,7 +78,11 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
 - [x] R0: audit active owned-mode and legacy dependencies; separate implementation,
       portability, validation and deployment status without a speculative percentage.
 - [ ] R1: migrate bonus, manual overrides and additive network-ticket product state,
-      writers/readers and expiry/eligibility into core; start with bonus.
+      writers/readers and expiry/eligibility into core.
+      - [x] R1a: owned bonus migrated with one-time import/upgrade, core policy/list
+        readers and legacy-writer isolation (core 0.13.0-r10/backend rc10-r7).
+        Go/race and 13 focused OpenWrt bridge checks pass; no full e2e/emulator run.
+      - [ ] R1b: manual overrides, additive network tickets and expiry/status consumers.
 - [ ] R2: replace owned policy-shaped `core-context`/`core-policy` reads with explicit
       runtime/application facts; isolate legacy import in OpenWrt compatibility code.
 - [ ] R3: define portable network intent/status and applied-state/error semantics;
