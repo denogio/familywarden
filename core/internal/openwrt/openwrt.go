@@ -23,6 +23,7 @@ type Adapter struct {
 	KeyFile    string // usign secret key, e.g. /etc/familywarden/mast.key
 	LockFile   string // interim state transaction lock; empty uses the OpenWrt default
 	ConfigFile string // core household document (OpenWrt currently uses the default layout)
+	StateFile  string // volatile override projection; empty uses /tmp/familywarden.state
 }
 
 const maxOutput = 1 << 20

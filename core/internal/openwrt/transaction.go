@@ -41,6 +41,36 @@ func (a Adapter) WithContext(fn func(platform.Context) error) error {
 	return fn(c)
 }
 
+// withStateLocks shares the established ticket-before-state lock order between
+// configuration changes, manual network actions and grant ticket repair.
+func (a Adapter) withStateLocks(fn func(state, ticket *os.File) error) error {
+	path := a.LockFile
+	if path == "" {
+		path = "/var/lock/familywarden.lock"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	ticket, err := os.OpenFile(path+".ticket", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	defer ticket.Close()
+	if err := acquireStateLock(ctx, ticket); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(ticket.Fd()), syscall.LOCK_UN)
+	state, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	defer state.Close()
+	if err := acquireStateLock(ctx, state); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(state.Fd()), syscall.LOCK_UN)
+	return fn(state, ticket)
+}
+
 func acquireStateLock(ctx context.Context, lock *os.File) error {
 	for {
 		if err := ctx.Err(); err != nil {

@@ -32,9 +32,12 @@ func (s *memory) WriteDocument(_ string, v any) error {
 
 type fakeBackend struct {
 	platform.Adapter
-	current rules.Configuration
-	fail    int
-	applies int
+	current        rules.Configuration
+	fail           int
+	applies        int
+	network        map[string]platform.NetworkOverride
+	networkApplies int
+	networkFail    bool
 }
 
 func (f *fakeBackend) Configuration() (rules.Configuration, error) { return clone(f.current), nil }
@@ -43,7 +46,7 @@ func (f *fakeBackend) Context() (platform.Context, error) {
 	for _, v := range f.current.Current.Profiles {
 		p[v.ID] = platform.Profile{Name: v.Name, AppInput: &rules.AppConfig{Version: 1}}
 	}
-	return platform.Context{Profiles: p, TimeZone: "UTC", BonusFormat: bonusFormat}, nil
+	return platform.Context{Profiles: p, TimeZone: "UTC", BonusFormat: bonusFormat, NetworkFormat: networkFormat}, nil
 }
 func (f *fakeBackend) WithContext(fn func(platform.Context) error) error {
 	c, _ := f.Context()
@@ -61,6 +64,25 @@ func (f *fakeBackend) ConfigurationTransaction(fn func(rules.Configuration, plat
 		return nil
 	})
 }
+func (f *fakeBackend) NetworkTransaction(id string, fn func(platform.Context, platform.NetworkOverride, func(platform.NetworkOverride) error) error) error {
+	c, _ := f.Context()
+	current, ok := f.network[id]
+	if !ok {
+		current.Mode = "none"
+	}
+	return fn(c, current, func(next platform.NetworkOverride) error {
+		f.networkApplies++
+		if f.networkFail {
+			return errors.New("network apply failed")
+		}
+		if f.network == nil {
+			f.network = map[string]platform.NetworkOverride{}
+		}
+		f.network[id] = next
+		return nil
+	})
+}
+
 func sample() rules.Configuration {
 	return rules.Configuration{Version: 1, Current: rules.ConfigurationData{Settings: rules.ConfigurationSettings{Enabled: "1", Captain: "alex", DefaultPolicy: "block", DelayHours: "24"}, Profiles: []rules.ConfigurationProfile{{ID: "alex", Name: "Alex", Enabled: "1", Policy: "scheduled", Devices: []string{"aa:bb:cc:00:00:01"}}, {ID: "taylor", Name: "Taylor", Enabled: "0", ClientID: "fw-preserved"}}, Schedules: []rules.ConfigurationWindow{{ID: "cfg123456", Profile: "alex", Days: "mon", Start: "07:00", Stop: "20:00"}}}}
 }

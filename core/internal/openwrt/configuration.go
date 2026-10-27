@@ -2,12 +2,10 @@ package openwrt
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/denogio/familywarden/core/internal/configuration"
@@ -23,59 +21,37 @@ func (a Adapter) ConfigurationTransaction(fn func(rules.Configuration, platform.
 	if a.ConfigFile != "" && a.ConfigFile != "/etc/familywarden/core/configuration.json" {
 		return fmt.Errorf("configuration ownership requires the default OpenWrt data layout")
 	}
-	path := a.LockFile
-	if path == "" {
-		path = "/var/lock/familywarden.lock"
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	ticket, err := os.OpenFile(path+".ticket", os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		return err
-	}
-	defer ticket.Close()
-	if err := acquireStateLock(ctx, ticket); err != nil {
-		return err
-	}
-	defer syscall.Flock(int(ticket.Fd()), syscall.LOCK_UN)
-	state, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		return err
-	}
-	defer state.Close()
-	if err := acquireStateLock(ctx, state); err != nil {
-		return err
-	}
-	defer syscall.Flock(int(state.Fd()), syscall.LOCK_UN)
-	var current rules.Configuration
-	_, owned := os.Stat("/etc/familywarden/core/configuration.json")
-	if os.IsNotExist(owned) {
-		if err := a.runLocked(&current, state, "core-configuration", "configuration-v1", "held-v1"); err != nil {
+	return a.withStateLocks(func(state, ticket *os.File) error {
+		var current rules.Configuration
+		_, owned := os.Stat("/etc/familywarden/core/configuration.json")
+		if os.IsNotExist(owned) {
+			if err := a.runLocked(&current, state, "core-configuration", "configuration-v1", "held-v1"); err != nil {
+				return err
+			}
+		} else if owned != nil {
+			return owned
+		}
+		var facts platform.Context
+		if err := a.runLocked(&facts, state, "core-configuration-facts"); err != nil {
 			return err
 		}
-	} else if owned != nil {
-		return owned
-	}
-	var facts platform.Context
-	if err := a.runLocked(&facts, state, "core-configuration-facts"); err != nil {
-		return err
-	}
-	apply := func(c rules.Configuration) error {
-		if err := a.materialize(c, facts.TimeZone); err != nil {
-			return err
+		apply := func(c rules.Configuration) error {
+			if err := a.materialize(c, facts.TimeZone); err != nil {
+				return err
+			}
+			var reply struct {
+				Status string `json:"status"`
+			}
+			if err := a.runFiles(&reply, []*os.File{state, ticket}, "core-apply-configuration"); err != nil {
+				return err
+			}
+			if reply.Status != "ok" {
+				return fmt.Errorf("configuration apply not acknowledged")
+			}
+			return nil
 		}
-		var reply struct {
-			Status string `json:"status"`
-		}
-		if err := a.runFiles(&reply, []*os.File{state, ticket}, "core-apply-configuration"); err != nil {
-			return err
-		}
-		if reply.Status != "ok" {
-			return fmt.Errorf("configuration apply not acknowledged")
-		}
-		return nil
-	}
-	return fn(current, facts, apply)
+		return fn(current, facts, apply)
+	})
 }
 
 func q(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }

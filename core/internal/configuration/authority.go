@@ -30,6 +30,10 @@ type Storage interface {
 // ticket-before-state lock order and no callback into the core socket.
 type Backend interface {
 	ConfigurationTransaction(func(rules.Configuration, platform.Context, func(rules.Configuration) error) error) error
+	// NetworkTransaction serializes a volatile override snapshot through apply.
+	// A failed apply attempts to restore previous state/enforcement and reports
+	// failure (including restoration errors), never success.
+	NetworkTransaction(string, func(platform.Context, platform.NetworkOverride, func(platform.NetworkOverride) error) error) error
 }
 
 type pendingChange struct {
@@ -385,6 +389,19 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 			owner = "core"
 		}
 		return map[string]any{"owner": owner}
+	case "configuration_block", "configuration_allow", "configuration_reset", "configuration_ticket":
+		if !found {
+			return fail(errors.New("configuration import required"))
+		}
+		r, err := a.changeNetwork(d, method, raw)
+		if err != nil {
+			reply := fail(err)
+			if errors.Is(err, errNetworkBound) && d.Configuration.Pact != nil {
+				reply["pact_until"] = integer(d.Configuration.Pact.Until)
+			}
+			return reply
+		}
+		return r
 	case "configuration_bonus_add":
 		if !found || d.Bonus == nil {
 			return fail(errors.New("configuration import required"))

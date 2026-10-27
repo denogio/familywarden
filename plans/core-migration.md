@@ -17,23 +17,25 @@ checklist are in [Router adapter portability](adapter-portability.md).
 - **Implemented:** Go identity/requests/grants/usage; portable app-policy compilation
   and AGH reconciliation; opt-in configuration/pact authority, CAS/recovery, document-
   derived phone/app policy and LuCI CAS writes. These are not all production-deployed.
-- **Still mixed:** owned policy/context still call the shell; manual overrides,
-  additive network tickets and status evaluation remain shell-owned. Owned bonus
-  now uses core-owned runtime state and readers (core r10/backend rc10-r7);
+- **Still mixed:** owned policy/context still call the shell. Bonus and manual
+  network/grant-repair decisions now run in core (latest core r11/backend rc10-r8);
+  network RAM storage and native apply remain adapter-backed. Shell still evaluates
+  status/schedules and clears permits during pact projection/expiry cleanup;
   DNS lifecycle/state and protected release entry-point responsibilities remain split.
 - **Still OpenWrt-specific:** current daemon construction and adapter contracts require
   more than platform facts/apply. UCI/nft/fw4/procd are legitimate adapter internals,
   but the owned core/shared UI must not require them to run on another platform.
-- **Still unproven:** a production-service test without OpenWrt, a complete shared
-  administration surface, safe restore/mixed-version matrix and a real second adapter.
-  A successful FreeBSD cross-build is compile evidence only, not pfSense/OPNsense support.
+- **Still unproven:** the shell-free test-adapter service path, complete shared
+  administration and safe restore/mixed-version matrix. No second-router implementation
+  or cross-platform build is a current workstream or prerequisite for this migration.
 
-Next implementation slice: **R1b, manual network actions and tickets**, migrating
-writers/readers together. R1a (owned bonus) is implemented with focused Go/race and
-13 OpenWrt bonus-bridge checks; no full e2e/emulator run or deployment for that slice. R2 removes policy-shaped shell
-reads; R3 establishes portable network intent/applied-state semantics. Finishing
-OpenWrt test parity alone does not close these portability gaps. Production deployment
-and actual FreeBSD adapter implementation remain separate authorized work.
+Next implementation slice: **remaining R1b pact-projection permit clearing and
+status/expiry consumers**, migrating writers/readers together. Owned bonus passed
+13 focused OpenWrt checks; owned manual actions/grant repair now pass 34 focused
+network checks plus Go/race and affected adapter/configuration tests. No full browser
+e2e, emulator run or deployment for either slice. R2 removes policy-shaped shell reads;
+R3 establishes portable network intent/applied-state semantics. OpenWrt test parity
+alone does not close those boundaries. No other router is being implemented.
 
 The sections below retain chronological checkpoint evidence. Earlier statements about
 UCI/shell ownership describe that checkpoint; this summary and the linked audit define

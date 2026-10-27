@@ -200,7 +200,7 @@ effective_override() {
     local profile="$1" o e
     o=$(state_get "${profile}.override" "none")
     e=$(state_get "${profile}.override_expires" "")
-    if [ -n "$e" ] && [ "$o" != "none" ] && [ "$(date +%s)" -gt "$e" ]; then
+    if [ -n "$e" ] && [ "$o" != "none" ] && [ "$(date +%s)" -ge "$e" ]; then
         echo "none "
         return
     fi
@@ -1267,8 +1267,10 @@ ubus_status() {
         fi
 
         local override override_expires
-        override=$(state_get "${profile}.override" "none")
-        override_expires=$(state_get "${profile}.override_expires" "")
+        read -r override override_expires <<EOF
+$(effective_override "$profile")
+EOF
+        [ -n "$override" ] || override=none
 
         json_init
         json_add_string "name" "$name"
@@ -1293,6 +1295,7 @@ _set_override() {
         flock -x 201 || { echo '{"error":"ticket lock failed"}'; exit 1; }
         flock -x 200 || { echo '{"error":"state lock failed"}'; exit 1; }
         local profile="$1" override="$2" name
+        configuration_owned && { _json_error "configuration ownership changed; retry action"; exit 1; }
         fw_load
         config_get name "$profile" name ""
         [ -z "$name" ] && { echo '{"error":"profile not found"}'; exit 1; }
@@ -1304,16 +1307,21 @@ _set_override() {
     ) 201>"${FW_LOCK}.ticket" 200>"$FW_LOCK"
 }
 
-ubus_block() { _set_override "$1" block; }
-ubus_allow() { _set_override "$1" allow; }
-ubus_reset() { _set_override "$1" none; }
+ubus_block() { if configuration_owned; then core_configuration_api configuration_block "$2"; else _set_override "$1" block; fi; }
+ubus_allow() { if configuration_owned; then core_configuration_api configuration_allow "$2"; else _set_override "$1" allow; fi; }
+ubus_reset() { if configuration_owned; then core_configuration_api configuration_reset "$2"; else _set_override "$1" none; fi; }
 
 ubus_ticket() {
+    if configuration_owned; then
+        core_configuration_api configuration_ticket "$3"
+        return
+    fi
     (
     # Serialize ticket read/modify/apply so simultaneous additions cannot be lost.
     # Separate from FW_LOCK: compile_and_apply acquires that lock itself.
     flock -x 201 || { echo '{"error":"ticket lock failed"}'; return 1; }
     flock -x 200 || { echo '{"error":"state lock failed"}'; return 1; }
+    configuration_owned && { _json_error "configuration ownership changed; retry ticket"; return 1; }
     local profile="$1"
     local minutes="${2:-30}"
     case "$minutes" in
@@ -1847,12 +1855,14 @@ cli_core_legacy_devices() {
 # ticket, never replaces a manual block (a parent's explicit decision), never for a
 # pact-bound captain. Same lock as ubus_ticket.
 cli_core_ticket() {
+    configuration_owned && { _json_error "owned ticket requires the core API"; return 1; }
     local profile="$1" until="$2" now name override expiry
     case "$profile" in ''|*[!A-Za-z0-9_-]*) echo '{"error":"invalid profile"}'; return 1 ;; esac
     case "$until" in ''|*[!0-9]*) echo '{"error":"invalid time"}'; return 1 ;; esac
     (
         flock -x 201 || { echo '{"error":"ticket lock failed"}'; exit 1; }
         flock -x 200 || { echo '{"error":"state lock failed"}'; exit 1; }
+        configuration_owned && { _json_error "configuration ownership changed; retry ticket"; exit 1; }
         fw_load
         config_get name "$profile" name ""
         [ -n "$name" ] || { echo '{"error":"profile not found"}'; exit 1; }
@@ -2311,6 +2321,16 @@ EOF
     mast)
         cli_mast "$2"
         ;;
+    core-network-facts)
+        json_init
+        json_add_string timezone "$(uci -q get system.@system[0].zonename)"
+        json_add_string network_format network-actions-v1
+        json_dump
+        ;;
+    core-apply-network)
+        configuration_owned && [ /proc/self/fd/3 -ef "$FW_LOCK" ] && [ /proc/self/fd/4 -ef "${FW_LOCK}.ticket" ] || { _json_error "network transaction required"; exit 1; }
+        compile_and_apply held-v1
+        ;;
     core-configuration-facts)
         legacy_bonus=""
         if [ -e "$FW_BONUS" ]; then
@@ -2385,26 +2405,26 @@ EOF
                 read -r input
                 json_load "$input"
                 json_get_var profile profile
-                ubus_block "$profile"
+                ubus_block "$profile" "$input"
                 ;;
             allow)
                 read -r input
                 json_load "$input"
                 json_get_var profile profile
-                ubus_allow "$profile"
+                ubus_allow "$profile" "$input"
                 ;;
             reset)
                 read -r input
                 json_load "$input"
                 json_get_var profile profile
-                ubus_reset "$profile"
+                ubus_reset "$profile" "$input"
                 ;;
             ticket)
                 read -r input
                 json_load "$input"
                 json_get_var profile profile
                 json_get_var minutes minutes 30
-                ubus_ticket "$profile" "$minutes"
+                ubus_ticket "$profile" "$minutes" "$input"
                 ;;
             bonus)
                 read -r input

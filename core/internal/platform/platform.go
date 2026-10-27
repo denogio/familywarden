@@ -10,6 +10,13 @@ import (
 	"github.com/denogio/familywarden/core/internal/usign"
 )
 
+// NetworkOverride is platform-backed volatile state. Expires=0 means no deadline;
+// eligibility and additive-ticket semantics belong to core, not the adapter.
+type NetworkOverride struct {
+	Mode    string `json:"mode"`
+	Expires int64  `json:"expires"`
+}
+
 // Profile is what the core needs to know about a profile it does not own yet.
 type Profile struct {
 	Name     string           `json:"name"`
@@ -20,6 +27,7 @@ type Profile struct {
 
 // Context is one consistent snapshot of platform state.
 type Context struct {
+	NetworkFormat string `json:"network_format,omitempty"`
 	// Legacy bonus import is a versioned snapshot under the configuration lock.
 	// Empty input is meaningful only when BonusFormat explicitly matches.
 	BonusFormat string             `json:"bonus_format,omitempty"`

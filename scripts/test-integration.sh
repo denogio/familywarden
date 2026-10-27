@@ -5,7 +5,7 @@
 #   ./scripts/test-integration.sh              # host: starts the container
 #   OPENWRT_IMAGE=openwrt/rootfs:x86-64-25.12.4 ./scripts/test-integration.sh
 #
-# FW_TEST_FOCUS=bonus runs only the narrow legacy/owned bonus bridge checks.
+# FW_TEST_FOCUS=bonus or network runs only that narrow legacy/owned bridge slice.
 # Needs docker and CAP_NET_ADMIN (nftables runs in the container's own netns).
 
 if [ "$1" != "--inside" ]; then
@@ -181,6 +181,82 @@ uci set firewall.@include[-1].type='nftables'
 uci set firewall.@include[-1].path='/var/etc/familywarden.include'
 uci commit firewall
 fw4 start >/dev/null 2>&1
+
+if [ "${FW_TEST_FOCUS:-}" = network ]; then
+    echo "=== focused owned network actions and native timeout enforcement ==="
+    uci set familywarden.settings.ulysses_profile=kid
+    uci commit familywarden
+    "$BIN" reload >/dev/null
+    assert_json "legacy block remains available before import" "$(call block '{"profile":"kid"}')" '@.status' ok
+    network_api() { printf '%s' "${2:-{\}}" | /usr/sbin/familywardend -socket "$CORE_SOCK" api "$1"; }
+    revision=$(network_api configuration_export | jsonfilter -e '@.configuration.revision')
+    assert_json "network action cutover imports explicitly" "$(network_api configuration_import "{\"revision\":\"$revision\"}")" '@.status' ok
+    assert_json "cutover preserves the existing RAM block" "$(call status '{"profile":"kid"}')" '@.override' block
+    assert_json "owned allow uses the original RPC" "$(call allow '{"profile":"kid","ubus_rpc_session":"synthetic"}')" '@.status' ok
+    assert_rule "native permanent allow is applied" 'familywarden:kid:override:allow'
+    assert_json "owned block succeeds" "$(call block '{"profile":"kid"}')" '@.status' ok
+    assert_rule "native block is applied" 'familywarden:kid:override:block'
+    assert_json "owned reset succeeds" "$(call reset '{"profile":"kid"}')" '@.status' ok
+    refute_rule "reset removes the static override" 'familywarden:kid:override:'
+    assert_json "owned ticket succeeds" "$(call ticket '{"profile":"kid","minutes":1}')" '@.status' ok
+    first=$(awk -F= '$1=="kid.override_expires" { print $2 }' /tmp/familywarden.state)
+    assert_json "second owned ticket extends" "$(call ticket '{"profile":"kid","minutes":2}')" '@.status' ok
+    second=$(awk -F= '$1=="kid.override_expires" { print $2 }' /tmp/familywarden.state)
+    [ "$second" = "$((first + 120))" ] && pass "manual tickets add to the existing absolute deadline" || fail "ticket did not extend"
+    nft list set inet fw4 familywarden_ticket | grep -qi 'aa:bb:cc:00:00:01.*timeout' && pass "kernel timeout set contains the ticket" || fail "kernel ticket missing"
+    refute_rule "timed allow is not a permanent forward escape" 'familywarden:kid:override:allow'
+    refute_rule "timed allow is not a permanent input escape" 'familywarden:kid:override:allow:input' familywarden_input
+    assert_json "duplicate fields are refused by core" "$(call ticket '{"profile":"kid","minutes":1,"minutes":2}')" '@.error' 'duplicate configuration field'
+    assert_json "private apply requires inherited locks" "$("$BIN" core-apply-network)" '@.error' 'network transaction required'
+    assert_json "owned grant repair cannot use the legacy writer" "$("$BIN" core-ticket kid "$(( $(date +%s) + 60 ))")" '@.error' 'owned ticket requires the core API'
+    stop_core
+    start_core
+    assert_json "daemon restart preserves the RAM ticket deadline" "$(call status '{"profile":"kid"}')" '@.override_expires' "$second"
+    [ "$(network_api configuration_export | jsonfilter -e '@.configuration.revision')" = "$revision" ] && pass "network actions do not change durable configuration" || fail "network action changed configuration"
+    # Reject the requested compile once; restoration must apply the previous
+    # state and still return the original action as failed, never a success.
+    cp /tmp/familywarden.state /tmp/network-before-failure
+    nft_bin=$(command -v nft)
+    mv "$nft_bin" "$nft_bin.network-real"
+    cat > "$nft_bin" <<EOF
+#!/bin/sh
+if [ "\$1" = -c ] && [ -f /tmp/reject-network-once ]; then
+    rm /tmp/reject-network-once
+    exit 1
+fi
+exec "$nft_bin.network-real" "\$@"
+EOF
+    chmod 755 "$nft_bin"
+    touch /tmp/reject-network-once
+    out=$(call block '{"profile":"kid"}')
+    [ -n "$(echo "$out" | jsonfilter -e '@.error')" ] && pass "native validation failure is reported" || fail "native failure reported success"
+    mv "$nft_bin.network-real" "$nft_bin"
+    cmp -s /tmp/familywarden.state /tmp/network-before-failure && pass "failed apply restores prior RAM intent" || fail "failed apply left new intent"
+    nft list set inet fw4 familywarden_ticket | grep -qi 'aa:bb:cc:00:00:01.*timeout' && pass "failed apply restores prior native enforcement" || fail "prior enforcement missing"
+    stop_core
+    start_core
+    # A disposable fixture shortens the absolute deadline to test native expiry
+    # without waiting minutes or adding a polling daemon.
+    expiry=$(( $(date +%s) + 5 ))
+    sed -i "s/^kid.override_expires=.*/kid.override_expires=$expiry/" /tmp/familywarden.state
+    call reload >/dev/null
+    sleep 6
+    nft list set inet fw4 familywarden_ticket | grep -qi 'aa:bb:cc:00:00:01' && fail "kernel ticket survived expiry" || pass "kernel expires the ticket without polling"
+    assert_json "status expires the override at read time" "$(call status '{"profile":"kid"}')" '@.override' none
+    assert_json "list agrees with expired status" "$(call list)" '@.profiles.kid.override' none
+    assert_json "owned pact creation succeeds" "$(call pact "{\"until\":$(( $(date +%s) + 3600 ))}")" '@.status' ok
+    assert_json "bound captain cannot be allowed" "$(call allow '{"profile":"kid"}')" '@.error' 'bound by Ulysses pact'
+    assert_json "bound captain cannot receive a ticket" "$(call ticket '{"profile":"kid","minutes":1}')" '@.error' 'bound by Ulysses pact'
+    assert_json "captain block remains available" "$(call block '{"profile":"kid"}')" '@.status' ok
+    assert_rule "captain block reaches the native firewall" 'familywarden:kid:override:block'
+    assert_json "captain reset remains available" "$(call reset '{"profile":"kid"}')" '@.status' ok
+    stop_core
+    cp /tmp/familywarden.state /tmp/network-core-down
+    assert_json "core-down manual action cannot fall back to shell" "$(call allow '{"profile":"kid"}')" '@.error' 'core not reachable'
+    cmp -s /tmp/familywarden.state /tmp/network-core-down && pass "core-down action leaves RAM untouched" || fail "core-down action wrote RAM"
+    [ "$FAILED" = 0 ] && echo 'All focused network checks passed!'
+    exit "$FAILED"
+fi
 
 if [ "${FW_TEST_FOCUS:-}" = bonus ]; then
     echo "=== focused bonus authority and OpenWrt bridge ==="
