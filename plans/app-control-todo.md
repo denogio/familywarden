@@ -161,6 +161,9 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
         grouped Android 15 milestone on r23: 98 + 31 emulator checks pass.
       - [x] R7i: interrupted-mutation matrix over every durable write and native apply of
         apply/confirm/pact/release request/cancel/completion, plus bonus.
+      - [x] App-upgrade rehearsal: pre-generation debug app + released v0.9.2 router ->
+        r23 router and R7g app in place on Android 15; Device Owner, keys and signed
+        policy continuity pass. Release-signed upgrade and rc3–rc5 remain open.
       - [ ] Remaining historical/package/version and restore-admission gates:
         [concrete R7 safety matrix](migration-safety.md). Older non-cooperating writers,
         deletion of all ownership evidence, older-content/generation integrity and

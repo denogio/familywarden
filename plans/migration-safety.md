@@ -318,9 +318,17 @@ address repair, DNS failure/restoration, offline reboot, removal) and
 non-owner parent) passed. The earlier unexplained CI grant-consumption-after-restart
 failure did not recur; that is still not a root-cause explanation.
 
-Not covered: upgrading a real release-signed old Android APK to a new release-signed
-APK (needs the release keystore; `test-pilot-upgrade.sh` exists for that rehearsal),
-pilot-generation rc3–rc5 router packages, and physical devices.
+App-upgrade rehearsal (`scripts/test-pilot-upgrade.sh`, Android 15 emulator, debug-
+signed with the same local debug key): the pre-generation app (`b18fa3a`) as Device
+Owner paired with the released v0.9.2 router; router upgraded in place to r16 + core
+r23 (legacy import of the enrolled phone); app upgraded in place to the R7g build.
+Device Owner, pairing and keys survive; the upgraded app accepts generation-bearing
+signed policy, acknowledges the signed app revision, pauses a blocked app and lifts it
+on the router kill switch. All checks passed.
+
+Not covered: release-signed APK upgrades (needs the release keystore, deliberately not
+used here), pilot-generation rc3–rc5 router packages (not published; only on production
+devices, which are out of scope without explicit authorization), and physical devices.
 
 ## R7i — Interrupted-mutation matrix
 
@@ -343,7 +351,7 @@ temp-file, fsync and rename discipline) and simultaneous loss of several cut poi
 
 | Gate | Required evidence | Status |
 |---|---|---|
-| Supported upgrade paths | Fictional v0.9.1/v0.9.2 and recorded pilot-generation fixtures upgrade without changing effective restrictions, keys, identity/scopes or DNS ownership | v0.9.1/v0.9.2 sources and the released v0.9.2 APK -> current APKs proved; rc3–rc5 pilot packages and release-signed app upgrade open |
+| Supported upgrade paths | Fictional v0.9.1/v0.9.2 and recorded pilot-generation fixtures upgrade without changing effective restrictions, keys, identity/scopes or DNS ownership | v0.9.1/v0.9.2 sources and released v0.9.2 APK -> current proved; debug-signed pre-generation app -> current app proved on emulator; rc3–rc5 pilot packages and release-signed app upgrade open |
 | Idempotent import | Retry before/after journal, ownership-floor write/readback, native apply and completion; once owned, a changed legacy projection cannot become authority again | Current-pair coverage passes; extend to historical/package fixtures |
 | Interrupted mutations | Configuration confirm/rollback, pact creation/release, grants/usage, bonus and DNS ownership/ack writes interrupted at durable/native cut points | Configuration/pact/release/bonus matrix (R7i) plus existing import/identity/network/DNS coverage; single-file power loss relies on atomic replace |
 | Concurrent/versioned writers | Current daemon exclusion plus supported package combinations and explicit refusal of non-cooperating/legacy writers | Current daemon lease and current-pair legacy refusal proved; historical mixed-version gate open |
