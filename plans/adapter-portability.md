@@ -153,14 +153,16 @@ contracts needed by each migrated caller.
   the same identities/configuration, schedules/pacts, manual actions/grants/bonus,
   DNS acknowledgements, recovery and shared UI contract. Reuse existing tests; add
   missing cross-boundary scenarios rather than duplicate covered unit cases.
-- [ ] **R7 — Close migration/release gates separately.** Complete P12's mixed-version,
+- [x] **R7 — Close migration/release gates separately.** Complete P12's mixed-version,
   import/upgrade/interruption and safe backup/restore matrix before removing legacy
   paths or declaring production cutover ready. Deployment still needs authorization.
+  Automated matrix closed 2026-10-28 (R7a–R7i, [migration-safety.md](migration-safety.md));
+  a release-signed app upgrade and physical pilot remain authorization-dependent.
 
 R1–R3 now cover owned runtime actions/status, facts and ordered network intent.
 Inventory relevant callers before each remaining ownership change; do not add unused
-parallel stores. R1–R6 are implemented; R7 remains required before production-cutover
-claims or retirement of legacy compatibility paths.
+parallel stores. R1–R7 are implemented for the automated scope; an authorized pilot is
+still required before production-cutover claims or retirement of legacy paths.
 
 ## R1a evidence: core-owned bonus (development, not deployed)
 

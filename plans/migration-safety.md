@@ -392,6 +392,20 @@ temp-file, fsync and rename discipline) and simultaneous loss of several cut poi
 6. Backups contain signing keys and credentials: keep them private and out of fixtures,
    screenshots, logs and public artifacts. All regression households/keys are fictional.
 
+## Status (2026-10-28)
+
+The automated R7 matrix is closed: startup preflight and writer exclusion (R7a),
+ownership floor (R7b), absence witnesses (R7c), tagged-source, released v0.9.2 and
+rebuilt rc4 package upgrades (R7d/R7h), offline signed backup (R7e), cleared-target
+restore (R7f), phone-witnessed generation lineage (R7g), interrupted-mutation matrix
+(R7i), app-upgrade rehearsal, and the explained/fixed CI grant failure. Candidate:
+core 0.13.0-r23, backend 0.11.0_rc10-r16, LuCI 0.11.0-r8 and the app at `7e600bb`.
+
+Still required before production cutover, and only with explicit authorization: a
+release-signed app upgrade rehearsal and a physical router+phone pilot with backups.
+Accepted, documented residual limits: non-cooperating old binaries, deliberate removal
+of all ownership evidence, root/physical forgery, and old APKs without generation checks.
+
 ## Validation and rollout
 
 Use focused Go tests for each recovery boundary, then real OpenWrt/package/browser

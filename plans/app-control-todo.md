@@ -130,8 +130,10 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
       state, policy/actions/grants/usage, pacts/recovery, DNS verification and failure
       handling. CI runs the browser proof and checks the production dependency graph.
       Runtime sources are unchanged from R5 `2b9df05`; no second-router implementation.
-- [ ] R7: close P12 upgrade/import/interruption, compatibility and safe restore gates
-      before removing legacy paths or claiming production-cutover readiness.
+- [x] R7 (automated matrix, 2026-10-28): P12 upgrade/import/interruption, compatibility
+      and safe backup/restore gates are proved in disposable environments (below; summary
+      in [migration-safety.md](migration-safety.md)). Production-cutover readiness still
+      needs the authorization-dependent gate at the end of this list.
       - [x] R7a (core r18): known-document read-only preflight before startup side effects;
         native lifetime writer lease before store/recovery, tested with real processes,
         alternate socket/path aliases, graceful exit and SIGKILL. Ten future/truncated
@@ -166,10 +168,12 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
         policy continuity pass. Release-signed upgrade and rc3–rc5 remain open.
       - [x] Rebuilt rc4/core 0.6.0 (production generation, exact commit 73b921b) -> current
         through migration/backup/restore/generation; 323 checks over four legacy variants.
-      - [ ] Remaining historical/package/version and restore-admission gates:
-        [concrete R7 safety matrix](migration-safety.md). Older non-cooperating writers,
-        deletion of all ownership evidence, older-content/generation integrity and
-        whole-household backup/restore are not solved by these first slices.
+      - [x] CI grant-consumption-after-restart failure explained from its diagnostics
+        (policy-read race at process start) and fixed in the app (`7e600bb`).
+      - [ ] **Needs explicit authorization:** release-signed app upgrade rehearsal (release
+        keystore) and a physical router+phone pilot of the r23 candidate with backups.
+        Accepted residual limits (documented): non-cooperating old binaries, removal of
+        all ownership evidence, root/physical forgery, old APKs without generation checks.
 
 No pfSense/OPNsense adapter is implemented yet. The FreeBSD cross-build succeeds,
 but still selects OpenWrt and is not runtime support. R6 now proves the production service composition and shared UI with a recording/failing
