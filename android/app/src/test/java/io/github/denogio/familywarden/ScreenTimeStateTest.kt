@@ -82,6 +82,22 @@ class ScreenTimeStateTest {
         assertTrue(map(r = report.copy(essential = setOf(pkg))).apps.isEmpty())
     }
 
+    @Test fun appHistoryUsesRecordedDaysAndLabelsWithoutInventingMissingTotals() {
+        val day = now.toLocalDate().toString()
+        val history = mapOf(day to mapOf(pkg to 12L, "com.example.game" to 45L, "com.example.phone" to 100L),
+            now.toLocalDate().minusDays(30).toString() to mapOf(pkg to 1L),
+            now.toLocalDate().plusDays(1).toString() to mapOf(pkg to 1L),
+            "bad-date" to mapOf(pkg to 1L))
+        val observation = report.copy(historyApps = history, essential = setOf("com.example.phone"))
+        val s = map(r = observation, elapsed = 100_000)
+        assertEquals(listOf(day), s.historyApps.keys.toList())
+        assertEquals(listOf(DayApp("com.example.game", "com.example.game", 45), DayApp(pkg, "Video", 12)), s.historyApps[day])
+        assertTrue(s.historyTotals.isEmpty()) // Per-app sums are not a union total.
+        assertNull(s.usedMillis) // Historical records survive stale live observations.
+        assertTrue(map(r = observation.copy(revision = "old")).historyApps.isEmpty())
+        assertTrue(map(r = observation.copy(zone = "UTC")).historyApps.isEmpty())
+    }
+
     @Test fun historyIsBoundedLocalAndNeverCarriedAcrossPolicyOrZoneChanges() {
         val history = mapOf(now.toLocalDate().toString() to 123L,
             now.toLocalDate().minusDays(29).toString() to 456L,

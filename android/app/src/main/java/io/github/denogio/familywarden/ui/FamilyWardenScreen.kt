@@ -87,6 +87,8 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
                                 else if (page == Page.Overview && state.screenTime != null) R.string.fw_today else page.title),
                                 style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
                             // Today names the router-local weekday and time, as on the design boards.
+                            if (readyForNavigation && page == Page.History) Text(stringResource(R.string.fw_history_last_30),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             state.screenTime?.takeIf { readyForNavigation && page == Page.Overview }?.let { time ->
                                 val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
                                 val at = Instant.ofEpochMilli(state.nowMillis).atZone(time.resetsAt.zone)
@@ -162,8 +164,8 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
                 page == Page.Dns -> DnsContent(state, actions)
                 page == Page.Ulysses -> UlyssesContent(state, actions)
                 page == Page.Settings -> {
-                    SettingsContent(state, actions) { featureSheet = true }
-                    if (childNavigation) DnsContent(state, actions)
+                    if (childNavigation) ChildSettingsContent(state, actions) { featureSheet = true }
+                    else SettingsContent(state, actions) { featureSheet = true }
                 }
             }
             Spacer(Modifier.height(16.dp))
@@ -356,6 +358,58 @@ private fun UlyssesContent(s: FamilyWardenState, actions: FamilyWardenActions) {
     }
     WideAction(R.string.fw_open_sail, Icons.Outlined.Sailing, actions.openSail, s.host != null)
     InfoNote(Icons.Outlined.Info, stringResource(R.string.fw_sail_note))
+}
+
+@Composable
+private fun ChildSettingsContent(s: FamilyWardenState, actions: FamilyWardenActions, features: () -> Unit) {
+    var detail by rememberSaveable { mutableStateOf<String?>(null) }
+    androidx.activity.compose.BackHandler(enabled = detail != null) { detail = null }
+    if (detail != null) {
+        TextButton(onClick = { detail = null }) {
+            Icon(Icons.Outlined.ArrowBack, null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.fw_settings))
+        }
+        if (detail == "dns") DnsContent(s, actions)
+        else {
+            Facts(s)
+            SettingsContent(s, actions, features)
+        }
+        return
+    }
+    SectionCard {
+        TextButton(onClick = { detail = "dns" }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Outlined.Shield, null)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(R.string.fw_dns), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(if (s.headline == DnsHeadline.AppliedAndTested) R.string.fw_dns_ok
+                    else R.string.fw_review_dns), style = MaterialTheme.typography.bodySmall)
+            }
+            Icon(Icons.Outlined.ChevronRight, null)
+        }
+        HorizontalDivider()
+        TextButton(onClick = { detail = "router" }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Outlined.Home, null)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(R.string.fw_home_router), style = MaterialTheme.typography.titleMedium)
+                Text(if (s.syncError == "router unreachable") stringResource(R.string.fw_router_offline)
+                    else if (s.syncError != null) stringResource(R.string.fw_sync_failed)
+                    else if (s.lastSync > 0) stringResource(R.string.fw_rules_received, formatWhen(s.lastSync * 1000, s.nowMillis))
+                    else stringResource(R.string.fw_policy_waiting), style = MaterialTheme.typography.bodySmall)
+            }
+            Icon(Icons.Outlined.ChevronRight, null)
+        }
+        HorizontalDivider()
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.People, null)
+            Spacer(Modifier.width(12.dp))
+            Text(stringResource(R.string.fw_managed_family), style = MaterialTheme.typography.titleMedium)
+        }
+    }
+    Text(stringResource(R.string.fw_child_settings_note), style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable

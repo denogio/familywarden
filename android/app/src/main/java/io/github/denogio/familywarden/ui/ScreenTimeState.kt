@@ -20,7 +20,12 @@ data class AppUsageReport(
     val installed: Set<String> = emptySet(),
     /** Included in [used]: today's total on the profile's other phones (router-reported). */
     val otherDevicesMillis: Long = 0,
+    /** Local per-day app counters on this phone (bounded, busiest first). */
+    val historyApps: Map<String, Map<String, Long>> = emptyMap(),
 )
+
+/** One app's recorded time on one day, on this phone. */
+data class DayApp(val pkg: String, val label: String, val millis: Long)
 
 enum class TodayKind { Allowed, NearLimit, TimesUp, Downtime, Unknown }
 
@@ -36,6 +41,7 @@ data class ScreenTimeState(
     val usageAccessMissing: Boolean = false,
     val grantRemaining: Map<String, Long> = emptyMap(),
     val otherDevicesMillis: Long = 0,
+    val historyApps: Map<String, List<DayApp>> = emptyMap(),
 ) {
     val remainingMillis: Long? get() = usedMillis?.let { used -> limitMillis?.let { (it - used).coerceAtLeast(0) } }
 }
@@ -66,13 +72,17 @@ fun screenTimeState(apps: AppsPolicy, report: AppUsageReport?, now: ZonedDateTim
             if (reliable) current!!.used[pkg] ?: 0 else null,
             local.limitsMillis[pkg], pkg in local.blocked, pkg in local.alwaysAllowed && pkg !in local.blocked)
     }.sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
+    fun recent(day: String) = runCatching { LocalDate.parse(day) }.getOrNull()
+        ?.let { it <= now.toLocalDate() && it > now.toLocalDate().minusDays(30) } == true
     return ScreenTimeState(kind, total, local.dailyLimitMillis, nextDowntimeChange(local.downtime, now),
         now.toLocalDate().plusDays(1).atStartOfDay(now.zone), rows,
-        rows.filter { it.unlimited }.map { it.label }, matching?.historyTotals.orEmpty().filterKeys {
-            val date = LocalDate.parse(it)
-            date <= now.toLocalDate() && date > now.toLocalDate().minusDays(30)
-        }, !usageAccess, if (current?.grantReliable == true && usageAccess) current.grantRemaining else emptyMap(),
-        if (reliable) current!!.otherDevicesMillis else 0)
+        rows.filter { it.unlimited }.map { it.label }, matching?.historyTotals.orEmpty().filterKeys(::recent),
+        !usageAccess, if (current?.grantReliable == true && usageAccess) current.grantRemaining else emptyMap(),
+        if (reliable) current!!.otherDevicesMillis else 0,
+        matching?.historyApps.orEmpty().filterKeys(::recent).mapValues { (_, apps) ->
+            apps.filterKeys { it !in matching!!.essential }.map { (pkg, millis) -> DayApp(pkg, matching!!.labels[pkg] ?: pkg, millis) }
+                .sortedByDescending { it.millis }
+        }.filterValues { it.isNotEmpty() })
 }
 
 /** Skip overlapping window boundaries that do not actually change downtime. */

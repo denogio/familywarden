@@ -1,6 +1,8 @@
 package io.github.denogio.familywarden.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -214,17 +216,59 @@ private fun whenText(at: ZonedDateTime, now: ZonedDateTime): String {
     else at.format(DateTimeFormatter.ofPattern("EEE", locale)) + " " + time
 }
 
-/** Local recorded totals, not router upload, browsing history, or a claim of complete coverage. */
+/** Local recorded totals per day and app on this phone: not router upload, not browsing history. */
 @Composable
 internal fun ScreenTimeHistory(time: ScreenTimeState?) {
+    val days = (time?.historyTotals.orEmpty().keys + time?.historyApps.orEmpty().keys).sortedDescending()
+    if (time == null || days.isEmpty()) {
+        Text(stringResource(R.string.fw_history_empty))
+        InfoNote(Icons.Outlined.Info, stringResource(R.string.fw_history_local))
+        return
+    }
+    var selected by rememberSaveable { mutableStateOf(days.first()) }
+    val day = selected.takeIf { it in days } ?: days.first()
+    val locale = LocalConfiguration.current.locales[0]
+    val today = time.resetsAt.toLocalDate().minusDays(1)
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        days.forEach { key ->
+            val date = java.time.LocalDate.parse(key)
+            FilterChip(selected = key == day, onClick = { selected = key }, modifier = Modifier.heightIn(min = 48.dp), label = {
+                Text(when {
+                    date == today -> stringResource(R.string.fw_today)
+                    date > today.minusDays(7) -> date.format(DateTimeFormatter.ofPattern("EEE", locale))
+                    else -> date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
+                })
+            })
+        }
+    }
+    SectionCard {
+        val total = time.historyTotals[day]
+        Overline(java.time.LocalDate.parse(day).format(DateTimeFormatter.ofPattern("EEEE", locale)) +
+            (total?.let { " · " + durationText(it) } ?: ""))
+        val apps = time.historyApps[day].orEmpty()
+        if (apps.isEmpty()) Text(stringResource(R.string.fw_history_no_apps), style = MaterialTheme.typography.bodySmall)
+        else {
+            // Bars are relative to the busiest app that day, never to a limit.
+            val busiest = apps.maxOf { it.millis }
+            val initials = io.github.denogio.familywarden.ui.components.tileInitials(apps.map { it.label })
+            apps.forEachIndexed { index, app ->
+                if (index > 0) Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { }, verticalAlignment = Alignment.Top) {
+                    AppTile(app.pkg, initials.getValue(app.label))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        @OptIn(ExperimentalLayoutApi::class)
+                        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(app.label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 8.dp))
+                            Text(durationText(app.millis), style = MaterialTheme.typography.labelLarge)
+                        }
+                        TimeProgress(app.millis, busiest, Modifier.fillMaxWidth())
+                    }
+                }
+            }
+        }
+    }
     InfoNote(Icons.Outlined.Info, stringResource(R.string.fw_history_local))
-    val days = time?.historyTotals.orEmpty().toSortedMap(reverseOrder())
-    if (days.isEmpty()) Text(stringResource(R.string.fw_history_empty))
-    else days.forEach { (day, millis) -> SectionCard {
-        Text(java.time.LocalDate.parse(day).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
-            .withLocale(LocalConfiguration.current.locales[0])), style = MaterialTheme.typography.titleMedium)
-        Text(minutes(millis), style = MaterialTheme.typography.headlineSmall)
-    } }
 }
 
 @Composable

@@ -7,7 +7,11 @@
 offline (embedded Noto fonts, OFL licence kept in the file).
 
 Implementation mapping and verification: [`UI-SPEC.md`](UI-SPEC.md). The first
-child/adult UI slice is implemented; the parent/request/pool parts are not.
+child/adult UI slice, role-separated family navigation, native requests/approvals,
+and signed usage summaries are implemented. The pool and complete prototype
+editing/history flows are not. The latest visual pass uses the separate
+2026-10-25 export `FamilyWarden (5).html` (ten boards, adding adult Ulysses);
+`design.html` above remains the original nine-board archive.
 
 ## Boards
 
@@ -38,8 +42,9 @@ two modes, **My phone** and **Family**, each with its own tab bar.
 
 The boards mark total daily limit, Unlimited (always-allowed) apps, Bonus and near-limit
 warnings as later. These were built in P7b after the design round (router `3def6df`,
-Android `6b99ca5`, LuCI `f4d231f`) and are being verified. Still later: usage upload to the
-parent's phone, requests/approvals, parent role and notifications, shared budget, Lock
-now, School time, website history.
+Android `6b99ca5`, LuCI `f4d231f`) and are being verified. Usage upload, requests/approvals, parent role and notifications, and shared-budget
+enforcement now exist; see `UI-SPEC.md` for actual presentation and available data.
+Still later in the native Android presentation: the full parent editing/history
+flows and adult pool. School time and website history remain unavailable.
 
 All people, phones and apps on the boards are example data.

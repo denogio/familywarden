@@ -70,11 +70,29 @@ tap child-light History
 capture child-history
 check_nav child-history History Today History Settings
 contains child-history 'Recorded screen time on this phone'
-contains child-history '82 min'
-tap child-history Settings
+contains child-history 'Last 30 days'
+contains child-history '1 h 22 min'
+contains child-history 'Game'
+contains child-history '45 min'
+contains child-history 'Video'
+tap child-history Thu
+capture child-history-previous
+contains child-history-previous 'No app details were recorded for this day.'
+if grep -Fq 'Video' "$OUT/child-history-previous.xml"; then echo 'App history leaked across days'; exit 1; fi
+tap child-history-previous Settings
 capture child-settings
 check_nav child-settings Settings Today History Settings
-contains child-settings 'Control address'
+contains child-settings 'Home router'
+contains child-settings 'Managed by your family'
+tap child-settings 'Home router'
+capture child-router
+contains child-router 'Control address'
+"${ADB[@]}" shell input keyevent KEYCODE_BACK
+capture child-settings-returned
+contains child-settings-returned 'Home router'
+tap child-settings-returned DNS
+capture child-dns
+contains child-dns 'DNS is applied and locked'
 render NearLimitPreview near-limit
 contains near-limit '5 min'
 contains near-limit 'ALMOST TIME'
@@ -104,4 +122,10 @@ contains danish-large 'I dag'
 for _ in 1 2 3 4; do "${ADB[@]}" shell input swipe 300 1100 300 400 400; done
 capture danish-large-scrolled
 contains danish-large-scrolled 'ALTID OK'
+tap danish-large-scrolled Historik
+capture danish-history
+contains danish-history 'Sidste 30 dage'
+contains danish-history 'Game'
+contains danish-history '45 min.'
+check_nav danish-history Historik 'I dag' Historik Indstillinger
 echo "Screen-time rendering checks passed. Fictional-fixture screenshots: $OUT"

@@ -116,6 +116,12 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
         apps[UsageCounter.TOTAL]?.let { day to it }
     }.toMap()
 
+    /** Per-day app counters for display, busiest first and bounded; never the total key. */
+    fun historyApps(perDay: Int = 12): Map<String, Map<String, Long>> = state.counter.days.mapValues { (_, apps) ->
+        apps.filterKeys { it != UsageCounter.TOTAL }.filterValues { it > 0 }.entries
+            .sortedByDescending { it.value }.take(perDay).associate { it.key to it.value }
+    }.filterValues { it.isNotEmpty() }
+
     private fun screenOn() = context.getSystemService(PowerManager::class.java).isInteractive
     private fun unlocked() = !context.getSystemService(KeyguardManager::class.java).isKeyguardLocked
     private fun boot() = Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, 0)

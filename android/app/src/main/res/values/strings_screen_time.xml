@@ -25,7 +25,7 @@
     <string name="fw_time_not_allowed">Paused by the app rule</string>
     <string name="fw_time_always">ALWAYS OK</string>
     <string name="fw_time_calls_clock">Phone, emergency calls and alarm clock</string>
-    <string name="fw_history_local">Recorded screen time on this phone, for up to 30 days. Gaps can make totals incomplete. These are local totals, not website history or reports from other phones.</string>
+    <string name="fw_history_local">Recorded screen time on this phone, for up to 30 days. Gaps can make totals incomplete. Up to 12 busiest apps per day. Daily totals exclude Always OK apps. These are local counts, not website history or reports from other phones.</string>
     <string name="fw_history_empty">No recorded history is available yet.</string>
     <plurals name="fw_time_minutes">
         <item quantity="one">%d min</item>
@@ -42,4 +42,11 @@
     <string name="fw_time_uncounted_title">Time can’t be counted right now</string>
     <string name="fw_time_uncounted_body">Usage access for FamilyWarden is turned off on this phone. Limits and downtime still apply.</string>
     <string name="fw_ask_who">A parent can say yes from their phone.</string>
+    <string name="fw_history_no_apps">No app details were recorded for this day.</string>
+    <string name="fw_history_last_30">Last 30 days</string>
+    <string name="fw_review_dns">Review DNS protection status</string>
+    <string name="fw_home_router">Home router</string>
+    <string name="fw_rules_received">Rules received %1$s</string>
+    <string name="fw_managed_family">Managed by your family</string>
+    <string name="fw_child_settings_note">Your rules are managed on the router. Protection and router details are available above.</string>
 </resources>

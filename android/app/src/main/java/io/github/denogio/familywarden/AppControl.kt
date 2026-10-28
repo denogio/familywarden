@@ -250,11 +250,13 @@ class AppControlService : Service() {
                 apps.grants.isNotEmpty() && !policy.grantReliable -> "grant_unavailable"
                 else -> sample.status
             }
-            val labels = (policy.limitsMillis.keys + policy.blocked + policy.alwaysAllowed + policy.approved).associateWith(::label)
+            val historyApps = monitor?.historyApps().orEmpty()
+            val labels = (policy.limitsMillis.keys + policy.blocked + policy.alwaysAllowed + policy.approved +
+                historyApps.values.flatMap { it.keys }).associateWith(::label)
             AppControl.publish(AppUsageReport(apps.rev, zone.id, today, SystemClock.elapsedRealtime(),
                 reliable, used.toMap(), labels, monitor?.historyTotals() ?: emptyMap(), essential,
                 sample?.grantRemaining.orEmpty(), policy.grantReliable && result.failures.isEmpty(), installed.map { it.packageName }.toSet(),
-                others[UsageCounter.TOTAL] ?: 0))
+                others[UsageCounter.TOTAL] ?: 0, historyApps))
             if (store.appsStatus != status) store.appsStatus = status
             if (AppControl.acknowledges(result.failures, reliable && expiryReady) && store.appsApplied != apps.rev) store.appsApplied = apps.rev
         } catch (e: Exception) {

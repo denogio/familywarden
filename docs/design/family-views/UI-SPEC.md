@@ -17,9 +17,10 @@ claim that the complete role design or P10 has shipped.
 - Non-captain app-controlled phones use **Today / History / Settings**. DNS details
   and the resolver test remain available in Settings. Captains retain **Today / DNS /
   Ulysses / Settings** when Ulysses is enabled or forced by a pact.
-- **History** shows up to 30 days of locally recorded total screen time, with an
-  explicit incomplete-coverage disclaimer. No web/domain history, cross-phone
-  totals, per-day app drill-down or usage upload is implied.
+- **History** shows up to 30 days of locally recorded total screen time and the
+  12 busiest apps per recorded day, with an explicit incomplete-coverage disclaimer.
+  Days without app records say so; per-app sums never substitute for union totals.
+  No web/domain history or cross-phone totals are implied.
 - The captain's Today view also shows existing pact/hotspot status; it does not
   invent a discretionary pool or categories.
 - Pairing, fingerprint approval, address repair, signed removal checks, diagnostics,
@@ -131,6 +132,25 @@ Verification: JVM tests, lint and debug build; `test-screen-time-ui.sh` and
 the two-step ask flow) on a disposable Android 15 emulator; `test-requests-emulator.sh`
 31/31 with the real flow against a disposable router; `test-mast-emulator.sh` 98/98.
 `scripts/capture-android-previews.sh` renders named previews for board comparison.
+
+### Child History and Settings aligned with board 5 (2026-10-28)
+
+- History uses recorded-day chips and colored letter tiles. App bars are relative
+  to the busiest app on that day, not to today's configured limit. The sole existing
+  usage collector publishes bounded copies of its journal counters; no second
+  collector, fabricated day, or journal migration was added. Historical records
+  may outlive live display freshness, but never a policy/zone mismatch.
+- At most 12 busiest apps per day are listed (stated in the UI); essential packages
+  are omitted. Daily union totals still exclude Always OK apps. Missing app details
+  remain explicitly unavailable even when a total exists.
+- Child Settings opens with DNS, Home router and family-management rows. DNS status
+  and router/security details remain reachable, with Android Back returning to the
+  summary. No unverified parent names or filter-status promises were introduced.
+- There is no empty Websites tab: domain history is unavailable.
+
+Verification: JVM/lint/debug build and focused Android 15 rendering checks for
+recorded apps, changing days without stale app rows, details/back/DNS navigation,
+EN/light and Danish/dark at 200% font. Fixture screenshots were reviewed locally.
 
 ## Explicitly deferred
 

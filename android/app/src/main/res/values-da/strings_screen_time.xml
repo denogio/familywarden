@@ -25,7 +25,7 @@
     <string name="fw_time_not_allowed">Sat på pause af appreglen</string>
     <string name="fw_time_always">ALTID OK</string>
     <string name="fw_time_calls_clock">Telefon, nødopkald og vækkeur</string>
-    <string name="fw_history_local">Registreret skærmtid på denne telefon i op til 30 dage. Huller i målingen kan gøre tallene ufuldstændige. Det er lokale tal, ikke webhistorik eller rapporter fra andre telefoner.</string>
+    <string name="fw_history_local">Registreret skærmtid på denne telefon i op til 30 dage. Huller i målingen kan gøre tallene ufuldstændige. Op til 12 mest brugte apps pr. dag. Dagens total udelader Altid OK-apps. Det er lokale tal, ikke webhistorik eller rapporter fra andre telefoner.</string>
     <string name="fw_history_empty">Der er endnu ingen registreret historik.</string>
     <plurals name="fw_time_minutes">
         <item quantity="one">%d min.</item>
@@ -42,4 +42,11 @@
     <string name="fw_time_uncounted_title">Tiden kan ikke tælles lige nu</string>
     <string name="fw_time_uncounted_body">Brugsadgang for FamilyWarden er slået fra på denne telefon. Grænser og pausetid gælder stadig.</string>
     <string name="fw_ask_who">En forælder kan sige ja fra sin telefon.</string>
+    <string name="fw_history_no_apps">Der blev ikke registreret appdetaljer denne dag.</string>
+    <string name="fw_history_last_30">Sidste 30 dage</string>
+    <string name="fw_review_dns">Se status for DNS-beskyttelsen</string>
+    <string name="fw_home_router">Hjemmerouter</string>
+    <string name="fw_rules_received">Regler modtaget %1$s</string>
+    <string name="fw_managed_family">Administreret af din familie</string>
+    <string name="fw_child_settings_note">Dine regler administreres på routeren. Du kan se beskyttelsen og routeroplysningerne ovenfor.</string>
 </resources>

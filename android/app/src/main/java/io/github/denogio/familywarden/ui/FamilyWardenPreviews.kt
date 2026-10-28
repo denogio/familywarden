@@ -25,8 +25,12 @@ private val screenReport = AppUsageReport(screenApps.rev, screenNow.zone.id, scr
     true, mapOf(UsageCounter.TOTAL to 82 * 60_000L, "com.example.video" to 12 * 60_000L,
         "com.example.game" to 45 * 60_000L),
     mapOf("com.example.video" to "Video", "com.example.game" to "Game", "com.example.school" to "School"),
-    mapOf(screenNow.toLocalDate().toString() to 82 * 60_000L))
+    mapOf(screenNow.toLocalDate().toString() to 82 * 60_000L,
+        screenNow.toLocalDate().minusDays(1).toString() to 45 * 60_000L),
+    historyApps = mapOf(screenNow.toLocalDate().toString() to mapOf("com.example.game" to 45 * 60_000L,
+        "com.example.video" to 12 * 60_000L)))
 private val screenState = previewState.copy(nowMillis = screenNow.toInstant().toEpochMilli(),
+    lastSync = screenNow.toEpochSecond(),
     binding = previewState.binding!!.copy(captain = false, administrator = false),
     appsActive = true, appsStatus = "ok", screenTime = screenTimeState(screenApps, screenReport, screenNow, 1000, true))
 
