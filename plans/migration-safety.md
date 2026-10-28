@@ -410,8 +410,9 @@ of all ownership evidence, root/physical forgery, and old APKs without generatio
 
 Use focused Go tests for each recovery boundary, then real OpenWrt/package/browser
 checks where those layers change. Run the grouped Android suites once at the integrated
-milestone, not after each edit. The unresolved CI grant-consumption-after-restart failure
-must retain its evidence and cannot be dismissed because an unchanged local run passed.
+milestone, not after each edit. The now-explained CI grant-consumption-after-restart
+failure retains its diagnostic evidence and regression fix (`7e600bb`); a green
+rerun alone would not have explained or fixed it.
 
 No production router, physical phone or active QEMU pact may be changed without new
 explicit authorization. Legacy paths remain until the compatibility/recovery matrix

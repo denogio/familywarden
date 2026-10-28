@@ -1,8 +1,26 @@
 # FamilyWarden Android implementation checkpoint
 
-Local work on `feature/familywarden-android`. This is **not a production release or
-an in-place update to the installed Mast app**. No live router, AdGuard settings,
-existing Device Owner enrollment, or user pact is changed by this branch's tests.
+Current local development is on `feature/app-control`; this file also retains the
+original `feature/familywarden-android` checkpoints below. Local tests are **not a
+production release or rollout authorization**. Historical explicitly authorized pilots
+are identified separately; current work does not change live routers, phones or pacts.
+
+## Current Android preparation (2026-10-28)
+
+Child Today/Ask/local per-app history/Settings and scoped parent usage/approval cards
+are implemented and emulator-verified; remaining visuals await the design continuation.
+Core `0.13.0-r24` and `FamilyHistoryClient` prepare a signed read-only single-profile,
+single-day history API, preserving missing-vs-zero and report receipt metadata.
+Parent editors and Ulysses mutations must not reuse administrator credentials or expose
+the root API: their signed scoped contracts are still missing. See
+[Android API readiness](../docs/android-api-readiness.md) and
+[family UI implementation](../docs/design/family-views/UI-SPEC.md).
+
+Current evidence: 212 JVM tests, lint/debug build, Go race/vet and portable UI proof,
+APK smoke, both focused Android UI suites (EN/DA, 200% text), and 33 native P8 checks
+against local r24 packages. The earlier 98-check Mast milestone remains separately
+recorded; it was not repeated for this API-only extension. No production or physical
+device was accessed. Release-signing/physical R7 cutover gates remain open.
 
 ## Implemented locally
 

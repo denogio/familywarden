@@ -1,5 +1,13 @@
 # FamilyWarden Android — family views design prompt (child, adult, parent)
 
+> Historical design input (2026-10-24), not the current API contract. Availability
+> and navigation have changed since this round: mockups are English-only, bottom
+> navigation is icon-only, grants expire after approval, and several formerly
+> deferred LAN features now exist. Follow [UI-SPEC.md](family-views/UI-SPEC.md) and
+> [Android API readiness](../android-api-readiness.md) for the current implementation.
+> Off-home delivery, website history and unsupported native actions must not be
+> presented as available.
+
 Use this in the existing Claude Design conversation that produced the FamilyWarden app
 design (lighthouse brand, Overview / DNS protection / Ulysses / Settings). Background and
 sources: [`role-app-brief.md`](role-app-brief.md).

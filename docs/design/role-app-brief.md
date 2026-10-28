@@ -1,6 +1,9 @@
 # FamilyWarden Android — design brief for child, adult and parent views
 
-Status: **brief for the next Claude Design round** (2026-10-24). Not an implementation
+Status: **historical input for the 2026-10-24 design round**, not current feature
+availability. Use [UI-SPEC.md](family-views/UI-SPEC.md) and
+[Android API readiness](../android-api-readiness.md) for current contracts and remaining
+integration work. Mockups are English-only; Android resources provide EN/DA. Not an implementation
 claim. Decisions referenced: product principle and D9/D10 in
 [`plans/app-control.md`](../../plans/app-control.md); A13 (one app, role-based views),
 A14 (child sees own history, read-only), A15 (240 min max request), A16 (app categories),

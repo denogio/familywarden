@@ -36,7 +36,8 @@ mechanism difference, not a second product implementation.
 
 **The owned service boundary is now demonstrated by R6.** Production composition and
 the shared UI run against an in-process recording/failing adapter without OpenWrt.
-R7 migration/release safety remains open; this is not production-cutover readiness.
+The automated R7 migration matrix is complete (2026-10-28); release-signed upgrade
+and physical-pilot gates remain open. This is not production-cutover approval.
 Implemented logic, portability evidence, migration validation and deployment are separate.
 A shell-based firewall renderer may remain in the OpenWrt adapter; rewriting it in
 Go is not itself an acceptance criterion. No speculative FreeBSD adapter/framework
@@ -561,5 +562,6 @@ work accessed a production router or phone.
 CI `40490235715` targets `41f309b`, not the later fourth browser test. At this audit
 checkpoint its Go, router test, package builds, Android build and LuCI jobs passed;
 the grouped Android emulator job was still running. The earlier emulator
-failure remains unexplained; diagnostics and an unchanged successful local rerun
-are not a root-cause fix or a blanket reliability claim.
+failure was unexplained at that checkpoint; diagnostics and an unchanged successful
+local rerun were not a root-cause fix. Subsequent artifact analysis identified the
+policy-read race and `7e600bb` fixed it; see [migration-safety.md](migration-safety.md).

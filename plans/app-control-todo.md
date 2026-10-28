@@ -21,9 +21,9 @@ Historical test counts are evidence at that checkpoint, not current suite totals
 | P7/P7b child enforcement | Signed app/total limits, bonus, downtime, warnings, safe exceptions and new-app approval | Remaining physical/lifecycle validation; full future policy editors are separate UI work |
 | P8 LAN requests | Child/parent/admin flow, device/key-bound grants, consumption, first-answer-wins and new-app decisions; deployed | Focused physical request/approval run and bounded multi-phone allocation |
 | P9 off-home | LAN notifications only | Transport decision, encryption/key distribution and off-home implementation/testing |
-| P10 Android | Child/adult status/history, scoped parent decisions and usage | Parent presentation split is implemented and preview-tested (#94); scoped child selection is implemented and preview-tested (#97); full parent controls remain |
+| P10 Android | Child Today/Ask/local app history/Settings; scoped parent usage/inbox/approval sheets; signed single-day history client and report receipts prepared | Remaining prototype visuals and native history/editor integration; parent-edit and captain self-service mutation permissions need explicit scoped contracts ([API map](../docs/android-api-readiness.md)) |
 | P10 shared web | Core-backed `web/` workspace, prototype-based presentation, EN/DA, one thin LuCI host bridge; neutral/native browser validation | Essential-app/removal UX gaps below; no second-router host or production deployment |
-| Core migration | R1–R6: owned identity/configuration/policy/actions/DNS/recovery; portable production composition and shared UI verified with a recording/failing adapter | R7/P12 mixed-version, interruption and full backup/restore safety gates; native runtime support is still OpenWrt-only; production ownership cutover is not deployed (#91; [R0–R7](adapter-portability.md)) |
+| Core migration | R1–R6 owned product boundary and portable shared UI; automated R7 upgrade/interruption/backup/restore/generation matrix complete | Release-signed upgrade and physical-pilot authorization gates; native runtime remains OpenWrt-only; no production ownership cutover ([R0–R7](adapter-portability.md)) |
 | P11 adult pool | Existing pact enforcement, not the proposed pool | Final consumption/reset rules, ledger and pact-safe self-service |
 | P13 release validation | Same-key rc3/rc4 router+phone pilot and rc5 phone update | Release-wide security/compatibility/lifecycle acceptance for remaining scope; no blanket production rollout approval |
 
@@ -77,7 +77,7 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
 
 - [x] R0: audit active owned-mode and legacy dependencies; separate implementation,
       portability, validation and deployment status without a speculative percentage.
-- [ ] R1: migrate bonus, manual overrides and additive network-ticket product state,
+- [x] R1: migrate bonus, manual overrides and additive network-ticket product state,
       writers/readers and expiry/eligibility into core.
       - [x] R1a: owned bonus migrated with one-time import/upgrade, core policy/list
         readers and legacy-writer isolation (core 0.13.0-r10/backend rc10-r7).

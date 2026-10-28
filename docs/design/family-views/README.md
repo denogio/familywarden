@@ -34,16 +34,19 @@ two modes, **My phone** and **Family**, each with its own tab bar.
 
 | Assumption in the design | Decision so far | State |
 |---|---|---|
-| The first parent to answer decides; the other sees who | Not decided before | Proposed by design |
-| A grant's 2 hours start on **delivery** to the phone | D3: valid **2 hours after approval** | **Conflict — user to decide** |
-| The adult pool refills at **04:00** | D8: the day starts at **midnight** in the router's timezone; A17 pool adjustable | **Conflict — user to decide** |
+| The first parent to answer decides; the other sees who | First-answer-wins is implemented; attribution is available where signed | Follow current contract, not a speculative second answer |
+| A grant's 2 hours start on **delivery** to the phone | D3: valid **2 hours after approval** | Archived-board deviation; implementation follows D3 |
+| The adult pool refills at **04:00** | D8: **router-local midnight**; A17 pool adjustable | Archived-board deviation; pool itself remains future work |
 
 ## "Later" tags vs. current state
 
 The boards mark total daily limit, Unlimited (always-allowed) apps, Bonus and near-limit
 warnings as later. These were built in P7b after the design round (router `3def6df`,
 Android `6b99ca5`, LuCI `f4d231f`) and are being verified. Usage upload, requests/approvals, parent role and notifications, and shared-budget
-enforcement now exist; see `UI-SPEC.md` for actual presentation and available data.
+offset enforcement now exist; cached offsets do not bound offline overspend. See
+`UI-SPEC.md` for actual presentation and [API readiness](../../android-api-readiness.md)
+for native integration and permission boundaries. A signed retained-day history client
+is prepared, but the complete parent history screens are not implemented.
 Still later in the native Android presentation: the full parent editing/history
 flows and adult pool. School time and website history remain unavailable.
 

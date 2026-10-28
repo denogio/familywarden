@@ -8,7 +8,8 @@ A20 (shared UI embedded natively, on OpenWrt via a LuCI view + rpcd shim).
 
 ## Current completion status (2026-10-28)
 
-**R6 proves the owned product boundary; R7 migration safety remains open.** A new router implements platform facts,
+**R6 proves the owned product boundary; the automated R7 matrix is complete.**
+Release-signed upgrade and physical-pilot gates remain authorization-dependent. A new router implements platform facts,
 network enforcement/application and native host integration, not another copy of
 FamilyWarden product rules. Go owning configuration on OpenWrt is necessary but
 not sufficient. The source-backed inventory, ordered R0–R7 backlog and acceptance
@@ -61,16 +62,22 @@ checklist are in [Router adapter portability](adapter-portability.md).
   signed archive; `backup-inspect` needs an external pin and never authorizes restore.
 - **R7f restore (core r22):** offline, pinned, cleared-target-only restore of complete
   core-owned households; staged preflight, aside-not-delete, single rename; startup
-  materializes and reapplies. An older valid backup is not detected yet (R7g).
+  materializes and reapplies. Freshness protection was subsequently added in R7g.
 - **R7g generation (core r23 + Android):** signed replies carry a witnessed household
   generation (epoch, counter, restore lineage); phones refuse replies that do not continue
   their last accepted state, so an older restored backup cannot replace newer policy.
-- **Still unproven:** historical APK/pilot mixed-version, physical-device and full interruption gates. No second-router implementation
-  or cross-platform build is a current workstream or prerequisite for this migration.
+- **R7h/R7i proved:** tagged source, released v0.9.2 APK and exact-source rebuilt rc4
+  upgrades, pinned backup/restore/generation, debug same-key app upgrade, and interrupted
+  durable/native mutations. The earlier CI grant failure was traced to concurrent
+  policy reads and fixed in `7e600bb`.
+- **Still unproven/authorization-dependent:** release-signed app upgrade and a physical
+  router+phone migration pilot. No second-router implementation or cross-platform
+  build is a current workstream or prerequisite.
 
-Next implementation slice: **R7 historical package/upgrade compatibility and newest-state
-backup/generation rules, followed by consistent backup/restore admission**. Track it in
-[migration-safety.md](migration-safety.md); R7 is not closed by startup hardening alone.
+Current follow-up: **Android API/read-model preparation, regression coverage and design
+continuation**, mapped in [Android API readiness](../docs/android-api-readiness.md).
+The historical R7 acceptance evidence and remaining rollout gates are recorded in
+[migration-safety.md](migration-safety.md); automated success is not production approval.
 R6 adds five production-service scenarios and an explicitly enabled shared-UI browser
 proof in the Go CI job. Scope includes policy/actions/grants/usage, pacts/recovery,
 DNS acknowledgement, failure/refusal and restart/RAM semantics. It changes tests/CI/docs
@@ -768,10 +775,11 @@ revision and UCI projection are restored; page reload displays the restored name
 All four owned checks pass together against the validated packages. This is a
 browser interruption gate, not another claim of full restoration coverage.
 
-### Android request failure evidence
+### Android request failure evidence (historical diagnostics checkpoint)
 
-The consolidated CI grant-consumption failure after process restart remains
-unexplained. An unchanged local run using the failed CI packages passed; this is
+At this checkpoint the CI grant-consumption failure after process restart remained
+unexplained. It was subsequently traced to concurrent policy replacement during
+startup reads and fixed in `7e600bb`; see [migration-safety.md](migration-safety.md). An unchanged local run using the failed CI packages passed; this is
 not proof of an environmental/timing cause. Failure-only synthetic diagnostics
 now preserve activity/service/power/usage state, router requests/usage and logs,
 with CI artifact upload. Each collector is isolated so its failure cannot mask

@@ -193,8 +193,9 @@ Go; shell elimination is not the criterion.
 
 R1–R6 now move owned policy/context, bonus/network decisions and reporting into the
 core and prove the production service/shared UI with a recording/failing adapter,
-without OpenWrt processes or paths. R7's migration/release safety matrix remains open;
-this boundary proof is not permission for production cutover. The source-backed progress inventory, R0–R7 migration order and acceptance
+without OpenWrt processes or paths. The automated R7 migration matrix is complete;
+release-signed upgrade and physical-pilot gates remain authorization-dependent.
+This boundary proof is not permission for production cutover. The source-backed progress inventory, R0–R7 migration order and acceptance
 checks live in [adapter-portability.md](adapter-portability.md), with execution tracked
 in [app-control-todo.md](app-control-todo.md). FreeBSD compilation is not a working
 pfSense/OPNsense integration. Do not build a speculative second adapter to hide an

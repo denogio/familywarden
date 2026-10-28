@@ -178,6 +178,21 @@ checks against a disposable router; complete Mast emulator suite (98 checks).
 The native removal flow now follows Settings → Home router before opening the
 existing authorized-removal dialog. No physical phone or production router used.
 
+### API preparation while the remaining design is pending (2026-10-28)
+
+Core r24 and `FamilyHistoryClient` provide a signed, scoped single-day historical
+read, without adding retained history to every policy sync. Missing reports are
+not zero; errors are not missing reports. Optional report receipts remain distinct
+from online/applied state. This prepares data access, **not** the complete native
+parent history UI. No parent editor, captain mutation or administrator privilege was
+silently added. Inbox/badge scope and known-expiry filtering now share one pure
+state projection, with offline and revocation regression checks.
+
+Current API availability and evidence: [Android API readiness](../../android-api-readiness.md).
+The existing visual milestone counts above remain historical; current API tests
+are 212 JVM and 33 native P8 checkpoints, plus Go race/vet, package smoke and both
+focused UI scripts. No physical device or production router was used.
+
 ## Explicitly deferred
 
 - Off-home parent notifications (P9); LAN-only notifications exist while syncing.
