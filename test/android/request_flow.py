@@ -346,6 +346,23 @@ touch /tmp/drop-next-app-response
     wait('non-owner parent can decline without minting another grant', lambda: any(r['request_id'] == 'request-native-parent-002' and r['state'] == 'denied'
         for r in call('requests')['requests']))
     ui('native-parent-complete')
+    # A read-only contract uses the current registry scope, not an old signed policy.
+    assert call('device_update', {'device': 'fw-test-kid', 'profile': 'parent', 'name': 'Test reader',
+                                 'approves': 'alex'})['status'] == 'ok'
+    def read_history():
+        response = synthetic_upload('history', {'type': 'history', 'v': 1, 'device': 'fw-test-kid',
+            'profile': 'alex', 'day': router('date +%F').strip(), 'created': int(router('date +%s').strip()),
+            'nonce': 'd' * 64})
+        assert 'Status: 200 OK' in response, response
+        return json.loads(response.split('\n\n', 1)[1].split('\n', 1)[1])
+    history = read_history()
+    assert history['type'] == 'history_reply' and history['reported'] and history['total'] >= 60, history
+    assert all(d['received'] > 0 for d in history['devices']), history
+    print('PASS scoped signed history returns recorded reports and receipt times', flush=True)
+    assert call('device_update', {'device': 'fw-test-kid', 'profile': 'parent', 'name': 'Test reader',
+                                 'approves': ''})['status'] == 'ok'
+    assert read_history()['error'] == 'not_parent'
+    print('PASS revoked parent scope refuses the same historical read', flush=True)
     (a.out / 'result.json').write_text(json.dumps({'device': device_id, 'spent_millis': spent(grant_id),
         'parent_device_owner': False, 'child_grant_id': grant_id, 'checks': 'passed'}, indent=2))
     print('All focused P8 native checks passed', flush=True)

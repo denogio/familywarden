@@ -56,11 +56,16 @@ data class FamilyWardenState(
     fun familyProfile(preferred: String?): ProfileRef? = binding?.approves?.let { profiles ->
         profiles.firstOrNull { it.id == preferred } ?: profiles.firstOrNull()
     }
-    val familyPendingCount: Int get() {
+    /** Presentation filters only; every action still needs a fresh, verified router check. */
+    val familyRequests: List<ParentRequest> get() {
         val scope = binding?.approves.orEmpty().map { it.id }.toSet()
-        return parentRequests.count { it.profile.id in scope && (requestEpoch == null || requestEpoch < it.expires) } +
-            parentNewApps.count { it.profile.id in scope }
+        return parentRequests.filter { it.profile.id in scope && (requestEpoch == null || requestEpoch < it.expires) }
     }
+    val familyNewApps: List<NewAppRequest> get() {
+        val scope = binding?.approves.orEmpty().map { it.id }.toSet()
+        return parentNewApps.filter { it.profile.id in scope }
+    }
+    val familyPendingCount: Int get() = familyRequests.size + familyNewApps.size
     val bound: Boolean get() = pact is PactStatus.Bound
     val showUlysses: Boolean get() = bound || (binding?.captain == true && ulyssesEnabled)
     val canRePair: Boolean get() = canRequestRemoval && (!provisioned || binding?.administrator == true)

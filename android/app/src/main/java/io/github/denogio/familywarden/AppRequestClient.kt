@@ -81,8 +81,13 @@ object AppRequestClient {
     }
 
     internal fun post(host: String, upload: RequestUpload, phoneKey: PhoneKey, minimumServerTime: Long): UploadReply {
-        val body = upload.signedBody(phoneKey)
-        val c = URL("${Sync.base(host)}/cgi-bin/app?op=${upload.op}").openConnection() as HttpURLConnection
+        return RequestProtocol.verifyReply(exchange(host, upload.op, upload.signedBody(phoneKey)), upload, minimumServerTime)
+    }
+
+    /** Shared bounded transport for signed actions and non-persistent informational reads. */
+    internal fun exchange(host: String, op: String, body: ByteArray): ByteArray {
+        require(op in setOf("request", "decision", "usage", "app", "history") && body.size <= 16 * 1024)
+        val c = URL("${Sync.base(host)}/cgi-bin/app?op=$op").openConnection() as HttpURLConnection
         c.requestMethod = "POST"
         c.doOutput = true
         c.instanceFollowRedirects = false
@@ -105,7 +110,7 @@ object AppRequestClient {
                 }
                 out.toByteArray()
             }
-            return RequestProtocol.verifyReply(bytes, upload, minimumServerTime)
+            return bytes
         } finally { c.disconnect() }
     }
 }

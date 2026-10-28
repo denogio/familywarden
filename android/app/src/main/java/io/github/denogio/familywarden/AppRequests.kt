@@ -170,20 +170,27 @@ object RequestProtocol {
     fun digest(raw: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(raw)
         .joinToString("") { "%02x".format(it) }
 
-    /** Authenticate exact bytes first; no upload reply can be accepted as a policy. */
-    fun verifyReply(body: ByteArray, upload: RequestUpload, minimumServerTime: Long): UploadReply {
+    /** Verify a message-bound informational envelope; this never returns policy authority. */
+    internal fun signedReply(body: ByteArray, routerKey: String, device: String, op: String,
+        request: String, minimumServerTime: Long): JSONObject {
         require(body.size <= 65536 + 101)
         val newline = body.indexOf(10.toByte())
         require(newline == 100) { "malformed signed reply" }
         val signature = body.copyOfRange(0, newline).toString(Charsets.US_ASCII)
         val raw = body.copyOfRange(newline + 1, body.size)
-        require(Usign.verify(Usign.parsePublicKey(upload.routerKey), signature, raw)) { "bad reply signature" }
+        require(Usign.verify(Usign.parsePublicKey(routerKey), signature, raw)) { "bad reply signature" }
         val json = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(raw)).toString()
         val o = JSONObject(json)
-        require(integer(o, "v") == 1L && string(o, "type") == "${upload.op}_reply")
-        require(string(o, "device") == upload.device && epoch(o, "server_time") >= minimumServerTime)
-        require(string(o, "message_sha256") == digest(upload.raw.toByteArray(Charsets.UTF_8))) { "reply mismatch" }
+        require(integer(o, "v") == 1L && string(o, "type") == "${op}_reply")
+        require(string(o, "device") == device && epoch(o, "server_time") >= minimumServerTime)
+        require(string(o, "message_sha256") == digest(request.toByteArray(Charsets.UTF_8))) { "reply mismatch" }
+        return o
+    }
+
+    /** Authenticate exact bytes first; no upload reply can be accepted as a policy. */
+    fun verifyReply(body: ByteArray, upload: RequestUpload, minimumServerTime: Long): UploadReply {
+        val o = signedReply(body, upload.routerKey, upload.device, upload.op, upload.raw, minimumServerTime)
         if (o.has("error")) return UploadReply(null, string(o, "error").also { require(it in errors) })
         if (upload.op == "usage") return UploadReply(string(o, "state").also { require(it in setOf("stored", "unchanged")) }, null)
         if (upload.op == "app") {

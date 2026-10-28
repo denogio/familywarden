@@ -158,7 +158,7 @@ func cleanText(s string, max int) (string, bool) {
 	return s, true
 }
 
-// App handles a signed upload ("request", "decision" or "usage"). Unauthenticated input
+// App handles signed actions, usage uploads and bounded historical reads. Unauthenticated input
 // gets a bare status; everything after authentication gets a signed reply.
 func (s *Service) App(op string, body []byte) (int, []byte) {
 	sig, raw, ok := splitUpload(body)
@@ -195,7 +195,7 @@ func (s *Service) uploadLocked(op, sig string, raw []byte, device string) (int, 
 	if i >= 0 {
 		d = s.devices[i]
 	}
-	kind := map[string]string{"request": "request", "decision": "decision", "usage": "usage", "app": "app"}[op]
+	kind := map[string]string{"request": "request", "decision": "decision", "usage": "usage", "app": "app", "history": "history"}[op]
 	if i < 0 || kind == "" {
 		return StatusForbidden, nil, nil
 	}
@@ -216,6 +216,8 @@ func (s *Service) uploadLocked(op, sig string, raw []byte, device string) (int, 
 			reply = s.usage(d, raw, ctx)
 		case "app":
 			reply = s.appDecision(d, raw, ctx)
+		case "history":
+			reply = s.history(d, raw, ctx)
 		default:
 			reply, ticket = s.decide(d, raw, ctx)
 		}

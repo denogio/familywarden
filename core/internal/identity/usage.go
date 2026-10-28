@@ -189,7 +189,7 @@ func (s *Service) parentUsage(d Device, ctx platform.Context) []object {
 		}
 		phones := []object{}
 		for _, dev := range devices {
-			phones = append(phones, object{{"name", dev["name"]}, {"total", dev["total"]}, {"incomplete", dev["incomplete"]}})
+			phones = append(phones, object{{"name", dev["name"]}, {"total", dev["total"]}, {"incomplete", dev["incomplete"]}, {"received", dev["received"]}})
 		}
 		out = append(out, object{{"profile_id", p}, {"day", day}, {"total", total}, {"devices", phones}, {"apps", nonNilApps(apps)}})
 	}

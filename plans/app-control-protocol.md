@@ -1,12 +1,12 @@
-# App control — protocol and data contract (P1 draft)
+# App control — protocol and data contract
 
-Status: **draft for the first vertical slice** (LAN: child requests extra time for one app,
-parent approves, child uses exactly the approved minutes). Built on the existing v2
-enrollment/policy channel (`plans/app-control-baseline.md`). Decisions referenced as
-"D1–D8" are the contract decisions in `app-control.md` (2026-10-21).
-Sections 2a–2c and the LAN request/decision/policy transport in §3–4 are implemented
-and tested. Android grant consumption, shared budgets, direct parent-to-child grants
-and off-home delivery are still proposals, not implemented authority.
+Current LAN contract, reconciled 2026-10-28. Sections 2a–2c and 3–5c describe
+implemented enrollment, policy, requests/decisions, device-bound grant consumption,
+usage, cached shared offsets, new-app decisions and read-only app history.
+Section 2 retains the original **future policy sketch**, not the accepted wire format.
+Bounded offline multi-phone allocation, categories/pool, direct parent-to-child grants
+and off-home delivery remain unimplemented. Android API/permission boundaries:
+[API readiness](../docs/android-api-readiness.md). Product decisions: [app-control.md](app-control.md).
 
 ## 1. Principals and keys
 
@@ -18,8 +18,9 @@ and off-home delivery are still proposals, not implemented authority.
 
 Roles are attributes of an approved device binding, set by an administrator in LuCI:
 
-- `role: "child" | "adult" | "parent"` — `child` and `adult` are *subject to* app rules;
-  `parent` approves. A device can be `parent` and also bound to an adult profile.
+- There is no implemented `role` discriminator. Managed child/adult views derive from
+  signed app policy/captain attributes; parent authority derives from `binding.approves`.
+  A device may have approval scope and also be subject to its own managed rules.
 - `approves: [profile_id…]` — the child profiles a parent phone may grant for.
 - `administrator` (existing) keeps its meaning: self-removal rights. It does **not** grant
   approval power, and `parent` does not imply administrator or captain.
@@ -68,7 +69,8 @@ on (`option apps '1'`):
   has actually applied a revision.
 - Parent scopes/keys are implemented (§2c). Go now emits device-bound `apps.grants`
   (§4), gated by `grants-v1`; Android development builds since 2026-10-25 advertise it.
-  Shared budgets and categories remain unimplemented. Unknown optional fields are
+  Cached shared offsets are implemented (§5a); bounded offline allocation and categories
+  remain unimplemented. Unknown optional fields are
   ignorable; unknown required features are not.
 
 **Fixture.** `android/app/src/test/resources/v3-payload.{json,sig}` + `v3-router.pub`
@@ -187,9 +189,29 @@ docker rm -f fw-fixtures
 
 JVM fixtures verify both the exact signed accepted policy and the signed refusal.
 
-## 2. Policy v3 (router → phone, signed reply as today)
+## 2c. Current signed roles and information fields
 
-v3 is a strict superset of v2; unchanged v2 fields keep their meaning.
+Approved v3 bindings contain `device_id, profile_id, profile_name, captain,
+administrator, can_self_remove, approves[]`. Each approval entry has `profile_id,
+profile_name`. Scope is current: excludes nonexistent profiles, the phone's own
+profile and a pact-bound captain. Administrator/captain flags do not imply parent
+permission. Parent-only Android pairing is a local operating mode, not authority.
+
+Optional informational fields include scoped `requests[]`, `new_apps[]`, today's
+`usage[]`, the child's latest `request` and parent device keys/names in `parents[]`.
+Names identify devices, not necessarily people. There is no parent rule-editing or
+captain self-service mutation permission in this wire version.
+
+Optional `generation` carries the household epoch/counter and restore lineage.
+Once observed, it must not disappear or regress in later policy replies; see
+[migration-safety.md](migration-safety.md). Reads in §5c are information only and
+never replace the last accepted policy or advance its generation witness.
+
+## 2. Future policy sketch — NOT the implemented v3 wire format
+
+This retained P1 proposal contains unimplemented fields such as numeric revisions,
+categories, budgets and essential-package declarations. Use §2a/2b/2c and the real
+signed fixtures for implementation, not this example or its proposed precedence.
 
 ```json
 {
@@ -295,7 +317,8 @@ Signed v3 sync adds optional `request` (latest profile request, including status
 for the child and `requests[]` (pending, in-scope requests with exact hash, profile,
 target, minutes, label/note and expiry) for the parent. Old clients may ignore these
 display-only fields. `ubus call familywarden requests` lists retained decisions for the
-administrator; this does not mean a Requests UI exists yet.
+administrator. Android has the scoped Requests inbox and approval/denial flow;
+retained administrator history is not automatically exposed to parent phones.
 
 ## 4. Router-policy grants (implemented: Go and Android)
 
@@ -368,8 +391,9 @@ shared consumption/leases exist. It does not implement the shared child budget.
   exactly 60 s spent, repeated sync without refill, authorized removal, non-owner parent
   pairing, scoped approval and decline.
 
-Still open: authenticated consumption upload (router does not see spending), shared
-multi-phone allocation, off-home delivery/notifications (P9), and physical-device tests.
+Authenticated grant-consumption upload is implemented through §5. Still open:
+bounded multi-phone allocation, off-home delivery/notifications (P9), and remaining
+physical-device validation. Cached offsets alone do not bound offline overspend.
 
 **Future (P9, not an accepted wire format):** directly delivered parent-signed grants,
 offline issuance and encrypted notification/relay transport. They must reuse the same
@@ -458,22 +482,64 @@ tighten. Approved packages are appended to the signed `apps.approved` list (neve
 blocked; no new capability needed) and change the app revision, so phones re-apply and
 acknowledge. Parent phones receive `new_apps[]` (scoped) in v3 sync.
 
+## 5c. Bounded signed app-history reads — core 0.13.0-r24
+
+`POST /cgi-bin/app?op=history`, same bounded signed transport as §3; signing domain
+`familywarden-history-v1\n` plus exact JSON:
+
+```json
+{"type":"history","v":1,"device":"fw-parent","profile":"alex","day":"2027-01-15","created":1800000000,"nonce":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+```
+
+- Exact required fields, strict decoding as §3. Nonce is 64 lowercase hex digits;
+  clients generate a fresh cryptographic nonce for every query. Creation time must
+  be less than five minutes old, at most five minutes ahead of router time.
+- Current enrolled key and current scope are rechecked under the identity lock.
+  A phone may read its own profile or an effective `approves` profile, never other
+  profiles through administrator/captain flags. App control must be configured.
+- One router-local calendar day only, today through the previous 29 days, including
+  DST boundaries. No policy-sync payload expansion or new retention ledger.
+- Signed `history_reply` echoes `device, server_time, message_sha256`, plus
+  `profile_id, day, reported, total, devices[], apps[]`. Each device report has
+  `name, total, incomplete, received`; apps are the 20 busiest packages with seconds
+  and optional labels. At most 16 device records, including historical phone keys.
+- `reported:false,total:0,devices:[],apps:[]` means missing data. A real zero report
+  has `reported:true` and at least one device report. Coverage is not completeness.
+  Store failure is signed `unavailable`, not an absent day.
+- Verify the pinned router key, exact query digest (including nonce), device, type,
+  minimum server time and requested profile/day. Fresh policy sync in the Android
+  client checks current scope and generation first. It is not accepted or persisted
+  as part of the read; neither historical data nor errors alter enforcement.
+- Refusals: `malformed, request_expired, not_parent, app_control_off,
+  day_out_of_range, unavailable`. Unknown/older endpoints and transport failures
+  remain unavailable, never synthesized empty history.
+- Read-only: no request ledger/outbox, ticket, native apply, app revision,
+  acknowledgement, generation advance or retained-policy replacement.
+- `FamilyHistoryClient.history` is ready for off-main-thread callers; the longer-range
+  native history screens remain separate design/integration work.
+
+Today's scoped `usage[].devices[]` additionally includes the same optional `received`
+timestamp. Android accepts old replies without it as **unknown**, not current.
+Receipt of a usage upload is neither policy application nor a live online signal.
+
 ## 6. Storage and retention (D6)
 
 - App activity: per profile, per day, per package seconds — **30 days**, then deleted.
-- Websites: per profile, per day, per **domain** request counts, derived daily from
+- Websites (**planned, not implemented**): per profile, per day, per **domain** request counts, derived daily from
   AdGuard Home's query log for the profile's `familywarden-*` client — **30 days**. Domains
   only; no URLs or content. FamilyWarden never changes AdGuard Home's global query-log
   settings; if AGH retains less than a day, website history is reported as unavailable.
 - Stored by the Go core in the household (router storage; flash-write budget to be checked
   in P3/P4). Nothing leaves the household.
 
-## 7. Error codes (all replies are signed JSON objects)
+## 7. Authenticated errors and transport refusal
 
 `not_enrolled`, `bad_signature`, `replay`, `wrong_profile`, `not_parent`, `request_open`,
 `request_expired`, `grant_expired`, `invalid_minutes`, `unknown_package`, `pact_forbids`,
-`unsupported_version`, `malformed`. Grant validity tolerates 5 minutes of clock skew between
-the issuing phone and the router-anchored clock.
+`unsupported_version`, `malformed` (see implemented sections for operation-specific
+codes). Authenticated refusals are signed; unauthenticated/malformed transport may
+return bare HTTP 400/403 and failures 500/503. Upload creation times allow at most
+five minutes of future clock skew; grant deadlines have no extra grace period.
 
 ## 8. Compatibility
 
@@ -481,7 +547,7 @@ the issuing phone and the router-anchored clock.
   refuses unsupported clients rather than returning a weaker approved policy (§2b).
 - An enrolled phone that has received v3 refuses later v2/v1 replies (no downgrade), as today.
 - Unknown fields are ignored. If a reply contains `"requires": ["feature", …]` that the phone
-  does not implement, it keeps enforcing its last trusted policy and reports `unsupported_version`.
+  does not implement, it keeps enforcing its last trusted policy and reports unsupported capabilities.
 - All signed messages carry a type-specific prefix line, so a signature for one message type
   can never be accepted as another.
 

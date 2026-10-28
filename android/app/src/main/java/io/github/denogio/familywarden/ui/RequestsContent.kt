@@ -25,10 +25,8 @@ fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions, fami
     var decision by remember { mutableStateOf<DecisionChoice?>(null) }
     var forget by rememberSaveable { mutableStateOf(false) }
     val ready = !state.syncing && !state.uploadPending
-    val scope = state.binding?.approves.orEmpty().map { it.id }.toSet()
-    val requests = state.parentRequests.filter { it.profile.id in scope &&
-        (state.requestEpoch == null || state.requestEpoch < it.expires) }
-    val newApps = state.parentNewApps.filter { it.profile.id in scope }
+    val requests = state.familyRequests
+    val newApps = state.familyNewApps
     if (state.binding == null) {
         HeroCard {
             HeroTitle(stringResource(R.string.fw_request_waiting_approval))

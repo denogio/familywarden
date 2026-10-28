@@ -55,6 +55,25 @@ class FamilyWardenStateTest {
         assertEquals(0, state.copy(binding = null).familyPendingCount)
     }
 
+    @Test fun offlineInboxAndScopeRevocationCannotReviveExpiredOrSiblingRequests() {
+        val alex = ProfileRef("alex", "Alex")
+        val sam = ProfileRef("sam", "Sam")
+        val request = ParentRequest("request-001", "a".repeat(64), alex, "total", 30, 10, 100, "")
+        val state = healthy().copy(binding = binding.copy(approves = listOf(alex)), requestEpoch = 100,
+            syncError = "router unreachable", parentRequests = listOf(request, request.copy(id = "request-002", profile = sam)),
+            parentNewApps = listOf(NewAppRequest(alex, "com.example.draw", "Draw", 10)))
+        assertTrue(state.familyRequests.isEmpty())
+        assertEquals(1, state.familyPendingCount)
+        val revoked = state.copy(binding = binding.copy(approves = emptyList()))
+        assertTrue(revoked.familyNewApps.isEmpty())
+        assertEquals(0, revoked.familyPendingCount)
+        // An unknown clock is not a declaration of expiry or authorization.
+        val unknownClock = state.copy(requestEpoch = null)
+        assertEquals(listOf(request), unknownClock.familyRequests)
+        assertEquals(2, unknownClock.familyPendingCount)
+        assertFalse(unknownClock.copy(binding = null).familyRequests.isNotEmpty())
+    }
+
     @Test fun positiveHeadlineRequiresAllIndependentFacts() {
         val s = healthy()
         assertEquals(DnsHeadline.AppliedAndTested, s.headline)

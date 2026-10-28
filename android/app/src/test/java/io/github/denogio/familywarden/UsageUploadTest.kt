@@ -68,6 +68,19 @@ class UsageUploadTest {
         }
     }
 
+    @Test fun receiptMetadataIsOptionalForOldRoutersButStrictWhenPresent() {
+        val profile = ProfileRef("alex", "Alex")
+        fun entry(received: Any?) = JSONObject().put("profile_id", profile.id).put("day", day).put("total", 0)
+            .put("devices", JSONArray().put(JSONObject().put("name", "Alex phone").put("total", 0).put("incomplete", false)
+                .apply { if (received != null) put("received", received) })).put("apps", JSONArray())
+        assertNull(UsageUpload.parse(JSONArray().put(entry(null)), listOf(profile)).single().devices.single().received)
+        assertEquals(1800000000L, UsageUpload.parse(JSONArray().put(entry(1800000000L)), listOf(profile)).single().devices.single().received)
+        for (bad in listOf(0, -1, 253402300800L, "1800000000", 1800000000.5, JSONObject.NULL)) {
+            try { UsageUpload.parse(JSONArray().put(entry(bad)), listOf(profile)); fail("bad receipt accepted") }
+            catch (_: Exception) { }
+        }
+    }
+
     @Test fun usageUploadUsesItsOwnSigningDomainAndReplyType() {
         val router = PhoneKey.generate()
         val phone = PhoneKey.generate()

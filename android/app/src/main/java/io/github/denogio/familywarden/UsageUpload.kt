@@ -10,7 +10,9 @@ import java.time.LocalDate
 /** A parent's view of one child's day, as signed by the router. Display only. */
 data class FamilyUsage(val profile: ProfileRef, val day: String, val totalSeconds: Int,
     val devices: List<DeviceUsage>, val apps: List<AppSeconds>)
-data class DeviceUsage(val name: String, val totalSeconds: Int, val incomplete: Boolean)
+data class DeviceUsage(val name: String, val totalSeconds: Int, val incomplete: Boolean,
+    /** Router receipt of this usage report, not a fetch or enforcement acknowledgement. */
+    val received: Long? = null)
 data class AppSeconds(val pkg: String, val label: String, val seconds: Int)
 
 /** Other phones' usage for [day] (router-local), in milliseconds keyed like UsageCounter days. */
@@ -94,7 +96,8 @@ object UsageUpload {
                 (0 until d.length()).map { j ->
                     val x = d.getJSONObject(j)
                     DeviceUsage(x.getString("name").also { require(it.codePointCount(0, it.length) in 1..64) },
-                        seconds(x, "total"), x.getBoolean("incomplete"))
+                        seconds(x, "total"), x.getBoolean("incomplete"),
+                        if (x.has("received")) RequestProtocol.integer(x, "received").also { require(it in 1..253402300799L) } else null)
                 }
             }
             val apps = o.getJSONArray("apps").let { a ->
