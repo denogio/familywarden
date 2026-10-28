@@ -326,9 +326,23 @@ Device Owner, pairing and keys survive; the upgraded app accepts generation-bear
 signed policy, acknowledges the signed app revision, pauses a blocked app and lifts it
 on the router kill switch. All checks passed.
 
+Pilot-generation router path (what the production router runs): rc4 packages
+(`familywarden 0.11.0_rc4-r1`, `familywarden-core 0.6.0-r1`, LuCI `0.9.0-r1`) are not
+published, so they were rebuilt from their exact commit `73b921b` with that commit's own
+build script. `LEGACY_RELEASE_DIR` accepts several package directories; when the old
+package includes a core it is started first, imports the enrolled phone, and the pact is
+created with it running, then the current packages replace it. The full migration,
+backup, restore and generation path passes: 323 checks across v0.9.1/v0.9.2 sources,
+released v0.9.2 and rebuilt rc4. CI runs the released v0.9.2 variant only.
+
+Historical finding (rc4, not the current path): rc4's core imported **no** captain
+phones when it was first started *during* an active pact (its effective configuration
+hid the captain's phone). The production router imported its phone with core 0.4.0
+before any pact, so it is not affected; the current core imports a captain phone from
+a v0.9.x household with an active pact correctly (proved above).
+
 Not covered: release-signed APK upgrades (needs the release keystore, deliberately not
-used here), pilot-generation rc3–rc5 router packages (not published; only on production
-devices, which are out of scope without explicit authorization), and physical devices.
+used here), rc3/rc5 packages, the real production household's data, and physical devices.
 
 ## R7i — Interrupted-mutation matrix
 
@@ -351,7 +365,7 @@ temp-file, fsync and rename discipline) and simultaneous loss of several cut poi
 
 | Gate | Required evidence | Status |
 |---|---|---|
-| Supported upgrade paths | Fictional v0.9.1/v0.9.2 and recorded pilot-generation fixtures upgrade without changing effective restrictions, keys, identity/scopes or DNS ownership | v0.9.1/v0.9.2 sources and released v0.9.2 APK -> current proved; debug-signed pre-generation app -> current app proved on emulator; rc3–rc5 pilot packages and release-signed app upgrade open |
+| Supported upgrade paths | Fictional v0.9.1/v0.9.2 and recorded pilot-generation fixtures upgrade without changing effective restrictions, keys, identity/scopes or DNS ownership | v0.9.1/v0.9.2 sources, released v0.9.2 and rebuilt rc4 (production generation) -> current proved; debug-signed app upgrade proved on emulator; release-signed app upgrade and physical pilot open |
 | Idempotent import | Retry before/after journal, ownership-floor write/readback, native apply and completion; once owned, a changed legacy projection cannot become authority again | Current-pair coverage passes; extend to historical/package fixtures |
 | Interrupted mutations | Configuration confirm/rollback, pact creation/release, grants/usage, bonus and DNS ownership/ack writes interrupted at durable/native cut points | Configuration/pact/release/bonus matrix (R7i) plus existing import/identity/network/DNS coverage; single-file power loss relies on atomic replace |
 | Concurrent/versioned writers | Current daemon exclusion plus supported package combinations and explicit refusal of non-cooperating/legacy writers | Current daemon lease and current-pair legacy refusal proved; historical mixed-version gate open |

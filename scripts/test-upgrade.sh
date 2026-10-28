@@ -20,15 +20,15 @@ if [ "${1:-}" != --inside ]; then
             "${OPENWRT_IMAGE:-openwrt/rootfs:x86-64-25.12.4}" \
             sh /src/scripts/test-upgrade.sh --inside
     done
-    if [ -n "${LEGACY_RELEASE_DIR:-}" ]; then
-        RELEASE=$(cd "$LEGACY_RELEASE_DIR" && pwd)
+    for release in ${LEGACY_RELEASE_DIR:-}; do # space-separated package directories
+        RELEASE=$(cd "$release" && pwd)
         ref=release-$(ls "$RELEASE"/familywarden-[0-9]*.apk | sed 's|.*/familywarden-||; s|\.apk$||')
         docker run --rm --memory=768m --cpus=2 --cap-add NET_ADMIN \
             -e FW_TEST_UPGRADE_DISPOSABLE=1 -e LEGACY_REF="$ref" \
             -v "$REPO:/src:ro" -v "$APKS:/apk:ro" -v "$RELEASE:/legacy-release:ro" \
             "${OPENWRT_IMAGE:-openwrt/rootfs:x86-64-25.12.4}" \
             sh /src/scripts/test-upgrade.sh --inside
-    fi
+    done
     exit
 fi
 [ "${FW_TEST_UPGRADE_DISPOSABLE:-}" = 1 ] && [ -f /.dockerenv ] || exit 1
@@ -108,9 +108,21 @@ printf '%s\n' 'jordan jordan-test dns.example.test safe_browsing -' >/etc/family
 chmod 600 /etc/familywarden/mast.* /etc/familywarden/agh.* /etc/familywarden/dns.ack
 fw4 start >/dev/null 2>&1
 "$BIN" reload >/dev/null
+# A released core (rc-era pilots) owned identity before any pact, as on the
+# pilot router: import first, then create the pact with that core running.
+# (rc4's core imported no captain phones when first started during a pact.)
+OLD=""
+if [ -x /usr/sbin/familywardend ]; then
+    mkdir -p /var/run/familywarden-core
+    /usr/sbin/familywardend >>/tmp/legacy-core.log 2>&1 &
+    OLD=$!
+    for _ in 1 2 3 4 5 6 7 8 9 10; do /usr/sbin/familywardend status 2>/dev/null | grep -q '"running":true' && break; sleep 1; done
+    check 'released core imported the enrolled phone' "$(cat /etc/familywarden/core/devices.json 2>/dev/null)" '@.devices[0].pubkey' "$pub"
+fi
 until=$(( $(date +%s) + 7200 ))
 check 'tagged legacy backend creates pact' "$(printf '{"until":%s}' "$until" | "$BIN" call pact)" '@.status' ok
 check 'tagged legacy backend binds the captain' "$(printf '{"profile":"jordan"}' | "$BIN" call status)" '@.captain' true
+[ -z "$OLD" ] || { kill "$OLD"; wait "$OLD" || true; }
 sha256sum /etc/familywarden/mast.key /etc/familywarden/mast.pub /etc/familywarden/agh.auth /etc/familywarden/agh.owned /etc/familywarden/dns.ack >/tmp/native-secrets.before
 cp /etc/familywarden/pact /tmp/pact.before
 cp /etc/familywarden/pact.dns /tmp/pact-dns.before
