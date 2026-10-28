@@ -20,6 +20,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/denogio/familywarden/core/internal/usign"
@@ -230,12 +231,7 @@ func Create(dst string, s Source) (m Manifest, err error) {
 	if err := os.Link(f.Name(), dst); err != nil {
 		return m, err
 	}
-	d, err := os.Open(parent)
-	if err != nil {
-		return m, err
-	}
-	defer d.Close()
-	return m, d.Sync()
+	return m, syncDir(parent)
 }
 
 func copySource(w io.Writer, in input) (Entry, error) {
@@ -266,6 +262,58 @@ func copySource(w io.Writer, in input) (Entry, error) {
 // Inspect authenticates against an externally trusted pin and verifies every
 // archived byte without extracting it. A valid archive is NOT restore permission.
 func Inspect(file string, trusted usign.PublicKey) (Manifest, error) {
+	return read(file, trusted, nil)
+}
+
+// Extract verifies and writes one archive into an existing empty private dir in a
+// single pass. The manifest/signature come last, so callers must discard dir on
+// any error: unverified bytes are staged but never activated by this function.
+func Extract(file string, trusted usign.PublicKey, dir string) (Manifest, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 0 {
+		return Manifest{}, errors.New("backup staging directory must exist and be empty")
+	}
+	var dirs []string
+	m, err := read(file, trusted, func(name string, r io.Reader) error {
+		target := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
+			return err
+		}
+		dirs = append(dirs, filepath.Dir(target))
+		f, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0600)
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(f, r)
+		if err == nil {
+			err = f.Sync()
+		}
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+		return err
+	})
+	if err != nil {
+		return m, err
+	}
+	for _, d := range append(dirs, dir) {
+		if err := syncDir(d); err != nil {
+			return m, err
+		}
+	}
+	return m, nil
+}
+
+func syncDir(path string) error {
+	d, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
+}
+
+func read(file string, trusted usign.PublicKey, sink func(string, io.Reader) error) (Manifest, error) {
 	var m Manifest
 	if len(trusted.Key) != ed25519.PublicKeySize {
 		return m, errors.New("trusted backup key required")
@@ -327,7 +375,13 @@ func Inspect(file string, trusted usign.PublicKey) (Manifest, error) {
 				return m, errors.New("backup data after manifest")
 			}
 			h := sha256.New()
-			_, err = io.Copy(h, tr)
+			data := io.TeeReader(tr, h)
+			if sink != nil {
+				err = sink(hdr.Name, data)
+			}
+			if err == nil {
+				_, err = io.Copy(io.Discard, data)
+			}
 			actual = append(actual, Entry{hdr.Name, hdr.Size, hex.EncodeToString(h.Sum(nil))})
 		}
 		if err != nil {

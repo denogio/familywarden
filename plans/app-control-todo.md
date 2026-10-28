@@ -151,6 +151,10 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
       - [x] R7e (core r21): offline signed whole-household backup and pinned, non-
         extracting inspection; live-writer refusal, native locks, no-clobber 0600, tamper
         and traversal refusal. 72 historical-fixture checks. No restore implemented.
+      - [x] R7f (core r22): cleared-target-only pinned restore of complete core-owned
+        households with staged preflight and aside-not-delete; 116 fixture checks.
+      - [ ] R7g: monotonic household generation in signed replies, refused by phones
+        when it goes backwards (router + Android), to detect older-backup rollback.
       - [ ] Remaining historical/package/version and restore-admission gates:
         [concrete R7 safety matrix](migration-safety.md). Older non-cooperating writers,
         deletion of all ownership evidence, older-content/generation integrity and

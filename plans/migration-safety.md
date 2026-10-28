@@ -223,6 +223,48 @@ that it is the newest household state. The archive contains secrets: anyone with
 can impersonate the router. Restore is deliberately not implemented; R7f must define
 admission (newest-state evidence, pact/grant/usage floors) before any restore exists.
 
+## R7f — Restore onto a cleared router only
+
+Implemented in core **0.13.0-r22**; backend/LuCI unchanged.
+
+`familywardend -trusted-pub PIN.pub restore FILE` is offline (writer lease first) and
+holds the native locks. It admits a backup only when **all** hold:
+
+- The target household is cleared: at most an unpaired fresh router key, the lifetime
+  lock, an empty imported registry/witness and empty usage directories; the legacy
+  projection has no profiles, phones or pact. Any other file, link or approved phone is
+  refused. Restore never overlays or merges, so it cannot roll back newer router state.
+- The archive verifies against an externally supplied pin (not the replacement router's
+  local key) in a single extract-and-hash pass into a private staging directory.
+- It is a complete core-owned household (authority floor, journal, registry). Legacy
+  backups are refused: their UCI and pact files cannot be placed atomically together.
+- The staged router key pair is consistent and is the archive signer, so phones pinned
+  to it recognize the restored router.
+- The staged core passes presence-witness, configuration and owned-registry preflight.
+
+Activation moves the cleared household aside (never deleted) and renames the staged
+household into place in one directory rename. UCI/pact files are not copied: core
+startup materializes them from the restored journal and reapplies native intent. DNS
+reconciles through the normal sync; restored acknowledgements are kept so phones keep
+strict DNS instead of falling back. The command never starts the daemon.
+
+Evidence: focused tests for placement and eight refusal reasons (each asserted by
+cause, with target identity and state unchanged). `scripts/test-upgrade.sh` now backs
+up each migrated v0.9.1/v0.9.2 household, proves overlay refusal by cause, simulates a
+replacement router with a fresh identity, refuses live-daemon/local-key/changed-archive
+restores, then restores and restarts: core ownership, pact deadline/default deny, UCI
+projection, kernel rules and v2 handset verification/binding/pact/DNS all survive, and a
+second restore is refused (116 checks). Full Go race/vet, 524 fw4/nft, 101 AGH, APK
+smoke and syntax checks pass.
+
+**Known limit (not solved):** onto a cleared router, an *older* valid backup is still
+admitted. Phones pinned to the same key then accept its older policy, so changes made
+after the backup (a newer pact, tighter rules, revoked phones or approvals) are lost.
+The router alone cannot detect this; only phones observed the newer state. Closing it
+needs a monotonic household generation in signed replies that phones refuse to see go
+backwards (R7g, router + Android). Deliberate abuse with physical/root access remains
+outside the protection boundary, as before.
+
 ## Remaining implementation and acceptance matrix
 
 | Gate | Required evidence | Status |
@@ -233,8 +275,8 @@ admission (newest-state evidence, pact/grant/usage floors) before any restore ex
 | Concurrent/versioned writers | Current daemon exclusion plus supported package combinations and explicit refusal of non-cooperating/legacy writers | Current daemon lease and current-pair legacy refusal proved; historical mixed-version gate open |
 | Router/app compatibility | Old router/new app and new router/old app; unsupported capabilities/formats refuse without erasing last trusted protection | Existing protocol tests plus v2 signed-consumer continuity from both legacy source states; actual app-version matrix open |
 | Whole-household backup | One private artifact, manifest/checksums/versions, native secrets and all durable ledgers from a quiesced consistent state | Offline signed export/inspection proved (R7e); restore absent by design |
-| Restore admission | Validate before activation; never merge arbitrary old ledgers or weaken pact minima; define what can be proved when the latest state is unavailable | Open |
-| Post-restore application | Reapply native intent and reconcile DNS; do not treat backed-up applied/verified observations as fresh proof | Open |
+| Restore admission | Validate before activation; never merge arbitrary old ledgers or weaken pact minima; define what can be proved when the latest state is unavailable | Cleared-target-only, pinned, staged, complete-owned restore proved (R7f); older-backup rollback detection open (R7g) |
+| Post-restore application | Reapply native intent and reconcile DNS; do not treat backed-up applied/verified observations as fresh proof | Startup reapplies/materializes (proved); DNS acks kept until normal reconciliation |
 | Integrated release milestone | Native packages/UI/AGH plus one grouped Android milestone against the selected candidate; resolve or explicitly block on unexplained failures | Open |
 
 ### Compatibility rules to establish before enabling restore

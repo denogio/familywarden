@@ -4,16 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/denogio/familywarden/core/internal/backup"
 	"github.com/denogio/familywarden/core/internal/configuration"
 	"github.com/denogio/familywarden/core/internal/identity"
 	"github.com/denogio/familywarden/core/internal/openwrt"
 	"github.com/denogio/familywarden/core/internal/store"
-	"github.com/denogio/familywarden/core/internal/usign"
 )
 
 func exportBackup(ad openwrt.Adapter, dir, dst, coreVersion string) (m backup.Manifest, err error) {
@@ -60,22 +57,7 @@ func exportBackup(ad openwrt.Adapter, dir, dst, coreVersion string) (m backup.Ma
 }
 
 func inspectBackup(file, pubFile string, out io.Writer) error {
-	info, err := os.Lstat(pubFile)
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() || info.Size() > 1024 {
-		return errors.New("invalid trusted public key file")
-	}
-	raw, err := os.ReadFile(pubFile)
-	if err != nil {
-		return err
-	}
-	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
-	if len(lines) != 2 || !strings.HasPrefix(lines[0], "untrusted comment:") {
-		return errors.New("trusted usign public key file required")
-	}
-	key, err := usign.ParsePublicKey(lines[1])
+	key, err := trustedKey(pubFile)
 	if err != nil {
 		return err
 	}

@@ -113,20 +113,25 @@ check 'explicit import succeeds' "$(api configuration_import "{\"revision\":\"$r
 exported=$(api configuration_export)
 check 'pact captain preserved' "$exported" '@.configuration.pact.captain' jordan
 # An old v2 handset must still trust the original router key and binding.
+# The pin is copied off the router: later checks model the handset's own trust.
+cp /etc/familywarden/mast.pub /tmp/pinned.pub
 enc() { printf '%s' "$1" | sed 's/+/%2B/g; s|/|%2F|g; s/=/%3D/g'; }
-nonce=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-printf 'familywarden-sync-v2\nfw-historical\n%s\n' "$nonce" >/tmp/sync.message
-usign -S -s /tmp/phone.key -m /tmp/sync.message -x /tmp/sync.sig
-QUERY_STRING="device=fw-historical&nonce=$nonce&key=$(enc "$pub")&sig=$(enc "$(tail -1 /tmp/sync.sig)")" \
-    REQUEST_METHOD=GET sh /www-familywarden/cgi-bin/mast | sed '1,/^$/d' >/tmp/sync.reply
-{ echo 'untrusted comment: fictional migration fixture'; head -1 /tmp/sync.reply; } >/tmp/router.sig
-tail -n +2 /tmp/sync.reply | tr -d '\n' >/tmp/router.payload
-usign -V -p /etc/familywarden/mast.pub -m /tmp/router.payload -x /tmp/router.sig && pass 'v2 handset verifies the original router signature' || fail 'handset signature changed'
-phone=$(cat /tmp/router.payload)
-check 'v2 handset retains approved enrollment' "$phone" '@.enrollment' approved
-check 'v2 handset retains profile binding' "$phone" '@.binding.profile_id' jordan
-check 'v2 handset retains active pact' "$phone" '@.pact.active' true
-check 'v2 handset retains strict DNS hostname' "$phone" '@.dns.hostname' jordan-test.dns.example.test
+phone_sync() {
+    nonce=$(head -c 32 /dev/urandom | sha256sum | cut -c1-64)
+    printf 'familywarden-sync-v2\nfw-historical\n%s\n' "$nonce" >/tmp/sync.message
+    usign -S -s /tmp/phone.key -m /tmp/sync.message -x /tmp/sync.sig
+    QUERY_STRING="device=fw-historical&nonce=$nonce&key=$(enc "$pub")&sig=$(enc "$(tail -1 /tmp/sync.sig)")" \
+        REQUEST_METHOD=GET sh /www-familywarden/cgi-bin/mast | sed '1,/^$/d' >/tmp/sync.reply
+    { echo 'untrusted comment: fictional migration fixture'; head -1 /tmp/sync.reply; } >/tmp/router.sig
+    tail -n +2 /tmp/sync.reply | tr -d '\n' >/tmp/router.payload
+    usign -V -q -p /tmp/pinned.pub -m /tmp/router.payload -x /tmp/router.sig && pass "$1: v2 handset verifies its pinned router" || fail "$1: handset signature changed"
+    phone=$(cat /tmp/router.payload)
+    check "$1: v2 handset retains approved enrollment" "$phone" '@.enrollment' approved
+    check "$1: v2 handset retains profile binding" "$phone" '@.binding.profile_id' jordan
+    check "$1: v2 handset retains active pact" "$phone" '@.pact.active' true
+    check "$1: v2 handset retains strict DNS hostname" "$phone" '@.dns.hostname' jordan-test.dns.example.test
+}
+phone_sync migration
 check 'pact deadline preserved' "$exported" '@.configuration.pact.until' "$until"
 check 'frozen default deny preserved' "$exported" '@.configuration.pact.default_policy' block
 check 'frozen cooling-off preserved' "$exported" '@.configuration.pact.delay_seconds' 3600
@@ -174,7 +179,47 @@ printf x >>/tmp/changed-backup.tar.gz
 /usr/sbin/familywardend -trusted-pub /etc/familywarden/mast.pub backup-inspect /tmp/changed-backup.tar.gz >/dev/null 2>&1 \
     && fail 'inspection accepted appended archive bytes' || pass 'inspection refuses appended archive bytes'
 /usr/sbin/familywardend restore /tmp/household.tar.gz >/dev/null 2>&1 \
-    && fail 'unimplemented restore silently ran' || pass 'restore is explicitly unavailable'
+    && fail 'restore without an external pin ran' || pass 'restore requires an external pin'
+/usr/sbin/familywardend -trusted-pub /tmp/pinned.pub restore /tmp/household.tar.gz >/tmp/overlay-restore.err 2>&1 \
+    && fail 'restore overlaid an existing household' || { grep -q 'not cleared' /tmp/overlay-restore.err && pass 'restore never overlays an existing household' || fail "overlay refused for another reason: $(tail -1 /tmp/overlay-restore.err)"; }
+sha256sum -c /tmp/backup-source.before >/dev/null && pass 'refused overlay leaves the household unchanged' || fail 'refused overlay changed state'
+
+# Router replacement: a cleared router with only a fresh, unpaired identity.
+rm -rf /etc/familywarden /tmp/familywarden.state
+printf "config global 'settings'\n    option enabled '1'\n" >/etc/config/familywarden
+mkdir -p /etc/familywarden
+usign -G -s /etc/familywarden/mast.key -p /etc/familywarden/mast.pub -c fictional-replacement
+/usr/sbin/familywardend >>/tmp/upgrade-core.log 2>&1 &
+PID=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do /usr/sbin/familywardend status | grep -q '"running":true' && break; sleep 1; done
+/usr/sbin/familywardend -trusted-pub /tmp/pinned.pub restore /tmp/household.tar.gz >/dev/null 2>&1 \
+    && fail 'restore ran beside a live daemon' || pass 'restore refuses a running daemon'
+kill "$PID"; wait "$PID" || true
+/usr/sbin/familywardend -trusted-pub /etc/familywarden/mast.pub restore /tmp/household.tar.gz >/dev/null 2>&1 \
+    && fail 'restore trusted the replacement router key' || pass 'restore refuses the local unpinned key'
+/usr/sbin/familywardend -trusted-pub /tmp/pinned.pub restore /tmp/changed-backup.tar.gz >/dev/null 2>&1 \
+    && fail 'restore accepted a changed archive' || pass 'restore refuses a changed archive'
+[ ! -e /etc/familywarden/core/configuration.json ] && pass 'refused restores activate nothing' || fail 'refused restore activated state'
+/usr/sbin/familywardend -trusted-pub /tmp/pinned.pub restore /tmp/household.tar.gz >/tmp/restore.json
+check 'pinned restore admitted onto the cleared router' "$(cat /tmp/restore.json)" '@.status' restored
+previous=$(jsonfilter -i /tmp/restore.json -e '@.previous')
+[ -f "$previous/mast.key" ] && pass 'cleared identity kept aside, not deleted' || fail 'previous household missing'
+cmp -s /tmp/pinned.pub /etc/familywarden/mast.pub && pass 'original router identity restored' || fail 'restored identity differs'
+/usr/sbin/familywardend >>/tmp/upgrade-core.log 2>&1 &
+PID=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do /usr/sbin/familywardend status | grep -q '"running":true' && break; sleep 1; done
+check 'restored daemon starts' "$(/usr/sbin/familywardend status)" '@.running' true
+exported=$(api configuration_export)
+check 'restored household is core-owned' "$exported" '@.owner' core
+check 'restored pact deadline' "$exported" '@.configuration.pact.until' "$until"
+check 'restored default deny' "$exported" '@.configuration.pact.default_policy' block
+[ "$(uci -q get familywarden.jordan.name)" = Jordan ] && pass 'startup materialized the UCI projection' || fail 'UCI projection missing'
+nft list chain inet fw4 familywarden_forward 2>/dev/null | grep -q 'aa:bb:cc:00:00:02' && pass 'restored policy reached the kernel' || fail 'restored rules missing from nftables'
+phone_sync restore
+check 'restored captain allow remains refused' "$(api configuration_allow '{"profile":"jordan"}')" '@.error' 'bound by Ulysses pact'
+kill "$PID"; wait "$PID" || true
+/usr/sbin/familywardend -trusted-pub /tmp/pinned.pub restore /tmp/household.tar.gz >/dev/null 2>/tmp/second-restore.err \
+    && fail 'second restore overlaid the restored household' || { grep -q 'not cleared' /tmp/second-restore.err && pass 'second restore is refused' || fail "second restore refused for another reason: $(tail -1 /tmp/second-restore.err)"; }
 if [ "$FAILED" = 0 ]; then
     echo "Historical source migration passed: $LEGACY_REF"
 else

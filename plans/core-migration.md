@@ -59,7 +59,10 @@ checklist are in [Router adapter portability](adapter-portability.md).
 - **R7e offline backup (core r21):** `familywardend backup` refuses a running daemon,
   holds native locks, preflights read-only and writes one private, no-clobber, router-
   signed archive; `backup-inspect` needs an external pin and never authorizes restore.
-- **Still unproven:** R7 safe restore, historical APK/pilot mixed-version and full interruption gates. No second-router implementation
+- **R7f restore (core r22):** offline, pinned, cleared-target-only restore of complete
+  core-owned households; staged preflight, aside-not-delete, single rename; startup
+  materializes and reapplies. An older valid backup is not detected yet (R7g).
+- **Still unproven:** older-backup rollback detection, historical APK/pilot mixed-version and full interruption gates. No second-router implementation
   or cross-platform build is a current workstream or prerequisite for this migration.
 
 Next implementation slice: **R7 historical package/upgrade compatibility and newest-state

@@ -241,6 +241,15 @@ func main() {
 			log.Fatal(err)
 		}
 		return
+	case "restore":
+		if flag.NArg() != 2 || *trustedPub == "" {
+			log.Fatal("usage: familywardend -trusted-pub PIN.pub restore INPUT.tar.gz (offline, cleared household only)")
+		}
+		ad := openwrt.Adapter{Shell: *shell, KeyFile: *routerKey, ConfigFile: filepath.Join(*dataDir, "configuration.json")}
+		if err := restoreBackup(ad, *dataDir, flag.Arg(1), *trustedPub, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
 	case "backup-inspect":
 		if flag.NArg() != 2 {
 			log.Fatal("usage: familywardend -trusted-pub PIN.pub backup-inspect INPUT.tar.gz")
