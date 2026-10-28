@@ -148,6 +148,9 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
         households, then current APK installation/import/restart preserves keys, identity,
         DNS and pact minima; v2 signed-consumer continuity passes (46 checks). CI wired.
         This does not validate historical APK hooks or actual old Android runtime.
+      - [x] R7e (core r21): offline signed whole-household backup and pinned, non-
+        extracting inspection; live-writer refusal, native locks, no-clobber 0600, tamper
+        and traversal refusal. 72 historical-fixture checks. No restore implemented.
       - [ ] Remaining historical/package/version and restore-admission gates:
         [concrete R7 safety matrix](migration-safety.md). Older non-cooperating writers,
         deletion of all ownership evidence, older-content/generation integrity and

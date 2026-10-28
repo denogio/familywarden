@@ -146,6 +146,35 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
 done
 check 'restart keeps imported key' "$(cat /etc/familywarden/core/devices.json)" '@.devices[0].pubkey' "$pub"
 check 'restart keeps pact deadline' "$(api configuration_export)" '@.configuration.pact.until' "$until"
+# Offline backup must not stop a running daemon or repair/expire household state.
+/usr/sbin/familywardend backup /tmp/household.tar.gz >/tmp/live-backup.out 2>/tmp/live-backup.err \
+    && fail 'live backup was accepted' || pass 'backup refuses the running writer'
+[ ! -e /tmp/household.tar.gz ] && pass 'refused live backup publishes no archive' || fail 'live backup artifact exists'
+kill "$PID"; wait "$PID" || true
+sha256sum /etc/familywarden/core/configuration.json /etc/familywarden/core/devices.json /etc/config/familywarden >/tmp/backup-source.before
+/usr/sbin/familywardend backup /tmp/household.tar.gz >/tmp/backup-summary.json
+check 'offline backup created a signed format' "$(cat /tmp/backup-summary.json)" '@.format' familywarden-backup-v1
+check 'backup creation is not restore authorization' "$(cat /tmp/backup-summary.json)" '@.restore_authorized' false
+[ "$(ls -l /tmp/household.tar.gz | cut -c1-10)" = '-rw-------' ] && pass 'backup archive is private' || fail 'backup permissions'
+tar -tzf /tmp/household.tar.gz >/tmp/backup.names
+for name in household/mast.key household/agh.auth household/core/configuration.json household/core/authority.json \
+    household/core/devices.json household/pact platform-config manifest.json manifest.sig; do
+    grep -qx "$name" /tmp/backup.names || fail "backup lacks $name"
+done
+grep -q 'writer.lock' /tmp/backup.names && fail 'backup captured the lifetime lock' || pass 'backup contains keys, journals, pact and UCI but not the writer lock'
+/usr/sbin/familywardend -trusted-pub /etc/familywarden/mast.pub backup-inspect /tmp/household.tar.gz >/tmp/inspect-summary.json
+check 'external router pin verifies archive' "$(cat /tmp/inspect-summary.json)" '@.status' ok
+check 'inspection does not authorize restore' "$(cat /tmp/inspect-summary.json)" '@.restore_authorized' false
+sha256sum -c /tmp/backup-source.before >/dev/null && pass 'backup leaves journal identity and UCI unchanged' || fail 'backup mutated source'
+sha256sum /tmp/household.tar.gz >/tmp/backup-file.before
+/usr/sbin/familywardend backup /tmp/household.tar.gz >/dev/null 2>&1 && fail 'backup silently overwrote output' || pass 'existing backup is never overwritten'
+sha256sum -c /tmp/backup-file.before >/dev/null && pass 'no-clobber preserves archive bytes' || fail 'backup changed an existing archive'
+cp /tmp/household.tar.gz /tmp/changed-backup.tar.gz
+printf x >>/tmp/changed-backup.tar.gz
+/usr/sbin/familywardend -trusted-pub /etc/familywarden/mast.pub backup-inspect /tmp/changed-backup.tar.gz >/dev/null 2>&1 \
+    && fail 'inspection accepted appended archive bytes' || pass 'inspection refuses appended archive bytes'
+/usr/sbin/familywardend restore /tmp/household.tar.gz >/dev/null 2>&1 \
+    && fail 'unimplemented restore silently ran' || pass 'restore is explicitly unavailable'
 if [ "$FAILED" = 0 ]; then
     echo "Historical source migration passed: $LEGACY_REF"
 else

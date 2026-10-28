@@ -225,8 +225,33 @@ func main() {
 	socket := flag.String("socket", "/var/run/familywarden-core/core.sock", "unix socket to listen on")
 	shell := flag.String("shell", "/usr/libexec/rpcd/familywarden", "OpenWrt adapter: the familywarden shell plugin")
 	routerKey := flag.String("router-key", "/etc/familywarden/mast.key", "OpenWrt adapter: router usign secret key")
+	trustedPub := flag.String("trusted-pub", "", "backup inspection: externally trusted usign public key file")
 	flag.Parse()
 	switch flag.Arg(0) {
+	case "backup":
+		if flag.NArg() != 2 {
+			log.Fatal("usage: familywardend [flags] backup OUTPUT.tar.gz (offline only)")
+		}
+		ad := openwrt.Adapter{Shell: *shell, KeyFile: *routerKey, ConfigFile: filepath.Join(*dataDir, "configuration.json")}
+		m, err := exportBackup(ad, *dataDir, flag.Arg(1), version)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := backupSummary(os.Stdout, m); err != nil {
+			log.Fatal(err)
+		}
+		return
+	case "backup-inspect":
+		if flag.NArg() != 2 {
+			log.Fatal("usage: familywardend -trusted-pub PIN.pub backup-inspect INPUT.tar.gz")
+		}
+		if *trustedPub == "" {
+			log.Fatal("backup inspection requires -trusted-pub from an external trusted source")
+		}
+		if err := inspectBackup(flag.Arg(1), *trustedPub, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
 	case "app-canon":
 		if err := appCanon(os.Stdin, os.Stdout); err != nil {
 			log.Fatal(err)
@@ -259,6 +284,9 @@ func main() {
 		return
 	}
 
+	if flag.NArg() != 0 {
+		log.Fatal("unknown command; backup inspection is not restore authorization")
+	}
 	writer, err := acquireWriter(*dataDir)
 	if err != nil {
 		log.Fatalf("exclusive core startup: %v", err)

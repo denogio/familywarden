@@ -185,6 +185,44 @@ APK or exercise its historical maintainer scripts. The handset is a signed proto
 consumer, not a real old Android APK. Recorded pilot versions, arbitrary mixed packages,
 physical behavior and the grouped Android acceptance matrix remain separate gates.
 
+## R7e — Offline, signed whole-household backup (no restore)
+
+Implemented in core **0.13.0-r21**; backend/LuCI unchanged (rc10-r16/r8).
+
+- `familywardend backup OUT.tar.gz` runs only offline: it takes the daemon writer
+  lease first, so a running core refuses it before any native read. It then holds the
+  native ticket/state/DNS locks in their established order. It preflights presence
+  witnesses and known schemas read-only; it never constructs services, adopts,
+  imports, expires, confirms or applies policy.
+- The router-agnostic `internal/backup` format is one gzip'd USTAR archive. A
+  domain-separated (`familywarden-backup-v1`) usign signature by the existing router
+  key covers a manifest of platform, installed versions, signer fingerprint and every
+  file's size/SHA-256. The OpenWrt adapter supplies `/etc/familywarden` (keys, AGH
+  credentials/ownership/acks, pact files, core journal/ledgers/usage and witnesses)
+  plus `/etc/config/familywarden`, excluding the lifetime lock. No key is generated.
+- Output is written through a private temporary file and published with a no-clobber
+  link as 0600. Sources must be regular files within size/count limits; symlinked
+  roots/files, special files and destinations inside a source are refused. Each source
+  is re-checked for size/mtime changes while copying.
+- `familywardend -trusted-pub PIN.pub backup-inspect FILE` requires an externally
+  trusted pin, verifies every byte without extracting, and refuses foreign signers,
+  changed content/manifest/signature, traversal, duplicates, links, oversize entries,
+  truncation, concatenated gzip members and trailing bytes. Summaries never print
+  file names, paths or contents and always report `restore_authorized:false`.
+
+Evidence: focused Go fault/tamper tests (round trip, no-clobber, unsafe sources, ten
+rejected artifact mutations, live-writer refusal, lock holding/release, missing key
+not regenerated, non-disclosing summaries). `scripts/test-upgrade.sh` now also backs
+up both migrated v0.9.1/v0.9.2 households (72 checks): live refusal, private signed
+archive containing keys/journals/pact/UCI but not the lock, unchanged sources, pinned
+inspection, no-clobber and appended-byte refusal. Full Go race/vet, 524 fw4/nft,
+101 AGH, APK smoke and syntax checks pass.
+
+Limits: the signature proves **who** produced the archive and that it is intact, not
+that it is the newest household state. The archive contains secrets: anyone with it
+can impersonate the router. Restore is deliberately not implemented; R7f must define
+admission (newest-state evidence, pact/grant/usage floors) before any restore exists.
+
 ## Remaining implementation and acceptance matrix
 
 | Gate | Required evidence | Status |
@@ -194,7 +232,7 @@ physical behavior and the grouped Android acceptance matrix remain separate gate
 | Interrupted mutations | Configuration confirm/rollback, pact creation/release, grants/usage, bonus and DNS ownership/ack writes interrupted at durable/native cut points | Partial existing coverage; complete matrix open |
 | Concurrent/versioned writers | Current daemon exclusion plus supported package combinations and explicit refusal of non-cooperating/legacy writers | Current daemon lease and current-pair legacy refusal proved; historical mixed-version gate open |
 | Router/app compatibility | Old router/new app and new router/old app; unsupported capabilities/formats refuse without erasing last trusted protection | Existing protocol tests plus v2 signed-consumer continuity from both legacy source states; actual app-version matrix open |
-| Whole-household backup | One private artifact, manifest/checksums/versions, native secrets and all durable ledgers from a quiesced consistent state | Open |
+| Whole-household backup | One private artifact, manifest/checksums/versions, native secrets and all durable ledgers from a quiesced consistent state | Offline signed export/inspection proved (R7e); restore absent by design |
 | Restore admission | Validate before activation; never merge arbitrary old ledgers or weaken pact minima; define what can be proved when the latest state is unavailable | Open |
 | Post-restore application | Reapply native intent and reconcile DNS; do not treat backed-up applied/verified observations as fresh proof | Open |
 | Integrated release milestone | Native packages/UI/AGH plus one grouped Android milestone against the selected candidate; resolve or explicitly block on unexplained failures | Open |

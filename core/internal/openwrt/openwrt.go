@@ -19,14 +19,15 @@ import (
 )
 
 type Adapter struct {
-	Shell        string // the familywarden plugin, e.g. /usr/libexec/rpcd/familywarden
-	KeyFile      string // usign secret key, e.g. /etc/familywarden/mast.key
-	LockFile     string // interim state transaction lock; empty uses the OpenWrt default
-	ConfigFile   string // core household document (OpenWrt currently uses the default layout)
-	StateFile    string // volatile override projection; empty uses /tmp/familywarden.state
-	MastSeenFile string // volatile last signed-payload fetch; empty uses /tmp/familywarden.mast
-	IntentFile   string // renderer-ready network intent; empty uses /var/run/familywarden/network-intent
-	DNSLockFile  string // native DNS import/secret lock; empty uses the OpenWrt default
+	Shell            string // the familywarden plugin, e.g. /usr/libexec/rpcd/familywarden
+	KeyFile          string // usign secret key, e.g. /etc/familywarden/mast.key
+	LockFile         string // interim state transaction lock; empty uses the OpenWrt default
+	ConfigFile       string // core household document (OpenWrt currently uses the default layout)
+	StateFile        string // volatile override projection; empty uses /tmp/familywarden.state
+	MastSeenFile     string // volatile last signed-payload fetch; empty uses /tmp/familywarden.mast
+	IntentFile       string // renderer-ready network intent; empty uses /var/run/familywarden/network-intent
+	DNSLockFile      string // native DNS import/secret lock; empty uses the OpenWrt default
+	BackupConfigFile string // native UCI file captured by offline backup; empty uses the default
 }
 
 const maxOutput = 1 << 20
