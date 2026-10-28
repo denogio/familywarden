@@ -156,6 +156,9 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
       - [x] R7g (core r23 + Android): household generation with restore lineage in signed
         replies; phones refuse older restored state permanently. 204 JVM tests, 156
         fixture checks. No admin override by design; old APKs are not protected.
+      - [x] R7h: real released v0.9.2 router/LuCI APK upgrade via apk (maintainer
+        scripts included) through migration/backup/restore/generation, 240 checks, CI-wired;
+        grouped Android 15 milestone on r23: 98 + 31 emulator checks pass.
       - [ ] Remaining historical/package/version and restore-admission gates:
         [concrete R7 safety matrix](migration-safety.md). Older non-cooperating writers,
         deletion of all ownership evidence, older-content/generation integrity and

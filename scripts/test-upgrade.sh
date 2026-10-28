@@ -1,7 +1,9 @@
 #!/bin/sh
-# Historical backend-source -> current APK migration in disposable OpenWrt.
-# This exercises tagged legacy code, not historical APK maintainer scripts.
-# Usage: sh scripts/test-upgrade.sh [current-apk-dir]
+# Historical -> current APK migration in disposable OpenWrt. Tagged backend
+# sources always run; LEGACY_RELEASE_DIR=<dir with a released familywarden and
+# LuCI .apk> also installs that real package (its maintainer scripts included)
+# and upgrades it with apk.
+# Usage: [LEGACY_RELEASE_DIR=dir] sh scripts/test-upgrade.sh [current-apk-dir]
 
 set -eu
 if [ "${1:-}" != --inside ]; then
@@ -18,6 +20,15 @@ if [ "${1:-}" != --inside ]; then
             "${OPENWRT_IMAGE:-openwrt/rootfs:x86-64-25.12.4}" \
             sh /src/scripts/test-upgrade.sh --inside
     done
+    if [ -n "${LEGACY_RELEASE_DIR:-}" ]; then
+        RELEASE=$(cd "$LEGACY_RELEASE_DIR" && pwd)
+        ref=release-$(ls "$RELEASE"/familywarden-[0-9]*.apk | sed 's|.*/familywarden-||; s|\.apk$||')
+        docker run --rm --memory=768m --cpus=2 --cap-add NET_ADMIN \
+            -e FW_TEST_UPGRADE_DISPOSABLE=1 -e LEGACY_REF="$ref" \
+            -v "$REPO:/src:ro" -v "$APKS:/apk:ro" -v "$RELEASE:/legacy-release:ro" \
+            "${OPENWRT_IMAGE:-openwrt/rootfs:x86-64-25.12.4}" \
+            sh /src/scripts/test-upgrade.sh --inside
+    fi
     exit
 fi
 [ "${FW_TEST_UPGRADE_DISPOSABLE:-}" = 1 ] && [ -f /.dockerenv ] || exit 1
@@ -29,9 +40,18 @@ check() {
     [ "$actual" = "$4" ] && pass "$1" || fail "$1 (expected $4; got $actual)"
 }
 BIN=/usr/libexec/rpcd/familywarden
-mkdir -p /usr/libexec/rpcd /etc/familywarden /var/lock /var/etc /var/run/familywarden-core
-cp /legacy/backend "$BIN"
-chmod 755 "$BIN"
+mkdir -p /usr/libexec/rpcd /var/lock /var/etc /var/run/familywarden-core
+packaged=0
+if [ -d /legacy-release ]; then
+    packaged=1
+    apk update >/dev/null 2>&1
+    apk add --allow-untrusted /legacy-release/*.apk >/tmp/legacy-apk.log 2>&1 || { tail -20 /tmp/legacy-apk.log; exit 1; }
+    [ -x "$BIN" ] && pass 'released legacy package installed with its maintainer scripts' || fail 'released backend missing'
+else
+    cp /legacy/backend "$BIN"
+    chmod 755 "$BIN"
+fi
+mkdir -p /etc/familywarden
 cat >/etc/config/familywarden <<'EOF'
 config global 'settings'
     option enabled '1'
@@ -65,11 +85,13 @@ uci set network.lan=interface
 uci set network.lan.device=br-lan
 uci set network.lan.proto=static
 uci commit network
-uci add firewall include >/dev/null
-uci set firewall.@include[-1].fw4_compatible=1
-uci set firewall.@include[-1].type=nftables
-uci set firewall.@include[-1].path=/var/etc/familywarden.include
-uci commit firewall
+if [ "$packaged" = 0 ]; then # the released postinst adds this itself
+    uci add firewall include >/dev/null
+    uci set firewall.@include[-1].fw4_compatible=1
+    uci set firewall.@include[-1].type=nftables
+    uci set firewall.@include[-1].path=/var/etc/familywarden.include
+    uci commit firewall
+fi
 usign -G -s /tmp/phone.key -p /tmp/phone.pub -c fictional-phone
 usign -G -s /etc/familywarden/mast.key -p /etc/familywarden/mast.pub -c fictional-router
 pub=$(tail -1 /tmp/phone.pub)
@@ -95,6 +117,13 @@ cp /etc/familywarden/pact.dns /tmp/pact-dns.before
 
 apk update >/dev/null 2>&1
 apk add --allow-untrusted /apk/familywarden-core-*.apk /apk/familywarden-[0-9]*.apk /apk/luci-app-familywarden-*.apk >/tmp/upgrade-apk.log 2>&1 || { tail -20 /tmp/upgrade-apk.log; exit 1; }
+[ "$(uci show firewall | grep -c "path='/var/etc/familywarden.include'")" = 1 ] && pass 'upgrade keeps exactly one firewall include' || fail 'firewall include duplicated or lost'
+if [ "$packaged" = 1 ]; then
+    expected=$(basename /apk/familywarden-[0-9]*.apk .apk)
+    installed=$(apk list -I familywarden 2>/dev/null | sed 's/ .*//')
+    [ "$installed" = "$expected" ] && pass 'apk replaced the released package' || fail "released package not upgraded (installed $installed, expected $expected)"
+    [ -n "$(uci -q get uhttpd.familywarden)" ] && pass 'upgrade keeps the protected-release page instance' || fail 'sail page instance lost'
+fi
 /usr/sbin/familywardend >>/tmp/upgrade-core.log 2>&1 &
 PID=$!
 trap 'kill "$PID" 2>/dev/null || true' EXIT
