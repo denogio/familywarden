@@ -89,4 +89,5 @@
     <string name="duration_minutes">%1$d min.</string>
     <string name="duration_hours_minutes">%1$d t. %2$d min.</string>
     <string name="duration_days_hours">%1$d d. %2$d t.</string>
+    <string name="action_back">Tilbage</string>
 </resources>

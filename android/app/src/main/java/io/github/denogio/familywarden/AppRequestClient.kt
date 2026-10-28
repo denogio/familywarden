@@ -8,7 +8,7 @@ import java.util.UUID
 
 /** LAN first. UI choices are never authority: the router rechecks every signed action. */
 object AppRequestClient {
-    fun request(context: Context, target: String, minutes: Int): UploadReply = synchronized(Mast) {
+    fun request(context: Context, target: String, minutes: Int, note: String = ""): UploadReply = synchronized(Mast) {
         val store = Store(context)
         check(Mast.isDeviceOwner(context)) { "managed phone required" }
         check(store.pendingUpload == null) { "pending upload" }
@@ -24,7 +24,7 @@ object AppRequestClient {
                 .takeIf { it.matches(Regex("[\\p{L}\\p{M}\\p{N}\\p{P}\\p{S} ]{1,64}")) } ?: ""
         }
         val raw = RequestProtocol.request(UUID.randomUUID().toString(), store.deviceId, binding.profileId,
-            target, minutes, fresh.state.serverTime, label)
+            target, minutes, fresh.state.serverTime, label, RequestProtocol.requestNote(note))
         val upload = RequestUpload("request", raw, requireNotNull(store.publicKey), store.deviceId)
         store.pendingUpload = upload // durable before the first network attempt
         deliver(context, store, fresh, upload)

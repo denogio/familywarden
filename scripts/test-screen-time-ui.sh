@@ -63,24 +63,24 @@ check_nav() {
     python3 "$ROOT/test/android/check_navigation.py" "$OUT/$1.xml" --selected "$2" --density "$DENSITY" --labels "${@:3}"
 }
 render ChildTodayPreview child-light
-check_nav child-light Today Today History Requests Settings
+check_nav child-light Today Today History Settings
 contains child-light '38 min'
 contains child-light 'School'
 tap child-light History
 capture child-history
-check_nav child-history History Today History Requests Settings
+check_nav child-history History Today History Settings
 contains child-history 'Recorded screen time on this phone'
 contains child-history '82 min'
 tap child-history Settings
 capture child-settings
-check_nav child-settings Settings Today History Requests Settings
+check_nav child-settings Settings Today History Settings
 contains child-settings 'Control address'
 render NearLimitPreview near-limit
 contains near-limit '5 min'
 contains near-limit 'ALMOST TIME'
 render DowntimePreview downtime
-contains downtime 'Time for a break'
-contains downtime 'Downtime ends'
+contains downtime 'Downtime until'
+contains downtime 'Calls and the apps below still work.'
 render ChildUnknownPreview unknown
 contains unknown 'Not counted right now'
 contains unknown 'Allow usage access'
@@ -91,17 +91,17 @@ render TimesUpPreview times-up-dark
 contains times-up-dark 'Time’s up for today'
 contains times-up-dark 'Phone, emergency calls and alarm clock'
 render AdultTodayPreview adult-dark
-check_nav adult-dark Today Today Requests DNS Ulysses Settings
+check_nav adult-dark Today Today DNS Ulysses Settings
 contains adult-dark 'Ulysses'
 "${ADB[@]}" shell cmd locale set-app-locales "$PKG" --locales da-DK >/dev/null
 "${ADB[@]}" shell settings put system font_scale 2.0
 sleep 3
 render ChildLargePreview danish-large
-check_nav danish-large 'I dag' 'I dag' Historik Anmodninger Indstillinger
+check_nav danish-large 'I dag' 'I dag' Historik Indstillinger
 contains danish-large 'TID TILBAGE I DAG'
 contains danish-large '38 min.'
 contains danish-large 'I dag'
 for _ in 1 2 3 4; do "${ADB[@]}" shell input swipe 300 1100 300 400 400; done
 capture danish-large-scrolled
-contains danish-large-scrolled 'ALTID TILLADT'
+contains danish-large-scrolled 'ALTID OK'
 echo "Screen-time rendering checks passed. Fictional-fixture screenshots: $OUT"

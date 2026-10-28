@@ -201,7 +201,6 @@ try:
         return any(a['package'] == FIXTURE for a in alex.get('pending', []))
     wait('the paused new app is reported to the router', reported_new, 150)
     home()
-    tap('Requests')
     wait('the child sees it waiting for a parent', lambda: bool(nodes('Waiting for a parent')))
     assert call('app_decision', {'profile': 'alex', 'package': FIXTURE, 'action': 'approve'})['state'] == 'approved'
     def unpaused():
@@ -229,8 +228,10 @@ familywarden reload >/dev/null""")
     adb('shell', 'am', 'start', '-W', '-n', FIXTURE + '/.ProbeActivity')
     wait('the standing app minute is exhausted and suspended', suspended, 115)
     home()
-    tap('Requests')
+    tap('Ask for more time', scroll=True)
     tap('FamilyWarden install fixture', scroll=True)
+    tap('Next')
+    tap('Other amount')
     minutes(1)
     router("""cat > /www-familywarden/cgi-bin/app <<'SH'
 #!/bin/sh
@@ -253,7 +254,6 @@ touch /tmp/drop-next-app-response
     adb('shell', f"run-as {PKG} sh -c 'kill -9 $(pidof {PKG})'", check=False)
     wait('request process really died', lambda: adb('shell', 'pidof', PKG, check=False).strip() != old_pid)
     home()
-    tap('Requests')
     wait('exact-byte retry survives process death', lambda: bool(nodes('Retry action')))
     tap('Retry action')
     wait('verified retry resolves the local outbox', lambda: not nodes('Retry action'))

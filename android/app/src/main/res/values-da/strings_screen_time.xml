@@ -9,24 +9,22 @@
     <string name="fw_time_up_title">Tiden er gået for i dag</string>
     <string name="fw_time_downtime">PAUSETID</string>
     <string name="fw_time_downtime_title">Tid til en pause</string>
-    <string name="fw_time_used_of">%1$s af %2$s registreret i dag</string>
+    <string name="fw_time_used_of">%1$s af %2$s brugt</string>
     <string name="fw_time_not_counted">Tiden tælles ikke lige nu</string>
     <string name="fw_time_no_daily_limit">Ingen daglig grænse for skærmtid.</string>
     <string name="fw_time_no_app_limit">Ingen særskilt appgrænse</string>
     <string name="fw_time_save_work">Gem det, du er i gang med. Dagens tid er snart brugt.</string>
     <string name="fw_time_downtime_starts">Pausetiden starter %1$s</string>
-    <string name="fw_time_downtime_ends">Pausetiden slutter %1$s</string>
-    <string name="fw_time_reset">Et nyt dagsbudget starter %1$s. Pausetid kan stadig gælde.</string>
-    <string name="fw_time_still_work">Opkald, alarmer og de altid tilladte apps nedenfor virker stadig.</string>
+    <string name="fw_time_reset">Et nyt dagsbudget starter %1$s; pausetid kan stadig gælde. Dette virker stadig:</string>
+    <string name="fw_time_still_work">Opkald og apps nedenfor virker stadig.</string>
     <string name="fw_time_other_devices">Inklusive %1$s på andre enheder</string>
     <string name="fw_time_this_phone">Registreret på denne telefon</string>
     <string name="fw_time_offline">Routeren kunne ikke nås. Dine gemte regler gælder stadig.</string>
     <string name="fw_time_unavailable">Der er ingen pålidelig tidsmåling lige nu. Gemte regler og pausetid gælder stadig; den resterende tid bliver ikke gættet.</string>
-    <string name="fw_time_apps">APPS MED REGLER</string>
+    <string name="fw_time_apps">APPS MED GRÆNSER</string>
     <string name="fw_time_not_allowed">Sat på pause af appreglen</string>
-    <string name="fw_time_always">ALTID TILLADT</string>
+    <string name="fw_time_always">ALTID OK</string>
     <string name="fw_time_calls_clock">Telefon, nødopkald og vækkeur</string>
-    <string name="fw_time_always_body">Disse apps tæller ikke med i dagens skærmtid og virker i pausetiden.</string>
     <string name="fw_history_local">Registreret skærmtid på denne telefon i op til 30 dage. Huller i målingen kan gøre tallene ufuldstændige. Det er lokale tal, ikke webhistorik eller rapporter fra andre telefoner.</string>
     <string name="fw_history_empty">Der er endnu ingen registreret historik.</string>
     <plurals name="fw_time_minutes">
@@ -35,4 +33,13 @@
     </plurals>
     <string name="fw_sync_upgrade_required">Denne app kan ikke anvende de funktioner, som reglerne kræver. Opdater FamilyWarden; de senest betroede regler gælder stadig.</string>
     <string name="fw_role_parent">Kan godkende anmodninger for: %1$s</string>
+    <string name="fw_time_downtime_until">Pausetid indtil %1$s</string>
+    <string name="fw_time_phone_tile">Telefon</string>
+    <string name="fw_time_hours">%d t.</string>
+    <string name="fw_time_hours_minutes">%1$d t. %2$d min.</string>
+    <string name="fw_time_row_of">%1$s af %2$s</string>
+    <string name="fw_time_not_counted_short">Tælles ikke</string>
+    <string name="fw_time_uncounted_title">Tiden kan ikke tælles lige nu</string>
+    <string name="fw_time_uncounted_body">Brugsadgang for FamilyWarden er slået fra på denne telefon. Grænser og pausetid gælder stadig.</string>
+    <string name="fw_ask_who">En forælder kan sige ja fra sin telefon.</string>
 </resources>

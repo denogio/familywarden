@@ -121,7 +121,7 @@ class FamilyWardenActions(
     val openSail: () -> Unit,
     val copyDiagnostics: () -> Unit,
     val openUsageAccess: () -> Unit,
-    val askTime: (String, Int) -> Unit = { _, _ -> },
+    val askTime: (String, Int, String) -> Unit = { _, _, _ -> },
     val answerTime: (ParentRequest, Boolean, Int) -> Unit = { _, _, _ -> },
     val decideApp: (NewAppRequest, Boolean) -> Unit = { _, _ -> },
     val retryUpload: () -> Unit = {},

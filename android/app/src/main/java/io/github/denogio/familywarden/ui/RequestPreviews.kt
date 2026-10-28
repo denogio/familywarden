@@ -68,6 +68,12 @@ private fun ParentRequestsLargePreview() { MastTheme { FamilyWardenScreen(parent
 @Composable
 private fun ChildRequestPreview() { MastTheme { FamilyWardenScreen(child, actions, initialRequests = true) } }
 
+@Preview(name = "Child — ask for more time", widthDp = 400, heightDp = 840)
+@Composable
+private fun ChildAskPreview() { MastTheme { FamilyWardenScreen(child.copy(childRequest = null,
+    screenTime = child.screenTime!!.copy(kind = TodayKind.Allowed, usedMillis = 82 * 60_000L,
+        apps = listOf(AppTimeRow("com.example.video", "Video", 12 * 60_000L, 30 * 60_000L, false, false)))), actions) } }
+
 @Preview(name = "Child — retry is not another request", widthDp = 400, heightDp = 840)
 @Composable
 private fun ChildRetryPreview() { MastTheme { FamilyWardenScreen(child.copy(uploadPending = true), actions, initialRequests = true) } }

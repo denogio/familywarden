@@ -125,13 +125,21 @@ object RequestProtocol {
     }
 
     fun request(id: String, device: String, profile: String, target: String, minutes: Int,
-        created: Long, label: String = ""): String {
+        created: Long, label: String = "", note: String = ""): String {
         require(id.matches(requestId) && device.matches(this.device) && profile.matches(Regex("[A-Za-z0-9_-]{1,64}")))
         require((target == "total" || validPackage(target)) && minutes in 1..240 && created in 1..MAX_EPOCH)
         val o = JSONObject().put("type", "request").put("v", 1).put("request_id", id).put("device", device)
             .put("profile", profile).put("target", target).put("minutes", minutes).put("created", created)
         if (label.isNotEmpty()) o.put("label", label).also { text(it, "label", 64) }
+        if (note.isNotEmpty()) o.put("note", note).also { text(it, "note", 140) }
         return o.toString()
+    }
+
+    /** One line of printable text, at most 140 characters (the router's own rule). */
+    fun requestNote(input: String): String {
+        val line = input.replace(Regex("\\s+"), " ").trim()
+        val clipped = line.substring(0, line.offsetByCodePoints(0, minOf(140, line.codePointCount(0, line.length))))
+        return clipped.takeIf { it.matches(Regex("[\\p{L}\\p{M}\\p{N}\\p{P}\\p{S} ]{1,140}")) } ?: ""
     }
 
     fun newApps(arr: JSONArray, scope: List<ProfileRef>): List<NewAppRequest> {

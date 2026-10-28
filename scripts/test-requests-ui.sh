@@ -161,7 +161,22 @@ capture scope-current-picker
 if grep -Fq 'text="Sam"' "$OUT/scope-current-picker.xml"; then echo 'Revoked child remains selectable'; exit 1; fi
 "${ADB[@]}" shell input keyevent KEYCODE_BACK
 render ChildRequestPreview child-pending
-contains child-pending 'Waiting for a parent'
+contains child-pending 'Your request'
+contains child-pending 'Waiting'
+contains child-pending 'You can have one request open at a time.'
+render ChildAskPreview child-today
+check_nav child-today Today Today History Settings
+tap child-today 'Ask for more time'
+capture child-ask-what
+contains child-ask-what 'What do you need more time for?'
+tap child-ask-what Video
+tap child-ask-what Next
+capture child-ask-how
+contains child-ask-how 'How much more?'
+contains child-ask-how 'Add a note (optional)'
+tap child-ask-how 'Other amount'
+capture child-ask-custom
+contains child-ask-custom 'Choose 1–240 minutes.'
 render ChildRetryPreview child-retry
 contains child-retry 'Retry action'
 tap child-retry 'Dismiss local retry'

@@ -79,7 +79,7 @@ class MainActivity : ComponentActivity() {
         openUsageAccess = {
             runCatching { startActivity(Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
         },
-        askTime = { target, minutes -> upload { AppRequestClient.request(this, target, minutes) } },
+        askTime = { target, minutes, note -> upload { AppRequestClient.request(this, target, minutes, note) } },
         answerTime = { request, approve, minutes -> upload { AppRequestClient.answer(this, request, approve, minutes) } },
         decideApp = { app, approve -> upload { AppRequestClient.decideApp(this, app, approve) } },
         retryUpload = { upload { AppRequestClient.retry(this) } },

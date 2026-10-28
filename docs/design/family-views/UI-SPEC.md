@@ -91,6 +91,47 @@ its labeled tabs remain superseded by the user's icon-only navigation decision.
 
 This is a presentation split, not a grant, authorization, pact or transport change.
 
+### Child Today and Ask flow aligned with `FamilyWarden (5).html` (2026-10-28)
+
+Visual port of the child boards; no policy, authorization or enforcement change.
+
+- Today: gold-tinted hourglass/moon badge in the night card, compact durations
+  ("1 h 22 min of 2 h used"), the next downtime change in the hero line, router-local
+  weekday and time under the visible **Today** heading, a plain rounded meter.
+- Rows: decorative letter tiles (stable colour per package, two letters where first
+  letters collide) and a right-aligned "12 min of 30 min"; **Always OK** as a tile grid.
+- Time's up and Downtime keep what still works inside the night card; Time's up uses
+  the gold primary Ask button and "A parent can say yes from their phone."
+- Missing usage access is a warning card with the existing "Allow usage access" action.
+- Navigation icons: sun (Today), bars (History), sliders (Settings), still icon-only.
+- The child's own Requests tab is gone (child tabs Today · History · Settings; adult
+  Today · DNS · Ulysses · Settings). Today shows **Your request** with a status chip
+  (Waiting / Approved / Not this time / Closed), the retry card for an uncertain
+  delivery and apps waiting for a parent. **Ask for more time** opens two full-screen
+  steps: what for (all apps or one app, with time left when known), then how much
+  (15 min, 30 min, 1 h, 2 h, 4 h, other amount) with an optional note and Send.
+- The optional note is sent in the existing signed request (`note`, router rule:
+  printable, at most 140 characters); parents already receive and display it.
+
+Deliberate deviations from the board, with reasons:
+
+- Icon-only navigation and the **Today** heading (user decision of 2026-10-25) stay.
+- Downtime keeps **Ask for more time**: an approved grant does work during downtime in
+  the enforcement model, so hiding the button would remove a working path.
+- **Other amount** (1–240 min) is offered next to the presets so short asks remain
+  possible; the native request test uses one minute.
+- Parent names in "Robin or Kim can say yes" are not shown: the signed policy carries
+  parent *device* names, not people, so the copy stays generic.
+- The near-limit line does not promise a pause clock time: that would extrapolate a
+  countdown from sampled usage. "Recorded on this phone" stays below the hero.
+- Tiles are letter tiles as on the boards, not launcher icons.
+
+Verification: JVM tests, lint and debug build; `test-screen-time-ui.sh` and
+`test-requests-ui.sh` (light, dark, Danish at 200 %, icon-only navigation checks and
+the two-step ask flow) on a disposable Android 15 emulator; `test-requests-emulator.sh`
+31/31 with the real flow against a disposable router; `test-mast-emulator.sh` 98/98.
+`scripts/capture-android-previews.sh` renders named previews for board comparison.
+
 ## Explicitly deferred
 
 - Off-home parent notifications (P9); LAN-only notifications exist while syncing.

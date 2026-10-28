@@ -33,7 +33,7 @@ private enum class Page(val title: Int, val icon: ImageVector) {
     Overview(R.string.fw_overview, Icons.Outlined.Explore),
     FamilyTime(R.string.fw_family_screen_time, Icons.Outlined.BarChart),
     Controls(R.string.fw_family_controls, Icons.Outlined.Tune),
-    History(R.string.fw_history, Icons.Outlined.History),
+    History(R.string.fw_history, Icons.Outlined.BarChart),
     Requests(R.string.fw_requests, Icons.Outlined.Inbox),
     Dns(R.string.fw_dns, Icons.Outlined.Shield),
     Ulysses(R.string.fw_ulysses, MastIcons.Mast),
@@ -51,13 +51,14 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
     val familyProfile = state.familyProfile(selectedChild)
     LaunchedEffect(familyProfile?.id) { selectedChild = familyProfile?.id }
     var featureSheet by rememberSaveable { mutableStateOf(false) }
+    var asking by rememberSaveable { mutableStateOf(false) }
     var enableConfirmation by rememberSaveable { mutableStateOf(false) }
     val childNavigation = state.appsActive && state.binding?.captain == false
     val pages = if (showFamily) listOf(Page.FamilyTime, Page.Controls, Page.Requests) else Page.entries.filter {
         when (it) {
             Page.FamilyTime, Page.Controls -> false
             Page.Overview -> !state.parentMode
-            Page.Requests -> state.appsActive
+            Page.Requests -> false // own requests start from Today; the inbox is a family page
             Page.History -> childNavigation
             Page.Dns -> !childNavigation && !state.parentMode
             Page.Ulysses -> state.showUlysses
@@ -66,10 +67,13 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
     }
     val page = pages.firstOrNull { it.name == (if (showFamily) familySelected else selected) } ?: pages.first()
     val readyForNavigation = (state.owner || state.parentMode) && state.paired
+    // The ask flow is a full screen above Today, with its own back arrow.
+    val askFlow = asking && readyForNavigation && !showFamily && page == Page.Overview && state.screenTime != null
+    androidx.activity.compose.BackHandler(enabled = askFlow) { asking = false }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            Surface(color = MaterialTheme.colorScheme.background) {
+            if (!askFlow) Surface(color = MaterialTheme.colorScheme.background) {
                 Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars)
                     .padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
@@ -77,10 +81,20 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
                             Icon(painterResource(R.drawable.ic_lighthouse), null, tint = Color.Unspecified, modifier = Modifier.size(28.dp))
                             Spacer(Modifier.width(10.dp))
                         }
-                        Text(stringResource(if (!readyForNavigation) R.string.fw_name
-                            else if (showFamily && page == Page.Requests) R.string.fw_family_requests
-                            else if (page == Page.Overview && state.screenTime != null) R.string.fw_today else page.title),
-                            style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
+                        Column {
+                            Text(stringResource(if (!readyForNavigation) R.string.fw_name
+                                else if (showFamily && page == Page.Requests) R.string.fw_family_requests
+                                else if (page == Page.Overview && state.screenTime != null) R.string.fw_today else page.title),
+                                style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
+                            // Today names the router-local weekday and time, as on the design boards.
+                            state.screenTime?.takeIf { readyForNavigation && page == Page.Overview }?.let { time ->
+                                val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+                                val at = Instant.ofEpochMilli(state.nowMillis).atZone(time.resetsAt.zone)
+                                Text(at.format(java.time.format.DateTimeFormatter.ofPattern("EEEE", locale)) + " · " +
+                                    at.format(java.time.format.DateTimeFormatter.ofLocalizedTime(java.time.format.FormatStyle.SHORT).withLocale(locale)),
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
                     if (readyForNavigation && state.canManageFamily && !state.parentMode) {
                         TextButton(onClick = { familyMode = !showFamily }) {
@@ -97,14 +111,15 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
             }
         },
         bottomBar = {
-            if (readyForNavigation) NavigationBar {
+            if (readyForNavigation && !askFlow) NavigationBar {
                 pages.forEach { p -> NavigationBarItem(
                     selected = p == page,
                     onClick = { if (showFamily) familySelected = p.name else selected = p.name },
                     // Keep localized screen-reader names without visible labels, at every font scale.
                     icon = {
                         BadgedBox(badge = { if (showFamily && p == Page.Requests && state.familyPendingCount > 0) Badge { Text(state.familyPendingCount.toString()) } }) {
-                            Icon(p.icon, stringResource(if (showFamily && p == Page.Requests) R.string.fw_family_requests
+                            Icon(if (p == Page.Overview && state.screenTime != null) Icons.Outlined.WbSunny else p.icon,
+                                stringResource(if (showFamily && p == Page.Requests) R.string.fw_family_requests
                                 else if (p == Page.Overview && state.screenTime != null) R.string.fw_today else p.title))
                         }
                     },
@@ -123,13 +138,14 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
                 FamilyChildSelector(state, familyProfile?.id) { selectedChild = it }
             }
             when {
+                askFlow -> AskFlow(state, actions) { asking = false }
                 !state.owner && !state.parentMode -> OwnerSetup(actions, !state.provisioned)
                 !state.paired -> PairSetup(actions, state.parentMode)
                 page == Page.FamilyTime -> FamilyTimeContent(state, familyProfile?.id)
                 page == Page.Controls -> FamilyControlsContent(state, actions, familyProfile?.id)
                 page == Page.Requests -> RequestsContent(state, actions, family = showFamily)
                 page == Page.Settings && state.parentMode -> ParentSettings(state, actions)
-                page == Page.Overview && state.screenTime != null -> ScreenTimeContent(state, actions) { selected = Page.Requests.name }
+                page == Page.Overview && state.screenTime != null -> ScreenTimeContent(state, actions) { asking = true }
                 page == Page.History -> ScreenTimeHistory(state.screenTime)
                 page == Page.Overview -> {
                     DnsHero(state)

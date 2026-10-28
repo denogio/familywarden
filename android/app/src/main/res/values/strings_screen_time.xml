@@ -9,24 +9,22 @@
     <string name="fw_time_up_title">Time’s up for today</string>
     <string name="fw_time_downtime">DOWNTIME</string>
     <string name="fw_time_downtime_title">Time for a break</string>
-    <string name="fw_time_used_of">%1$s of %2$s recorded today</string>
+    <string name="fw_time_used_of">%1$s of %2$s used</string>
     <string name="fw_time_not_counted">Not counted right now</string>
     <string name="fw_time_no_daily_limit">No daily screen-time limit.</string>
     <string name="fw_time_no_app_limit">No individual app limit</string>
     <string name="fw_time_save_work">Save what you’re doing. Your daily time is almost used up.</string>
-    <string name="fw_time_downtime_starts">Downtime starts %1$s</string>
-    <string name="fw_time_downtime_ends">Downtime ends %1$s</string>
-    <string name="fw_time_reset">A new daily budget starts %1$s. Downtime may still apply.</string>
-    <string name="fw_time_still_work">Calls, alarms and the always-allowed apps below still work.</string>
+    <string name="fw_time_downtime_starts">Downtime starts at %1$s</string>
+    <string name="fw_time_reset">A new daily budget starts %1$s; downtime may still apply. These still work:</string>
+    <string name="fw_time_still_work">Calls and the apps below still work.</string>
     <string name="fw_time_other_devices">Includes %1$s on other devices</string>
     <string name="fw_time_this_phone">Recorded on this phone</string>
     <string name="fw_time_offline">The router could not be reached. Your saved rules still apply.</string>
     <string name="fw_time_unavailable">A reliable time count is not available right now. Saved rules and downtime still apply; remaining time is not estimated.</string>
-    <string name="fw_time_apps">APPS WITH RULES</string>
+    <string name="fw_time_apps">APPS WITH LIMITS</string>
     <string name="fw_time_not_allowed">Paused by the app rule</string>
-    <string name="fw_time_always">ALWAYS ALLOWED</string>
+    <string name="fw_time_always">ALWAYS OK</string>
     <string name="fw_time_calls_clock">Phone, emergency calls and alarm clock</string>
-    <string name="fw_time_always_body">These apps do not count towards daily screen time and work during downtime.</string>
     <string name="fw_history_local">Recorded screen time on this phone, for up to 30 days. Gaps can make totals incomplete. These are local totals, not website history or reports from other phones.</string>
     <string name="fw_history_empty">No recorded history is available yet.</string>
     <plurals name="fw_time_minutes">
@@ -35,4 +33,13 @@
     </plurals>
     <string name="fw_sync_upgrade_required">This app cannot apply the required policy features. Update FamilyWarden; the last trusted policy remains in force.</string>
     <string name="fw_role_parent">Can approve requests for: %1$s</string>
+    <string name="fw_time_downtime_until">Downtime until %1$s</string>
+    <string name="fw_time_phone_tile">Phone</string>
+    <string name="fw_time_hours">%d h</string>
+    <string name="fw_time_hours_minutes">%1$d h %2$d min</string>
+    <string name="fw_time_row_of">%1$s of %2$s</string>
+    <string name="fw_time_not_counted_short">Not counted</string>
+    <string name="fw_time_uncounted_title">Time can’t be counted right now</string>
+    <string name="fw_time_uncounted_body">Usage access for FamilyWarden is turned off on this phone. Limits and downtime still apply.</string>
+    <string name="fw_ask_who">A parent can say yes from their phone.</string>
 </resources>

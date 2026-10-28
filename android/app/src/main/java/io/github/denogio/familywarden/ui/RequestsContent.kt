@@ -22,7 +22,6 @@ private data class DecisionChoice(val request: ParentRequest, val approve: Boole
 
 @Composable
 fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions, family: Boolean = state.canManageFamily) {
-    var target by rememberSaveable { mutableStateOf<String?>(null) }
     var decision by remember { mutableStateOf<DecisionChoice?>(null) }
     var forget by rememberSaveable { mutableStateOf(false) }
     val ready = !state.syncing && !state.uploadPending
@@ -95,51 +94,7 @@ fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions, fami
         Text(stringResource(R.string.fw_request_no_scope), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(R.string.fw_request_no_scope_body))
     }
-    if (!family && state.appsActive) {
-        HeroCard {
-            HeroTitle(stringResource(R.string.fw_request_ask))
-            HeroBody(stringResource(if (state.bound) R.string.fw_request_pact else R.string.fw_request_intro))
-        }
-        if (state.waitingApps.isNotEmpty()) SectionCard {
-            Overline(stringResource(R.string.fw_app_waiting_title))
-            state.waitingApps.forEach { Text(it, style = MaterialTheme.typography.titleMedium) }
-            Text(stringResource(R.string.fw_app_waiting_body), style = MaterialTheme.typography.bodySmall)
-        }
-        state.childRequest?.let { r -> SectionCard {
-            val expired = state.requestEpoch?.let { now -> now >= (r.notAfter ?: r.expires) } == true
-            Text(stringResource(when {
-                expired || r.state == "expired" -> R.string.fw_request_expired
-                r.state == "approved" -> R.string.fw_request_approved
-                r.state == "denied" -> R.string.fw_request_denied
-                else -> R.string.fw_request_pending
-            }), style = MaterialTheme.typography.titleMedium)
-            Text(if (r.target == "total") stringResource(R.string.fw_request_screen)
-                else state.requestTargets.firstOrNull { it.pkg == r.target }?.label ?: r.target)
-            val amount = r.granted ?: r.minutes
-            Text(pluralStringResource(R.plurals.fw_request_amount, amount, amount))
-            if (r.state == "approved" && !expired) {
-                val remaining = state.screenTime?.grantRemaining?.get(r.target)
-                if (remaining != null) {
-                    val minutes = ((remaining + 59_999) / 60_000).toInt()
-                    Text(pluralStringResource(R.plurals.fw_request_remaining, minutes, minutes))
-                } else Text(stringResource(if (state.appsStatus == "grant_unavailable")
-                    R.string.fw_request_time_unavailable else R.string.fw_request_apply_pending))
-            }
-        } }
-        val open = state.childRequest?.let { it.state == "pending" && (state.requestEpoch == null || state.requestEpoch < it.expires) } == true
-        if (state.canRequestTotal) Button(onClick = { target = "total" }, enabled = ready && !state.bound && !open, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.fw_request_screen))
-        }
-        for (app in state.requestTargets) OutlinedButton(onClick = { target = app.pkg },
-            enabled = ready && !state.bound && !open, modifier = Modifier.fillMaxWidth()) { Text(app.label) }
-    }
     InfoNote(Icons.Outlined.Inbox, stringResource(R.string.fw_request_phone_check))
-    target?.let { chosen ->
-        val label = if (chosen == "total") stringResource(R.string.fw_request_screen)
-            else state.requestTargets.firstOrNull { it.pkg == chosen }?.label ?: chosen
-        MinutesDialog(stringResource(R.string.fw_request_ask), label, 240, R.string.fw_request_send,
-            onDismiss = { target = null }, onConfirm = { minutes -> target = null; actions.askTime(chosen, minutes) })
-    }
     decision?.let { selected ->
         val r = selected.request
         val exists = family && requests.any { it.id == r.id && it.hash == r.hash }
