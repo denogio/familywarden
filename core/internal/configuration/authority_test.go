@@ -94,8 +94,13 @@ func (f *fakeBackend) Facts() (platform.Context, error) {
 	if c := f.current.Current.Settings.Captain; c != "" {
 		captain = c
 	}
+	// Like OpenWrt's materialized pact files: the projection reports its captain.
+	pactCaptain := ""
+	if f.current.Pact != nil {
+		pactCaptain = f.current.Pact.Captain
+	}
 	return platform.Context{RuntimeFormat: "runtime-facts-v1", Profiles: p, TimeZone: "UTC",
-		BonusFormat: bonusFormat, NetworkFormat: networkFormat, MastCaptain: captain}, nil
+		BonusFormat: bonusFormat, NetworkFormat: networkFormat, MastCaptain: captain, PactCaptain: pactCaptain}, nil
 }
 func (f *fakeBackend) FactsContext(fn func(platform.Context) error) error {
 	c, _ := f.Facts()

@@ -159,6 +159,8 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
       - [x] R7h: real released v0.9.2 router/LuCI APK upgrade via apk (maintainer
         scripts included) through migration/backup/restore/generation, 240 checks, CI-wired;
         grouped Android 15 milestone on r23: 98 + 31 emulator checks pass.
+      - [x] R7i: interrupted-mutation matrix over every durable write and native apply of
+        apply/confirm/pact/release request/cancel/completion, plus bonus.
       - [ ] Remaining historical/package/version and restore-admission gates:
         [concrete R7 safety matrix](migration-safety.md). Older non-cooperating writers,
         deletion of all ownership evidence, older-content/generation integrity and

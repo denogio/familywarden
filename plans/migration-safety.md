@@ -322,13 +322,30 @@ Not covered: upgrading a real release-signed old Android APK to a new release-si
 APK (needs the release keystore; `test-pilot-upgrade.sh` exists for that rehearsal),
 pilot-generation rc3–rc5 router packages, and physical devices.
 
+## R7i — Interrupted-mutation matrix
+
+`core/internal/configuration/interruption_test.go` interrupts, in separate fixtures,
+**each** durable write and the native apply of configuration apply, confirm, pact
+creation, release request, release cancel and release completion (16 cut points:
+11 writes, 5 native applies; confirm has none). For every case the mutation must not
+report success, and after a restart the native projection must equal a reconciled
+durable document that is either the prior state, the uninterrupted control result or,
+for an unconfirmed edit, its confirmed predecessor; the recovered authority must serve.
+A separate case proves an interrupted bonus is neither kept as success nor doubled by
+the retry. Import interruption (four cut points), identity ledger/registry/new-app write
+failures and network apply restoration were already covered. The test fake now reports
+the materialized pact captain like the OpenWrt adapter, instead of never doing so.
+
+Not covered here: power loss inside a single file replacement (relies on the store's
+temp-file, fsync and rename discipline) and simultaneous loss of several cut points.
+
 ## Remaining implementation and acceptance matrix
 
 | Gate | Required evidence | Status |
 |---|---|---|
 | Supported upgrade paths | Fictional v0.9.1/v0.9.2 and recorded pilot-generation fixtures upgrade without changing effective restrictions, keys, identity/scopes or DNS ownership | v0.9.1/v0.9.2 sources and the released v0.9.2 APK -> current APKs proved; rc3–rc5 pilot packages and release-signed app upgrade open |
 | Idempotent import | Retry before/after journal, ownership-floor write/readback, native apply and completion; once owned, a changed legacy projection cannot become authority again | Current-pair coverage passes; extend to historical/package fixtures |
-| Interrupted mutations | Configuration confirm/rollback, pact creation/release, grants/usage, bonus and DNS ownership/ack writes interrupted at durable/native cut points | Partial existing coverage; complete matrix open |
+| Interrupted mutations | Configuration confirm/rollback, pact creation/release, grants/usage, bonus and DNS ownership/ack writes interrupted at durable/native cut points | Configuration/pact/release/bonus matrix (R7i) plus existing import/identity/network/DNS coverage; single-file power loss relies on atomic replace |
 | Concurrent/versioned writers | Current daemon exclusion plus supported package combinations and explicit refusal of non-cooperating/legacy writers | Current daemon lease and current-pair legacy refusal proved; historical mixed-version gate open |
 | Router/app compatibility | Old router/new app and new router/old app; unsupported capabilities/formats refuse without erasing last trusted protection | Existing protocol tests plus v2 signed-consumer continuity from both legacy source states; actual app-version matrix open |
 | Whole-household backup | One private artifact, manifest/checksums/versions, native secrets and all durable ledgers from a quiesced consistent state | Offline signed export/inspection proved (R7e); restore absent by design |
