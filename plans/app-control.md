@@ -191,9 +191,10 @@ reimplement profiles, schedule/pact semantics, manual action/bonus/grant eligibi
 DNS policy or app decisions. Platform-specific firewall rendering may remain outside
 Go; shell elimination is not the criterion.
 
-The current migration does **not** meet this criterion yet. Owned policy/context
-still depend on the OpenWrt shell, and bonus/network actions/status contain product
-logic there. The source-backed progress inventory, R0–R7 migration order and acceptance
+R1–R6 now move owned policy/context, bonus/network decisions and reporting into the
+core and prove the production service/shared UI with a recording/failing adapter,
+without OpenWrt processes or paths. R7's migration/release safety matrix remains open;
+this boundary proof is not permission for production cutover. The source-backed progress inventory, R0–R7 migration order and acceptance
 checks live in [adapter-portability.md](adapter-portability.md), with execution tracked
 in [app-control-todo.md](app-control-todo.md). FreeBSD compilation is not a working
 pfSense/OPNsense integration. Do not build a speculative second adapter to hide an

@@ -11,8 +11,8 @@ import (
 	"github.com/denogio/familywarden/core/internal/store"
 )
 
-// Composition smoke test only; the complete recording/failing-adapter matrix
-// is R6. No native paths, shell commands or OpenWrt imports are used here.
+// Small constructor smoke test; the owned production-service and shared-UI
+// boundary scenarios live in portability_test.go and portability_web_test.go.
 type emptyHost struct {
 	platform.Adapter
 	configuration.Backend

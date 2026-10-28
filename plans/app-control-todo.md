@@ -23,7 +23,7 @@ Historical test counts are evidence at that checkpoint, not current suite totals
 | P9 off-home | LAN notifications only | Transport decision, encryption/key distribution and off-home implementation/testing |
 | P10 Android | Child/adult status/history, scoped parent decisions and usage | Parent presentation split is implemented and preview-tested (#94); scoped child selection is implemented and preview-tested (#97); full parent controls remain |
 | P10 shared web | Core-backed `web/` workspace, prototype-based presentation, EN/DA, one thin LuCI host bridge; neutral/native browser validation | Essential-app/removal UX gaps below; no second-router host or production deployment |
-| Core migration | Identity/requests/usage/new-apps; opt-in authoritative configuration/pacts, CAS/confirm/rollback, Settings/Profiles CAS; owned phone/app policy from the document; Go AGH reconciliation/catalogue | **Not adapter-ready:** owned bonus, manual-network/grant, pact-permit revocation, status/expiry, runtime facts, portable network intent/exact apply receipts and DNS/release orchestration migrated/tested; platform construction/shared UI and P12 safety gates; owned configuration cutover not deployed (#91; [R0–R7](adapter-portability.md)) |
+| Core migration | R1–R6: owned identity/configuration/policy/actions/DNS/recovery; portable production composition and shared UI verified with a recording/failing adapter | R7/P12 mixed-version, interruption and full backup/restore safety gates; native runtime support is still OpenWrt-only; production ownership cutover is not deployed (#91; [R0–R7](adapter-portability.md)) |
 | P11 adult pool | Existing pact enforcement, not the proposed pool | Final consumption/reset rules, ledger and pact-safe self-service |
 | P13 release validation | Same-key rc3/rc4 router+phone pilot and rc5 phone update | Release-wide security/compatibility/lifecycle acceptance for remaining scope; no blanket production rollout approval |
 
@@ -124,14 +124,18 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
       Prototype-based presentation inspected on desktop/mobile; no mock policy/data.
       Go/race/vet, 495 integration checks, APK smoke and 33 browser cases pass
       (core r17/backend rc10-r14/LuCI r6). No production deployment.
-- [ ] R6: run the production service and shared UI against a recording/failing adapter
-      with no shell/UCI/ubus/fw4/OpenWrt paths, then preserve real OpenWrt parity.
+- [x] R6: production `service.New`, signed phone routes and unchanged shared UI run
+      against a recording/failing adapter with no shell/UCI/ubus/fw4/OpenWrt dependency.
+      Five bounded service scenarios plus the opt-in browser proof exercise real durable
+      state, policy/actions/grants/usage, pacts/recovery, DNS verification and failure
+      handling. CI runs the browser proof and checks the production dependency graph.
+      Runtime sources are unchanged from R5 `2b9df05`; no second-router implementation.
 - [ ] R7: close P12 upgrade/import/interruption, compatibility and safe restore gates
       before removing legacy paths or claiming production-cutover readiness.
 
 No pfSense/OPNsense adapter is implemented yet. The FreeBSD cross-build succeeds,
-but still selects OpenWrt and is not runtime support. Existing fake-adapter unit tests
-are useful evidence, not the completed R6 production-composition gate. Actual second-
+but still selects OpenWrt and is not runtime support. R6 now proves the production service composition and shared UI with a recording/failing
+adapter; existing unit tests remain the detailed product-rule coverage. Actual second-
 platform implementation and production deployment remain separate scope/authorization.
 
 ## Baseline and migration inventory

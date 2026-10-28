@@ -1,0 +1,81 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+// Opt-in only because this requires the repository's existing Playwright install.
+// CI runs it explicitly. The helper process is the browser driver, never a native
+// adapter command; production services still run with an empty PATH.
+func TestPortableSharedUI(t *testing.T) {
+	if os.Getenv("FW_TEST_SHARED_UI") != "1" {
+		t.Skip("set FW_TEST_SHARED_UI=1 after installing test/e2e dependencies and Chromium")
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := newPortableFixture(t)
+	phone := f.phone("fw-alex", "alex")
+	r := f.upload(phone, "usage", map[string]any{"type": "usage", "v": 1, "device": phone.id, "profile": "alex",
+		"day": f.now().Format(time.DateOnly), "seq": 1, "total": 900,
+		"apps": map[string]int{"com.example.video": 600}, "labels": map[string]string{"com.example.video": "Video"}})
+	if r["state"] != "stored" {
+		t.Fatal(r)
+	}
+	f.host.failNet = 1 // the browser's first network action must fail closed
+	mux := http.NewServeMux()
+	mux.Handle("/api/", f.app.Handler)
+	mux.Handle("/web/", http.StripPrefix("/web/", http.FileServer(http.Dir(filepath.Join(repo, "web")))))
+	// Test-only loopback host: not a product listener, authentication scheme or
+	// standalone mode. Native session/ACL checks remain each real host's job.
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<!doctype html><html lang="en"><body><main id="control"></main>
+<script type="module">
+import {mount} from '/web/control.js';
+window.control = mount(document.getElementById('control'), {lang:'en', interval:60000,
+  call:async (method, params = {}) => {
+    const response = await fetch('/api/' + method, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(params)});
+    if (!response.ok) throw new Error('Core HTTP failure');
+    return response.json();
+  }
+});
+</script></body></html>`)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, node, filepath.Join(repo, "test/e2e/portable-control.cjs"), server.URL)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("shared UI against production service: %v\n%s", err, output)
+	} else {
+		t.Log(string(output))
+	}
+	server.Close() // finish all browser requests before inspecting/restarting the service
+	f.host.mu.Lock()
+	name := f.host.current.Current.Profiles[0].Name
+	budget := f.host.current.Current.Profiles[0].ScreenMinutes
+	restores := len(f.host.restored)
+	f.host.mu.Unlock()
+	if name != "Alex portable" || budget != "45" || restores != 1 {
+		t.Fatal("browser did not reach real configuration/apply contracts", name, budget, restores)
+	}
+	f.restart()
+	if f.configuration().Current.Profiles[0].Name != name || f.sync(phone)["enrollment"] != "approved" {
+		t.Fatal("browser changes or phone identity did not survive reconciliation")
+	}
+}

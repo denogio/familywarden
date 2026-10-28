@@ -8,7 +8,7 @@ A20 (shared UI embedded natively, on OpenWrt via a LuCI view + rpcd shim).
 
 ## Current completion status (2026-10-28)
 
-**Not adapter-ready yet.** Completion means a new router implements platform facts,
+**R6 proves the owned product boundary; R7 migration safety remains open.** A new router implements platform facts,
 network enforcement/application and native host integration, not another copy of
 FamilyWarden product rules. Go owning configuration on OpenWrt is necessary but
 not sufficient. The source-backed inventory, ordered R0–R7 backlog and acceptance
@@ -33,11 +33,18 @@ checklist are in [Router adapter portability](adapter-portability.md).
   adapter/socket/storage. `web/` owns the shared EN/DA administration workspace;
   LuCI has one mount/RPC bridge and no legacy pages. UCI/nft/fw4/procd remain adapter
   internals, not dependencies of the shared presentation or service composition.
-- **Still unproven:** the complete R6 shell-free recording/failing-adapter service
-  matrix and R7 safe restore/mixed-version gates. No second-router implementation
+- **R6 proved:** production `service.New`, real durable storage, signed phone routes
+  and the unchanged shared UI work with a recording/failing adapter and an empty PATH.
+  Owned legacy-method tripwires and a service dependency-graph check prevent OpenWrt
+  from becoming an implicit product dependency. Native enforcement remains OpenWrt-only.
+- **Still unproven:** R7 safe restore, mixed-version and interruption gates. No second-router implementation
   or cross-platform build is a current workstream or prerequisite for this migration.
 
-Next implementation slice: **R6 recording/failing-adapter proof through the production service**.
+Next implementation slice: **R7 migration/release safety gates**.
+R6 adds five production-service scenarios and an explicitly enabled shared-UI browser
+proof in the Go CI job. Scope includes policy/actions/grants/usage, pacts/recovery,
+DNS acknowledgement, failure/refusal and restart/RAM semantics. It changes tests/CI/docs
+only; no production binary or shared-UI source changed after R5 checkpoint `2b9df05`.
 R5 evidence: core r17/backend rc10-r14/LuCI r6; Go/race/vet, 495 integration checks,
 seven Node checks, fresh-package smoke and 33 neutral/native browser cases pass.
 Desktop/mobile screenshots were compared against the design reference; mock data
