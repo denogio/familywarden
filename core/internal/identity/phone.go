@@ -208,6 +208,21 @@ func (s *Service) Phone(query string) (status int, body []byte) {
 			out = append(out, field{"shared", shared})
 		}
 	}
+	// Read after the content: the generation then covers at least what was read.
+	if s.Generation != nil {
+		g, err := s.Generation()
+		if err != nil {
+			log.Printf("household generation: %v", err)
+			return StatusError, nil
+		}
+		if g.Epoch != "" {
+			lineage := []object{}
+			for _, a := range g.Lineage {
+				lineage = append(lineage, object{{"epoch", a.Epoch}, {"counter", a.Counter}})
+			}
+			out = append(out, field{"generation", object{{"epoch", g.Epoch}, {"counter", g.Counter}, {"lineage", lineage}}})
+		}
+	}
 	return s.sign(rk, out)
 }
 

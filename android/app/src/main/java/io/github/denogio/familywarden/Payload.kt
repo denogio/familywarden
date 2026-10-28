@@ -102,6 +102,7 @@ object Payload {
                 RequestProtocol.newApps(o.getJSONArray("new_apps"), binding?.approves ?: emptyList()) else emptyList(),
             familyUsage = if (version == 3 && o.has("usage"))
                 UsageUpload.parse(o.getJSONArray("usage"), binding?.approves ?: emptyList()) else emptyList(),
+            generation = if (scoped && o.has("generation")) HouseholdGeneration.parse(o.getJSONObject("generation")) else null,
         )
         // Bounded epoch seconds (through year 9999), not milliseconds/overflowing alarm times.
         require(listOf(state.serverTime, state.pactUntil, state.releaseAt).all {

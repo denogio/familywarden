@@ -153,8 +153,9 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
         and traversal refusal. 72 historical-fixture checks. No restore implemented.
       - [x] R7f (core r22): cleared-target-only pinned restore of complete core-owned
         households with staged preflight and aside-not-delete; 116 fixture checks.
-      - [ ] R7g: monotonic household generation in signed replies, refused by phones
-        when it goes backwards (router + Android), to detect older-backup rollback.
+      - [x] R7g (core r23 + Android): household generation with restore lineage in signed
+        replies; phones refuse older restored state permanently. 204 JVM tests, 156
+        fixture checks. No admin override by design; old APKs are not protected.
       - [ ] Remaining historical/package/version and restore-admission gates:
         [concrete R7 safety matrix](migration-safety.md). Older non-cooperating writers,
         deletion of all ownership evidence, older-content/generation integrity and

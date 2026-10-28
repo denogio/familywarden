@@ -13,7 +13,7 @@ import (
 // A mixed-version or damaged household must be rejected before startup rolls
 // back a pending edit, applies native rules, or imports/removes legacy devices.
 func TestStartupChecksStoredSchemasBeforeRecovery(t *testing.T) {
-	for _, name := range []string{"configuration.json", "authority.json", "devices.json", "requests.json", "newapps.json", "dns.json"} {
+	for _, name := range []string{"configuration.json", "authority.json", "devices.json", "requests.json", "newapps.json", "dns.json", "generation.json"} {
 		damages := []string{"future-version", "truncated-json"}
 		if name == "configuration.json" || name == "devices.json" {
 			damages = append(damages, "missing")
@@ -154,6 +154,34 @@ func TestLostOptionalStateRefusesBeforeStartupRecovery(t *testing.T) {
 				t.Fatal("lost optional state allowed startup recovery or rewriting", err)
 			}
 		})
+	}
+}
+
+func TestSignedPolicyCarriesAdvancingGeneration(t *testing.T) {
+	f := newPortableFixture(t)
+	p := f.phone("fw-alex", "alex")
+	generation := func() (string, float64) {
+		g := objectField(t, f.sync(p)["generation"])
+		if len(g["lineage"].([]any)) != 0 {
+			t.Fatal("unrestored household has lineage", g)
+		}
+		return g["epoch"].(string), g["counter"].(float64)
+	}
+	epoch, before := generation()
+	c := f.configuration()
+	c.Current.Profiles[0].ScreenMinutes = "30"
+	f.commit(c)
+	if e, after := generation(); e != epoch || after <= before {
+		t.Fatal("configuration change did not advance the signed generation", before, after)
+	}
+	_, before = generation()
+	f.api("configuration_bonus_add", map[string]any{"profile": "alex", "minutes": 15})
+	if _, after := generation(); after <= before {
+		t.Fatal("runtime bonus did not advance the generation", before, after)
+	}
+	f.restart()
+	if e, after := generation(); e != epoch || after < before {
+		t.Fatal("restart moved the generation backwards", e, after)
 	}
 }
 

@@ -201,4 +201,30 @@ class SyncTransportTest {
         }
     }
 
+    @Test fun aRestoredOlderHouseholdKeepsTheNewerTrustedPolicy() {
+        val epoch = "a".repeat(32)
+        val restored = "b".repeat(32)
+        fun generation(e: String, counter: Long, vararg lineage: Pair<String, Long>) = org.json.JSONObject()
+            .put("epoch", e).put("counter", counter).put("lineage", org.json.JSONArray().also { a ->
+                lineage.forEach { (le, lc) -> a.put(org.json.JSONObject().put("epoch", le).put("counter", lc)) }
+            })
+        val next = AtomicReference<org.json.JSONObject?>(generation(epoch, 5))
+        server({ uri, out -> reply(out, signedReply(uri, 3) { o -> next.get()?.let { o.put("generation", it) } }) }) { endpoint ->
+            fun fetch(previous: MastState?) = Sync.fetch(endpoint, router.publicKey, "fw-example", phone,
+                previous = previous, requireDevicePolicy = true, minWire = 3)
+            val seen = (fetch(null) as Sync.Result.Ok).state
+            assertEquals(HouseholdGeneration(epoch, 5, emptyList()), seen.generation)
+            val older = Sync.Result.Failed("router state is older than this phone")
+            next.set(generation(epoch, 4)); assertEquals(older, fetch(seen))
+            // An older backup on a replacement router, even after many later writes.
+            next.set(generation(restored, 900, epoch to 4)); assertEquals(older, fetch(seen))
+            // A router that stops vouching is not newer either.
+            next.set(null); assertEquals(older, fetch(seen))
+            // The newest backup restored: same key, fork point covers this phone.
+            next.set(generation(restored, 0, epoch to 5))
+            val after = (fetch(seen) as Sync.Result.Ok).state
+            next.set(generation(restored, 1, epoch to 5)); assertTrue(fetch(after) is Sync.Result.Ok)
+        }
+    }
+
 }

@@ -257,13 +257,47 @@ projection, kernel rules and v2 handset verification/binding/pact/DNS all surviv
 second restore is refused (116 checks). Full Go race/vet, 524 fw4/nft, 101 AGH, APK
 smoke and syntax checks pass.
 
-**Known limit (not solved):** onto a cleared router, an *older* valid backup is still
-admitted. Phones pinned to the same key then accept its older policy, so changes made
-after the backup (a newer pact, tighter rules, revoked phones or approvals) are lost.
-The router alone cannot detect this; only phones observed the newer state. Closing it
-needs a monotonic household generation in signed replies that phones refuse to see go
-backwards (R7g, router + Android). Deliberate abuse with physical/root access remains
-outside the protection boundary, as before.
+**Limit addressed by R7g below:** the router alone cannot tell whether a valid backup
+is the newest; an older one is still admitted onto a cleared router. Only phones
+observed the newer state, so R7g makes them the witnesses.
+
+## R7g — Phones refuse older household state (generation with restore lineage)
+
+Core **0.13.0-r23** and the Android app (same release line) implement it.
+
+- The store keeps a reserved, witnessed `generation.json`: a random 128-bit epoch, a
+  counter advanced **before** every other top-level document write (usage days are
+  excluded; phones re-raise their own counters), and up to 16 restore fork points.
+  Product code cannot write it. Startup, backup and restore preflight validate it.
+- Signed approved v2/v3 replies carry `generation` read **after** the policy content,
+  so it covers at least what was read. Offline backups therefore never pair older
+  content with a generation a phone saw for newer content.
+- Restore forks: the staged household gets a fresh epoch whose lineage records where
+  each earlier epoch stopped. Pre-generation backups fork without ancestry.
+- The phone (`HouseholdGeneration.follows`) accepts a reply only if it continues its
+  last accepted epoch at or beyond its counter, or if lineage contains that epoch at
+  or beyond it. An older backup is refused **permanently**: later router writes advance
+  only the new epoch, never the frozen fork point. A router that stops sending a
+  generation after one was seen is a downgrade. Refusal keeps the last trusted policy
+  (reason: "router state is older than this phone"), like other signed-reply failures.
+
+Evidence: store tests (advance-before-write, usage exclusion, reserved name, bounded
+distinct lineage, loss/damage refusal); service test that signed policy carries an
+advancing generation across configuration, bonus and restart; preflight refusal now
+covers seven documents. Android: 204 JVM tests (four new generation tests plus a real
+HTTP transport test: same-epoch regression, older restore even after 900 writes,
+missing generation, newest restore and continuation), lint and debug build pass.
+`scripts/test-upgrade.sh` (156 checks) now uses the same rule in its signed handset:
+an older backup restored onto a cleared router is refused across three restarts with
+new writes, while the newest backup is accepted with pact, binding and DNS intact.
+Full Go race/vet, 524 fw4/nft, 101 AGH, APK smoke and all 39 browser cases pass.
+
+Limits: old phone APKs do not enforce this; phones without a stored generation (first
+contact, pre-r23 routers) accept the first value. A phone that refused an older restore
+stays on its last trusted policy until re-enrolled (re-pairing is guarded while bound);
+there is no administrator override, by design. Root/physical access to the router can
+still forge state and stays outside the protection boundary. Usage history is not
+protected by the generation (it self-heals from phones' cumulative reports).
 
 ## Remaining implementation and acceptance matrix
 
@@ -275,7 +309,7 @@ outside the protection boundary, as before.
 | Concurrent/versioned writers | Current daemon exclusion plus supported package combinations and explicit refusal of non-cooperating/legacy writers | Current daemon lease and current-pair legacy refusal proved; historical mixed-version gate open |
 | Router/app compatibility | Old router/new app and new router/old app; unsupported capabilities/formats refuse without erasing last trusted protection | Existing protocol tests plus v2 signed-consumer continuity from both legacy source states; actual app-version matrix open |
 | Whole-household backup | One private artifact, manifest/checksums/versions, native secrets and all durable ledgers from a quiesced consistent state | Offline signed export/inspection proved (R7e); restore absent by design |
-| Restore admission | Validate before activation; never merge arbitrary old ledgers or weaken pact minima; define what can be proved when the latest state is unavailable | Cleared-target-only, pinned, staged, complete-owned restore proved (R7f); older-backup rollback detection open (R7g) |
+| Restore admission | Validate before activation; never merge arbitrary old ledgers or weaken pact minima; define what can be proved when the latest state is unavailable | Cleared-target-only, pinned, staged, complete-owned restore (R7f); phones refuse older restored state via generation lineage (R7g) |
 | Post-restore application | Reapply native intent and reconcile DNS; do not treat backed-up applied/verified observations as fresh proof | Startup reapplies/materializes (proved); DNS acks kept until normal reconciliation |
 | Integrated release milestone | Native packages/UI/AGH plus one grouped Android milestone against the selected candidate; resolve or explicitly block on unexplained failures | Open |
 

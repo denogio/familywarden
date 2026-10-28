@@ -38,6 +38,8 @@ data class MastState(
     val familyUsage: List<FamilyUsage> = emptyList(),
     /** v3: today's usage of this profile's OTHER phones (shared budget, D4). */
     val shared: SharedUsage? = null,
+    /** Signed household freshness; null from routers that do not vouch for it. */
+    val generation: HouseholdGeneration? = null,
 )
 
 data class Rules(

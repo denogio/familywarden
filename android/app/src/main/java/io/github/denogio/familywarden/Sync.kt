@@ -109,6 +109,9 @@ object Sync {
         if (requireDevicePolicy && state.wireVersion >= 2 && state.pending) return Result.Failed("device not approved")
         if (requireDevicePolicy && !state.appliesTo(deviceId)) return Result.Failed("unsupported device policy")
         if (previous != null && state.serverTime < previous.serverTime) return Result.Failed("stale reply")
+        // A restored older backup is signed with the same key; keep the newer policy.
+        if (previous != null && !HouseholdGeneration.follows(previous.generation, state.generation))
+            return Result.Failed("router state is older than this phone")
         return Result.Ok(payload, state, startedElapsed)
     }
 

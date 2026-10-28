@@ -96,8 +96,9 @@ func syncPath(path string) error {
 }
 
 // A cleared target has no household evidence: at most an unpaired fresh router
-// key, the lifetime lock, an empty imported registry and empty usage directories,
-// and a legacy projection without profiles, phones or pact.
+// key, the lifetime lock, an empty imported registry (and the generation its
+// write advanced), empty usage directories, and a legacy projection without
+// profiles, phones or pact.
 func (a Adapter) clearedTarget(base string, state *os.File) error {
 	info, err := os.Lstat(base)
 	if err != nil {
@@ -122,7 +123,8 @@ func (a Adapter) clearedTarget(base string, state *os.File) error {
 			return fmt.Errorf("household is not cleared: %s", rel)
 		}
 		switch rel {
-		case "mast.key", "mast.pub", "core/.writer.lock", "core/devices.json.present":
+		case "mast.key", "mast.pub", "core/.writer.lock", "core/devices.json.present",
+			"core/generation.json", "core/generation.json.present": // the empty registry's write
 			return nil
 		case "core/devices.json":
 			var doc struct {

@@ -40,6 +40,9 @@ func exportBackup(ad openwrt.Adapter, dir, dst, coreVersion string) (m backup.Ma
 		if err := st.CheckPresence(); err != nil {
 			return err
 		}
+		if err := st.CheckGeneration(); err != nil {
+			return err
+		}
 		owned, err := configuration.CheckStorage(st)
 		if err != nil {
 			return err

@@ -75,7 +75,8 @@ func newRestoreFixture(t *testing.T, owned bool, signer *usign.SecretKey) *resto
 		t.Fatal(err)
 	}
 	writeRouterKey(t, target) // fresh, unpaired identity of the replacement router
-	for name, data := range map[string]string{"core/.writer.lock": "", "core/devices.json": `{"version":1,"devices":[]}`, "core/devices.json.present": `{"version":1}`} {
+	for name, data := range map[string]string{"core/.writer.lock": "", "core/devices.json": `{"version":1,"devices":[]}`, "core/devices.json.present": `{"version":1}`,
+		"core/generation.json": `{"version":1,"epoch":"` + strings.Repeat("c", 32) + `","counter":1,"lineage":[]}`, "core/generation.json.present": `{"version":1}`} {
 		if err := os.WriteFile(filepath.Join(target, name), []byte(data), 0600); err != nil {
 			t.Fatal(err)
 		}

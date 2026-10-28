@@ -62,7 +62,10 @@ checklist are in [Router adapter portability](adapter-portability.md).
 - **R7f restore (core r22):** offline, pinned, cleared-target-only restore of complete
   core-owned households; staged preflight, aside-not-delete, single rename; startup
   materializes and reapplies. An older valid backup is not detected yet (R7g).
-- **Still unproven:** older-backup rollback detection, historical APK/pilot mixed-version and full interruption gates. No second-router implementation
+- **R7g generation (core r23 + Android):** signed replies carry a witnessed household
+  generation (epoch, counter, restore lineage); phones refuse replies that do not continue
+  their last accepted state, so an older restored backup cannot replace newer policy.
+- **Still unproven:** historical APK/pilot mixed-version, physical-device and full interruption gates. No second-router implementation
   or cross-platform build is a current workstream or prerequisite for this migration.
 
 Next implementation slice: **R7 historical package/upgrade compatibility and newest-state

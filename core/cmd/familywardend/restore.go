@@ -61,7 +61,15 @@ func restoreBackup(ad openwrt.Adapter, dir, archive, pubFile string, out io.Writ
 		if !owned {
 			return errors.New("legacy household backups cannot be restored")
 		}
-		return identity.CheckStorage(st, true)
+		if err := st.CheckGeneration(); err != nil {
+			return err
+		}
+		if err := identity.CheckStorage(st, true); err != nil {
+			return err
+		}
+		// A restored household is a new epoch whose fork point freezes how new
+		// it is: phones that saw later state refuse it however many writes follow.
+		return st.Fork()
 	})
 	if err != nil {
 		return err

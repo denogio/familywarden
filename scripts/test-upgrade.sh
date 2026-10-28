@@ -116,7 +116,19 @@ check 'pact captain preserved' "$exported" '@.configuration.pact.captain' jordan
 # The pin is copied off the router: later checks model the handset's own trust.
 cp /etc/familywarden/mast.pub /tmp/pinned.pub
 enc() { printf '%s' "$1" | sed 's/+/%2B/g; s|/|%2F|g; s/=/%3D/g'; }
-phone_sync() {
+# The handset keeps its last accepted household generation (HouseholdGeneration.kt).
+phone_epoch=""
+phone_counter=0
+phone_follows() {
+    epoch=$(printf '%s' "$phone" | jsonfilter -e '@.generation.epoch') || epoch=""
+    counter=$(printf '%s' "$phone" | jsonfilter -e '@.generation.counter') || counter=""
+    [ -z "$phone_epoch" ] && return 0
+    [ -n "$epoch" ] || return 1
+    [ "$epoch" = "$phone_epoch" ] && { [ "$counter" -ge "$phone_counter" ]; return; }
+    fork=$(printf '%s' "$phone" | jsonfilter -e "@.generation.lineage[@.epoch='$phone_epoch'].counter") || fork=""
+    [ -n "$fork" ] && [ "$fork" -ge "$phone_counter" ]
+}
+phone_fetch() {
     nonce=$(head -c 32 /dev/urandom | sha256sum | cut -c1-64)
     printf 'familywarden-sync-v2\nfw-historical\n%s\n' "$nonce" >/tmp/sync.message
     usign -S -s /tmp/phone.key -m /tmp/sync.message -x /tmp/sync.sig
@@ -126,6 +138,12 @@ phone_sync() {
     tail -n +2 /tmp/sync.reply | tr -d '\n' >/tmp/router.payload
     usign -V -q -p /tmp/pinned.pub -m /tmp/router.payload -x /tmp/router.sig && pass "$1: v2 handset verifies its pinned router" || fail "$1: handset signature changed"
     phone=$(cat /tmp/router.payload)
+}
+phone_sync() {
+    phone_fetch "$1"
+    phone_follows && pass "$1: household generation continues the handset's state" || fail "$1: handset would refuse the generation"
+    phone_epoch=$epoch
+    phone_counter=$counter
     check "$1: v2 handset retains approved enrollment" "$phone" '@.enrollment' approved
     check "$1: v2 handset retains profile binding" "$phone" '@.binding.profile_id' jordan
     check "$1: v2 handset retains active pact" "$phone" '@.pact.active' true
@@ -220,6 +238,39 @@ check 'restored captain allow remains refused' "$(api configuration_allow '{"pro
 kill "$PID"; wait "$PID" || true
 /usr/sbin/familywardend -trusted-pub /tmp/pinned.pub restore /tmp/household.tar.gz >/dev/null 2>/tmp/second-restore.err \
     && fail 'second restore overlaid the restored household' || { grep -q 'not cleared' /tmp/second-restore.err && pass 'second restore is refused' || fail "second restore refused for another reason: $(tail -1 /tmp/second-restore.err)"; }
+
+# Older-backup rollback: the handset saw later state, then an older backup is
+# restored. Its fork point is too low however many router writes follow.
+start_core() {
+    /usr/sbin/familywardend >>/tmp/upgrade-core.log 2>&1 &
+    PID=$!
+    for _ in 1 2 3 4 5 6 7 8 9 10; do /usr/sbin/familywardend status | grep -q '"running":true' && break; sleep 1; done
+}
+clear_router() {
+    rm -rf /etc/familywarden /etc/familywarden.pre-restore-* /tmp/familywarden.state
+    printf "config global 'settings'\n    option enabled '1'\n" >/etc/config/familywarden
+    mkdir -p /etc/familywarden
+    usign -G -s /etc/familywarden/mast.key -p /etc/familywarden/mast.pub -c fictional-replacement
+}
+mv /tmp/household.tar.gz /tmp/older.tar.gz
+start_core   # startup persists the journal: the generation advances
+phone_sync newer
+kill "$PID"; wait "$PID" || true
+/usr/sbin/familywardend backup /tmp/newest.tar.gz >/dev/null
+clear_router
+/usr/sbin/familywardend -trusted-pub /tmp/pinned.pub restore /tmp/older.tar.gz >/dev/null
+for attempt in 1 2 3; do
+    start_core
+    phone_fetch "older restore ($attempt)"
+    phone_follows && fail "older restore ($attempt): handset would accept rolled-back state" \
+        || pass "older restore ($attempt): handset keeps its newer policy"
+    kill "$PID"; wait "$PID" || true
+done
+clear_router
+/usr/sbin/familywardend -trusted-pub /tmp/pinned.pub restore /tmp/newest.tar.gz >/dev/null
+start_core
+phone_sync 'newest restore'
+kill "$PID"; wait "$PID" || true
 if [ "$FAILED" = 0 ]; then
     echo "Historical source migration passed: $LEGACY_REF"
 else

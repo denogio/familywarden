@@ -114,13 +114,17 @@ func (s *Store) ReadDocument(name string, v any) (found bool, err error) {
 	return err == nil, err
 }
 
-// WriteDocument atomically replaces a top-level JSON document.
+// WriteDocument atomically replaces a top-level JSON document after advancing
+// the household generation (see Generation).
 func (s *Store) WriteDocument(name string, v any) error {
-	if filepath.Base(name) != name || !strings.HasSuffix(name, ".json") {
+	if filepath.Base(name) != name || !strings.HasSuffix(name, ".json") || name == GenerationDocument {
 		return ErrInvalidID
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.advanceLocked(); err != nil {
+		return err
+	}
 	return s.writeRecorded(filepath.Join(s.dir, name), v)
 }
 
