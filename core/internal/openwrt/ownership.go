@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/denogio/familywarden/core/internal/configuration"
+	"github.com/denogio/familywarden/core/internal/store"
 )
 
 // Native routing tests presence only. Even damaged state belongs to the core's
@@ -15,7 +16,8 @@ func (a Adapter) configurationOwned() (bool, error) {
 	if path == "" {
 		path = "/etc/familywarden/core/configuration.json"
 	}
-	for _, name := range []string{path, filepath.Join(filepath.Dir(path), configuration.OwnershipDocument)} {
+	floor := filepath.Join(filepath.Dir(path), configuration.OwnershipDocument)
+	for _, name := range []string{path, floor, path + store.PresenceSuffix, floor + store.PresenceSuffix} {
 		if _, err := os.Lstat(name); err == nil {
 			return true, nil
 		} else if !errors.Is(err, os.ErrNotExist) {

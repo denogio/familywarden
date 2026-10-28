@@ -47,11 +47,16 @@ checklist are in [Router adapter portability](adapter-portability.md).
   existing registry. Native legacy context/policy/registry seams refuse owned callers,
   including while the journal/core is missing. Matching `authority-v1` adapter support
   is required before activation/adoption. The floor is not an anti-rollback generation.
+- **R7c implemented (core r20/backend rc10-r16):** per-file presence witnesses detect
+  lost optional ledgers and daily usage before recovery; cached writers cannot reset
+  missing counters. Existing data is adopted without byte changes after preflight;
+  intentional retention removes its witnesses durably. Native `authority-v2` routing
+  also recognizes witnesses. This proves absence detection, not anti-rollback generations.
 - **Still unproven:** R7 safe restore, historical mixed-version and full interruption gates. No second-router implementation
   or cross-platform build is a current workstream or prerequisite for this migration.
 
-Next implementation slice: **R7 historical package/upgrade compatibility and durable
-ledger-presence/generation rules, followed by consistent backup/restore admission**. Track it in
+Next implementation slice: **R7 historical package/upgrade compatibility and newest-state
+backup/generation rules, followed by consistent backup/restore admission**. Track it in
 [migration-safety.md](migration-safety.md); R7 is not closed by startup hardening alone.
 R6 adds five production-service scenarios and an explicitly enabled shared-UI browser
 proof in the Go CI job. Scope includes policy/actions/grants/usage, pacts/recovery,

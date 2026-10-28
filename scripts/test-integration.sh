@@ -1594,9 +1594,26 @@ expected_ticket=$(echo "$restarted_payload" | jsonfilter -e '@.apps.grants[*].no
 after_restart=$(call status '{"profile":"kid"}' | jsonfilter -e '@.override_expires')
 [ "$after_restart" = "$expected_ticket" ] && pass "child sync restores a missing ticket without extending the grant" || fail "wrong grant ticket after restart"
 nft list set inet fw4 familywarden_ticket | grep -q "aa:bb:cc:00:00:01" && pass "restored grant ticket is in the kernel timeout set" || fail "restored ticket missing in nft"
+# A previously used grant ledger is not optional after it has been persisted.
+stop_core
+cp /var/etc/familywarden.include /tmp/ledger-loss-include.before
+mv /etc/familywarden/core/requests.json /tmp/ledger-loss-requests.keep
+/usr/sbin/familywardend -data /etc/familywarden/core -socket "$CORE_SOCK" >>/tmp/core.log 2>&1 &
+CORE_PID=$!
+sleep 1
+assert_json "lost grant ledger prevents startup before native recovery" "$(/usr/sbin/familywardend -socket "$CORE_SOCK" status)" '@.running' false
+stop_core
+cmp -s /var/etc/familywarden.include /tmp/ledger-loss-include.before && pass "lost grant ledger leaves native rules unchanged" || fail "ledger loss changed native rules"
+mv /tmp/ledger-loss-requests.keep /etc/familywarden/core/requests.json
+cp /etc/familywarden/core/requests.json /tmp/ledger-loss-requests.before
+start_core
+cmp -s /etc/familywarden/core/requests.json /tmp/ledger-loss-requests.before && pass "exact grant ledger repair does not reset decisions or counters" || fail "ledger recovery rewrote decisions"
 echo "=== Core: one-time import of UCI phones, restart, core down ==="
 stop_core
 mv /etc/familywarden/core/devices.json /tmp/devices.keep
+# This stopped disposable fixture simulates pre-import identity, not recovery
+# of a lost current registry. Move its presence witness out with the data.
+mv /etc/familywarden/core/devices.json.present /tmp/devices.keep.present
 sec=dev_fw_legacy
 uci set "familywarden.$sec=device"; uci set "familywarden.$sec.id=fw-legacy"; uci set "familywarden.$sec.name=Old phone"
 uci set "familywarden.$sec.profile=parent"; uci set "familywarden.$sec.pubkey=$(sed -n 2p /tmp/phoneA.pub)"
@@ -1740,13 +1757,16 @@ mv /tmp/owned-configuration.keep /etc/familywarden/core/configuration.json
 assert_json "restored valid owner remains readable" "$(cfg_api configuration_export)" '@.owner' core
 # Losing the household journal must not reactivate permissive legacy writers.
 assert_json "activation persists a separate authority floor" "$(cat /etc/familywarden/core/authority.json)" '@.owner' core
-assert_json "native adapter advertises authority protection" "$("$BIN" core-configuration-facts)" '@.authority_format' authority-v1
+assert_json "native adapter advertises authority protection" "$("$BIN" core-configuration-facts)" '@.authority_format' authority-v2
 # Existing r18-format v1 documents have no floor. Adopting one must not rewrite
 # identity or change the household/pact revision.
 upgrade_revision=$(cfg_api configuration_export | jsonfilter -e '@.configuration.revision')
 cp /etc/familywarden/core/devices.json /tmp/ownership-devices.before
 stop_core
 rm /etc/familywarden/core/authority.json
+# The historical source predates per-file witnesses too; remove those only in
+# this stopped, disposable fixture, never as a production recovery procedure.
+find /etc/familywarden/core -name '*.present' -exec rm -f {} \;
 start_core
 assert_json "unmarked v1 household gains the authority floor on upgrade" "$(cat /etc/familywarden/core/authority.json)" '@.owner' core
 assert_json "ownership adoption preserves configuration revision" "$(cfg_api configuration_export)" '@.configuration.revision' "$upgrade_revision"
@@ -1759,13 +1779,17 @@ assert_json "owned legacy registry cannot be reimported" "$("$BIN" core-legacy-d
 assert_json "owned legacy registry cleanup is refused" "$("$BIN" core-legacy-devices-remove)" '@.error' 'owned registry requires explicit recovery'
 cp /var/etc/familywarden.include /tmp/ownership-include.before
 mv /etc/familywarden/core/configuration.json /tmp/ownership-configuration.keep
-assert_json "lost configuration refuses export instead of UCI fallback" "$(cfg_api configuration_export)" '@.error' 'owned configuration missing; explicit recovery required'
-assert_json "authority floor keeps allow on the core path" "$(call allow '{"profile":"taylor"}')" '@.error' 'owned configuration missing; explicit recovery required'
-assert_json "authority floor keeps reload on the core path" "$(call reload)" '@.error' 'owned configuration missing; explicit recovery required'
-assert_json "lost configuration cannot be reimported from a projection" "$(cfg_api configuration_import '{}')" '@.error' 'owned configuration missing; explicit recovery required'
-assert_json "authenticated sail cannot release a missing owned journal" "$(sail '{"action":"release","password":"sirens","answer":"press on"}')" '@.error' 'owned configuration missing; explicit recovery required'
+assert_json "lost configuration refuses export instead of UCI fallback" "$(cfg_api configuration_export)" '@.error' 'previously written document unavailable: configuration.json'
+assert_json "authority floor keeps allow on the core path" "$(call allow '{"profile":"taylor"}')" '@.error' 'previously written document unavailable: configuration.json'
+assert_json "authority floor keeps reload on the core path" "$(call reload)" '@.error' 'previously written document unavailable: configuration.json'
+assert_json "lost configuration cannot be reimported from a projection" "$(cfg_api configuration_import '{}')" '@.error' 'previously written document unavailable: configuration.json'
+assert_json "authenticated sail cannot release a missing owned journal" "$(sail '{"action":"release","password":"sirens","answer":"press on"}')" '@.error' 'previously written document unavailable: configuration.json'
 stop_core
 assert_json "core-down allow cannot bypass the authority floor" "$(call allow '{"profile":"taylor"}')" '@.error' 'core not reachable'
+mv /etc/familywarden/core/authority.json /tmp/ownership-floor.keep
+assert_json "ownership witnesses prevent fallback when both JSON documents are lost" "$(call allow '{"profile":"taylor"}')" '@.error' 'core not reachable'
+assert_json "ownership witnesses protect authenticated sail routing" "$(sail '{"action":"cancel","password":"sirens"}')" '@.error' 'core not reachable'
+mv /tmp/ownership-floor.keep /etc/familywarden/core/authority.json
 assert_json "core-down raw snapshot cannot bypass the authority floor" "$("$BIN" core-configuration configuration-v1)" '@.error' 'owned configuration requires core API'
 assert_json "core-down legacy ticket remains forbidden with missing configuration" "$("$BIN" core-ticket taylor "$(( $(date +%s) + 60 ))")" '@.error' 'owned ticket requires the core API'
 assert_json "authenticated sail cannot cancel through core-down legacy fallback" "$(sail '{"action":"cancel","password":"sirens"}')" '@.error' 'core not reachable'

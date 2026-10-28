@@ -110,6 +110,13 @@ func TestPruneKeepsThirtyDays(t *testing.T) {
 	if len(left) != 2 {
 		t.Fatalf("kept %v, want today and 29 days ago", left)
 	}
+	witnesses, _ := filepath.Glob(filepath.Join(dir, "usage", "alex", "*.json"+PresenceSuffix))
+	if len(witnesses) != 2 {
+		t.Fatal("retention left orphaned presence witnesses", witnesses)
+	}
+	if err := s.CheckPresence(); err != nil {
+		t.Fatal("intentional retention deletion became data loss", err)
+	}
 }
 
 func TestAtomicWriteLeavesNoTempFiles(t *testing.T) {
@@ -118,7 +125,7 @@ func TestAtomicWriteLeavesNoTempFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	entries, _ := os.ReadDir(filepath.Join(dir, "usage", "alex"))
-	if len(entries) != 1 || entries[0].Name() != "2026-10-21.json" {
+	if len(entries) != 2 || entries[0].Name() != "2026-10-21.json" || entries[1].Name() != "2026-10-21.json"+PresenceSuffix {
 		t.Fatalf("unexpected files: %v", entries)
 	}
 }

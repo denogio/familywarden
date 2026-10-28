@@ -113,14 +113,65 @@ func TestOwnedHouseholdCannotFallBackAfterConfigurationLoss(t *testing.T) {
 	}
 }
 
+func TestLostOptionalStateRefusesBeforeStartupRecovery(t *testing.T) {
+	for _, name := range []string{"requests.json", "newapps.json", "dns.json", "usage"} {
+		t.Run(name, func(t *testing.T) {
+			f := newPortableFixture(t)
+			st, err := store.Open(f.dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(f.dir, name)
+			switch name {
+			case "requests.json":
+				err = st.WriteDocument(name, map[string]any{"version": 1, "last_time": f.now().Unix(), "requests": []any{}})
+			case "newapps.json":
+				err = st.WriteDocument(name, map[string]any{"version": 1, "profiles": map[string]any{}})
+			case "dns.json":
+				err = st.WriteDocument(name, map[string]any{"version": 1})
+			default:
+				day := f.now().Format("2006-01-02")
+				_, err = st.ApplyUsage("alex", store.Report{Device: "fw-alex@0123456789abcdef", Day: day, Seq: 1, Total: 600})
+				path = filepath.Join(f.dir, "usage", "alex", day+".json")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := f.configuration()
+			c.Current.Profiles[0].Name = "Alex pending"
+			f.api("configuration_apply", map[string]any{"revision": c.Revision, "current": c.Current})
+			f.app.Close()
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			before := documentSnapshot(t, f.dir)
+			applies := len(f.host.intents)
+			app, err := New(f.host, f.host, st, "migration-test")
+			if app != nil {
+				app.Close()
+			}
+			if err == nil || len(f.host.intents) != applies || !bytes.Equal(before, documentSnapshot(t, f.dir)) {
+				t.Fatal("lost optional state allowed startup recovery or rewriting", err)
+			}
+		})
+	}
+}
+
 func documentSnapshot(t *testing.T, dir string) []byte {
 	t.Helper()
-	files, err := filepath.Glob(filepath.Join(dir, "*.json"))
+	files, err := filepath.Glob(filepath.Join(dir, "*"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	contents := map[string]string{}
 	for _, path := range files {
+		info, err := os.Lstat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.IsDir() {
+			continue
+		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)

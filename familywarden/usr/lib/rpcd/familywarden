@@ -60,8 +60,11 @@ FW_CORE_AUTHORITY="$FW_PERSIST/core/authority.json"
 # Presence is deliberately conservative: malformed or missing-target links must
 # route to the core's refusal, never select a legacy writer.
 configuration_owned() {
-    [ -e "$FW_CORE_CONFIG" ] || [ -L "$FW_CORE_CONFIG" ] ||
-        [ -e "$FW_CORE_AUTHORITY" ] || [ -L "$FW_CORE_AUTHORITY" ]
+    local path
+    for path in "$FW_CORE_CONFIG" "$FW_CORE_AUTHORITY" "$FW_CORE_CONFIG.present" "$FW_CORE_AUTHORITY.present"; do
+        { [ -e "$path" ] || [ -L "$path" ]; } && return 0
+    done
+    return 1
 }
 core_configuration_api() {
     local response code
@@ -2468,7 +2471,7 @@ EOF
         json_init
         json_add_string timezone "$(uci -q get system.@system[0].zonename)"
         json_add_string bonus_format bonus-state-v1
-        json_add_string authority_format authority-v1
+        json_add_string authority_format authority-v2
         json_add_string pact_network_format pact-network-v1
         json_add_string network_intent_format network-intent-v1
         json_add_string legacy_bonus "$legacy_bonus"

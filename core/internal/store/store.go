@@ -24,9 +24,10 @@ var (
 )
 
 type Store struct {
-	dir    string
-	mu     sync.Mutex
-	pruned string // day of the last automatic prune
+	dir     string
+	mu      sync.Mutex
+	pruned  string // day of the last automatic prune
+	blocked error  // an uncertain write requires reopening/reconciliation
 }
 
 func Open(dir string) (*Store, error) {
@@ -59,7 +60,11 @@ func writeJSON(path string, v any) error {
 	if err = os.Rename(tmp.Name(), path); err != nil {
 		return err
 	}
-	d, err := os.Open(filepath.Dir(path))
+	return syncDir(filepath.Dir(path))
+}
+
+func syncDir(path string) error {
+	d, err := os.Open(path)
 	if err != nil {
 		return err
 	}
@@ -94,14 +99,15 @@ func readJSON(path string, v any) error {
 }
 
 // ReadDocument reads a top-level JSON document (e.g. "devices.json"); found is false
-// when it does not exist yet. Callers own the schema and its version field.
+// only for genuine first use. A missing witnessed document is an error. Callers
+// own the data schema and its version field.
 func (s *Store) ReadDocument(name string, v any) (found bool, err error) {
 	if filepath.Base(name) != name || !strings.HasSuffix(name, ".json") {
 		return false, ErrInvalidID
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	err = readJSON(filepath.Join(s.dir, name), v)
+	err = s.readRecorded(filepath.Join(s.dir, name), v)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
@@ -115,7 +121,7 @@ func (s *Store) WriteDocument(name string, v any) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return writeJSON(filepath.Join(s.dir, name), v)
+	return s.writeRecorded(filepath.Join(s.dir, name), v)
 }
 
 // Report is one phone's cumulative usage for one router-local day (protocol §5).
@@ -197,7 +203,7 @@ func (s *Store) ApplyUsage(profile string, r Report) (changed bool, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	day := map[string]Report{}
-	if err := readJSON(path, &day); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := s.readRecorded(path, &day); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return false, err
 	}
 	prev, ok := day[r.Device]
@@ -228,7 +234,7 @@ func (s *Store) ApplyUsage(profile string, r Report) (changed bool, err error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return false, err
 	}
-	if err := writeJSON(path, day); err != nil {
+	if err := s.writeRecorded(path, day); err != nil {
 		return false, err
 	}
 	if today := time.Now(); s.pruned != today.Format(time.DateOnly) {
@@ -255,7 +261,7 @@ func (s *Store) UsageDay(profile, day string) (map[string]Report, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	reports := map[string]Report{}
-	if err := readJSON(path, &reports); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := s.readRecorded(path, &reports); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
 	return reports, nil
@@ -269,6 +275,9 @@ func (s *Store) Prune(today time.Time) error {
 }
 
 func (s *Store) pruneLocked(today time.Time) error {
+	if s.blocked != nil {
+		return s.blocked
+	}
 	cutoff := today.AddDate(0, 0, -(Retention - 1)).Format(time.DateOnly)
 	files, err := filepath.Glob(filepath.Join(s.dir, "usage", "*", "*.json"))
 	if err != nil {
@@ -277,7 +286,18 @@ func (s *Store) pruneLocked(today time.Time) error {
 	sort.Strings(files)
 	for _, f := range files {
 		if day := filepath.Base(f[:len(f)-len(".json")]); day < cutoff {
+			// Retention is an intentional deletion. Durably remove the witness
+			// first so a power cut cannot leave a required-but-deleted old day.
+			if err := os.Remove(f + PresenceSuffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			if err := syncDir(filepath.Dir(f)); err != nil {
+				return err
+			}
 			if err := os.Remove(f); err != nil {
+				return err
+			}
+			if err := syncDir(filepath.Dir(f)); err != nil {
 				return err
 			}
 		}

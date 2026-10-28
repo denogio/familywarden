@@ -11,8 +11,9 @@ import (
 const OwnershipDocument = "authority.json"
 
 // OwnershipFormat means the native adapter also refuses legacy writers when the
-// ownership document exists but the household configuration is unavailable.
-const OwnershipFormat = "authority-v1"
+// ownership document (or either document's presence witness) remains while
+// the household configuration is unavailable.
+const OwnershipFormat = "authority-v2"
 
 type ownership struct {
 	Version int    `json:"version"`

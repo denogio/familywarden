@@ -8,12 +8,14 @@ import (
 
 func TestOwnershipRequiresNativeGuardAndAdoptsExistingHousehold(t *testing.T) {
 	a, b, s := bonusSetup(t, "")
-	b.facts.AuthorityFormat = ""
-	if r := a.API("configuration_import", request(map[string]any{"revision": b.current.Revision})); r["error"] == nil {
-		t.Fatal("old adapter activated core ownership", r)
-	}
-	if len(s.data) != 0 || len(s.authority) != 0 || b.applies != 0 {
-		t.Fatal("incompatible import changed state")
+	for _, format := range []string{"", "authority-v1"} {
+		b.facts.AuthorityFormat = format
+		if r := a.API("configuration_import", request(map[string]any{"revision": b.current.Revision})); r["error"] == nil {
+			t.Fatal("old adapter activated core ownership", format, r)
+		}
+		if len(s.data) != 0 || len(s.authority) != 0 || b.applies != 0 {
+			t.Fatal("incompatible import changed state")
+		}
 	}
 	b.facts.AuthorityFormat = OwnershipFormat
 	activate(t, a, b.fakeBackend)
@@ -21,7 +23,7 @@ func TestOwnershipRequiresNativeGuardAndAdoptsExistingHousehold(t *testing.T) {
 	revision := b.current.Revision
 	// An existing v1 household from r18 has no separate ownership floor yet.
 	s.authority = nil
-	b.facts.AuthorityFormat = ""
+	b.facts.AuthorityFormat = "authority-v1"
 	applies := b.applies
 	if _, err := New(b, b, s); err == nil {
 		t.Fatal("old adapter adopted the ownership floor")

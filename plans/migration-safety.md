@@ -24,6 +24,7 @@ These are release acceptance requirements, not blanket claims about the current 
 
 | State | Current format / boundary | Safety concern |
 |---|---|---|
+| `core/*.json.present`, `core/usage/*/*.json.present` | Presence witnesses v1, private and written once per data file | Distinguish never-created state from loss; not content hashes or newest-state counters |
 | `core/authority.json` | Immutable ownership record v1 (`owner=core`) | Prevent a missing household journal from selecting legacy; not an anti-rollback generation |
 | `core/configuration.json` | Household journal v1, embedded configuration v1; sealed revisions including rollback target | Current/candidate/before state, ownership, pact snapshots and durable bonus must stay consistent |
 | `core/devices.json` | Registry v1 | Preserve public-key bindings, administrator role and parent scopes; missing is not equivalent to an approved empty replacement |
@@ -118,9 +119,49 @@ No Android milestone or production deployment was performed.
 
 Limits: this floor records **that** the core was selected, not **which state is newest**.
 It cannot detect deletion of every ownership artifact, restoring an older complete
-household, or an older backend that does not honor it. Existing optional ledgers do not
-yet have a durable presence/generation manifest. Full rollback-resistant restore and
+household, or an older backend that does not honor it. R7c below adds per-file absence detection,
+not a newest-state generation manifest. Full rollback-resistant restore and
 historical package compatibility remain open; no automatic unsafe downgrade is supported.
+
+## R7c — Detect loss of previously stored ledgers and accounting
+
+Implemented in core **0.13.0-r20** with backend **0.11.0_rc10-r16**. The native
+`authority-v2` capability extends ownership routing to the configuration/floor's
+`.present` witnesses. Older native capabilities are refused for owned activation/adoption.
+
+- [x] Each top-level document and usage-day write persists its data and a private v1
+  presence witness before returning success. Existing witnesses are validated, not
+  rewritten for every report. This adds no background evaluator or platform dependency.
+- [x] A witnessed missing file is damaged state, not a first-use empty ledger or a
+  measured zero. Cached writers cannot silently recreate it. An uncertain data/witness
+  write blocks further reads/writes in that store instance until reopen/reconciliation.
+- [x] Startup checks all existing witnesses before product recovery. After known-schema
+  preflight, adoption validates all existing JSON candidates before witnessing them.
+  Existing bytes, identity, decisions and counters are not rewritten by adoption.
+- [x] Intentional usage retention durably removes the expired witness before deleting
+  its data. Interrupted retention may leave old data, not a required-but-deleted day.
+- [x] Core/native ownership routing recognizes surviving witnesses even when both
+  authority JSON files are absent. Authenticated sail and original RPCs stay refused.
+- [x] Fault injection covers interruption after data persistence/before witness commit,
+  store-instance refusal, subsequent adoption, metadata version/corruption refusal,
+  optional-ledger loss before recovery, lost usage and attempted counter restart.
+
+The regression originally treated a deleted `requests.json` as a never-created ledger.
+Real OpenWrt tests now remove the actual persisted request/grant ledger, refuse startup
+without changing native rules, and recover its exact bytes without resetting decisions.
+Synthetic legacy-import fixtures move witnesses with their data only while stopped;
+that fixture reset is not a recovery recommendation.
+
+Local evidence: full Go race/vet and portable browser proof; 524 real fw4/nft checks,
+101 AGH checks, eight Node checks, syntax checks, fresh r20/r16/r8 APK smoke/reinstall,
+and all 39 foundation/owned/shared browser cases passed. No Android milestone or live
+deployment was performed.
+
+Limits: witnesses detect **absence**, not replacement by older valid contents. Removing
+both a data file and its witness removes this evidence; an old complete backup can still
+contain both. They are not a signed generation manifest, do not make live backups
+consistent, and do not authorize automatic restore. Historical data lost before first
+successful adoption cannot be reconstructed or retrospectively detected.
 
 ## Remaining implementation and acceptance matrix
 
@@ -142,9 +183,9 @@ historical package compatibility remain open; no automatic unsafe downgrade is s
    capabilities are different compatibility dimensions; record the supported tuples.
 2. Unsupported old software must not fall back to a materialized UCI projection of
    an owned household. A package downgrade is not an approved schema downgrade.
-3. For an unmarked historical household, absence of the configuration still selects
-   legacy. R19's separate ownership floor blocks loss of the journal/registry after
-   adoption, but is not enough to admit partial backups or detect removal of all evidence.
+3. R19's ownership floor and R20's presence witnesses block missing-file fallback after
+   adoption. Removing all evidence remains indistinguishable from historical first use;
+   this is not enough to admit partial backups or arbitrary old household snapshots.
 4. A complete but old backup may still roll back spent grants, usage or tighter pact
    rules. Never promise automatic safe merging when no trustworthy newer floor exists.
 5. A backup requires the daemon and native writers to be quiesced. The startup lease

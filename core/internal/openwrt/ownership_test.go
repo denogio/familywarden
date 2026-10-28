@@ -9,7 +9,7 @@ import (
 )
 
 func TestNativeOwnershipRoutingNeverTreatsDamageAsLegacy(t *testing.T) {
-	for _, name := range []string{"configuration.json", configuration.OwnershipDocument} {
+	for _, name := range []string{"configuration.json", configuration.OwnershipDocument, "configuration.json.present", "authority.json.present"} {
 		for _, kind := range []string{"regular", "dangling", "directory"} {
 			t.Run(name+"/"+kind, func(t *testing.T) {
 				dir := t.TempDir()

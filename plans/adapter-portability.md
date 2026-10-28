@@ -516,6 +516,16 @@ registry seams are refused under the native lock. Adoption requires the native
 The ownership floor is not a newest-state counter: full historical compatibility,
 optional-ledger loss and safe old-backup admission remain open in the R7 matrix.
 
+### R7c progress — stored-file absence witnesses
+
+Core r20/backend rc10-r16 distinguish first use from loss of an already persisted
+ledger or usage day. Private per-file witnesses are committed before acknowledging
+writes; startup validates/adopts them before product recovery. Lost accounting cannot
+become zero or be recreated by a cached writer. Retention deletes witnesses durably
+before expired data; native authority-v2 guards surviving ownership witnesses too.
+This is absence detection only: older valid contents/complete historical backups still
+need generation and restore-admission rules. R7 remains open.
+
 ## Acceptance checklist for adapter-ready completion
 
 - [x] A router implementer needs platform facts, enforcement/application and host

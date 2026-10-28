@@ -140,10 +140,14 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
         native guard capability before adoption, no legacy context/policy/registry seams
         after ownership, and missing owned journal/registry refusal before recovery.
         Core storage rejects non-regular JSON entries rather than treating links as absence.
+      - [x] R7c (core r20/backend rc10-r16): persistent per-file absence witnesses,
+        loss refusal for optional ledgers/usage before recovery, write-failure blocking,
+        byte-preserving adoption and retention-aware witness deletion. Native authority-v2
+        guards surviving witnesses too. This is not content/generation anti-rollback.
       - [ ] Remaining historical/package/version and restore-admission gates:
         [concrete R7 safety matrix](migration-safety.md). Older non-cooperating writers,
-        deletion of all ownership evidence, optional-ledger integrity and whole-household
-        backup/restore are not solved by these first slices.
+        deletion of all ownership evidence, older-content/generation integrity and
+        whole-household backup/restore are not solved by these first slices.
 
 No pfSense/OPNsense adapter is implemented yet. The FreeBSD cross-build succeeds,
 but still selects OpenWrt and is not runtime support. R6 now proves the production service composition and shared UI with a recording/failing
