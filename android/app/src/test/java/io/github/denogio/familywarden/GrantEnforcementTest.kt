@@ -52,4 +52,17 @@ class GrantEnforcementTest {
         assertNull(clock.now(110_000, 8))
         assertNull(clock.now(10_000, 7))
     }
+
+    @Test fun aSyncReplacingThePolicyMidReadIsDetectedNotEnforced() {
+        val nonce = "a".repeat(64)
+        // Same snapshot throughout: enforce normally.
+        assertFalse(AppControl.replacedDuringRead(nonce, """{"nonce":"$nonce"}"""))
+        // A concurrent sync stored a new reply (fresh nonce and clock): retry instead.
+        assertTrue(AppControl.replacedDuringRead(nonce, """{"nonce":"${"b".repeat(64)}"}"""))
+        // A cache that vanished or became unreadable is also not the snapshot read.
+        assertTrue(AppControl.replacedDuringRead(nonce, null))
+        assertTrue(AppControl.replacedDuringRead(nonce, "not json"))
+        // Unscoped (v1) caches carry no nonce and no app policy to protect.
+        assertFalse(AppControl.replacedDuringRead(null, null))
+    }
 }

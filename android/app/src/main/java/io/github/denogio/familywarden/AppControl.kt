@@ -115,6 +115,15 @@ object AppControl {
         true
     }.onFailure { Log.w(TAG, "grant expiry alarm unavailable", it) }.getOrDefault(false)
 
+    /**
+     * Every accepted sync stores a fresh request nonce together with its clock, so an
+     * unchanged nonce after all reads proves one consistent policy snapshot. A changed
+     * one means a concurrent sync replaced the cache mid-read (e.g. at process start).
+     */
+    internal fun replacedDuringRead(readNonce: String?, currentPayload: String?): Boolean =
+        readNonce != null && runCatching { org.json.JSONObject(requireNotNull(currentPayload)).getString("nonce") }
+            .getOrNull() != readNonce
+
     private const val TAG = "UlyssesMast"
 }
 
@@ -126,6 +135,7 @@ class AppControlService : Service() {
     private val labelCache = mutableMapOf<String, String>()
     private val launchableCache = mutableMapOf<String, Boolean>()
     private val tick = Runnable { tick() }
+    private var replacedReads = 0
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             intent.data?.schemeSpecificPart?.let { labelCache.remove(it); launchableCache.remove(it) }
@@ -198,6 +208,15 @@ class AppControlService : Service() {
                     payload.getJSONObject("apps").toString(), store.policyClock(state), users,
                     state.shared?.day.orEmpty(), state.shared?.millis.orEmpty())
             }.onFailure { Log.w(TAG, "grant input unavailable", it) }.getOrNull()
+            if (AppControl.replacedDuringRead(state.requestNonce, store.payload)) {
+                // Enforcing a mix of two policies could drop an active grant and push the
+                // child out of an approved app. Keep what is in force; re-read at once.
+                if (++replacedReads <= 3) {
+                    Log.i(TAG, "policy replaced during enforcement read; retrying")
+                    handler.post(tick)
+                    return
+                }
+            } else replacedReads = 0
             val sample = monitor?.let { m ->
                 runCatching { m.sample(essential + basePolicy.alwaysAllowed, input) }
                     .onFailure {

@@ -315,8 +315,9 @@ Grouped Android milestone on r23 + the R7g debug app (Android 15 emulator, dispo
 OpenWrt): `test-mast-emulator.sh` 98 checks (pairing, enrollment, Device Owner, pact,
 address repair, DNS failure/restoration, offline reboot, removal) and
 `test-requests-emulator.sh` 31 P8 checkpoints (signed requests, grants, new apps,
-non-owner parent) passed. The earlier unexplained CI grant-consumption-after-restart
-failure did not recur; that is still not a root-cause explanation.
+non-owner parent) passed. The earlier CI grant-consumption-after-restart failure was
+later traced to a policy-read race at process start and fixed (see core-migration.md,
+"Android request failure evidence").
 
 App-upgrade rehearsal (`scripts/test-pilot-upgrade.sh`, Android 15 emulator, debug-
 signed with the same local debug key): the pre-generation app (`b18fa3a`) as Device
@@ -373,7 +374,7 @@ temp-file, fsync and rename discipline) and simultaneous loss of several cut poi
 | Whole-household backup | One private artifact, manifest/checksums/versions, native secrets and all durable ledgers from a quiesced consistent state | Offline signed export/inspection proved (R7e); restore absent by design |
 | Restore admission | Validate before activation; never merge arbitrary old ledgers or weaken pact minima; define what can be proved when the latest state is unavailable | Cleared-target-only, pinned, staged, complete-owned restore (R7f); phones refuse older restored state via generation lineage (R7g) |
 | Post-restore application | Reapply native intent and reconcile DNS; do not treat backed-up applied/verified observations as fresh proof | Startup reapplies/materializes (proved); DNS acks kept until normal reconciliation |
-| Integrated release milestone | Native packages/UI/AGH plus one grouped Android milestone against the selected candidate; resolve or explicitly block on unexplained failures | r23 candidate: native, 39 browser, 98+31 emulator checks pass; unexplained earlier CI grant failure remains unexplained |
+| Integrated release milestone | Native packages/UI/AGH plus one grouped Android milestone against the selected candidate; resolve or explicitly block on unexplained failures | r23 candidate: native, 39 browser, 98+31 emulator checks pass; the earlier CI grant failure is explained (policy-read race at process start) and fixed in the app |
 
 ### Compatibility rules to establish before enabling restore
 

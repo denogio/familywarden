@@ -781,6 +781,24 @@ policy, enforcement or timeouts. Local validation: 199 Android unit tests,
 The first local build lost its Gradle daemon; a resource-bounded build passed.
 No new emulator or physical-device success is claimed by these diagnostics.
 
+**Root cause (2026-10-28, from those diagnostics of CI run 40490235715):** not an
+environmental flake. After the same-UID kill, the `DEBUG_SYNC` broadcast restarted the
+process; the sync stored a new reply while `AppControlService.tick` was reading the old
+one. The tick parsed policy A, then re-read the cache for grant input, found reply B
+("policy cache changed during enforcement read", visible at every process start in the
+app log) and enforced **without grants**: the granted fixture was suspended at
+11:03:45 (`PACKAGES_SUSPENDED`), Android closed its task and FamilyWarden's task came to
+the front, so the rest of the granted minute was never used and the test timed out.
+Fail-closed, but a functional bug: a child can be pushed out of an approved app.
+
+Fix: every accepted sync stores a fresh nonce together with its clock, so an unchanged
+nonce after all reads proves one consistent snapshot. If it changed, the tick keeps the
+suspensions in force and re-reads at once (at most three times, then the previous
+fail-closed path). `AppControl.replacedDuringRead` has a JVM test (205 tests pass);
+three complete `test-requests-emulator.sh` runs passed 31/31 (a fourth stopped in the
+emulator's network bootstrap before any test). The race is timing-dependent and was not
+deterministically reproduced locally; the evidence is the CI diagnostic sequence.
+
 ### Legacy phone clock/day compatibility (core 0.13.0-r9 / LuCI 0.11.0-r4)
 
 Legacy ownership now normalizes the signed phone's internet windows too, not only
