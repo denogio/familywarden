@@ -10,11 +10,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/denogio/familywarden/core/internal/service"
 	"github.com/denogio/familywarden/core/internal/store"
 )
 
 func TestProtectedReleaseCannotUseAdministratorRoute(t *testing.T) {
-	h := configurationHandler(http.NotFoundHandler(), nil)
+	h := service.WithConfiguration(http.NotFoundHandler(), nil)
 	for _, method := range []string{"request", "cancel", "status"} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/configuration_sail_"+method, strings.NewReader(`{"answer":"press on"}`)))
@@ -29,7 +30,8 @@ func TestHealthAndVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := handler(st, nil)
+	h := service.Handler(nil, "dev")
+	_ = st
 	for path, want := range map[string]string{"/health": `"status":"ok"`, "/version": `"core":"dev"`} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
@@ -111,7 +113,8 @@ func TestStatusBridge(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer l.Close()
-	go http.Serve(l, handler(st, nil))
+	go http.Serve(l, service.Handler(nil, "dev"))
+	_ = st
 	out.Reset()
 	status(sock, &out)
 	if got := out.String(); got != `{"core":"dev","running":true}`+"\n" {

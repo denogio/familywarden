@@ -10,33 +10,30 @@ LUCI_DEPENDS:=+familywarden +luci-base
 LUCI_PKGARCH:=all
 
 PKG_VERSION:=0.11.0
-PKG_RELEASE:=5
+PKG_RELEASE:=8
 
 PKG_MAINTAINER:=denogio <dennis@hojgaard.me>
 PKG_LICENSE:=Apache-2.0
+
+# Canonical UI sources live outside LuCI; SDK builds expose the repository
+# through FW_SRC. Other native hosts package the very same web/ assets.
+FAMILYWARDEN_WEB ?= $(if $(FW_SRC),$(FW_SRC)/web,$(CURDIR)/../web)
+PKG_FILE_DEPENDS += $(wildcard $(FAMILYWARDEN_WEB)/*)
 
 include ../../luci.mk
 
 # Define files to install
 define Package/luci-app-familywarden/install
+	# One page only: the shared workspace from web/ plus this thin host adapter.
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/familywarden
-	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/familywarden/overview.js $(1)/www/luci-static/resources/view/familywarden/overview.js
-	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/familywarden/profiles.js $(1)/www/luci-static/resources/view/familywarden/profiles.js
-	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/familywarden/settings.js $(1)/www/luci-static/resources/view/familywarden/settings.js
-	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/familywarden/devices.js $(1)/www/luci-static/resources/view/familywarden/devices.js
-	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/familywarden/info.js $(1)/www/luci-static/resources/view/familywarden/info.js
-	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/familywarden/family.js $(1)/www/luci-static/resources/view/familywarden/family.js
-	$(SED) 's/@@VERSION@@/$(PKG_VERSION)-r$(PKG_RELEASE)/' $(1)/www/luci-static/resources/view/familywarden/info.js
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/familywarden/control.js $(1)/www/luci-static/resources/view/familywarden/control.js
 
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/familywarden
-	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/ulysses.js $(1)/www/luci-static/resources/familywarden/ulysses.js
-	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/overview.css $(1)/www/luci-static/resources/familywarden/overview.css
-	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/pages.css $(1)/www/luci-static/resources/familywarden/pages.css
-	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/ui.js $(1)/www/luci-static/resources/familywarden/ui.js
-	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/configuration.js $(1)/www/luci-static/resources/familywarden/configuration.js
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/control-host.js $(1)/www/luci-static/resources/familywarden/control-host.js
 	# Shared administrator UI (A20): platform-neutral ES modules
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/familywarden/shared
-	$(INSTALL_DATA) ./htdocs/luci-static/resources/familywarden/shared/family.js $(1)/www/luci-static/resources/familywarden/shared/family.js
+	$(INSTALL_DATA) $(FAMILYWARDEN_WEB)/*.js $(1)/www/luci-static/resources/familywarden/shared/
+	$(INSTALL_DATA) $(FAMILYWARDEN_WEB)/*.css $(1)/www/luci-static/resources/familywarden/shared/
 
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/luci-app-familywarden.json $(1)/usr/share/luci/menu.d/luci-app-familywarden.json

@@ -22,7 +22,7 @@ Historical test counts are evidence at that checkpoint, not current suite totals
 | P8 LAN requests | Child/parent/admin flow, device/key-bound grants, consumption, first-answer-wins and new-app decisions; deployed | Focused physical request/approval run and bounded multi-phone allocation |
 | P9 off-home | LAN notifications only | Transport decision, encryption/key distribution and off-home implementation/testing |
 | P10 Android | Child/adult status/history, scoped parent decisions and usage | Parent presentation split is implemented and preview-tested (#94); scoped child selection is implemented and preview-tested (#97); full parent controls remain |
-| P10 shared web | Existing LuCI pages and shared Requests module, now hardened/tested in neutral and LuCI hosts; control prototype reviewed | Production-wide shared presentation layer, core API integration, host adapter and EN/DA; prototype is not shipped code |
+| P10 shared web | Core-backed `web/` workspace, prototype-based presentation, EN/DA, one thin LuCI host bridge; neutral/native browser validation | Essential-app/removal UX gaps below; no second-router host or production deployment |
 | Core migration | Identity/requests/usage/new-apps; opt-in authoritative configuration/pacts, CAS/confirm/rollback, Settings/Profiles CAS; owned phone/app policy from the document; Go AGH reconciliation/catalogue | **Not adapter-ready:** owned bonus, manual-network/grant, pact-permit revocation, status/expiry, runtime facts, portable network intent/exact apply receipts and DNS/release orchestration migrated/tested; platform construction/shared UI and P12 safety gates; owned configuration cutover not deployed (#91; [R0–R7](adapter-portability.md)) |
 | P11 adult pool | Existing pact enforcement, not the proposed pool | Final consumption/reset rules, ledger and pact-safe self-service |
 | P13 release validation | Same-key rc3/rc4 router+phone pilot and rc5 phone update | Release-wide security/compatibility/lifecycle acceptance for remaining scope; no blanket production rollout approval |
@@ -119,8 +119,11 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
       Protected release phrase/status use a dedicated core route, with native root auth
       and throttling retained. Go/race/vet, 495 integration, 42 pact-network and 96 real
       AGH checks pass (core r16/backend rc10-r13); no deployment.
-- [ ] R5: separate platform construction and finish shared core-backed administration
-      with thin host bridges (P10), not a new framework or standalone login.
+- [x] R5: portable production composition in `core/internal/service`; shared core-backed
+      administration in `web/`, EN/DA, one LuCI mount/RPC bridge and no legacy subpages.
+      Prototype-based presentation inspected on desktop/mobile; no mock policy/data.
+      Go/race/vet, 495 integration checks, APK smoke and 33 browser cases pass
+      (core r17/backend rc10-r14/LuCI r6). No production deployment.
 - [ ] R6: run the production service and shared UI against a recording/failing adapter
       with no shell/UCI/ubus/fw4/OpenWrt paths, then preserve real OpenWrt parity.
 - [ ] R7: close P12 upgrade/import/interruption, compatibility and safe restore gates
@@ -599,11 +602,14 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       requests/responses (`b3ded32`, `37a0146` and current Android verification).
 - [x] Harden the existing shared Requests foundation (#101): persistent action errors,
       single-flight operations, stale-action guards, draft/focus preservation and late-
-      reply disposal. Same `.fwa` module passes neutral-host and real-LuCI tests;
+      reply disposal. Same `.fwx` Requests module passes neutral-host and real-LuCI tests;
       [implementation evidence](../docs/design/control-interface-implementation.md).
-- [ ] Implement the complete control prototype on that shared foundation, remaining
-      core-backed views/editors, host integration and EN/DA (#96). This is not yet a
-      production-wide replacement of the legacy LuCI pages.
+- [x] Replace legacy LuCI pages with the core-backed shared workspace in `web/` (#96,
+      R5): prototype-based layout, Family/profile controls, Requests, Devices, Ulysses,
+      Administration, editors and EN/DA. Unsupported/missing facts stay unavailable;
+      prototype-only mock rules/data are not product features. Desktop/mobile visual
+      inspection, fresh packages and neutral/native browser cases pass. Production
+      deployment and R6/R7 gates remain separate.
 
 **Accept:** UI reflects server authority and applied state, and has loading/error/offline states.
 

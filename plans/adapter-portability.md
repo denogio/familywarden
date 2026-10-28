@@ -142,7 +142,7 @@ contracts needed by each migrated caller.
   retaining native secret access, authenticated release isolation, verification-before-
   ack, retry safety and a recovery entry point reachable during lockdown. Depends on
   R1/R2 for consistent runtime facts; use R3's application/error semantics where needed.
-- [ ] **R5 — Separate daemon composition and finish portable administration.** Select
+- [x] **R5 — Separate daemon composition and finish portable administration.** Select
   platform construction outside product services; complete core API coverage and shared
   views/editors with thin host bridges (A20/P10). Native LuCI form projection may stay
   during migration, but cannot be required by the shared product UI. Depends on the
@@ -420,7 +420,31 @@ verified readback, persistence failure, retry cadence, credential changes, malfo
 future state, native secret locking, mixed-version/core-down refusal, untouched legacy
 acks, cumulative pact DNS after restart and protected-route/phrase isolation. Package
 and shared-UI milestone validation follows with R5; no production router or phone access.
-R5–R7 remain open.
+R5 was subsequently completed below; R6–R7 remain open.
+
+### R5 completion — portable composition and shared administration (2026-10-28)
+
+`core/internal/service.New` is the production composition. The executable supplies
+OpenWrt construction, storage and socket lifecycle; the service package does not
+import OpenWrt. This is not the complete R6 recording/failing-adapter proof.
+
+Canonical UI sources are `web/`: Family/profile cards, Requests/usage/new apps,
+Devices/enrollment, Ulysses and Administration, with configuration, app/schedule,
+DNS, identity and settings editors. English/Danish resources have key parity.
+The prototype supplies visual language only; no mock product rules or device data
+are shipped. Missing reports remain unavailable rather than fabricated zero usage.
+Core computes the router-local screen budget, including today's total bonus.
+
+LuCI has one menu entry and one thin mount/RPC bridge; legacy views, CBI editors and
+duplicate shared resources were removed. Host-frame sizing stays in that bridge;
+product CSS/layout stays in `web/`. Drafts, CAS/confirm/rollback, fingerprint approval,
+frozen-rule guards, DNS-only commits and stale-action refusal have browser coverage.
+
+Evidence: Go race/vet, 495 real fw4/nft integration checks, seven Node checks, syntax,
+fresh APK smoke, and 33 browser cases (27 neutral/native foundation, four owned-core,
+two shared-control cutover cases). Desktop/mobile screenshots were inspected against
+the prototype, including its LuCI-host variant. Package revisions: core 0.13.0-r17,
+backend 0.11.0_rc10-r14, LuCI 0.11.0-r6. No production router or phone was modified.
 
 ## Acceptance checklist for adapter-ready completion
 

@@ -38,14 +38,15 @@ done
 for f in /etc/config/familywarden /usr/share/rpcd/acl.d/familywarden.json \
          /usr/share/rpcd/acl.d/luci-app-familywarden.json \
          /usr/share/luci/menu.d/luci-app-familywarden.json \
-         /www/luci-static/resources/view/familywarden/overview.js \
-         /www/luci-static/resources/familywarden/ulysses.js \
+         /www/luci-static/resources/view/familywarden/control.js \
+         /www/luci-static/resources/familywarden/control-host.js \
+         /www/luci-static/resources/familywarden/shared/control.js \
+         /www/luci-static/resources/familywarden/shared/family.js \
          /www-familywarden/index.html; do
     [ -f "$f" ] && pass "installed: $f" || fail "missing: $f"
 done
-grep -q '@@VERSION@@' /www/luci-static/resources/view/familywarden/info.js \
-    && fail "info.js version placeholder not substituted" \
-    || pass "info.js version substituted"
+[ ! -f /www/luci-static/resources/view/familywarden/overview.js ] \
+    && pass "no legacy dashboard view left behind" || fail "legacy dashboard still installed"
 
 count_includes() { uci show firewall | grep -c "path='/var/etc/familywarden.include'"; }
 [ "$(count_includes)" = "1" ] && pass "postinst added firewall include" || fail "firewall includes: $(count_includes) (want 1)"

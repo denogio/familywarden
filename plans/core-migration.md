@@ -6,7 +6,7 @@ is the interim OpenWrt implementation and only shrinks. Decisions: `app-control.
 A6 (core owns identity/policy/DNS/apps), A18 (router-agnostic), A19 (core-owned store),
 A20 (shared UI embedded natively, on OpenWrt via a LuCI view + rpcd shim).
 
-## Current completion status (2026-10-27)
+## Current completion status (2026-10-28)
 
 **Not adapter-ready yet.** Completion means a new router implements platform facts,
 network enforcement/application and native host integration, not another copy of
@@ -28,19 +28,25 @@ checklist are in [Router adapter portability](adapter-portability.md).
   `network_application` reports acknowledgement, not live dataplane verification.
   R4 additionally owns DNS lifecycle/state and release phrase/status; native credential
   access and authenticated/throttled recovery entry-point integration stay in OpenWrt.
-- **Still OpenWrt-specific:** current daemon construction and adapter contracts require
-  more than platform facts/apply. UCI/nft/fw4/procd are legitimate adapter internals,
-  but the owned core/shared UI must not require them to run on another platform.
-- **Still unproven:** the shell-free test-adapter service path, complete shared
-  administration and safe restore/mixed-version matrix. No second-router implementation
+- **R5 implemented:** `core/internal/service` composes the production authority,
+  identity and local API without importing OpenWrt. The executable constructs the
+  adapter/socket/storage. `web/` owns the shared EN/DA administration workspace;
+  LuCI has one mount/RPC bridge and no legacy pages. UCI/nft/fw4/procd remain adapter
+  internals, not dependencies of the shared presentation or service composition.
+- **Still unproven:** the complete R6 shell-free recording/failing-adapter service
+  matrix and R7 safe restore/mixed-version gates. No second-router implementation
   or cross-platform build is a current workstream or prerequisite for this migration.
 
-Next implementation slice: **R5 portable service composition and shared administration**.
+Next implementation slice: **R6 recording/failing-adapter proof through the production service**.
+R5 evidence: core r17/backend rc10-r14/LuCI r6; Go/race/vet, 495 integration checks,
+seven Node checks, fresh-package smoke and 33 neutral/native browser cases pass.
+Desktop/mobile screenshots were compared against the design reference; mock data
+and product rules were not copied. See `web/README.md` for the host contract.
 R4 now owns DNS acknowledgements/ownership/retries in independent `dns.json` and
 protected release phrase/status behind `/release/`; native secrets, root authentication
 and throttling remain in OpenWrt (core r16/backend rc10-r13). Go/race/vet, 495 full
-integration, 42 pact-network and 96 real AGH checks pass. Package/UI validation follows
-with R5; nothing has been deployed to a production router.
+integration, 42 pact-network and 96 real AGH checks passed at R4. R5's package/UI
+validation now also passes; nothing has been deployed to a production router.
 R2's runtime facts and R3's portable ordered network intent/exact apply acknowledgement
 are implemented. Configuration/network apply and recovery receive core-computed intents
 under the existing locks; the owned native renderer does not reconstruct eligibility

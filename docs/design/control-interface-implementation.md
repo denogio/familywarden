@@ -2,24 +2,92 @@
 
 ## Current boundary
 
-The control prototype is a design reference, not a shipped whole-app interface.
-The existing Requests page is the first real shared presentation slice:
+The control prototype is a visual reference, not shipped code or product rules.
+R5 replaces the old LuCI pages with one core-backed shared workspace:
 
-- Presentation: `luci-app-familywarden/htdocs/luci-static/resources/familywarden/shared/family.js`.
-- LuCI host adapter: `luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/family.js`.
-- Backend: existing core-backed `requests`, `usage`, `new_apps`, `request_answer`
-  and `app_decision` RPC methods.
+- Canonical presentation: `web/control.js`, `control.css`, `control-i18n.js` and `family.js`.
+- LuCI mount: `luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/control.js`.
+- Native RPC/session bridge: `luci-app-familywarden/htdocs/luci-static/resources/familywarden/control-host.js`.
+- Backend: existing core identity/requests/usage APIs and authoritative configuration,
+  DNS, network-action and pact methods. The host provides authenticated transport.
 
-One plain ES module renders the page. The host supplies `call(method, params)`,
-locale and optionally a clock/poll interval. The LuCI adapter keeps its normal
-session and ACL path through rpcd to the core; no new password, port, iframe,
-framework or CDN is introduced. Styles now live under `.fwa`; legacy `.fwx` hooks
-remain on the same root/cards for existing tests and consumers, not a second UI.
-The existing EN/DA tables remain complete for this slice.
+The host supplies `call(method, params)`, locale, optional enrollment facts and the
+native protected-recovery URL. No new password, port, iframe, framework or CDN is
+introduced. Product CSS is scoped under `.fwa`; Requests is independently scoped
+under `.fwx`, so it cannot restyle its parent workspace. EN/DA tables have key parity.
+LuCI owns only its outer frame, login/session, RPC/ACL and mount sizing; another
+router host reuses `web/` rather than reimplementing the presentation.
 
 The prototype's mock API shapes are **not** frozen by this work. Existing grant
 limits, lifetime, requesting-device/key binding, parent scopes and pact exclusions
 remain core decisions. The browser does not grant authority or infer enforcement.
+
+## R5 visual and runtime checkpoint (2026-10-28)
+
+The shared workspace uses the prototype's navy rail, light/dark surfaces, attention
+inbox, profile cards, delivery pipeline and Ulysses voyage presentation. Desktop and
+mobile screenshots were inspected, including the prototype's LuCI-host variant.
+Host-width constraints, heading inheritance, optional-node rendering, nested arrays,
+section spacing and Requests stylesheet isolation have regression coverage.
+
+Views/editors cover Family/profile rules, Requests/usage/new apps, Devices/enrollment,
+Ulysses and Administration. Missing usage is unavailable, not a measured zero;
+unknown network status is not an allow claim. Core supplies today's budget from the
+same compiled app policy used for phones, including its optional total bonus.
+
+Go race/vet, syntax, seven Node checks, 495 fw4/nft checks, fresh-package smoke and
+33 browser cases pass on core r17/backend rc10-r14/LuCI r6. Browser checks include
+real import/CAS/confirmation/restart rollback, cumulative pact DNS, no UCI writes
+from shared editors, EN/DA, narrow/large-text layouts, draft preservation, fingerprint
+approval, frozen weekdays, functional Ulysses/credential actions and late replies.
+No production deployment; R6 adapter proof and R7 migration gates remain separate.
+
+## Rules presentation correction (2026-10-28, LuCI r7)
+
+The first R5 visual pass did not port the profile Rules editor: it still exposed a
+flat configuration form. Rules now follows the reference's panel hierarchy: draft
+notice, daily budget pattern, per-app modes, new-app switch, downtime, home internet
+windows and an unsaved-changes save/discard bar. Profile/network details and DNS
+remain available below the primary panels instead of preceding them.
+
+All controls edit the existing local configuration draft and submit the same core
+CAS/confirmation, DNS-only or amendment operations. App rows use configured/reported
+packages; pending approvals remain labelled pending rather than editable allow rules.
+No prototype mock data, schedule validation or enforcement logic was copied. Window
+inputs retain HH:MM/24:00 support rather than restricting the core's valid endpoints.
+
+The active person tab remains visible, selecting it again does not reset a draft,
+and navigation still confirms discard. LuCI clips the rounded frame without creating
+an extra scroll container, so the save bar stays visible during editing. Actual Rules
+screenshots were compared with the reference at desktop and phone widths.
+
+Syntax, seven Node checks, fresh-package smoke and 36 browser cases pass, including
+native core commits, frozen-rule guards, save-bar positioning, app/budget payloads,
+local discard and Rules navigation. The checks below retain their historical counts.
+
+## History presentation checkpoint (2026-10-28, LuCI r8)
+
+History now uses the reference's Screen time panel, range controls, daily bars,
+summary cards and By app panel. The unchanged core API exposes seven daily totals
+and today's top apps only. Month/year/all-time and earlier-week controls are disabled
+with an explanation; historical budget lines and over-budget counts are unavailable,
+not reconstructed from current configuration. Earlier per-app breakdowns and retention
+controls require a future core API extension, not client-generated data.
+
+Missing days are gaps, an explicitly reported zero is zero, and older positive values
+with no coverage metadata remain marked as unknown coverage. Totals/averages exclude
+missing or invalid samples. The app panel labels today's scope explicitly; selecting
+a previous day never reuses today's app totals as that day's history. EN/DA, narrow
+layouts and read-only native integration have browser coverage.
+
+The person tab bar also no longer overflows vertically by one pixel: its negative
+button margin was removed, vertical overflow is contained, and horizontal scrolling
+and keyboard focus remain available. A targeted Chromium regression and local Firefox
+probe confirm equal scroll/client heights. Fresh APK smoke, syntax, eight Node checks
+and 39 browser cases pass for the combined History/tab-bar update. Desktop/mobile
+screenshots were inspected with both real empty state and fictional test reports.
+
+The checkpoints below record earlier milestones and their historical test counts.
 
 ## State-handling checkpoint (2026-10-25)
 

@@ -34,6 +34,44 @@ func reportConfiguration(t *testing.T, r map[string]any) map[string]any {
 	return c
 }
 
+func TestReportAppBudgetUsesCompiledCorePolicy(t *testing.T) {
+	a, b, _ := setup(t)
+	activate(t, a, b)
+	d, _, err := a.load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &d.Configuration.Current.Profiles[0]
+	p.Apps, p.ScreenMinutes, p.ScreenWeekday = "1", "60", "25"
+	d.Bonus.Entries = []bonusEntry{{"alex", "2027-01-15", "total", 15}}
+	if err := a.save(d); err != nil {
+		t.Fatal(err)
+	}
+	report := a.API("configuration_report", []byte(`{}`))
+	reportProfiles(t, report)
+	apps := report["app_profiles"].(map[string]any)
+	alex := apps["alex"].(map[string]any)
+	policy := alex["policy"].(*rules.AppPolicy)
+	if report["day"] != "2027-01-15" || alex["enabled"] != true ||
+		*alex["screen_budget_minutes"].(*int) != 40 || policy.Screen["fri"] != 25 || policy.Bonus.Total != 15 {
+		t.Fatal(report)
+	}
+	taylor := apps["taylor"].(map[string]any)
+	if taylor["enabled"] != false || taylor["screen_budget_minutes"].(*int) != nil {
+		t.Fatal(taylor)
+	}
+	d.Bonus.Entries = nil
+	if err := a.save(d); err != nil {
+		t.Fatal(err)
+	}
+	report = a.API("configuration_report", []byte(`{}`))
+	reportProfiles(t, report)
+	alex = report["app_profiles"].(map[string]any)["alex"].(map[string]any)
+	if *alex["screen_budget_minutes"].(*int) != 25 || alex["policy"].(*rules.AppPolicy).Bonus != nil {
+		t.Fatal(alex)
+	}
+}
+
 func TestNetworkReportPrecedenceWindowsAndStatus(t *testing.T) {
 	a, b, _ := setup(t) // Friday 2027-01-15 08:00 UTC, window closed
 	activate(t, a, b)

@@ -25,7 +25,7 @@ if [ -z "$APK_DIR" ]; then
 fi
 APK_DIR="$(cd "$APK_DIR" && pwd)"
 
-cleanup() { docker rm -f "$NAME" "${NAME}-owned" >/dev/null 2>&1 || true; }
+cleanup() { docker rm -f "$NAME" "${NAME}-owned" "${NAME}-shared" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 docker run -d --name "$NAME" --memory=768m --cpus=2 --cap-add NET_ADMIN -p "127.0.0.1:$PORT:80" \
@@ -51,4 +51,16 @@ if [ "${FW_E2E_OWNED:-}" = 1 ]; then
     docker rm -f "$NAME" >/dev/null 2>&1 || true
     FW_BASE_URL="http://127.0.0.1:$OWNED_PORT" FW_PASSWORD="$PASSWORD" FW_E2E_ALLOW_PACT=1 \
         FW_E2E_CONTAINER="$OWNED_NAME" FW_E2E_OWNED_PHASE=1 npx playwright test owned-core.spec.js
+
+    # Shared administration performs its own explicit cutover in a fresh host;
+    # it must never import or mutate the legacy suite's real pact fixture.
+    docker rm -f "$OWNED_NAME" >/dev/null 2>&1 || true
+    SHARED_NAME="${NAME}-shared"
+    SHARED_PORT="${E2E_SHARED_PORT:-18092}"
+    docker run -d --name "$SHARED_NAME" --memory=768m --cpus=2 --cap-add NET_ADMIN -p "127.0.0.1:$SHARED_PORT:80" \
+        -v "$APK_DIR:/apk:ro" -v "$REPO:/src:ro" "$IMAGE" sleep infinity >/dev/null
+    docker exec -e PASSWORD="$PASSWORD" "$SHARED_NAME" sh /src/scripts/e2e-container-setup.sh
+    echo "Shared-control phase on http://127.0.0.1:$SHARED_PORT"
+    FW_BASE_URL="http://127.0.0.1:$SHARED_PORT" FW_PASSWORD="$PASSWORD" FW_E2E_ALLOW_PACT=1 \
+        FW_E2E_CONTAINER="$SHARED_NAME" FW_E2E_SHARED_PHASE=1 npx playwright test control.spec.js --grep 'native LuCI bridge'
 fi

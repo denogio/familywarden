@@ -72,19 +72,19 @@ export function viewModel(requests, usage, nowEpoch, newApps) {
 }
 
 const CSS = `
-.fwa{--fwx-fg:var(--text-color-high,inherit);--fwx-muted:var(--text-color-medium,#5b6773);--fwx-line:var(--border-color-medium,#d6dde4);
- --fwx-card:var(--background-color-high,transparent);--fwx-accent:#1b2a3a;--fwx-bar:#c9a227;color:var(--fwx-fg)}
-.fwa h3{margin:1.2em 0 .5em}.fwa .fwx-intro{color:var(--fwx-muted);max-width:52em}
-.fwa .fwx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
-.fwa .fwx-card{border:1px solid var(--fwx-line);border-radius:12px;padding:14px 16px;background:var(--fwx-card)}
-.fwa .fwx-big{font-size:1.6em;font-weight:600;margin:.1em 0}.fwa .fwx-muted{color:var(--fwx-muted);font-size:.92em}
-.fwa .fwx-row{display:flex;justify-content:space-between;gap:12px;padding:2px 0}
-.fwa .fwx-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
-.fwa input[type=number]{width:6em}.fwa .fwx-week{display:flex;align-items:flex-end;gap:6px;height:64px;margin-top:8px}
-.fwa .fwx-week span{flex:1;background:var(--fwx-bar);border-radius:3px 3px 0 0;min-height:2px}
-.fwa .fwx-week .fwx-gap{background:transparent;min-height:8px;border-bottom:1px dashed var(--fwx-muted)}
-.fwa .fwx-week .fwx-coverage-unknown{background:repeating-linear-gradient(135deg,var(--fwx-bar),var(--fwx-bar) 4px,transparent 4px,transparent 8px)}
-.fwa .fwx-error{color:#b3261e}`;
+.fwx{--fwx-fg:var(--ink,#0F1B27);--fwx-muted:var(--muted,#4A5D70);--fwx-line:var(--line,#D5DDE5);
+ --fwx-card:var(--surface,#FFFFFF);--fwx-accent:#1b2a3a;--fwx-bar:#c9a227;color:var(--fwx-fg)}
+.fwx h3{margin:1.2em 0 .5em}.fwx .fwx-intro{color:var(--fwx-muted);max-width:52em}
+.fwx .fwx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:12px}
+.fwx .fwx-card{border:1px solid var(--fwx-line);border-radius:12px;padding:14px 16px;background:var(--fwx-card)}
+.fwx .fwx-big{font-size:1.6em;font-weight:600;margin:.1em 0}.fwx .fwx-muted{color:var(--fwx-muted);font-size:.92em}
+.fwx .fwx-row{display:flex;justify-content:space-between;gap:12px;padding:2px 0}
+.fwx .fwx-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.fwx input[type=number]{width:6em}.fwx .fwx-week{display:flex;align-items:flex-end;gap:6px;height:64px;margin-top:8px}
+.fwx .fwx-week span{flex:1;background:var(--fwx-bar);border-radius:3px 3px 0 0;min-height:2px}
+.fwx .fwx-week .fwx-gap{background:transparent;min-height:8px;border-bottom:1px dashed var(--fwx-muted)}
+.fwx .fwx-week .fwx-coverage-unknown{background:repeating-linear-gradient(135deg,var(--fwx-bar),var(--fwx-bar) 4px,transparent 4px,transparent 8px)}
+.fwx .fwx-error{color:#b3261e}`;
 
 export function mount(root, { call, lang, now = () => Math.floor(Date.now() / 1000), interval = 15000 }) {
   const t = strings(lang);
@@ -104,7 +104,7 @@ export function mount(root, { call, lang, now = () => Math.floor(Date.now() / 10
   const status = el('p', { class: 'fwx-muted', 'aria-live': 'polite' });
   const notice = el('p', { class: 'fwx-error', role: 'alert' });
   const body = el('div');
-  root.classList.add('fwa', 'fwx');
+  root.classList.add('fwx');
   root.replaceChildren(style, el('h2', {}, t('title')), el('p', { class: 'fwx-intro' }, t('intro')), status, notice, body);
   let busy = false, reading = false, fresh = false, stopped = false;
   let updatedAt = null;

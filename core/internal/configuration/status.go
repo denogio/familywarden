@@ -123,7 +123,27 @@ func (a *Authority) networkReport(d document, single *string) (map[string]any, e
 		now := a.at(facts)
 		effective := Effective(d.Configuration, now)
 		profiles := map[string]any{}
+		appProfiles := map[string]any{}
+		day := now.Format(time.DateOnly)
+		bonus := d.Bonus.lines(day)
 		for _, p := range effective.Profiles {
+			if single == nil {
+				policy, _, err := profileAppConfig(effective, p, bonus[p.ID]).Compile()
+				if err != nil {
+					return err
+				}
+				var budget *int
+				if policy != nil {
+					if value, ok := policy.Screen[strings.ToLower(now.Weekday().String()[:3])]; ok {
+						total := value
+						if policy.Bonus != nil {
+							total += policy.Bonus.Total
+						}
+						budget = &total
+					}
+				}
+				appProfiles[p.ID] = map[string]any{"enabled": p.Apps == "1", "policy": policy, "screen_budget_minutes": budget}
+			}
 			if p.Enabled != "1" || (single != nil && p.ID != *single) {
 				continue
 			}
@@ -169,7 +189,7 @@ func (a *Authority) networkReport(d document, single *string) (map[string]any, e
 		if Active(d.Configuration.Pact, now) {
 			configuration["pact_delay_seconds"] = integer(d.Configuration.Pact.DelaySeconds)
 		}
-		result = map[string]any{"profiles": profiles, "configuration": configuration}
+		result = map[string]any{"profiles": profiles, "configuration": configuration, "app_profiles": appProfiles, "day": day}
 		return nil
 	})
 	return result, err

@@ -30,19 +30,7 @@ func AppContext(c rules.Configuration, facts platform.Context, now time.Time, bo
 		if _, ok := facts.Profiles[p.ID]; !ok {
 			return platform.Context{}, fmt.Errorf("runtime app facts unavailable for %s", p.ID)
 		}
-		input := rules.AppConfig{Version: 1, Enabled: p.Apps, SuspendNew: p.SuspendNew,
-			ScreenMinutes: p.ScreenMinutes, ScreenWeekday: p.ScreenWeekday, ScreenWeekend: p.ScreenWeekend,
-			AlwaysAllowed: append([]string{}, p.AlwaysAllowed...), Bonus: bonus[p.ID]}
-		for _, a := range effective.Apps {
-			if a.Profile == p.ID {
-				input.Apps = append(input.Apps, rules.AppSetting{Package: a.Package, Minutes: a.Minutes, Blocked: a.Blocked})
-			}
-		}
-		for _, w := range effective.Downtime {
-			if w.Profile == p.ID {
-				input.Downtime = append(input.Downtime, rules.AppWindow{Days: w.Days, Start: w.Start, Stop: w.Stop})
-			}
-		}
+		input := profileAppConfig(effective, p, bonus[p.ID])
 		apps, requires, err := input.Compile()
 		if err != nil {
 			return platform.Context{}, fmt.Errorf("apps of %s: %w", p.ID, err)
@@ -54,4 +42,22 @@ func AppContext(c rules.Configuration, facts platform.Context, now time.Time, bo
 		out.Profiles[p.ID] = prof
 	}
 	return out, nil
+}
+
+// One compiler input for signed phone policy and the administrator read model.
+func profileAppConfig(effective rules.ConfigurationData, p rules.ConfigurationProfile, bonus string) rules.AppConfig {
+	input := rules.AppConfig{Version: 1, Enabled: p.Apps, SuspendNew: p.SuspendNew,
+		ScreenMinutes: p.ScreenMinutes, ScreenWeekday: p.ScreenWeekday, ScreenWeekend: p.ScreenWeekend,
+		AlwaysAllowed: append([]string{}, p.AlwaysAllowed...), Bonus: bonus}
+	for _, a := range effective.Apps {
+		if a.Profile == p.ID {
+			input.Apps = append(input.Apps, rules.AppSetting{Package: a.Package, Minutes: a.Minutes, Blocked: a.Blocked})
+		}
+	}
+	for _, w := range effective.Downtime {
+		if w.Profile == p.ID {
+			input.Downtime = append(input.Downtime, rules.AppWindow{Days: w.Days, Start: w.Start, Stop: w.Stop})
+		}
+	}
+	return input
 }

@@ -118,8 +118,8 @@ echo ""
 echo "=== LuCI views + JSON ==="
 
 if command -v node &> /dev/null; then
-    (cd "$PROJECT_ROOT" && node --test test/luci-ui.test.cjs > /dev/null 2>&1) \
-        && echo "✓ Shared LuCI UI helpers" || fail "Shared LuCI UI helper tests failed"
+    (cd "$PROJECT_ROOT" && node --test test/web-ui.test.cjs > /dev/null 2>&1) \
+        && echo "✓ Shared web UI checks" || fail "Shared web UI checks failed"
 fi
 
 for f in "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/*.js \
@@ -140,11 +140,19 @@ done
 
 # Every view/module in the source tree must be installed by the luci Makefile
 for f in "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/*.js \
-         "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/familywarden/*.js \
-         "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/familywarden/shared/*.js; do
+         "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/familywarden/*.js; do
     rel="${f#*/htdocs/luci-static/resources/}"
     grep -q "resources/$rel " "${PROJECT_ROOT}/luci-app-familywarden/Makefile" \
         || fail "Not installed by luci Makefile: $rel"
+done
+
+for f in "${PROJECT_ROOT}"/web/*.js; do
+    node --check --input-type=module < "$f" \
+        && echo "✓ Shared module parses: $(basename "$f")" || fail "Shared module syntax error: $f"
+done
+for ext in js css; do
+    grep -Fq '$(INSTALL_DATA) $(FAMILYWARDEN_WEB)/*.'"$ext" "${PROJECT_ROOT}/luci-app-familywarden/Makefile" \
+        || fail "Shared web assets not installed: $ext"
 done
 
 echo ""

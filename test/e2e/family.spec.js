@@ -1,8 +1,8 @@
 const { test, expect } = require('@playwright/test');
 
-// Requests page: the shared administrator UI (A20) mounted in LuCI.
+// Requests: the shared administrator UI (A20) mounted in the single LuCI page.
 const BASE = process.env.FW_BASE_URL || 'http://localhost:8080';
-const URL = `${BASE}/cgi-bin/luci/admin/services/familywarden/family`;
+const URL = `${BASE}/cgi-bin/luci/admin/services/familywarden`;
 test.use({ locale: 'en-GB', timezoneId: 'UTC' });
 
 async function login(page) {
@@ -11,6 +11,12 @@ async function login(page) {
   await page.fill('[name="luci_password"]', process.env.FW_PASSWORD ?? 'ulysses');
   await page.getByRole('button', { name: 'Log in' }).click();
   await page.waitForLoadState('networkidle');
+}
+
+// The single FamilyWarden page hosts the shared workspace; Requests is a tab in it.
+async function openRequests(page) {
+  await page.goto(URL);
+  await page.locator('.fw-nav').getByRole('button', { name: 'Requests', exact: true }).click();
 }
 
 const pageErrors = new WeakMap();
@@ -54,7 +60,7 @@ async function neutral(page, options = {}) {
 
 test('neutral shared host keeps refusals visible and serializes outgoing actions', async ({ page }) => {
   const root = await neutral(page);
-  await expect(root).toHaveClass(/fwa/);
+  await expect(root).toHaveClass(/fwx/);
   const approve = root.getByRole('button', { name: 'Approve', exact: true });
   await expect(approve).toBeEnabled();
   await root.getByLabel('Minutes').fill('20');
@@ -157,11 +163,11 @@ for (const [lang, labels] of [
   await expect(chart.getByRole('img', { name: new RegExp(`2027-01-15:.*30.*${labels.unknown}`) })).toHaveClass('fwx-coverage-unknown');
 });
 
-test('Requests page talks to the real core through rpcd and LuCI ACLs', async ({ page }) => {
-  await page.goto(URL);
+test('Requests tab talks to the real core through rpcd and LuCI ACLs', async ({ page }) => {
+  await openRequests(page);
   await expect(page.getByRole('heading', { name: 'Requests and screen time' })).toBeVisible();
   await expect(page.getByText('No requests waiting.')).toBeVisible();
-  await expect(page.getByText(/^Updated /)).toBeVisible();
+  await expect(page.locator('.fwx').getByText(/^Updated /)).toBeVisible();
   await expect(page.getByText(/Could not reach/)).toHaveCount(0);
 });
 
@@ -173,7 +179,7 @@ test('real HTTP approval persists the chosen grant through the LuCI session shim
     'sh', '/src/scripts/e2e-request-fixture.sh', action], { timeout: 20000 });
   try {
     fixture('create');
-    await page.goto(URL);
+    await openRequests(page);
     const card = page.locator('.fwx-card', { hasText: 'Alex HTTP test' });
     await card.getByLabel('Minutes').fill('20');
     const answer = page.waitForResponse((r) => r.url().includes('/ubus') &&
@@ -227,7 +233,7 @@ test('approving sends exactly the chosen minutes and nothing for another request
     });
     await route.fulfill({ json: Array.isArray(body) ? results : results[0] });
   });
-  await page.goto(URL);
+  await openRequests(page);
   const card = page.locator('.fwx-card', { hasText: 'Video' });
   await expect(card).toBeVisible();
   await expect(page.getByText('82 min').first()).toBeVisible();
@@ -258,7 +264,7 @@ test('allowing a new app sends exactly that profile and package', async ({ page 
     });
     await route.fulfill({ json: Array.isArray(body) ? results : results[0] });
   });
-  await page.goto(URL);
+  await openRequests(page);
   const card = page.locator('.fwx-card', { hasText: 'Draw' });
   await card.getByRole('button', { name: 'Allow' }).click();
   await expect.poll(() => calls.length).toBe(1);

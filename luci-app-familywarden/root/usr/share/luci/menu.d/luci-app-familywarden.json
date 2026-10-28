@@ -3,8 +3,8 @@
 		"title": "FamilyWarden",
 		"order": 60,
 		"action": {
-			"type": "alias",
-			"path": "admin/services/familywarden/overview"
+			"type": "view",
+			"path": "familywarden/control"
 		},
 		"depends": {
 			"acl": [
@@ -13,54 +13,6 @@
 			"uci": {
 				"familywarden": true
 			}
-		}
-	},
-	"admin/services/familywarden/overview": {
-		"title": "Overview",
-		"order": 10,
-		"action": {
-			"type": "view",
-			"path": "familywarden/overview"
-		}
-	},
-	"admin/services/familywarden/family": {
-		"title": "Requests",
-		"order": 15,
-		"action": {
-			"type": "view",
-			"path": "familywarden/family"
-		}
-	},
-	"admin/services/familywarden/profiles": {
-		"title": "Profiles",
-		"order": 20,
-		"action": {
-			"type": "view",
-			"path": "familywarden/profiles"
-		}
-	},
-	"admin/services/familywarden/devices": {
-		"title": "Phones",
-		"order": 25,
-		"action": {
-			"type": "view",
-			"path": "familywarden/devices"
-		}
-	},
-	"admin/services/familywarden/settings": {
-		"title": "Settings",
-		"order": 30,
-		"action": {
-			"type": "view",
-			"path": "familywarden/settings"
-		}
-	},
-	"admin/services/familywarden/info": {
-		"title": "Info",
-		"order": 40,
-		"action": {
-			"type": "view",
-			"path": "familywarden/info"
 		}
 	}
 }

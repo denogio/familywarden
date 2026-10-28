@@ -53,7 +53,7 @@ test('import cuts the configuration over to the core and materializes its projec
 
 test('an unrelated profile edit flows through apply, confirm and reload', async ({ page }) => {
   // The CAS flow is exercised through the real root CLI, the same path the
-  // rpcd shim and LuCI both reach; the browser verifies the resulting UI.
+  // rpcd shim and the shared UI both reach; the browser verifies the result.
   const alex = (doc) => doc.current.profiles.find((p) => p.id === 'alex');
   let doc = call('configuration_export').configuration;
   expect(call('configuration_status').owner).toBe('core');
@@ -75,9 +75,9 @@ test('an unrelated profile edit flows through apply, confirm and reload', async 
   doc = call('configuration_export').configuration;
   expect(call('configuration_export').pending).toBe(false);
   expect(alex(doc).name).toBe('Alex (verified)');
-  // The projection follows the confirmed document.
-  await page.goto(`${FW_URL}/profiles?name=alex`);
-  await expect(page.getByText('Alex (verified)', { exact: true }).first()).toBeVisible();
+  // The single shared UI shows the confirmed name in the family view.
+  await page.goto(FW_URL);
+  await expect(page.locator('.fw-kid h3', { hasText: 'Alex (verified)' })).toBeVisible({ timeout: 15000 });
 });
 
 test('lost confirmation restores the document and leaves the browser edit unsaved', async ({ page }) => {
@@ -101,14 +101,19 @@ test('lost confirmation restores the document and leaves the browser edit unsave
     interrupted = true;
     await route.fulfill({ response });
   });
-  await page.goto(`${FW_URL}/profiles?name=alex`);
-  const input = page.locator('#cbi-familywarden-alex-name input');
+  await page.goto(FW_URL);
+  const alexCard = page.locator('.fw-kid', { has: page.locator('h3', { hasText: 'Alex' }) });
+  await alexCard.getByRole('button', { name: 'Edit rules', exact: true }).click();
+  const input = page.getByLabel('Name', { exact: true }).first();
   await input.fill(name);
-  await page.locator('li').filter({ hasText: /^Save & Apply$/ }).click();
-  await expect(page.getByText('Could not save the configuration: no pending confirmation', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Save rules', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('The unconfirmed change was rolled back or superseded.', { timeout: 20000 });
+  await expect(page.getByRole('button', { name: 'Confirm connection', exact: true })).toHaveCount(0);
   expect(interrupted).toBe(true);
   expect(operations.filter((m) => m === 'configuration_apply')).toHaveLength(1);
-  expect(operations.filter((m) => m === 'configuration_confirm')).toHaveLength(1);
+  expect(operations.filter((m) => m === 'configuration_confirm')).toHaveLength(0);
+  // The refreshed core state detects the rollback without offering a stale confirmation.
+  // The unsaved draft survives that recovery.
   await expect(input).toHaveValue(name);
   const recovered = call('configuration_export');
   expect(recovered.pending).toBe(false);
@@ -116,7 +121,7 @@ test('lost confirmation restores the document and leaves the browser edit unsave
   const confirmedName = before.current.profiles.find((p) => p.id === 'alex').name;
   expect(shell('uci -q get familywarden.alex.name').trim()).toBe(confirmedName);
   await page.reload();
-  await expect(input).toHaveValue(confirmedName);
+  await expect(page.locator('.fw-kid h3', { hasText: confirmedName })).toBeVisible({ timeout: 15000 });
 });
 
 test('captain DNS during a pact is a cumulative, explicit transaction', async ({ page }) => {
@@ -131,13 +136,13 @@ test('captain DNS during a pact is a cumulative, explicit transaction', async ({
     } catch { /* not JSON */ }
   });
 
-  // Make the ongoing pact through the real UI (ubus pact method).
+  // Make the ongoing pact through the shared Ulysses view (ubus pact method).
   await page.goto(FW_URL);
-  const card = page.locator('.fw-card', { hasText: 'Dennis' });
-  await card.getByRole('button', { name: 'Make a pact' }).click();
-  await page.check('.modal input[value=ongoing]');
-  await page.click('.modal button:has-text("Bind me")');
-  await expect(card.locator('.fw-ulysses')).toContainText('Bound to the mast by an ongoing pact', { timeout: 10000 });
+  page.on('dialog', (d) => d.accept());
+  await page.locator('.fw-nav').getByRole('button', { name: 'Ulysses', exact: true }).click();
+  await page.getByLabel('Pact', { exact: true }).selectOption('ongoing');
+  await page.getByRole('button', { name: 'Make a pact', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Until you sail home', exact: true })).toBeVisible({ timeout: 10000 });
 
   // The core document is authoritative; UCI is only the adapter's projection.
   const doc = () => call('configuration_export').configuration;
@@ -147,27 +152,12 @@ test('captain DNS during a pact is a cumulative, explicit transaction', async ({
 
   // The captain's DNS stays editable on the frozen profile; the explicit
   // dns_update transaction applies it (the normal CAS path is for other profiles).
-  await page.goto(`${FW_URL}/profiles?name=dennis`);
-  const checkbox = page.locator('#cbi-familywarden-dennis-dns input[type="checkbox"]');
-  await expect(checkbox).toBeEnabled();
-  await checkbox.check();
-  await expect(checkbox).toBeChecked();
-  // The MultiValue widget re-renders when its dependency flips; wait for it.
-  const valueRow = page.locator('#cbi-familywarden-dennis-dns_protection');
-  await expect(valueRow).toBeVisible({ timeout: 15000 });
-  const safe = page.locator('#cbi-familywarden-dennis-dns_protection li[data-value="safe_browsing"]');
-  await safe.waitFor({ state: 'attached', timeout: 15000 });
-  await safe.click({ force: true });
-  page.once('dialog', async (d) => {
-    expect(d.message()).toContain('no automatic rollback');
-    await d.accept();
-  });
-  let navigation = page.waitForEvent('framenavigated', { predicate: (f) => f === page.mainFrame(), timeout: 30000 });
-  await page.locator('li').filter({ hasText: /^Save & Apply$/ }).click();
-  await navigation;
-  await checkbox.waitFor();
-  expect(await checkbox.isChecked()).toBe(true);
-  // The POST is in flight when the page unloads; let the event settle.
+  await page.locator('.fw-nav').getByRole('button', { name: 'Family', exact: true }).click();
+  const dennisCard = page.locator('.fw-kid', { has: page.locator('h3', { hasText: 'Dennis' }) });
+  await dennisCard.getByRole('button', { name: 'Edit rules', exact: true }).click();
+  await page.getByLabel('Strict DNS', { exact: true }).check();
+  await page.getByLabel('Safe browsing', { exact: true }).check();
+  await page.getByRole('button', { name: 'Commit DNS-only change', exact: true }).click();
   await expect.poll(() => calls.filter((c) => c === 'configuration_dns_update').length, { timeout: 15000 }).toBe(1);
   const enabled = doc();
   expect(dennis(enabled).dns).toBe('1');
@@ -181,17 +171,10 @@ test('captain DNS during a pact is a cumulative, explicit transaction', async ({
   expect(shell('uci -q get familywarden.dennis.dns').trim()).toBe('1');
   expect(shell('uci -q get familywarden.dennis.dns_client_id').trim()).toBe(dennis(enabled).client_id);
 
-  // Switching it off is refused to loosen: the accumulated minimum stays in force.
-  await checkbox.uncheck();
-  page.once('dialog', async (d) => {
-    expect(d.message()).toContain('no automatic rollback');
-    await d.accept();
-  });
-  navigation = page.waitForEvent('framenavigated', { predicate: (f) => f === page.mainFrame(), timeout: 30000 });
-  await page.locator('li').filter({ hasText: /^Save & Apply$/ }).click();
-  await navigation;
-  await checkbox.waitFor();
-  expect(await checkbox.isChecked()).toBe(false);
+  // Reopen the saved rules; the accumulated pact minimum stays in force.
+  await page.getByRole('tab', { name: 'Rules', exact: true }).click();
+  await page.getByLabel('Strict DNS', { exact: true }).uncheck();
+  await page.getByRole('button', { name: 'Commit DNS-only change', exact: true }).click();
   await expect.poll(() => calls.filter((c) => c === 'configuration_dns_update').length, { timeout: 15000 }).toBe(2);
   const after = doc();
   // Current loosens, but the enforced minimum keeps the captain's DNS in place.

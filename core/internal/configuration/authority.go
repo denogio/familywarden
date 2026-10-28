@@ -451,6 +451,15 @@ func (a *Authority) applyConfiguration(apply func(rules.Configuration, platform.
 	return nil
 }
 
+// Close stops process-local connection-confirmation recovery timers.
+func (a *Authority) Close() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.timer != nil {
+		a.timer.Stop()
+	}
+}
+
 func (a *Authority) API(method string, raw []byte) map[string]any {
 	a.mu.Lock()
 	defer a.mu.Unlock()
