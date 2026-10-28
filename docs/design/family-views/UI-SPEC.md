@@ -152,6 +152,32 @@ Verification: JVM/lint/debug build and focused Android 15 rendering checks for
 recorded apps, changing days without stale app rows, details/back/DNS navigation,
 EN/light and Danish/dark at 200% font. Fixture screenshots were reviewed locally.
 
+### Parent usage and request cards aligned with boards 8 and 10 (2026-10-28)
+
+- Screen time places the signed daily total and relative per-app bars first, then
+  separate reported device cards. Compact child pills and circular initials retain
+  the existing scoped, accessible child picker. Missing reports remain text, not
+  zero; incomplete reports and last-sync/not-live disclaimers remain visible.
+- The combined scoped inbox uses compact cards, request timestamps/expiry, optional
+  notes, circular child initials and a pending count instead of a duplicate hero.
+  Known-expired time requests are not actionable.
+- Approve opens a scrollable bottom sheet with duration presets, the asked amount
+  marked, a custom minutes field and a full-width confirmation. Confirmation is
+  disabled during sync/uncertain uploads; removing a request or scope also removes
+  its sheet. The router remains the authority for every answer.
+- Deliberately retained contract limits: approval is **1 through the requested
+  minutes**, not an increase above the request; the grant window remains **two hours
+  from approval**, not delivery or an amount-dependent window. The sheet states
+  these limits. No fabricated earlier-request history, per-phone online/applied
+  status, native Lock/Bonus/editor buttons or unsupported history ranges were added.
+
+Verification: 206 JVM tests (no failures/errors/skips), lint/debug assembly; both
+focused rendering scripts, including Danish 200% approval-sheet controls, known
+expiry, scope revocation, sibling isolation and mode restoration; 31/31 native P8
+checks against a disposable router; complete Mast emulator suite (98 checks).
+The native removal flow now follows Settings → Home router before opening the
+existing authorized-removal dialog. No physical phone or production router used.
+
 ## Explicitly deferred
 
 - Off-home parent notifications (P9); LAN-only notifications exist while syncing.

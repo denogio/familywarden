@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -37,9 +38,9 @@ fun tileInitials(labels: List<String>): Map<String, String> {
 
 /** Example-style app tile; decorative, so the label beside it carries the meaning. */
 @Composable
-fun AppTile(key: String, initials: String, size: Dp = 36.dp) {
+fun AppTile(key: String, initials: String, size: Dp = 36.dp, shape: Shape = RoundedCornerShape(10.dp)) {
     Box(
-        Modifier.size(size).background(tileColors[Math.floorMod(key.hashCode(), tileColors.size)], RoundedCornerShape(10.dp))
+        Modifier.size(size).background(tileColors[Math.floorMod(key.hashCode(), tileColors.size)], shape)
             .clearAndSetSemantics { },
         contentAlignment = Alignment.Center,
     ) {

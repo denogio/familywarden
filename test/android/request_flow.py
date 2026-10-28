@@ -297,6 +297,7 @@ touch /tmp/drop-next-app-response
     sync()
     home()
     tap('Settings')
+    tap('Home router')
     tap('Remove FamilyWarden', scroll=True)
     tap('Remove', last=True)
     wait('normal authorized removal releases Device Owner', lambda: 'DeviceOwner' not in adb('shell', 'dpm', 'list-owners'))

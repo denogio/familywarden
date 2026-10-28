@@ -282,7 +282,7 @@ private fun localTime(at: ZonedDateTime): String = at.format(DateTimeFormatter
     .ofLocalizedDateTime(FormatStyle.SHORT).withLocale(LocalConfiguration.current.locales[0]))
 
 @Composable
-private fun TimeProgress(used: Long, limit: Long, modifier: Modifier = Modifier,
+internal fun TimeProgress(used: Long, limit: Long, modifier: Modifier = Modifier,
     color: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.secondary,
     track: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surfaceContainerHigh) {
     // A plain rounded bar, as on the boards: no stop dot or gap.

@@ -2,18 +2,19 @@ package io.github.denogio.familywarden.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import io.github.denogio.familywarden.R
 import io.github.denogio.familywarden.ui.components.*
@@ -23,8 +24,10 @@ import io.github.denogio.familywarden.ui.components.*
 fun FamilyChildSelector(state: FamilyWardenState, preferred: String?, onSelect: (String) -> Unit) {
     val selected = state.familyProfile(preferred) ?: return
     var choosing by remember { mutableStateOf(false) }
-    OutlinedButton(onClick = { choosing = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-        Text(selected.name, modifier = Modifier.weight(1f))
+    OutlinedButton(onClick = { choosing = true }, modifier = Modifier.widthIn(max = 240.dp).heightIn(min = 48.dp)) {
+        AppTile(selected.id, selected.name.take(1).uppercase(), 28.dp, CircleShape)
+        Spacer(Modifier.width(8.dp))
+        Text(selected.name, modifier = Modifier.weight(1f, fill = false).padding(end = 8.dp))
         Icon(Icons.Outlined.ExpandMore, stringResource(R.string.fw_family_choose_child))
     }
     if (choosing) ModalBottomSheet(onDismissRequest = { choosing = false }) {
@@ -58,28 +61,45 @@ fun FamilyTimeContent(state: FamilyWardenState, selectedChild: String? = null) {
         Text(stringResource(R.string.fw_request_no_scope))
         Text(stringResource(R.string.fw_request_no_scope_body))
     }
-    for (profile in profiles) SectionCard {
-        Text(profile.name, style = MaterialTheme.typography.titleLarge)
+    for (profile in profiles) {
         val usage = state.familyUsage.firstOrNull { it.profile.id == profile.id }
-        if (usage == null || usage.devices.isEmpty()) {
-            Text(stringResource(R.string.fw_usage_none))
-        } else {
+        SectionCard {
             Overline(stringResource(R.string.fw_usage_today_title))
-            Text(usage.day, style = MaterialTheme.typography.bodySmall)
-            val total = usage.totalSeconds / 60
-            Text(pluralStringResource(R.plurals.fw_time_minutes, total, total), style = MaterialTheme.typography.headlineSmall)
-            for (device in usage.devices) {
-                val minutes = device.totalSeconds / 60
-                Text(stringResource(R.string.fw_request_subject, device.name,
-                    pluralStringResource(R.plurals.fw_time_minutes, minutes, minutes)))
-            }
-            for (app in usage.apps.filter { it.seconds >= 60 }) {
-                val minutes = app.seconds / 60
-                Text(stringResource(R.string.fw_request_subject, app.label.ifEmpty { app.pkg },
-                    pluralStringResource(R.plurals.fw_time_minutes, minutes, minutes)),
+            if (usage == null || usage.devices.isEmpty()) {
+                Text(stringResource(R.string.fw_usage_none))
+            } else {
+                Text(durationText(usage.totalSeconds * 1000L), style = MaterialTheme.typography.headlineMedium)
+                Text(stringResource(R.string.fw_usage_reported_day, usage.day),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val apps = usage.apps.filter { it.seconds >= 60 }.sortedByDescending { it.seconds }
+                val busiest = apps.maxOfOrNull { it.seconds } ?: 0
+                for (app in apps) {
+                    Spacer(Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        @OptIn(ExperimentalLayoutApi::class)
+                        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(app.label.ifEmpty { app.pkg }, modifier = Modifier.padding(end = 8.dp),
+                                style = MaterialTheme.typography.titleMedium)
+                            Text(durationText(app.seconds * 1000L), style = MaterialTheme.typography.labelLarge)
+                        }
+                        TimeProgress(app.seconds.toLong(), busiest.toLong(), Modifier.fillMaxWidth())
+                    }
+                }
+                if (usage.devices.any { it.incomplete }) Text(stringResource(R.string.fw_usage_incomplete),
                     style = MaterialTheme.typography.bodySmall)
             }
-            if (usage.devices.any { it.incomplete }) Text(stringResource(R.string.fw_usage_incomplete))
+        }
+        for (device in usage?.devices.orEmpty()) SectionCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.PhoneAndroid, null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(device.name, style = MaterialTheme.typography.titleMedium)
+                    Text(durationText(device.totalSeconds * 1000L), style = MaterialTheme.typography.bodyMedium)
+                    if (device.incomplete) Text(stringResource(R.string.fw_usage_device_incomplete),
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
         }
     }
     Text(stringResource(R.string.fw_family_reported), style = MaterialTheme.typography.bodySmall)

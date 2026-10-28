@@ -84,4 +84,12 @@
     <string name="fw_req_denied_body">A parent said no this time. You can ask again later.</string>
     <string name="fw_req_closed_body">Nobody answered within an hour, so it closed. You can ask again.</string>
     <string name="fw_req_one_open">You can have one request open at a time.</string>
+    <string name="fw_usage_reported_day">Reported for %1$s</string>
+    <string name="fw_usage_device_incomplete">Some time may be missing on this phone.</string>
+    <string name="fw_request_waiting_count">Waiting · %1$d</string>
+    <string name="fw_request_card_title">%1$s · +%2$s for %3$s</string>
+    <string name="fw_request_received_closes">Asked %1$s · closes %2$s</string>
+    <string name="fw_request_quoted_note">“%1$s”</string>
+    <string name="fw_request_asked_amount">%1$s · asked</string>
+    <string name="fw_request_approval_bounds">You can approve up to the amount asked for. Extra time is usable for two hours from approval, not delivery. The usual limits and schedule stay unchanged.</string>
 </resources>

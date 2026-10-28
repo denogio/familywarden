@@ -84,4 +84,12 @@
     <string name="fw_req_denied_body">En forælder sagde nej denne gang. Du kan spørge igen senere.</string>
     <string name="fw_req_closed_body">Ingen svarede inden for en time, så den blev lukket. Du kan spørge igen.</string>
     <string name="fw_req_one_open">Du kan have én anmodning åben ad gangen.</string>
+    <string name="fw_usage_reported_day">Rapporteret for %1$s</string>
+    <string name="fw_usage_device_incomplete">Der kan mangle skærmtid fra denne telefon.</string>
+    <string name="fw_request_waiting_count">Venter · %1$d</string>
+    <string name="fw_request_card_title">%1$s · +%2$s til %3$s</string>
+    <string name="fw_request_received_closes">Spurgt %1$s · lukker %2$s</string>
+    <string name="fw_request_quoted_note">“%1$s”</string>
+    <string name="fw_request_asked_amount">%1$s · ønsket</string>
+    <string name="fw_request_approval_bounds">Du kan godkende op til det ønskede antal minutter. Ekstra tid kan bruges i to timer fra godkendelsen, ikke fra modtagelsen. De sædvanlige grænser og tidsplanen ændres ikke.</string>
 </resources>

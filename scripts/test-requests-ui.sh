@@ -89,6 +89,9 @@ reveal() {
     done
     contains "$1" "$2"
 }
+render ParentExpiredPreview parent-expired
+contains parent-expired 'No requests waiting'
+if grep -Fq 'text="Approve"' "$OUT/parent-expired.xml"; then echo 'Expired request remained actionable'; exit 1; fi
 render ParentAwaitingPreview parent-awaiting
 contains parent-awaiting 'Waiting for phone approval'
 if grep -Fq 'No children assigned' "$OUT/parent-awaiting.xml"; then echo 'Pending enrollment reported as an empty scope'; exit 1; fi
@@ -99,7 +102,9 @@ if grep -Fq 'Set up device owner' "$OUT/parent-light.xml"; then echo 'Parent-onl
 tap parent-light 'Screen time'
 capture parent-screen-time
 check_nav parent-screen-time 'Screen time' 'Screen time' Controls Requests
-contains parent-screen-time '82 min'
+contains parent-screen-time '1 h 22 min'
+contains parent-screen-time 'Reported for 2027-01-15'
+contains parent-screen-time Video
 if grep -Fq 'text="Approve"' "$OUT/parent-screen-time.xml"; then echo 'Approvals leaked into screen time'; exit 1; fi
 tap parent-screen-time 'Choose a child'
 capture child-picker
@@ -108,7 +113,7 @@ tap child-picker Sam
 capture parent-sam
 contains parent-sam Sam
 contains parent-sam 'No screen time reported today yet.'
-if grep -Fq '82 min' "$OUT/parent-sam.xml"; then echo 'Sibling usage leaked into selected child'; exit 1; fi
+if grep -Fq '1 h 22 min' "$OUT/parent-sam.xml"; then echo 'Sibling usage leaked into selected child'; exit 1; fi
 tap parent-sam Controls
 capture parent-settings
 contains parent-settings Sam
@@ -120,13 +125,16 @@ contains parent-combined-inbox 'Alex · Sam'
 tap parent-combined-inbox 'Screen time'
 capture parent-selection-retained
 contains parent-selection-retained 'No screen time reported today yet.'
-if grep -Fq '82 min' "$OUT/parent-selection-retained.xml"; then echo 'Child selection lost between pages'; exit 1; fi
+if grep -Fq '1 h 22 min' "$OUT/parent-selection-retained.xml"; then echo 'Child selection lost between pages'; exit 1; fi
 tap parent-selection-retained Requests
 reveal parent-time-request Approve
 tap parent-time-request Approve
 capture parent-approve-dialog
 contains parent-approve-dialog 'Approve extra time'
 contains parent-approve-dialog 'Choose 1–30 minutes.'
+contains parent-approve-dialog '30 min · asked'
+contains parent-approve-dialog 'two hours from approval'
+if grep -Fq '1 h · asked' "$OUT/parent-approve-dialog.xml"; then echo 'Approval exceeded requested minutes'; exit 1; fi
 tap parent-approve-dialog Cancel
 reveal parent-after-dismiss Decline
 tap parent-after-dismiss Decline
@@ -147,7 +155,7 @@ contains managed-own Overview
 tap managed-own Family
 capture managed-sam-restored
 contains managed-sam-restored 'No screen time reported today yet.'
-if grep -Fq '82 min' "$OUT/managed-sam-restored.xml"; then echo 'Child selection lost across modes'; exit 1; fi
+if grep -Fq '1 h 22 min' "$OUT/managed-sam-restored.xml"; then echo 'Child selection lost across modes'; exit 1; fi
 render ParentScopeChangePreview parent-scope
 tap parent-scope 'Choose a child'
 capture scope-picker
@@ -155,7 +163,7 @@ tap scope-picker Sam
 capture scope-sam
 tap scope-sam 'Sync now'
 capture scope-revoked
-contains scope-revoked '82 min'
+contains scope-revoked '1 h 22 min'
 tap scope-revoked 'Choose a child'
 capture scope-current-picker
 if grep -Fq 'text="Sam"' "$OUT/scope-current-picker.xml"; then echo 'Revoked child remains selectable'; exit 1; fi
@@ -201,7 +209,15 @@ contains parent-danish-large Godkendelser
 check_nav parent-danish-large Godkendelser Skærmtid Kontrol Godkendelser
 # Match the actual action, not the page heading "Godkendelser".
 reveal parent-danish-large-scrolled Godkend
-tap parent-danish-large-scrolled Skærmtid
+tap parent-danish-large-scrolled Godkend
+capture parent-danish-approval
+contains parent-danish-approval '30 min. · ønsket'
+reveal parent-danish-approval-bottom Godkend
+contains parent-danish-approval-bottom 'to timer fra godkendelsen'
+reveal parent-danish-cancel Annullér
+tap parent-danish-cancel Annullér
+capture parent-danish-dismissed
+tap parent-danish-dismissed Skærmtid
 capture parent-danish-selector
 check_nav parent-danish-selector Skærmtid Skærmtid Kontrol Godkendelser
 tap parent-danish-selector 'Vælg et barn'

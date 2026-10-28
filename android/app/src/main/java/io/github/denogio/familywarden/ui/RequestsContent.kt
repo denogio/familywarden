@@ -2,6 +2,7 @@ package io.github.denogio.familywarden.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -10,7 +11,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -26,7 +26,8 @@ fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions, fami
     var forget by rememberSaveable { mutableStateOf(false) }
     val ready = !state.syncing && !state.uploadPending
     val scope = state.binding?.approves.orEmpty().map { it.id }.toSet()
-    val requests = state.parentRequests.filter { it.profile.id in scope }
+    val requests = state.parentRequests.filter { it.profile.id in scope &&
+        (state.requestEpoch == null || state.requestEpoch < it.expires) }
     val newApps = state.parentNewApps.filter { it.profile.id in scope }
     if (state.binding == null) {
         HeroCard {
@@ -54,14 +55,20 @@ fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions, fami
         }))
     } }
     if (family && state.binding.approves.isNotEmpty()) {
-        HeroCard {
-            HeroTitle(stringResource(R.string.fw_family_requests))
-            HeroBody(state.binding.approves.joinToString(" · ") { it.name })
-        }
+        Text(state.binding.approves.joinToString(" · ") { it.name },
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (requests.isNotEmpty() || newApps.isNotEmpty())
+            Overline(stringResource(R.string.fw_request_waiting_count, requests.size + newApps.size))
         for (app in newApps) SectionCard {
-            Overline(stringResource(R.string.fw_app_new_title))
-            Text(app.profile.name, style = MaterialTheme.typography.titleLarge)
-            Text(app.label.ifEmpty { app.pkg }, style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                AppTile(app.profile.id, app.profile.name.take(1).uppercase(), 28.dp, CircleShape)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.fw_request_subject, app.profile.name, stringResource(R.string.fw_app_new_title)),
+                        style = MaterialTheme.typography.titleMedium)
+                    Text(app.label.ifEmpty { app.pkg }, style = MaterialTheme.typography.titleMedium)
+                }
+            }
             if (app.label.isNotEmpty()) Text(app.pkg, style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.fw_app_new_body))
             Button(onClick = { actions.decideApp(app, true) }, enabled = ready, modifier = Modifier.fillMaxWidth()) {
@@ -77,11 +84,17 @@ fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions, fami
         }
         for (r in requests) SectionCard {
             val label = if (r.target == "total") stringResource(R.string.fw_request_screen) else r.label.ifEmpty { r.target }
-            Text(r.profile.name, style = MaterialTheme.typography.titleLarge)
-            Text(label, style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                AppTile(r.profile.id, r.profile.name.take(1).uppercase(), 28.dp, CircleShape)
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(R.string.fw_request_card_title, r.profile.name, durationText(r.minutes * 60_000L), label),
+                    style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            }
             if (r.target != "total" && r.target != label) Text(r.target, style = MaterialTheme.typography.bodySmall)
-            Text(pluralStringResource(R.plurals.fw_request_amount, r.minutes, r.minutes))
-            if (r.note.isNotEmpty()) Text(r.note)
+            Text(stringResource(R.string.fw_request_received_closes, formatWhen(r.received * 1000, state.nowMillis),
+                formatWhen(r.expires * 1000, state.nowMillis)), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (r.note.isNotEmpty()) Text(stringResource(R.string.fw_request_quoted_note, r.note))
             val current = state.requestEpoch?.let { it < r.expires } ?: true
             Button(onClick = { decision = DecisionChoice(r, true) }, enabled = ready && current, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.fw_request_approve))
@@ -102,11 +115,11 @@ fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions, fami
             val label = if (r.target == "total") stringResource(R.string.fw_request_screen) else r.label.ifEmpty { r.target }
             val subject = stringResource(R.string.fw_request_subject, r.profile.name, label)
             if (selected.approve) MinutesDialog(stringResource(R.string.fw_request_approve_title), subject, r.minutes,
-                R.string.fw_request_approve, onDismiss = { decision = null }, onConfirm = { minutes ->
+                R.string.fw_request_approve, ready, onDismiss = { decision = null }, onConfirm = { minutes ->
                     decision = null; actions.answerTime(r, true, minutes)
                 })
             else ConfirmAction(stringResource(R.string.fw_request_deny_title), subject, R.string.fw_request_deny,
-                onDismiss = { decision = null }, onConfirm = { decision = null; actions.answerTime(r, false, 0) })
+                onDismiss = { decision = null }, onConfirm = { decision = null; actions.answerTime(r, false, 0) }, enabled = ready)
         }
     }
     if (forget) ConfirmAction(stringResource(R.string.fw_request_forget), stringResource(R.string.fw_request_forget_body),
@@ -134,25 +147,45 @@ fun ParentSettings(state: FamilyWardenState, actions: FamilyWardenActions) {
         R.string.fw_parent_disconnect, onDismiss = { disconnect = false }, onConfirm = { disconnect = false; actions.parentSignOut() })
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun MinutesDialog(title: String, subject: String, max: Int, confirm: Int, onDismiss: () -> Unit, onConfirm: (Int) -> Unit) {
-    var value by rememberSaveable(title, subject, max) { mutableStateOf(minOf(30, max).toString()) }
+private fun MinutesDialog(title: String, subject: String, max: Int, confirm: Int, ready: Boolean,
+    onDismiss: () -> Unit, onConfirm: (Int) -> Unit) {
+    var value by rememberSaveable(title, subject, max) { mutableStateOf(max.toString()) }
     val minutes = value.toIntOrNull()?.takeIf { it in 1..max }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 24.dp)
+            .padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(title, style = MaterialTheme.typography.titleLarge)
             Text(subject)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                (listOf(15, 30, 60, 120) + max).filter { it <= max }.distinct().sorted().forEach { amount ->
+                    FilterChip(selected = minutes == amount, onClick = { value = amount.toString() },
+                        enabled = ready, modifier = Modifier.heightIn(min = 48.dp), label = {
+                            Text(if (amount == max) stringResource(R.string.fw_request_asked_amount, durationText(amount * 60_000L))
+                                else durationText(amount * 60_000L))
+                        })
+                }
+            }
             OutlinedTextField(value, onValueChange = { value = it.filter { c -> c in '0'..'9' }.take(3) },
-                label = { Text(stringResource(R.string.fw_request_minutes)) }, singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = minutes == null)
-            Text(stringResource(R.string.fw_request_range, max))
+                label = { Text(stringResource(R.string.fw_request_minutes)) }, singleLine = true, enabled = ready,
+                modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                isError = minutes == null)
+            Text(stringResource(R.string.fw_request_range, max), style = MaterialTheme.typography.bodySmall)
+            InfoNote(Icons.Outlined.Inbox, stringResource(R.string.fw_request_approval_bounds))
+            Button(onClick = { if (ready) minutes?.let(onConfirm) }, enabled = ready && minutes != null,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(stringResource(confirm)) }
+            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.action_cancel))
+            }
         }
-    }, confirmButton = { TextButton(onClick = { minutes?.let(onConfirm) }, enabled = minutes != null) { Text(stringResource(confirm)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } })
+    }
 }
 
 @Composable
-private fun ConfirmAction(title: String, body: String, confirm: Int, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+private fun ConfirmAction(title: String, body: String, confirm: Int, onDismiss: () -> Unit, onConfirm: () -> Unit,
+    enabled: Boolean = true) {
     AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = { Text(body) },
-        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(confirm)) } },
+        confirmButton = { TextButton(onClick = onConfirm, enabled = enabled) { Text(stringResource(confirm)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } })
 }

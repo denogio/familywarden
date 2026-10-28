@@ -15,7 +15,7 @@ private val sam = ProfileRef("sam", "Sam")
 private val parent = FamilyWardenState(epoch * 1000, owner = false, parentMode = true, paired = true, provisioned = true,
     host = "192.0.2.1", binding = DeviceBinding("fw-parent", "parent", "Taylor", false, false, false, listOf(alex, sam)),
     requestEpoch = epoch, parentRequests = listOf(
-        ParentRequest("request-alex-001", "a".repeat(64), alex, "com.example.video", 30, epoch - 300, epoch + 3300, "Video"),
+        ParentRequest("request-alex-001", "a".repeat(64), alex, "com.example.video", 30, epoch - 300, epoch + 3300, "Video", "Finishing a drawing tutorial"),
         ParentRequest("request-sam-001", "b".repeat(64), sam, "com.example.game", 15, epoch - 120, epoch + 3480, "Game")),
     parentNewApps = listOf(NewAppRequest(sam, "com.example.draw", "Draw", epoch - 600)),
     familyUsage = listOf(FamilyUsage(alex, "2027-01-15", 82 * 60, listOf(DeviceUsage("Alex's phone", 70 * 60, false),
@@ -33,6 +33,11 @@ private val child = FamilyWardenState(epoch * 1000, owner = true, paired = true,
 @Preview(name = "Parent — requests", widthDp = 400, heightDp = 840)
 @Composable
 private fun ParentRequestsPreview() { MastTheme { FamilyWardenScreen(parent, actions, initialRequests = true) } }
+
+@Preview(name = "Parent — expired request is not actionable", widthDp = 400, heightDp = 840)
+@Composable
+private fun ParentExpiredPreview() { MastTheme { FamilyWardenScreen(parent.copy(
+    requestEpoch = epoch + 4000, parentNewApps = emptyList()), actions, initialRequests = true) } }
 
 @Preview(name = "Parent — screen time", widthDp = 400, heightDp = 840)
 @Composable
