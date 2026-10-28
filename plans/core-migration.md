@@ -52,7 +52,11 @@ checklist are in [Router adapter portability](adapter-portability.md).
   missing counters. Existing data is adopted without byte changes after preflight;
   intentional retention removes its witnesses durably. Native `authority-v2` routing
   also recognizes witnesses. This proves absence detection, not anti-rollback generations.
-- **Still unproven:** R7 safe restore, historical mixed-version and full interruption gates. No second-router implementation
+- **R7d source-state proof:** actual v0.9.1/v0.9.2 backends create fictional active-pact
+  households before current APK installation/import. Both paths preserve key/identity,
+  DNS/pact restrictions and v2 signed phone continuity (46 checks). The package CI job
+  runs `scripts/test-upgrade.sh`; old APK scripts and real app-version runtime are not implied.
+- **Still unproven:** R7 safe restore, historical APK/pilot mixed-version and full interruption gates. No second-router implementation
   or cross-platform build is a current workstream or prerequisite for this migration.
 
 Next implementation slice: **R7 historical package/upgrade compatibility and newest-state

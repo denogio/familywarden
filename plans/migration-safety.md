@@ -163,15 +163,37 @@ contain both. They are not a signed generation manifest, do not make live backup
 consistent, and do not authorize automatic restore. Historical data lost before first
 successful adoption cannot be reconstructed or retrospectively detected.
 
+## R7d — Tagged legacy source state into current APKs
+
+`scripts/test-upgrade.sh [apk-dir]` checks local `v0.9.1` and `v0.9.2` release tags
+in separate disposable OpenWrt containers. Each actual tagged backend creates a
+fictional household with an active timed pact, overnight rules, router-access
+restriction, default deny, strict DNS identity and an approved administrator phone.
+Fresh keys/secrets are generated only in the container; no router backups are used.
+
+The current core/backend/LuCI APKs are then installed. Explicit import and restart
+preserve identity, administrator role, signing keys, native AGH ownership/credentials/
+acknowledgements, pact deadline, cooling-off, default policy and ClientID. An authenticated
+v2 phone request verifies the original router signature and retains approved binding,
+active pact and strict DNS hostname. Reimport of divergent UCI and captain allow cannot
+bypass the pact. Both paths passed **46 checks** against r20/r16/r8 packages.
+
+CI's x86 package-build job is configured to fetch release-tag history and run this
+source-state migration proof before publishing its APK artifact. This tests current
+APK installation and tagged historical backend behavior; it does **not** install an old
+APK or exercise its historical maintainer scripts. The handset is a signed protocol
+consumer, not a real old Android APK. Recorded pilot versions, arbitrary mixed packages,
+physical behavior and the grouped Android acceptance matrix remain separate gates.
+
 ## Remaining implementation and acceptance matrix
 
 | Gate | Required evidence | Status |
 |---|---|---|
-| Supported upgrade paths | Fictional v0.9.1/v0.9.2 and recorded pilot-generation fixtures upgrade without changing effective restrictions, keys, identity/scopes or DNS ownership | r18-format adoption proved; historical/package matrix open |
+| Supported upgrade paths | Fictional v0.9.1/v0.9.2 and recorded pilot-generation fixtures upgrade without changing effective restrictions, keys, identity/scopes or DNS ownership | r18-format adoption and v0.9.1/v0.9.2 source-state -> current APKs proved; old APK/pilot matrix open |
 | Idempotent import | Retry before/after journal, ownership-floor write/readback, native apply and completion; once owned, a changed legacy projection cannot become authority again | Current-pair coverage passes; extend to historical/package fixtures |
 | Interrupted mutations | Configuration confirm/rollback, pact creation/release, grants/usage, bonus and DNS ownership/ack writes interrupted at durable/native cut points | Partial existing coverage; complete matrix open |
 | Concurrent/versioned writers | Current daemon exclusion plus supported package combinations and explicit refusal of non-cooperating/legacy writers | Current daemon lease and current-pair legacy refusal proved; historical mixed-version gate open |
-| Router/app compatibility | Old router/new app and new router/old app; unsupported capabilities/formats refuse without erasing last trusted protection | Existing protocol tests; consolidated historical matrix open |
+| Router/app compatibility | Old router/new app and new router/old app; unsupported capabilities/formats refuse without erasing last trusted protection | Existing protocol tests plus v2 signed-consumer continuity from both legacy source states; actual app-version matrix open |
 | Whole-household backup | One private artifact, manifest/checksums/versions, native secrets and all durable ledgers from a quiesced consistent state | Open |
 | Restore admission | Validate before activation; never merge arbitrary old ledgers or weaken pact minima; define what can be proved when the latest state is unavailable | Open |
 | Post-restore application | Reapply native intent and reconcile DNS; do not treat backed-up applied/verified observations as fresh proof | Open |

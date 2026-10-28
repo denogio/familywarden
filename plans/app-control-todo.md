@@ -144,6 +144,10 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
         loss refusal for optional ledgers/usage before recovery, write-failure blocking,
         byte-preserving adoption and retention-aware witness deletion. Native authority-v2
         guards surviving witnesses too. This is not content/generation anti-rollback.
+      - [x] R7d source-state fixtures: tagged v0.9.1/v0.9.2 backends create active-pact
+        households, then current APK installation/import/restart preserves keys, identity,
+        DNS and pact minima; v2 signed-consumer continuity passes (46 checks). CI wired.
+        This does not validate historical APK hooks or actual old Android runtime.
       - [ ] Remaining historical/package/version and restore-admission gates:
         [concrete R7 safety matrix](migration-safety.md). Older non-cooperating writers,
         deletion of all ownership evidence, older-content/generation integrity and
