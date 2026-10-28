@@ -10,6 +10,8 @@ import (
 )
 
 // Service is the production composition, independent of a particular router.
+// The native host must serialize writer lifetimes before calling New: preflight
+// is read-only validation, not a cross-file transaction against concurrent writers.
 // The executable supplies its adapter and storage; tests use the same constructor.
 type Service struct {
 	Configuration *configuration.Authority
@@ -18,6 +20,14 @@ type Service struct {
 }
 
 func New(ad platform.Adapter, backend configuration.Backend, st *store.Store, version string) (*Service, error) {
+	// Reject incompatible stored state before either constructor can recover a
+	// configuration, apply native rules or import/remove legacy identities.
+	if err := configuration.CheckStorage(st); err != nil {
+		return nil, err
+	}
+	if err := identity.CheckStorage(st); err != nil {
+		return nil, err
+	}
 	cfg, err := configuration.New(ad, backend, st)
 	if err != nil {
 		return nil, err

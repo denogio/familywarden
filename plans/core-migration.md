@@ -37,10 +37,17 @@ checklist are in [Router adapter portability](adapter-portability.md).
   and the unchanged shared UI work with a recording/failing adapter and an empty PATH.
   Owned legacy-method tripwires and a service dependency-graph check prevent OpenWrt
   from becoming an implicit product dependency. Native enforcement remains OpenWrt-only.
-- **Still unproven:** R7 safe restore, mixed-version and interruption gates. No second-router implementation
+- **R7a implemented (core 0.13.0-r18):** read-only known-document preflight now precedes
+  constructor recovery/import/application; native daemon startup owns a lifetime writer
+  lease before opening the store. Future/truncated document refusal and real process
+  contention/exit/kill cases pass focused race tests. This does not make old binaries
+  cooperate or validate arbitrary historical restores. See [R7 safety matrix](migration-safety.md).
+- **Still unproven:** R7 safe restore, mixed-version and full interruption gates. No second-router implementation
   or cross-platform build is a current workstream or prerequisite for this migration.
 
-Next implementation slice: **R7 migration/release safety gates**.
+Next implementation slice: **R7 historical upgrade/compatibility matrix and authority
+floor, followed by consistent backup/restore admission**. Track it in
+[migration-safety.md](migration-safety.md); R7 is not closed by startup hardening alone.
 R6 adds five production-service scenarios and an explicitly enabled shared-UI browser
 proof in the Go CI job. Scope includes policy/actions/grants/usage, pacts/recovery,
 DNS acknowledgement, failure/refusal and restart/RAM semantics. It changes tests/CI/docs

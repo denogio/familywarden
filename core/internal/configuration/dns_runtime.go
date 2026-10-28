@@ -61,29 +61,36 @@ func (a *Authority) loadDNS(native platform.DNSRuntime) (dnsState, error) {
 	if !found {
 		s = dnsState{Version: 1, Owned: native.LegacyOwned, Acks: native.LegacyAcks}
 	}
-	if s.Version != 1 || s.Time < 0 {
-		return s, errors.New("unsupported DNS runtime state")
-	}
-	seen := map[string]bool{}
-	for _, line := range s.Acks {
-		id, _, err := parseDNSAck(line)
-		if err != nil {
-			return s, err
-		}
-		if seen[id] {
-			return s, errors.New("duplicate DNS acknowledgement")
-		}
-		seen[id] = true
-	}
-	for _, id := range s.Owned {
-		if !agh.ValidClientID(id) {
-			return s, errors.New("invalid owned DNS ClientID")
-		}
+	if err := validateDNSState(s); err != nil {
+		return s, err
 	}
 	if !found {
 		err = a.store.WriteDocument(dnsDocument, s)
 	}
 	return s, err
+}
+
+func validateDNSState(s dnsState) error {
+	if s.Version != 1 || s.Time < 0 {
+		return errors.New("unsupported DNS runtime state")
+	}
+	seen := map[string]bool{}
+	for _, line := range s.Acks {
+		id, _, err := parseDNSAck(line)
+		if err != nil {
+			return err
+		}
+		if seen[id] {
+			return errors.New("duplicate DNS acknowledgement")
+		}
+		seen[id] = true
+	}
+	for _, id := range s.Owned {
+		if !agh.ValidClientID(id) {
+			return errors.New("invalid owned DNS ClientID")
+		}
+	}
+	return nil
 }
 
 func (a *Authority) dnsPlatform() (platform.DNSPlatform, error) {

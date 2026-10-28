@@ -496,6 +496,16 @@ R5 checkpoint `2b9df05` (core r17/backend rc10-r14/LuCI r8). R7's mixed-version,
 interruption, full backup/restore and release gates remain open. No second-router
 runtime support, generic adapter framework or production deployment is claimed.
 
+### R7a progress — reject incompatible recovery and concurrent startup
+
+Core 0.13.0-r18 validates the five known versioned documents before startup can apply
+rules, roll back a pending edit or import identities. Its native executable acquires a
+private lifetime writer lease before store initialization, and waits for HTTP draining
+before normal release. Future/truncated document cases and real process contention,
+normal shutdown and SIGKILL tests exercise these boundaries. No ownership/schema floor
+or historical restore guarantee is implied. R7 remains open; the remaining version,
+interruption and backup/restore matrix is in [migration-safety.md](migration-safety.md).
+
 ## Acceptance checklist for adapter-ready completion
 
 - [x] A router implementer needs platform facts, enforcement/application and host

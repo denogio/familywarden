@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=familywarden-core
 PKG_VERSION:=0.13.0
-PKG_RELEASE:=17
+PKG_RELEASE:=18
 
 PKG_MAINTAINER:=denogio <dennis@hojgaard.me>
 PKG_LICENSE:=Apache-2.0

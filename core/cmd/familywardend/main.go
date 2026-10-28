@@ -43,7 +43,8 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 // listen takes over socket only if it is absent or a stale socket. A regular file
 // (a typo in -socket) is never deleted, and a live socket means another instance
-// is running: two cores must never share one data directory.
+// is running. The separate lifetime writer lock protects the data directory
+// before recovery, including when two processes use different socket paths.
 func listen(socket string) (net.Listener, error) {
 	if fi, err := os.Lstat(socket); err == nil {
 		if fi.Mode().Type() != os.ModeSocket {
@@ -258,6 +259,11 @@ func main() {
 		return
 	}
 
+	writer, err := acquireWriter(*dataDir)
+	if err != nil {
+		log.Fatalf("exclusive core startup: %v", err)
+	}
+	defer writer.Close()
 	st, err := store.Open(*dataDir)
 	if err != nil {
 		log.Fatalf("data directory %s: %v", *dataDir, err)
@@ -284,14 +290,21 @@ func main() {
 	srv := &http.Server{Handler: app.Handler, ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	shutdownDone := make(chan error, 1)
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = srv.Shutdown(shutdown)
+		shutdownDone <- srv.Shutdown(shutdown)
 	}()
 	log.Printf("familywardend %s listening on %s", version, *socket)
 	if err := srv.Serve(l); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
+	}
+	// Serve returns when the listener closes, not when in-flight writes finish.
+	// Keep writer ownership until draining completes. On timeout exit directly:
+	// the kernel releases the lease when the process and its writers are gone.
+	if err := <-shutdownDone; err != nil {
+		log.Fatalf("core shutdown did not drain: %v", err)
 	}
 }

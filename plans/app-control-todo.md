@@ -132,6 +132,14 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
       Runtime sources are unchanged from R5 `2b9df05`; no second-router implementation.
 - [ ] R7: close P12 upgrade/import/interruption, compatibility and safe restore gates
       before removing legacy paths or claiming production-cutover readiness.
+      - [x] R7a (core r18): known-document read-only preflight before startup side effects;
+        native lifetime writer lease before store/recovery, tested with real processes,
+        alternate socket/path aliases, graceful exit and SIGKILL. Ten future/truncated
+        document cases preserve pending journal bytes and native enforcement attempts.
+      - [ ] Remaining historical/package/version and restore-admission gates:
+        [concrete R7 safety matrix](migration-safety.md). Older non-cooperating writers,
+        missing authority documents, usage integrity and whole-household backup/restore
+        are not solved by this first slice.
 
 No pfSense/OPNsense adapter is implemented yet. The FreeBSD cross-build succeeds,
 but still selects OpenWrt and is not runtime support. R6 now proves the production service composition and shared UI with a recording/failing
