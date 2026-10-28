@@ -506,6 +506,16 @@ normal shutdown and SIGKILL tests exercise these boundaries. No ownership/schema
 or historical restore guarantee is implied. R7 remains open; the remaining version,
 interruption and backup/restore matrix is in [migration-safety.md](migration-safety.md).
 
+### R7b progress — durable ownership routing
+
+Core r19/backend rc10-r15 persist/read back `core/authority.json` before native apply.
+A lost journal or owned registry refuses recovery, not legacy import; native routing
+also keeps the core path while the core/journal is unavailable. Old policy/context and
+registry seams are refused under the native lock. Adoption requires the native
+`authority-v1` capability and preserves the v1 household revision, pact and identity.
+The ownership floor is not a newest-state counter: full historical compatibility,
+optional-ledger loss and safe old-backup admission remain open in the R7 matrix.
+
 ## Acceptance checklist for adapter-ready completion
 
 - [x] A router implementer needs platform facts, enforcement/application and host

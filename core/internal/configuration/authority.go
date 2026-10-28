@@ -85,8 +85,8 @@ func New(ad platform.Adapter, backend Backend, st Storage) (*Authority, error) {
 		d.Pending = nil
 	}
 	if err := a.backend.ConfigurationTransaction(func(_ rules.Configuration, facts platform.Context, overrides map[string]platform.NetworkOverride, apply func(rules.Configuration, platform.NetworkIntent) error) error {
-		if facts.BonusFormat != bonusFormat {
-			return errors.New("incompatible bonus adapter: upgrade core and backend together")
+		if facts.BonusFormat != bonusFormat || facts.AuthorityFormat != OwnershipFormat {
+			return errors.New("incompatible authority/bonus adapter: upgrade core and backend together")
 		}
 		if d.Bonus == nil {
 			var err error
@@ -97,6 +97,9 @@ func New(ad platform.Adapter, backend Backend, st Storage) (*Authority, error) {
 		}
 		intent, err := a.intentFor(d.Configuration, facts, overrides)
 		if err != nil {
+			return err
+		}
+		if err := a.ensureOwnership(); err != nil {
 			return err
 		}
 		if err := a.applyConfiguration(apply, d.Configuration, intent); err != nil {
@@ -125,8 +128,15 @@ func validateSealed(c rules.Configuration) error {
 
 func (a *Authority) load() (document, bool, error) {
 	var d document
+	owned, err := a.ownership()
+	if err != nil {
+		return d, owned, err
+	}
 	var raw json.RawMessage
 	found, err := a.store.ReadDocument(documentName, &raw)
+	if err == nil && !found && owned {
+		return d, true, errors.New("owned configuration missing; explicit recovery required")
+	}
 	if err != nil || !found {
 		return d, found, err
 	}
@@ -169,7 +179,7 @@ func (a *Authority) save(d document) error {
 	if err != nil || !found || !bytes.Equal(want, got) {
 		return errors.New("configuration read-back failed")
 	}
-	return nil
+	return a.ensureOwnership()
 }
 
 func (a *Authority) refresh() error {
@@ -597,6 +607,9 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 			}
 			if c.Revision != req.Revision {
 				return errors.New("configuration conflict")
+			}
+			if facts.AuthorityFormat != OwnershipFormat {
+				return errors.New("incompatible authority adapter: upgrade core and backend together")
 			}
 			// The original complete snapshot is durable and read back before any
 			// legacy file becomes a projection. Restart can finish a lost import.

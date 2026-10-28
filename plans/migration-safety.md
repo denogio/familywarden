@@ -24,6 +24,7 @@ These are release acceptance requirements, not blanket claims about the current 
 
 | State | Current format / boundary | Safety concern |
 |---|---|---|
+| `core/authority.json` | Immutable ownership record v1 (`owner=core`) | Prevent a missing household journal from selecting legacy; not an anti-rollback generation |
 | `core/configuration.json` | Household journal v1, embedded configuration v1; sealed revisions including rollback target | Current/candidate/before state, ownership, pact snapshots and durable bonus must stay consistent |
 | `core/devices.json` | Registry v1 | Preserve public-key bindings, administrator role and parent scopes; missing is not equivalent to an approved empty replacement |
 | `core/requests.json` | Ledger v1 | Preserve request decisions, fixed grant identity/deadlines, finalized expiry and trusted clock floor |
@@ -68,14 +69,67 @@ not inspect all historical usage at startup, detect every schema-valid modificat
 introduce an irreversible ownership floor, or make old non-cooperating binaries honor
 the new lease. These limits must not be mistaken for a completed R7 gate.
 
+## R7b — Durable ownership and refusal of legacy fallback
+
+Implemented in core **0.13.0-r19** with backend **0.11.0_rc10-r15**. Update the pair
+together; no LuCI or signed phone protocol revision is needed. Owned startup/import
+requires the native `authority_format=authority-v1` capability before adoption.
+
+- [x] First activation persists and reads back the household recovery journal, then
+  `authority.json`, before any native apply. The floor is immutable and not rewritten
+  for ordinary mutations. Failed floor write/readback leaves recovery required.
+- [x] Adopt an existing unmarked v1 household before applying it, without changing its
+  revision, active pact or registry. Incompatible native adapters cannot activate/adopt.
+- [x] A valid floor with a missing journal refuses reads, signed phone policy, import
+  and restart before native recovery. An owned household's missing registry also
+  refuses startup before any apply/import; an empty first-use registry is not invented.
+- [x] Native routing checks presence of both files, including dangling links and
+  non-regular entries. Only the core validates their contents. Core JSON readers reject
+  non-regular files rather than confusing dangling links with first-use absence.
+- [x] Under the native state lock, owned households cannot call the old configuration,
+  context, phone-policy or registry import/removal seams. Original network, DNS and
+  protected-release entry points retain core routing when the journal/core is missing.
+- [x] Real OpenWrt tests cover authenticated sail release/cancel refusal, unchanged
+  native rules and exact journal repair retaining the pact. Real AGH tests preserve
+  both core acknowledgements and legacy files, and retain remote parental protection.
+
+The lost-journal regression originally exported permissive legacy configuration and
+returned a signed pending-enrollment response. It now refuses without native calls or
+document changes. Startup preflight covers six known versioned documents plus missing
+owned journal/registry cases (14 refusal cases). Existing-family adoption is tested
+with identical v1/r18-format documents, not claimed as a historical APK upgrade run.
+
+| Layout / pair | Current behavior |
+|---|---|
+| No journal/floor, no registry | Legacy first-use import remains supported |
+| Unmarked v1 journal + registry, matching native capability | Persist/read back floor before recovery/apply; preserve revision and identity |
+| Journal + floor + registry | Ordinary owned operation |
+| Floor but missing journal | Explicit recovery required; no legacy fallback or new signed policy |
+| Owned journal but missing registry | Refuse before native recovery or stale identity import |
+| Future/malformed ownership record or non-regular core JSON file | Refuse; native routing never interprets damage as legacy |
+| New core with an adapter lacking `authority-v1` | Refuse owned activation/adoption without changing the household/native policy |
+
+Local R7b evidence: full Go race/vet with the portable UI, 519 real OpenWrt checks,
+101 real AGH checks, eight Node checks and syntax checks passed. Fresh r19/r15/r8 APKs
+passed install/reinstall/removal smoke and all 39 browser cases (33 foundation,
+four owned-core and two shared/native). Package lifecycle tests now wait for write
+ownership, not merely socket disappearance, before simulating a replacement daemon.
+No Android milestone or production deployment was performed.
+
+Limits: this floor records **that** the core was selected, not **which state is newest**.
+It cannot detect deletion of every ownership artifact, restoring an older complete
+household, or an older backend that does not honor it. Existing optional ledgers do not
+yet have a durable presence/generation manifest. Full rollback-resistant restore and
+historical package compatibility remain open; no automatic unsafe downgrade is supported.
+
 ## Remaining implementation and acceptance matrix
 
 | Gate | Required evidence | Status |
 |---|---|---|
-| Supported upgrade paths | Fictional v0.9.1/v0.9.2 and recorded pilot-generation fixtures upgrade without changing effective restrictions, keys, identity/scopes or DNS ownership | Open |
-| Idempotent import | Retry before/after journal, native apply and completion; once owned, a changed legacy projection cannot become authority again | Existing focused coverage; extend to historical/package fixtures |
+| Supported upgrade paths | Fictional v0.9.1/v0.9.2 and recorded pilot-generation fixtures upgrade without changing effective restrictions, keys, identity/scopes or DNS ownership | r18-format adoption proved; historical/package matrix open |
+| Idempotent import | Retry before/after journal, ownership-floor write/readback, native apply and completion; once owned, a changed legacy projection cannot become authority again | Current-pair coverage passes; extend to historical/package fixtures |
 | Interrupted mutations | Configuration confirm/rollback, pact creation/release, grants/usage, bonus and DNS ownership/ack writes interrupted at durable/native cut points | Partial existing coverage; complete matrix open |
-| Concurrent/versioned writers | Current daemon exclusion plus supported package combinations and explicit refusal of non-cooperating/legacy writers | Current daemon lease proved; mixed-version gate open |
+| Concurrent/versioned writers | Current daemon exclusion plus supported package combinations and explicit refusal of non-cooperating/legacy writers | Current daemon lease and current-pair legacy refusal proved; historical mixed-version gate open |
 | Router/app compatibility | Old router/new app and new router/old app; unsupported capabilities/formats refuse without erasing last trusted protection | Existing protocol tests; consolidated historical matrix open |
 | Whole-household backup | One private artifact, manifest/checksums/versions, native secrets and all durable ledgers from a quiesced consistent state | Open |
 | Restore admission | Validate before activation; never merge arbitrary old ledgers or weaken pact minima; define what can be proved when the latest state is unavailable | Open |
@@ -88,9 +142,9 @@ the new lease. These limits must not be mistaken for a completed R7 gate.
    capabilities are different compatibility dimensions; record the supported tuples.
 2. Unsupported old software must not fall back to a materialized UCI projection of
    an owned household. A package downgrade is not an approved schema downgrade.
-3. An absent authority file is currently a legacy selector, not proof that a household
-   was never owned. Add/test the appropriate authority floor before claiming safety
-   for partial backups or missing-file recovery.
+3. For an unmarked historical household, absence of the configuration still selects
+   legacy. R19's separate ownership floor blocks loss of the journal/registry after
+   adoption, but is not enough to admit partial backups or detect removal of all evidence.
 4. A complete but old backup may still roll back spent grants, usage or tighter pact
    rules. Never promise automatic safe merging when no trustworthy newer floor exists.
 5. A backup requires the daemon and native writers to be quiesced. The startup lease

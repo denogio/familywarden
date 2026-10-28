@@ -11,17 +11,22 @@ import (
 )
 
 type memory struct {
-	data []byte
-	dns  []byte
-	fail bool
+	data      []byte
+	dns       []byte
+	authority []byte
+	fail      bool
 }
 
 func (s *memory) ReadDocument(name string, v any) (bool, error) {
-	if name == dnsDocument {
-		if len(s.dns) == 0 {
+	if name == dnsDocument || name == OwnershipDocument {
+		data := s.dns
+		if name == OwnershipDocument {
+			data = s.authority
+		}
+		if len(data) == 0 {
 			return false, nil
 		}
-		return true, json.Unmarshal(s.dns, v)
+		return true, json.Unmarshal(data, v)
 	}
 	if len(s.data) == 0 {
 		return false, nil
@@ -35,6 +40,10 @@ func (s *memory) WriteDocument(name string, v any) error {
 	b, e := json.Marshal(v)
 	if name == dnsDocument {
 		s.dns = b
+		return e
+	}
+	if name == OwnershipDocument {
+		s.authority = b
 		return e
 	}
 	s.data = b
@@ -67,7 +76,7 @@ func (f *fakeBackend) Context() (platform.Context, error) {
 	for _, v := range f.current.Current.Profiles {
 		p[v.ID] = platform.Profile{Name: v.Name, AppInput: &rules.AppConfig{Version: 1}}
 	}
-	return platform.Context{Profiles: p, TimeZone: "UTC", BonusFormat: bonusFormat, NetworkFormat: networkFormat, MastLastSync: f.mastSync}, nil
+	return platform.Context{Profiles: p, TimeZone: "UTC", BonusFormat: bonusFormat, AuthorityFormat: OwnershipFormat, NetworkFormat: networkFormat, MastLastSync: f.mastSync}, nil
 }
 
 // Facts is the owned-mode read: no policy content, only facts. The fake's

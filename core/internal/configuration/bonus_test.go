@@ -27,7 +27,7 @@ func bonusSetup(t *testing.T, legacy string) (*Authority, *bonusBackend, *memory
 	c.Current.Profiles[0].ScreenMinutes = "40"
 	_ = c.Seal()
 	b := &bonusBackend{&appBackend{fakeBackend: &fakeBackend{current: c}, facts: platform.Context{
-		BonusFormat: bonusFormat, LegacyBonus: legacy, TimeZone: "UTC", MastCaptain: "alex",
+		BonusFormat: bonusFormat, AuthorityFormat: OwnershipFormat, LegacyBonus: legacy, TimeZone: "UTC", MastCaptain: "alex",
 		Profiles: map[string]platform.Profile{
 			"alex":   {AppInput: &rules.AppConfig{Version: 1, Enabled: "1", Bonus: "untrusted stale bonus"}, Override: "none"},
 			"taylor": {AppInput: &rules.AppConfig{Version: 1}},

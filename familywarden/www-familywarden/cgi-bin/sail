@@ -62,7 +62,8 @@ fi
 
 # Root authentication/throttling remain native; owned product decisions use
 # the core's dedicated protected-release route, never the administrator API.
-if [ -f /etc/familywarden/core/configuration.json ]; then
+if [ -e /etc/familywarden/core/configuration.json ] || [ -L /etc/familywarden/core/configuration.json ] ||
+   [ -e /etc/familywarden/core/authority.json ] || [ -L /etc/familywarden/core/authority.json ]; then
     case "$action" in release) op=request;; cancel) op=cancel;; *) error "unknown action";; esac
     json_init
     [ "$op" != request ] || json_add_string answer "$answer"

@@ -22,10 +22,11 @@ type Service struct {
 func New(ad platform.Adapter, backend configuration.Backend, st *store.Store, version string) (*Service, error) {
 	// Reject incompatible stored state before either constructor can recover a
 	// configuration, apply native rules or import/remove legacy identities.
-	if err := configuration.CheckStorage(st); err != nil {
+	owned, err := configuration.CheckStorage(st)
+	if err != nil {
 		return nil, err
 	}
-	if err := identity.CheckStorage(st); err != nil {
+	if err := identity.CheckStorage(st, owned); err != nil {
 		return nil, err
 	}
 	cfg, err := configuration.New(ad, backend, st)

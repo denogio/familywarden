@@ -111,7 +111,7 @@ func (h *recordingHost) RouterKey() (usign.SecretKey, error) { return h.key, nil
 // Facts report profile presence, native deadlines and the applied compatibility
 // projection, never app configuration, schedule eligibility or DNS acknowledgements.
 func (h *recordingHost) facts() platform.Context {
-	c := platform.Context{RuntimeFormat: "runtime-facts-v1", BonusFormat: "bonus-state-v1",
+	c := platform.Context{RuntimeFormat: "runtime-facts-v1", BonusFormat: "bonus-state-v1", AuthorityFormat: configuration.OwnershipFormat,
 		NetworkFormat: "network-actions-v1", NetworkIntentFormat: platform.NetworkIntentFormat,
 		PactNetworkFormat: "pact-network-v1", TimeZone: "UTC", Profiles: map[string]platform.Profile{},
 		MastCaptain: h.current.Current.Settings.Captain}

@@ -26,13 +26,14 @@ func (a Adapter) ConfigurationTransaction(fn func(rules.Configuration, platform.
 	}
 	return a.withStateLocks(func(state, ticket *os.File) error {
 		var current rules.Configuration
-		_, owned := os.Stat("/etc/familywarden/core/configuration.json")
-		if os.IsNotExist(owned) {
+		owned, err := a.configurationOwned()
+		if err != nil {
+			return err
+		}
+		if !owned {
 			if err := a.runLocked(&current, state, "core-configuration", "configuration-v1", "held-v1"); err != nil {
 				return err
 			}
-		} else if owned != nil {
-			return owned
 		}
 		var facts platform.Context
 		if err := a.runLocked(&facts, state, "core-configuration-facts"); err != nil {

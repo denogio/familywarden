@@ -68,6 +68,15 @@ func writeJSON(path string, v any) error {
 }
 
 func readJSON(path string, v any) error {
+	// A dangling link is damaged state, not a missing first-use document. Core
+	// documents are regular files; native secrets/projections have other readers.
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return errors.New("document is not a regular file")
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return err

@@ -23,7 +23,7 @@ func (s *failWrite) WriteDocument(name string, v any) error {
 }
 
 func TestInterruptedImportRecovery(t *testing.T) {
-	for _, phase := range []string{"initial-write", "platform-apply", "completion-write"} {
+	for _, phase := range []string{"initial-write", "ownership-write", "platform-apply", "completion-write"} {
 		t.Run(phase, func(t *testing.T) {
 			b := &fakeBackend{current: sample()}
 			_ = b.current.Seal()
@@ -33,8 +33,10 @@ func TestInterruptedImportRecovery(t *testing.T) {
 				st.at = 1
 			case "platform-apply":
 				b.fail = 1
-			case "completion-write":
+			case "ownership-write":
 				st.at = 2
+			case "completion-write":
+				st.at = 3
 			}
 			a, err := New(b, b, st)
 			if err != nil {
@@ -49,6 +51,9 @@ func TestInterruptedImportRecovery(t *testing.T) {
 					t.Fatal("projection changed before a durable ownership journal")
 				}
 				return
+			}
+			if phase == "ownership-write" && b.applies != 0 {
+				t.Fatal("native apply ran without a durable ownership floor")
 			}
 			if len(st.data) == 0 || a.API("configuration_export", nil)["error"] == nil {
 				t.Fatal("interrupted durable import fell back to legacy")

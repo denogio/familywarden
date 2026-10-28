@@ -56,7 +56,13 @@ FW_MAST_SEEN="/tmp/familywarden.mast"
 FW_CORE_BIN="/usr/sbin/familywardend"
 FW_CORE_SOCK="/var/run/familywarden-core/core.sock"
 FW_CORE_CONFIG="$FW_PERSIST/core/configuration.json"
-configuration_owned() { [ -f "$FW_CORE_CONFIG" ]; }
+FW_CORE_AUTHORITY="$FW_PERSIST/core/authority.json"
+# Presence is deliberately conservative: malformed or missing-target links must
+# route to the core's refusal, never select a legacy writer.
+configuration_owned() {
+    [ -e "$FW_CORE_CONFIG" ] || [ -L "$FW_CORE_CONFIG" ] ||
+        [ -e "$FW_CORE_AUTHORITY" ] || [ -L "$FW_CORE_AUTHORITY" ]
+}
 core_configuration_api() {
     local response code
     response=$(printf '%s' "${2:-{\}}" | "$FW_CORE_BIN" -socket "$FW_CORE_SOCK" api "$1")
@@ -1811,6 +1817,7 @@ cli_core_configuration() {
         else
             flock -s 200 || exit 1
         fi
+        configuration_owned && { _json_error "owned configuration requires core API"; exit 1; }
         if [ -f "$FW_PACT" ] && { [ ! -s "$FW_PACT_SNAP" ] || [ ! -f "$FW_PACT_DNS" ]; }; then
             _json_error "incomplete pact snapshot"
             exit 1
@@ -1855,6 +1862,7 @@ cli_core_context() {
         else
             flock -s 200 || exit 1
         fi
+        configuration_owned && { _json_error "owned context requires runtime facts"; exit 1; }
         fw_load
         json_init
         _core_context_fields
@@ -1915,6 +1923,7 @@ cli_core_policy() {
     case "$ver" in 2|3) ;; *) echo '{"error":"invalid version"}'; return 1 ;; esac
     (
         flock -s 200 || exit 1
+        configuration_owned && { _json_error "owned policy requires core authority"; exit 1; }
         fw_load
         json_init
         json_add_object "context"
@@ -1945,6 +1954,7 @@ _core_legacy_cb() {
 cli_core_legacy_devices() {
     (
         flock -s 200 || exit 1
+        configuration_owned && { _json_error "owned registry requires explicit recovery"; exit 1; }
         fw_load
         json_init
         json_add_array "devices"
@@ -2004,6 +2014,7 @@ _core_legacy_rm_cb() { uci -q delete "familywarden.$1"; }
 cli_core_legacy_devices_remove() {
     (
         flock -x 200 || exit 1
+        configuration_owned && { _json_error "owned registry requires explicit recovery"; exit 1; }
         config_load familywarden
         config_foreach _core_legacy_rm_cb device
         uci commit familywarden
@@ -2457,6 +2468,7 @@ EOF
         json_init
         json_add_string timezone "$(uci -q get system.@system[0].zonename)"
         json_add_string bonus_format bonus-state-v1
+        json_add_string authority_format authority-v1
         json_add_string pact_network_format pact-network-v1
         json_add_string network_intent_format network-intent-v1
         json_add_string legacy_bonus "$legacy_bonus"

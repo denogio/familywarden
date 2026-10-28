@@ -378,9 +378,16 @@ touch /tmp/familywarden.dns.dirty
 [ -f /tmp/familywarden.dns.dirty ] && fail "tick did not sync a dirty config" || pass "tick syncs after a config change"
 
 cp /etc/familywarden/core/dns.json /tmp/dns-core-down-before
+cp /etc/familywarden/dns.ack /tmp/dns-floor-legacy-before
+mv /etc/familywarden/core/configuration.json /tmp/dns-floor-configuration.keep
+"$BIN" dns-sync && fail "missing owned configuration selected legacy DNS" || pass "authority floor refuses DNS without the owned journal"
+cmp -s /tmp/dns-core-down-before /etc/familywarden/core/dns.json && pass "missing journal preserves verified DNS state" || fail "missing journal changed core DNS state"
+cmp -s /tmp/dns-floor-legacy-before /etc/familywarden/dns.ack && pass "missing journal never reactivates the legacy DNS ledger" || fail "missing journal wrote legacy acknowledgements"
 killall familywardend
 "$BIN" dns-sync && fail "core-down DNS silently fell back" || pass "core-down DNS cannot fall back to shell"
 cmp -s /tmp/dns-core-down-before /etc/familywarden/core/dns.json && pass "core-down DNS retains verified state" || fail "core-down DNS changed verified state"
+cmp -s /tmp/dns-floor-legacy-before /etc/familywarden/dns.ack && pass "core-down authority floor preserves legacy DNS files" || fail "core-down fallback wrote legacy acknowledgements"
+assert_eq "core-down missing journal keeps remote parental protection" "$(client "familywarden-$alex_id" .parental_enabled)" "true"
 
 echo ""
 [ "$FAILED" -eq 0 ] && echo "All AdGuard Home checks passed!" || echo "Some AdGuard Home checks FAILED"

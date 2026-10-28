@@ -4,12 +4,16 @@ import "fmt"
 
 // CheckStorage checks existing versioned identity documents without importing,
 // expiring, caching or writing anything. Startup calls it before native recovery.
-// Missing files are left to their ordinary first-use/import paths.
-func CheckStorage(st Storage) error {
+// An owned household already passed registry import: its missing registry is
+// data loss, not permission to re-import stale native identities.
+func CheckStorage(st Storage, requireRegistry bool) error {
 	var devices devicesDoc
 	found, err := st.ReadDocument(devicesFile, &devices)
 	if err != nil {
 		return fmt.Errorf("devices: %w", err)
+	}
+	if !found && requireRegistry {
+		return fmt.Errorf("owned device registry missing; explicit recovery required")
 	}
 	if found && devices.Version != schemaVersion {
 		return fmt.Errorf("devices: unsupported schema version %d", devices.Version)

@@ -6,6 +6,34 @@ import (
 	"testing"
 )
 
+func TestDocumentLinksAndDirectoriesAreNotAbsence(t *testing.T) {
+	s, dir := open(t)
+	for _, name := range []string{"dangling.json", "linked.json", "directory.json"} {
+		path := filepath.Join(dir, name)
+		switch name {
+		case "dangling.json":
+			if err := os.Symlink(filepath.Join(dir, "missing"), path); err != nil {
+				t.Fatal(err)
+			}
+		case "linked.json":
+			if err := s.WriteDocument("target.json", map[string]int{"version": 1}); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(filepath.Join(dir, "target.json"), path); err != nil {
+				t.Fatal(err)
+			}
+		default:
+			if err := os.Mkdir(path, 0700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var got map[string]any
+		if _, err := s.ReadDocument(name, &got); err == nil {
+			t.Fatal("non-regular document was accepted or treated as absent", name)
+		}
+	}
+}
+
 func TestDocumentsAreBoundedAndAtomic(t *testing.T) {
 	s, dir := open(t)
 	want := map[string]any{"version": float64(1), "status": "approved"}

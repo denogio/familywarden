@@ -83,7 +83,7 @@ if [ -n "$CORE" ]; then
     [ "$(mode "$SOCK")" = srw------- ] && pass "socket is root-only" || fail "socket mode $(mode "$SOCK")"
     [ "$(mode /etc/familywarden/core)" = drwx------ ] && pass "data dir is root-only" || fail "data dir mode $(mode /etc/familywarden/core)"
     familywardend -data /etc/familywarden/core -socket "$SOCK" 2>/tmp/second.log && fail "second instance started" \
-        || { grep -q 'another familywardend' /tmp/second.log && pass "second instance refused" || fail "second instance: $(cat /tmp/second.log)"; }
+        || { grep -q 'exclusive core startup' /tmp/second.log && pass "second instance refused" || fail "second instance: $(cat /tmp/second.log)"; }
     echo "RSS of an idle core: $(grep VmRSS /proc/$CORE_PID/status | tr -s ' ')"
 
     kill -9 "$CORE_PID"; wait "$CORE_PID" 2>/dev/null
@@ -104,7 +104,12 @@ if [ "$1" = /etc/init.d/familywarden-core ]; then
     enabled) exit 0 ;;
     restart)
         kill "$(cat /tmp/core-service.pid)" || exit 1
-        for _ in 1 2 3 4 5; do [ ! -S /var/run/familywarden-core/core.sock ] && break; sleep 1; done
+        # Listener closure precedes HTTP draining. Wait for actual write ownership,
+        # not just a missing socket, before simulating procd's replacement process.
+        for _ in 1 2 3 4 5; do
+            (flock -n -x 9) 9>/etc/familywarden/core/.writer.lock && break
+            sleep 1
+        done
         familywardend >>/tmp/core.log 2>&1 &
         echo $! >/tmp/core-service.pid
         exit 0 ;;

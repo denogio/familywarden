@@ -136,10 +136,14 @@ not enough. Source evidence and dependencies: [adapter portability audit](adapte
         native lifetime writer lease before store/recovery, tested with real processes,
         alternate socket/path aliases, graceful exit and SIGKILL. Ten future/truncated
         document cases preserve pending journal bytes and native enforcement attempts.
+      - [x] R7b (core r19/backend rc10-r15): durable read-back-verified authority floor;
+        native guard capability before adoption, no legacy context/policy/registry seams
+        after ownership, and missing owned journal/registry refusal before recovery.
+        Core storage rejects non-regular JSON entries rather than treating links as absence.
       - [ ] Remaining historical/package/version and restore-admission gates:
         [concrete R7 safety matrix](migration-safety.md). Older non-cooperating writers,
-        missing authority documents, usage integrity and whole-household backup/restore
-        are not solved by this first slice.
+        deletion of all ownership evidence, optional-ledger integrity and whole-household
+        backup/restore are not solved by these first slices.
 
 No pfSense/OPNsense adapter is implemented yet. The FreeBSD cross-build succeeds,
 but still selects OpenWrt and is not runtime support. R6 now proves the production service composition and shared UI with a recording/failing

@@ -127,10 +127,13 @@ type Context struct {
 	// Legacy bonus import is a versioned snapshot under the configuration lock.
 	// Empty input is meaningful only when BonusFormat explicitly matches.
 	BonusFormat string `json:"bonus_format,omitempty"`
-	LegacyBonus string `json:"legacy_bonus,omitempty"`
-	AppFormat   string `json:"app_format"`   // versioned interim compiler input
-	TimeZone    string `json:"timezone"`     // IANA name or ""
-	PactCaptain string `json:"pact_captain"` // profile bound by an active pact, or ""
+	// AuthorityFormat advertises native refusal of legacy writes after activation,
+	// including when the configuration is missing but its ownership floor remains.
+	AuthorityFormat string `json:"authority_format,omitempty"`
+	LegacyBonus     string `json:"legacy_bonus,omitempty"`
+	AppFormat       string `json:"app_format"`   // versioned interim compiler input
+	TimeZone        string `json:"timezone"`     // IANA name or ""
+	PactCaptain     string `json:"pact_captain"` // profile bound by an active pact, or ""
 	// MastCaptain is the platform's current captain: an active pact's captain,
 	// else the platform's configured one. Owned-mode facts only.
 	MastCaptain string             `json:"mast_captain,omitempty"`

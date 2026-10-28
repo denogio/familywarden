@@ -1738,6 +1738,47 @@ sed -i 's/"version":1/"version":99/' /etc/familywarden/core/configuration.json
 mast2 owned-phone fw-owned "$N1" | head -1 | grep -q '^Status: 500' && pass "future configuration never signs legacy fallback" || fail "future configuration produced a policy"
 mv /tmp/owned-configuration.keep /etc/familywarden/core/configuration.json
 assert_json "restored valid owner remains readable" "$(cfg_api configuration_export)" '@.owner' core
+# Losing the household journal must not reactivate permissive legacy writers.
+assert_json "activation persists a separate authority floor" "$(cat /etc/familywarden/core/authority.json)" '@.owner' core
+assert_json "native adapter advertises authority protection" "$("$BIN" core-configuration-facts)" '@.authority_format' authority-v1
+# Existing r18-format v1 documents have no floor. Adopting one must not rewrite
+# identity or change the household/pact revision.
+upgrade_revision=$(cfg_api configuration_export | jsonfilter -e '@.configuration.revision')
+cp /etc/familywarden/core/devices.json /tmp/ownership-devices.before
+stop_core
+rm /etc/familywarden/core/authority.json
+start_core
+assert_json "unmarked v1 household gains the authority floor on upgrade" "$(cat /etc/familywarden/core/authority.json)" '@.owner' core
+assert_json "ownership adoption preserves configuration revision" "$(cfg_api configuration_export)" '@.configuration.revision' "$upgrade_revision"
+assert_json "ownership adoption preserves active pact release" "$(cfg_api configuration_export)" '@.configuration.pact.release_at' "$release_before"
+cmp -s /tmp/ownership-devices.before /etc/familywarden/core/devices.json && pass "ownership adoption preserves device keys and scopes byte-for-byte" || fail "ownership adoption changed identity"
+assert_json "owned raw legacy snapshot is unavailable" "$("$BIN" core-configuration configuration-v1)" '@.error' 'owned configuration requires core API'
+assert_json "owned legacy context cannot supply policy" "$("$BIN" core-context go-apps-v3)" '@.error' 'owned context requires runtime facts'
+assert_json "owned legacy phone policy is refused" "$("$BIN" core-policy alex 3 go-apps-v3)" '@.error' 'owned policy requires core authority'
+assert_json "owned legacy registry cannot be reimported" "$("$BIN" core-legacy-devices)" '@.error' 'owned registry requires explicit recovery'
+assert_json "owned legacy registry cleanup is refused" "$("$BIN" core-legacy-devices-remove)" '@.error' 'owned registry requires explicit recovery'
+cp /var/etc/familywarden.include /tmp/ownership-include.before
+mv /etc/familywarden/core/configuration.json /tmp/ownership-configuration.keep
+assert_json "lost configuration refuses export instead of UCI fallback" "$(cfg_api configuration_export)" '@.error' 'owned configuration missing; explicit recovery required'
+assert_json "authority floor keeps allow on the core path" "$(call allow '{"profile":"taylor"}')" '@.error' 'owned configuration missing; explicit recovery required'
+assert_json "authority floor keeps reload on the core path" "$(call reload)" '@.error' 'owned configuration missing; explicit recovery required'
+assert_json "lost configuration cannot be reimported from a projection" "$(cfg_api configuration_import '{}')" '@.error' 'owned configuration missing; explicit recovery required'
+assert_json "authenticated sail cannot release a missing owned journal" "$(sail '{"action":"release","password":"sirens","answer":"press on"}')" '@.error' 'owned configuration missing; explicit recovery required'
+stop_core
+assert_json "core-down allow cannot bypass the authority floor" "$(call allow '{"profile":"taylor"}')" '@.error' 'core not reachable'
+assert_json "core-down raw snapshot cannot bypass the authority floor" "$("$BIN" core-configuration configuration-v1)" '@.error' 'owned configuration requires core API'
+assert_json "core-down legacy ticket remains forbidden with missing configuration" "$("$BIN" core-ticket taylor "$(( $(date +%s) + 60 ))")" '@.error' 'owned ticket requires the core API'
+assert_json "authenticated sail cannot cancel through core-down legacy fallback" "$(sail '{"action":"cancel","password":"sirens"}')" '@.error' 'core not reachable'
+[ -n "$("$BIN" sail-status | jsonfilter -e '@.error')" ] && pass "protected recovery cannot fall back with a missing journal" || fail "legacy sail status bypassed the floor"
+/usr/sbin/familywardend -data /etc/familywarden/core -socket "$CORE_SOCK" >>/tmp/core.log 2>&1 &
+CORE_PID=$!
+sleep 1
+assert_json "restart with a missing journal serves no policy" "$(/usr/sbin/familywardend -socket "$CORE_SOCK" status)" '@.running' false
+stop_core
+cmp -s /var/etc/familywarden.include /tmp/ownership-include.before && pass "lost journal never replaces the last native rules" || fail "legacy fallback changed native rules"
+mv /tmp/ownership-configuration.keep /etc/familywarden/core/configuration.json
+start_core
+assert_json "exact journal repair preserves the active pact" "$(cfg_api configuration_export)" '@.configuration.pact.release_at' "$release_before"
 # A deliberately confirmed amendment may now activate configured values. The
 # kernel accepts 24:00 boundaries, but signed phone windows must use LocalTime.
 exported=$(cfg_api configuration_export)

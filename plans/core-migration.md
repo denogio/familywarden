@@ -42,11 +42,16 @@ checklist are in [Router adapter portability](adapter-portability.md).
   lease before opening the store. Future/truncated document refusal and real process
   contention/exit/kill cases pass focused race tests. This does not make old binaries
   cooperate or validate arbitrary historical restores. See [R7 safety matrix](migration-safety.md).
-- **Still unproven:** R7 safe restore, mixed-version and full interruption gates. No second-router implementation
+- **R7b implemented (core r19/backend rc10-r15):** a durable `authority.json` floor
+  prevents lost configuration from selecting legacy; owned startup also requires the
+  existing registry. Native legacy context/policy/registry seams refuse owned callers,
+  including while the journal/core is missing. Matching `authority-v1` adapter support
+  is required before activation/adoption. The floor is not an anti-rollback generation.
+- **Still unproven:** R7 safe restore, historical mixed-version and full interruption gates. No second-router implementation
   or cross-platform build is a current workstream or prerequisite for this migration.
 
-Next implementation slice: **R7 historical upgrade/compatibility matrix and authority
-floor, followed by consistent backup/restore admission**. Track it in
+Next implementation slice: **R7 historical package/upgrade compatibility and durable
+ledger-presence/generation rules, followed by consistent backup/restore admission**. Track it in
 [migration-safety.md](migration-safety.md); R7 is not closed by startup hardening alone.
 R6 adds five production-service scenarios and an explicitly enabled shared-UI browser
 proof in the Go CI job. Scope includes policy/actions/grants/usage, pacts/recovery,
@@ -509,9 +514,11 @@ These are safety limits, not a supported downgrade procedure or deployment appro
   fail-closed. Since core 0.13.0-r4, the pending journal's previous configuration
   must pass its own revision check as well as schema validation: the candidate's
   revision does not cover it. Schema-valid corruption is refused before deadline
-  rollback or restart can change the store/platform. Do not delete `core/configuration.json` to make legacy mode work: its
-  absence selects a different authority and can bypass the active pact/recovery
-  journal. Repair requires a compatible core and an explicitly reviewed recovery.
+  rollback or restart can change the store/platform. Do not delete `core/configuration.json`
+  to make legacy mode work. In unmarked historical stores its absence selects legacy;
+  core r19/backend rc10-r15 retain core routing through `core/authority.json` and refuse
+  missing journal/registry recovery. Never remove the floor to force legacy: it is not
+  a recovery procedure. Repair requires compatible software and explicit review.
 - `core/migration-backup` contains the original legacy configuration/pact projection
   at first activation. It is neither a current household backup nor an undo button;
   restoring it after core edits can remove restrictions or reinstate old bindings.
