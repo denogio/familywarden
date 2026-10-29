@@ -6,10 +6,13 @@ is the interim OpenWrt implementation and only shrinks. Decisions: `app-control.
 A6 (core owns identity/policy/DNS/apps), A18 (router-agnostic), A19 (core-owned store),
 A20 (shared UI embedded natively, on OpenWrt via a LuCI view + rpcd shim).
 
-## Current completion status (2026-10-28)
+## Current completion status (2026-10-29)
 
 **R6 proves the owned product boundary; the automated R7 matrix is complete.**
-Release-signed upgrade and physical-pilot gates remain authorization-dependent. A new router implements platform facts,
+An explicitly authorized physical pilot now runs core-owned configuration; see the
+production checkpoint below. The release-signed in-place upgrade was rehearsed on an
+emulator and completed on the maintainer's test phone. Broader physical/lifecycle and
+active-pact migration validation are not implied. A new router implements platform facts,
 network enforcement/application and native host integration, not another copy of
 FamilyWarden product rules. Go owning configuration on OpenWrt is necessary but
 not sufficient. The source-backed inventory, ordered R0–R7 backlog and acceptance
@@ -17,7 +20,8 @@ checklist are in [Router adapter portability](adapter-portability.md).
 
 - **Implemented:** Go identity/requests/grants/usage; portable app-policy compilation
   and AGH reconciliation; opt-in configuration/pact authority, CAS/recovery, document-
-  derived phone/app policy and LuCI CAS writes. These are not all production-deployed.
+  derived phone/app policy and LuCI CAS writes. Core r27/backend rc10-r18/LuCI r8
+  are now installed on the authorized production router with explicit configuration import.
 - **Still mixed:** owned policy/context no longer read policy-shaped shell output: the
   versioned `core-facts` envelope (handshakes, timezone, captains, profile presence,
   volatile override/verified DNS) feeds the document-derived `AppContext`/`PhonePolicy`
@@ -70,12 +74,42 @@ checklist are in [Router adapter portability](adapter-portability.md).
   upgrades, pinned backup/restore/generation, debug same-key app upgrade, and interrupted
   durable/native mutations. The earlier CI grant failure was traced to concurrent
   policy reads and fixed in `7e600bb`.
-- **Still unproven/authorization-dependent:** release-signed app upgrade and a physical
-  router+phone migration pilot. No second-router implementation or cross-platform
-  build is a current workstream or prerequisite.
+- **Physical pilot completed narrowly (2026-10-29):** same-release-key app upgrade,
+  router package update and explicit core-configuration import; see below. Physical
+  active-pact migration, phone rule mutations, router reboot and wider lifecycle/safety
+  validation remain unproven. No second-router implementation or cross-platform build
+  is a current workstream or prerequisite.
 
-Current follow-up: **Android API/read-model preparation, regression coverage and design
-continuation**, mapped in [Android API readiness](../docs/android-api-readiness.md).
+### Production checkpoint (2026-10-29)
+
+Explicitly authorized router + maintainer test-phone pilot, built from `6e85835`:
+
+- Router: aarch64/mediatek-filogic OpenWrt 25.12.4; backend rc4-r1/core 0.6.0-r1/
+  LuCI 0.9.0-r1 upgraded to backend 0.11.0_rc10-r18/core 0.13.0-r27/LuCI 0.11.0-r8.
+- Phone: Android 17, release-signed 0.11.0-rc5 (code 121) upgraded over wireless ADB
+  to 0.11.0-rc10-pilot1 (code 130), same certificate. The 121→130 in-place update was
+  first rehearsed on a disposable Android 15 emulator with Device Owner retained.
+- Private quiesced pre-upgrade archive includes configuration, keys, durable state and
+  deployed program files; its downloaded checksum matches. Pinned, signed backups were
+  also created and inspected before and after explicit configuration import. All real
+  household data, APK copies and diagnostics stay outside the repository.
+- Router upgraded first, with an observed successful old-app sync before the phone
+  update. Identity, key, binding, scope, app revision and applied acknowledgement stayed
+  intact. Device Owner, strict Private DNS and its resolver setting were preserved.
+- `configuration_import` used the exact exported revision. The complete authoritative
+  configuration and effective profile reports match the pre-import export. No pending
+  confirmation remains. Ownership and configuration survive a daemon restart; the
+  phone resynchronizes and supplies a fresh current app acknowledgement afterwards.
+- Existing kernel chains remain present; the native network receipt is acknowledged,
+  not independent dataplane verification. AGH reconciliation has no pending/error state.
+  The phone's native DNS view reports applied/locked and a successful TLS resolver test;
+  this does not independently test every filtering category.
+- No active pact existed at migration. No pact was created/modified, no restrictions
+  were changed for testing, and no child's daily phone was accessed. Physical rule
+  writes, active-pact migration, router reboot and broad rollout acceptance remain open.
+
+Current follow-up: **pilot observation, remaining physical gates and Android regression/
+design continuation**, mapped in [Android API readiness](../docs/android-api-readiness.md).
 The historical R7 acceptance evidence and remaining rollout gates are recorded in
 [migration-safety.md](migration-safety.md); automated success is not production approval.
 R6 adds five production-service scenarios and an explicitly enabled shared-UI browser

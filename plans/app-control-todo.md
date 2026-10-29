@@ -1,13 +1,15 @@
 # App control — implementation backlog
 
 Branch: `feature/app-control`, based on `v0.9.1` (`dce92f4`).
-Status (2026-10-27): LAN app control, requests/grants, usage and new-app approval are
-implemented and deployed. Optional Go configuration/pact authority, LuCI CAS writers
-and AGH reconciliation are implemented on this branch, not deployed; broader migration
-validation remains open. Off-home transport remains undecided. Phase evidence below includes historical checkpoints;
+Status (2026-10-29): LAN app control, requests/grants, usage and new-app approval are
+implemented and deployed. The explicitly authorized router/test-phone pilot now runs
+core-owned configuration, shared LuCI administration and AGH reconciliation (core r27,
+backend rc10-r18, LuCI r8; release-signed phone code 130). Narrow physical migration
+checks pass; broader lifecycle/active-pact validation remains open. Off-home transport
+remains undecided. Phase evidence below includes historical checkpoints;
 see [core-migration.md](core-migration.md) for current ownership and deployment.
 
-## Current work and remaining scope (reconciled 2026-10-27)
+## Current work and remaining scope (reconciled 2026-10-29)
 
 Checkboxes track the stated implementation or validation item, not the whole product.
 An implemented feature is not automatically physically verified, deployed or released.
@@ -22,16 +24,21 @@ Historical test counts are evidence at that checkpoint, not current suite totals
 | P8 LAN requests | Child/parent/admin flow, device/key-bound grants, consumption, first-answer-wins and new-app decisions; deployed | Focused physical request/approval run and bounded multi-phone allocation |
 | P9 off-home | LAN notifications only | Transport decision, encryption/key distribution and off-home implementation/testing |
 | P10 Android | Child Today/Ask/local app history/Settings; scoped parent usage/inbox/approval sheets; recorded-day history; installed-app inventory/browser and scoped standing-rule editor (I1–I4) | Remaining prototype visuals, other native editors and connection/applied-policy facts; captain self-service mutation permissions need explicit scoped contracts ([API map](../docs/android-api-readiness.md)) |
-| P10 shared web | Core-backed `web/` workspace, prototype-based presentation, EN/DA, one thin LuCI host bridge; neutral/native browser validation | Essential-app/removal UX gaps below; no second-router host or production deployment |
-| Core migration | R1–R6 owned product boundary and portable shared UI; automated R7 upgrade/interruption/backup/restore/generation matrix complete | Release-signed upgrade and physical-pilot authorization gates; native runtime remains OpenWrt-only; no production ownership cutover ([R0–R7](adapter-portability.md)) |
+| P10 shared web | Core-backed `web/` workspace, prototype-based presentation, EN/DA, one thin LuCI host bridge; neutral/native browser validation; deployed in authorized pilot | Essential-app/removal UX gaps below; no second-router host; physical browser acceptance remains separate |
+| Core migration | R1–R6 owned boundary/shared UI; automated R7 matrix; authorized physical core-ownership cutover with private backups and same-key release-signed app upgrade | Physical active-pact migration, router reboot and broader lifecycle/safety gates remain; native runtime OpenWrt-only ([checkpoint](core-migration.md#production-checkpoint-2026-10-29)) |
 | P11 adult pool | Existing pact enforcement, not the proposed pool | Final consumption/reset rules, ledger and pact-safe self-service |
-| P13 release validation | Same-key rc3/rc4 router+phone pilot and rc5 phone update | Release-wide security/compatibility/lifecycle acceptance for remaining scope; no blanket production rollout approval |
+| P13 release validation | Same-key rc3/rc4 pilots and rc5 phone update; rc10/core r27 core-owned router pilot + release-signed phone code 130, following same-key emulator rehearsal | Release-wide security/compatibility/lifecycle acceptance for remaining scope; no blanket production rollout approval |
 
 Current session task titles should name the **remaining** work rather than imply
 that an implemented feature has not started. A legacy phase task remains pending
 when its remaining validation or scope is incomplete; it must not block unrelated
 implementation merely because the original broad task was never closed.
 Product decisions and research: [app-control.md](app-control.md).
+
+2026-10-29 rollout evidence: [production checkpoint](core-migration.md#production-checkpoint-2026-10-29).
+The exact configuration, key/identity, effective profile reports and applied app revision
+were preserved; DNS reconciliation/TLS test and fresh sync after daemon restart pass.
+This was not a physical child-request/rule-write, active-pact or router-reboot test.
 
 This is the durable checklist. Complete a box only after its acceptance evidence is
 recorded. Work in the order below, with small reviewable commits. Open choices are
