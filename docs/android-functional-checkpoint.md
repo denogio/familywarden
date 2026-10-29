@@ -40,7 +40,8 @@ is not shown as calm. My phone and Family remain separate.
    exists, but the signed phone authorization/CAS/confirmation/retry contracts do not.
    Do not expose `/api/*` to phone credentials or smuggle administrator credentials
    into Android. Until then, use the explicitly labeled router hand-off. The installed-
-   apps browser/editor design is now received and queued for contract review: friendly
+   apps browser/editor design is received and reviewed
+   ([review](design/android-installed-apps-review.md), [plan](../plans/android-installed-apps.md)): friendly
    names/icons/search, reported phone/time, essential-app protection and profile-wide
    scope; never ask a parent to type package IDs. That new flow is not implemented in
    this checkpoint; see the next slice in `plans/android-implementation.md`.

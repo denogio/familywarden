@@ -41,8 +41,10 @@ is not evidence that inventory or scoped parent writers already exist.
 - **Allowed hours stays planned future work.** No P1/P2/P3, adult pool or website-history
   semantics are activated by this design.
 
-Finish the verified Ulysses/history checkpoint first; then review and implement the
-new flow in tested slices. No push, release signing or production access is implied.
+The Ulysses/history checkpoint is committed (`fc3fa89`). The design is reviewed in
+[installed-apps review](../docs/design/android-installed-apps-review.md); ordered slices
+I1–I4 and acceptance criteria live in [android-installed-apps.md](android-installed-apps.md).
+No push, release signing or production access is implied.
 
 ## Implemented locally
 
