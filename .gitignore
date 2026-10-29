@@ -7,3 +7,4 @@
 # e2e test deps + output
 node_modules/
 test-results/
+__pycache__/
