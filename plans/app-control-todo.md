@@ -677,6 +677,9 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       backend and configuration unchanged; live read-only light/dark/Bootstrap checks: 0 errors).
       Browsers kept the cached r8 view under Proton (pinned `?v=` key); LuCI r10 installs
       assets under a per-release directory (`89c15a8`), deployed the same day.
+      LuCI r11 (`32b2d9a`) pins element defaults that Proton2025 sets page-wide (centred rail,
+      text sizes, checkboxes, select arrows); deployed the same day. Known remainder: Bootstrap
+      forces 14px buttons below 854px (`!important`), and Proton's page-width setting narrows the frame.
 - [ ] OPS1: fix management HTTPS hostname/certificate mismatch and disabled HTTP→HTTPS
       redirect found during the authorized read-only pilot audit. Preserve recovery
       access and validate certificate trust before changing redirect/listener settings;
