@@ -683,7 +683,7 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       LuCI r11 (`32b2d9a`) pins element defaults that Proton2025 sets page-wide (centred rail,
       text sizes, checkboxes, select arrows); deployed the same day. Known remainder: Bootstrap
       forces 14px buttons below 854px (`!important`), and Proton's page-width setting narrows the frame.
-      LuCI r12 (prepared, not deployed): Requests ported to the prototype layout (Waiting list,
+      LuCI r12 (`1bae6bd`, deployed 2026-10-29 with approval): Requests ported to the prototype layout (Waiting list,
       Recent decisions with chips); paragraphs inherit the workspace type size.
 - [ ] OPS1: fix management HTTPS hostname/certificate mismatch and disabled HTTP→HTTPS
       redirect found during the authorized read-only pilot audit. Preserve recovery
