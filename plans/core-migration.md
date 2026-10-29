@@ -122,6 +122,21 @@ no error/pending work (it is not a core API method). Private APK copies, backups
 deployment receipt remain outside the repository. This does not validate the broader
 physical lifecycle/active-pact matrix or implement the Devices prototype follow-up.
 
+Further authorized pilot updates (2026-10-29): ICON2 (`f72e797`) installed backend
+rc10-r19/core r29/LuCI r15 and same-key Android rc10-pilot3 (132). All 189 observed
+apps uploaded opaque 96px icons; all 20 top-used rows resolve through bounded native
+icon reads. UI4 (`9a98ae9`) then upgraded only the router to backend rc10-r20/core
+r30/LuCI r16. Its full installed-app read returned 189 apps across 10 pages of at most
+20, and every page plus search for a last-page package was verified. Package smoke,
+two native LuCI browser checks and the packaged admin-read schema passed. Retained
+local builds were reused under explicit deployment authorization; CI1's pipeline-first
+migration is still pending, so no green remote pipeline is claimed. Signed recovery
+backups were verified/downloaded; authoritative configuration, owner, router key and
+phone identity/role/scope were preserved. DNS has no pending/error state. The phone's
+applied/current app revision discrepancy observed after ICON2 remains unresolved,
+without `apps_error`; do not claim current policy acknowledgement as a passed gate.
+Private receipts and household observations remain outside the repository.
+
 Current follow-up: **pilot observation, remaining physical gates and Android regression/
 design continuation**, mapped in [Android API readiness](../docs/android-api-readiness.md).
 The historical R7 acceptance evidence and remaining rollout gates are recorded in

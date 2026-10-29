@@ -3,8 +3,8 @@
 Branch: `feature/app-control`, based on `v0.9.1` (`dce92f4`).
 Status (2026-10-29): LAN app control, requests/grants, usage and new-app approval are
 implemented and deployed. The explicitly authorized router/test-phone pilot now runs
-core-owned configuration, shared LuCI administration and AGH reconciliation (core r28,
-backend rc10-r18, LuCI r14; release-signed phone code 131, rc10-pilot2). Narrow physical migration
+core-owned configuration, shared LuCI administration and AGH reconciliation (core r30,
+backend rc10-r20, LuCI r16; release-signed phone code 132, rc10-pilot3). Narrow physical migration
 checks pass; broader lifecycle/active-pact validation remains open. Off-home transport
 remains undecided. Phase evidence below includes historical checkpoints;
 see [core-migration.md](core-migration.md) for current ownership and deployment.
@@ -552,6 +552,11 @@ Depends on P2/P5/P6.
       screenshots against the control prototype using fictional fixtures, plus functional
       coverage for many apps, transport bounds, restart and missing/invalid images.
       Supervisor handles final tests/commit and the separately authorized pilot deployment.
+      ICON2 pilot deployed from `f72e797`: backend rc10-r19/core r29/LuCI r15 and same-key
+      Android rc10-pilot3 (132); all 189 opaque 96px icons uploaded, all 20 usage rows resolve
+      through two native icon pages. Policy revision acknowledgement still differs from
+      the current revision without apps_error; diagnose separately rather than claim it
+      verified. Later UI4 supersedes router package versions, not the Android build.
 - [x] Implement a pure evaluator for schedules, quotas and precedence from P1.
 - [x] Suspend/unsuspend only managed packages, record failures and reconcile at boot,
       package changes, policy updates and budget/schedule boundaries.
@@ -775,7 +780,14 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       prototype-(3) browser/modal presentation; all three fresh-review findings fixed.
       Main session inspected DPR2 panel/modal captures and ran affected Go race/vet;
       reused passing 48 browser cases, syntax/resource/ACL and earlier unchanged Go checks.
-      [Contract and evidence](../docs/design/ui4-review.md). Pilot deployment tracked separately.
+      [Contract and evidence](../docs/design/ui4-review.md). Explicitly authorized pilot
+      deployment from `9a98ae9`: backend rc10-r20/core r30/LuCI r16 installed; retained local
+      builds reused (CI1 migration pending). Package smoke, two native LuCI bridge tests
+      and native admin read passed. Live inventory: 189 apps, 10 pages of at most 20;
+      every page and last-page search verified. Configuration/owner/key/phone bindings
+      preserved, signed backup verified/downloaded, DNS has no pending/error. Android
+      unchanged in UI4. Prior phone applied/current revision discrepancy remains open;
+      it is not a UI4 validation success or a newly reported application error.
 - [ ] UI2: Bring the shared Devices page into visual agreement with the control prototype
       (user feedback 2026-10-29), not another independent redesign. Compare the actual page
       and prototype side by side: layout/edit flow, typography, surface/text contrast,
@@ -791,6 +803,13 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       Do not group screen-time bonus buttons under internet controls. Validate EN/DA,
       mobile/enlarged text and state-dependent interactions plus visual screenshots.
       Separate follow-up after ICON2; do not add concurrent edits in shared UI files.
+- [ ] CI1: Make the pipeline the primary consolidated test/build gate (approved
+      2026-10-29). Run independent checks/builds in parallel, build each router target
+      and Android variant once and reuse retained, revision-bound validated artifacts
+      for deployment. Keep local development checks focused; avoid repeated local full
+      suites and duplicate builds. Deploy only after required pipeline gates are green;
+      preserve same-key Android signing and existing secrets/privacy boundaries. Audit
+      current CI coverage and artifact provenance before changing deploy procedures.
 - [ ] OPS1: fix management HTTPS hostname/certificate mismatch and disabled HTTP→HTTPS
       redirect found during the authorized read-only pilot audit. Preserve recovery
       access and validate certificate trust before changing redirect/listener settings;
