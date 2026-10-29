@@ -48,6 +48,7 @@ func New(ad platform.Adapter, backend configuration.Backend, st *store.Store, ve
 		return nil, err
 	}
 	id.Usage = st
+	id.Inventory = st
 	id.Generation = st.Generation
 	return &Service{Configuration: cfg, Identity: id, Handler: WithConfiguration(Handler(id, version), cfg)}, nil
 }

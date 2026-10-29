@@ -1,6 +1,6 @@
 # Native parent installed apps and rule editing
 
-Status: **design received; implementation direction reviewed, not implemented**.
+Status: **I1 implemented locally (core r26); I2–I4 open**.
 Authorized continuation: 2026-10-29, `feature/app-control`. Finish the existing
 Ulysses/history slice first (`fc3fa89`, core r25); then implement this flow in bounded
 slices. No push, release signing, production router/phone access or physical pilot.
@@ -42,19 +42,18 @@ Detailed per-phone received/applied timestamps are also not available to this fl
 
 ### I1 — Inventory facts and safe persistence
 
-- [ ] Define a versioned complete/partial package snapshot for one enrolled phone/key
-      and profile: package, friendly label, user/system and essential observations.
-      Define explicit item/byte limits; never silently clip a snapshot and call it complete.
-- [ ] Reuse the existing Android package scan/essential-role calculation; do not add
-      another polling collector. Capture/install/remove/rename updates and report receipt
-      provenance. Older clients and app-control-off phones remain explicitly unavailable.
-- [ ] Add a dedicated signed inventory report, bound to the current enrolled key and
-      own profile, with strict fields, monotonic sequence/replay rules and bounded transport.
-      Keep it separate from usage counters so older routers still accept ordinary uploads.
-- [ ] Persist only latest observational snapshots; do not advance household authority
-      generation for inventory uploads. Reuse atomic writes, uncertain-write blocking,
-      schema preflight and presence checks; test backup/restore and key/profile changes.
-      Do not put inventory into an approval ledger or create a second authority store.
+- [x] Versioned snapshot per enrolled phone key/profile: package, sanitized label,
+      system and essential observations; 512 items / 60 KiB; `installed` > sent = partial.
+- [x] Reuses `AppEnforcer.essentialPackages()` and PackageManager after successful sync;
+      no new polling collector. Sends on change, else every six hours for freshness.
+- [x] Dedicated signed `inventory` op (protocol §5d): own profile only, strict fields,
+      persisted monotonic seq, separate from usage uploads.
+- [x] Latest snapshot only, presence-witnessed, no generation advance; re-key or
+      reassignment removes the device's older snapshot.
+      ponytail: files of deleted devices remain until that device id reports again;
+      I2 readers filter by the current registry. Add pruning if enrollment churn matters.
+      Schema preflight is not extended: an invalid file makes reads `unavailable`,
+      never authority. Backup includes the directory by walking the core data dir.
 
 **Accept:** unused installed apps appear in real reports; an old/replayed snapshot
 cannot replace newer facts; empty/partial/missing/error differ; no policy/ack/outbox,
@@ -123,7 +122,15 @@ precedence/capability negotiation and child presentation. Also out of this slice
 P1/P2 grant changes, P3 accounting, adult pools/categories, website history, independent
 adult voyages and off-home push. No new delivery/apply timestamps are inferred.
 
-## Current evidence
+## I1 evidence (2026-10-29)
+
+Go store tests (monotonic seq, re-key/reassignment, presence loss, no generation
+advance, bounds/sorting), identity tests (own-profile only, foreign signature 403,
+unchanged signed policy, label sanitizing), CGI forwarding; Android report contract
+and partial/size tests; 38/38 native P8 checks with r26 packages, including an
+emulator snapshot with unused apps and essential roles stored by the router.
+
+## Earlier evidence
 
 The design review extracted all text and rendered representative light/dark/large-text
 mockups offline; it did not change the export. The preceding Ulysses/history checkpoint

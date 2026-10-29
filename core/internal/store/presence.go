@@ -73,7 +73,11 @@ func (s *Store) paths(suffix string) ([]string, error) {
 		return nil, err
 	}
 	usage, err := filepath.Glob(filepath.Join(s.dir, "usage", "*", "*.json"+suffix))
-	return append(root, usage...), err
+	if err != nil {
+		return nil, err
+	}
+	inventory, err := filepath.Glob(filepath.Join(s.dir, "inventory", "*", "*.json"+suffix))
+	return append(append(root, usage...), inventory...), err
 }
 
 func (s *Store) checkPresenceLocked() error {

@@ -91,6 +91,8 @@ type Service struct {
 	delivered  map[string]int64 // grant id -> first acknowledgement (RAM)
 	// Usage stores phone usage reports; nil disables them (set by main before serving).
 	Usage UsageStore
+	// Inventory stores installed-app snapshots; nil disables them.
+	Inventory InventoryStore
 	// Generation vouches for signed policy freshness (store.Generation); nil omits it.
 	Generation func() (store.Generation, error)
 	newApps    map[string]*profileApps // new-app approvals, loaded lazily (newapps.go)

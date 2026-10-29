@@ -99,6 +99,8 @@ object Mast {
         if (state != null) PrivateDns.apply(context, store, state.dns)
         if (sync && store.lastError == null && state?.apps != null && isDeviceOwner(context))
             runCatching { UsageUpload.send(context, store, state) }.onFailure { Log.w(TAG, "usage upload failed", it) }
+        if (sync && store.lastError == null && state?.apps != null && isDeviceOwner(context))
+            runCatching { InventoryUpload.send(context, store, state) }.onFailure { Log.w(TAG, "inventory upload failed", it) }
         if (sync && store.lastError == null && state != null) RequestNotifications.update(context, state)
         schedulePeriodic(context)
         Log.i(TAG, "decision=${decision.reason} block=${decision.block} lastSync=${store.lastSync} error=${store.lastError}")

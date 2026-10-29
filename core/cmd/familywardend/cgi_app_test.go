@@ -21,7 +21,7 @@ func TestCGIAppIsAnExactBoundedPOSTForwarder(t *testing.T) {
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		body, err := io.ReadAll(r.Body)
-		if err != nil || (r.URL.Path != "/app/request" && r.URL.Path != "/app/history") || r.Method != "POST" || string(body) != "signature\nexact JSON" {
+		if err != nil || (r.URL.Path != "/app/request" && r.URL.Path != "/app/history" && r.URL.Path != "/app/inventory") || r.Method != "POST" || string(body) != "signature\nexact JSON" {
 			t.Error("forwarding changed the request", r.URL.Path, string(body), err)
 		}
 		_, _ = w.Write([]byte("router signature\nexact reply"))
@@ -61,6 +61,12 @@ func TestCGIAppIsAnExactBoundedPOSTForwarder(t *testing.T) {
 	cgiApp(socket, strings.NewReader("signature\nexact JSON"), &out)
 	if calls.Load() != 2 || !strings.HasSuffix(out.String(), "\n\nrouter signature\nexact reply") {
 		t.Fatal("history was not forwarded exactly", out.String())
+	}
+	t.Setenv("QUERY_STRING", "op=inventory")
+	out.Reset()
+	cgiApp(socket, strings.NewReader("signature\nexact JSON"), &out)
+	if calls.Load() != 3 || !strings.HasSuffix(out.String(), "\n\nrouter signature\nexact reply") {
+		t.Fatal("inventory was not forwarded exactly", out.String())
 	}
 	srv.Close()
 	out.Reset()

@@ -291,6 +291,19 @@ touch /tmp/drop-next-app-response
         return alex and alex['total'] >= 60 and used is not None and used >= 59 and alex
     alex_usage = wait('signed usage report reaches the router with grant use', reported, 150)
     assert any(a['package'] == FIXTURE for a in alex_usage['apps']), alex_usage
+    def inventory():
+        files = [f for f in router('ls /etc/familywarden/core/inventory/alex/ 2>/dev/null || true').split() if f.endswith('.json')]
+        if len(files) != 1:
+            return None
+        snap = json.loads(router('cat /etc/familywarden/core/inventory/alex/' + files[0]))
+        apps = {a['package']: a for a in snap['apps']}
+        return snap if FIXTURE in apps and any(a.get('essential') for a in apps.values()) else None
+    snap = wait('signed installed-app snapshot reaches the router', inventory, 90)
+    assert snap['installed'] >= len(snap['apps']) and snap['received'] > 0, snap
+    # Installed and unused apps are listed too: inventory is not a usage summary.
+    used = {a['package'] for a in alex_usage['apps']}
+    assert any(a['package'] not in used for a in snap['apps']), snap
+    print('PASS installed apps include unused apps and essential roles', flush=True)
     home()
     ui('native-child-exhausted')
     assert call('device_allow_removal', {'device': device_id})['status'] == 'ok'

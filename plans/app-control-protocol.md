@@ -540,6 +540,34 @@ Today's scoped `usage[].devices[]` additionally includes the same optional `rece
 timestamp. Android accepts old replies without it as **unknown**, not current.
 Receipt of a usage upload is neither policy application nor a live online signal.
 
+## 5d. Installed-app snapshots — core 0.13.0-r26
+
+`POST /cgi-bin/app?op=inventory`, same signed transport as §3, signing domain
+`familywarden-inventory-v1\n` plus exact JSON. Body limit is the router's 64 KiB
+API limit (Android keeps the JSON at most 60 KiB); other operations keep 16 KiB.
+
+```json
+{"type":"inventory","v":1,"device":"fw-alex","profile":"alex","seq":7,"installed":2,
+ "apps":[{"package":"com.android.dialer","label":"Phone","system":true,"essential":true},
+         {"package":"com.example.game","label":"Game","system":false,"essential":false}]}
+```
+
+- Only the phone's **own** current profile with app control; `wrong_profile`,
+  `app_control_off`, `malformed`, `unavailable` otherwise. Strict fields at both levels;
+  packages strictly sorted/unique; at most 512 entries; `installed` counts every valid
+  app found, so `installed > len(apps)` is an honest **partial** snapshot.
+- Contents: user apps, launchable system apps and the phone's essential roles (the
+  enforcer's own set). Hidden system components are omitted. Labels are untrusted
+  PackageManager text; the core strips non-printables and bounds them to 64 runes.
+- `seq` is persisted on the phone before sending; the core keeps only a higher seq per
+  enrolled key. One file per phone key under `inventory/<profile>/`; the same device id
+  under another key or profile is removed. Reply `state`: `stored` / `unchanged`.
+- Observation only: no policy, approval, acknowledgement, ticket or household generation
+  change. Files carry presence witnesses and are included in whole-household backups.
+  Readers must filter by the current registry key and scope (I2, not yet implemented).
+- The phone sends after a successful sync when the snapshot changed, otherwise at most
+  every six hours to refresh receipt time. No outbox: a lost reply is simply superseded.
+
 ## 6. Storage and retention (D6)
 
 - App activity: per profile, per day, per package seconds — **30 days**, then deleted.

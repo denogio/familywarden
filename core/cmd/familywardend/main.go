@@ -107,7 +107,7 @@ func cgiApp(socket string, in io.Reader, out io.Writer) {
 	status := map[int]string{200: "200 OK", 400: "400 Bad Request", 403: "403 Forbidden", 500: "500 Internal Server Error"}
 	code, body := 400, []byte(nil)
 	op, hasPrefix := strings.CutPrefix(os.Getenv("QUERY_STRING"), "op=")
-	if os.Getenv("REQUEST_METHOD") == "POST" && hasPrefix && (op == "request" || op == "decision" || op == "usage" || op == "app" || op == "history") {
+	if os.Getenv("REQUEST_METHOD") == "POST" && hasPrefix && (op == "request" || op == "decision" || op == "usage" || op == "app" || op == "history" || op == "inventory") {
 		b, err := io.ReadAll(io.LimitReader(in, maxAPI+1))
 		code = 503
 		if err == nil && len(b) <= maxAPI {

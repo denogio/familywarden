@@ -33,8 +33,8 @@ data class UploadReply(val state: String?, val error: String?, val granted: Int?
 /** Kept byte-for-byte across retries, including the original creation timestamp and request id. */
 data class RequestUpload(val op: String, val raw: String, val routerKey: String, val device: String) {
     init {
-        require(op in setOf("request", "decision", "usage", "app"))
-        require(raw.toByteArray(Charsets.UTF_8).size < 16 * 1024 - 101)
+        require(op in setOf("request", "decision", "usage", "app", "inventory"))
+        require(raw.toByteArray(Charsets.UTF_8).size < (if (op == "inventory") 64 * 1024 else 16 * 1024) - 101)
         val o = JSONObject(raw)
         require(o.getString("type") == (if (op == "app") "app_decision" else op) && o.getString("device") == device)
         if (op == "request" || op == "decision") require(o.getString("request_id").matches(RequestProtocol.requestId))
@@ -192,7 +192,7 @@ object RequestProtocol {
     fun verifyReply(body: ByteArray, upload: RequestUpload, minimumServerTime: Long): UploadReply {
         val o = signedReply(body, upload.routerKey, upload.device, upload.op, upload.raw, minimumServerTime)
         if (o.has("error")) return UploadReply(null, string(o, "error").also { require(it in errors) })
-        if (upload.op == "usage") return UploadReply(string(o, "state").also { require(it in setOf("stored", "unchanged")) }, null)
+        if (upload.op == "usage" || upload.op == "inventory") return UploadReply(string(o, "state").also { require(it in setOf("stored", "unchanged")) }, null)
         if (upload.op == "app") {
             val sent = JSONObject(upload.raw)
             require(string(o, "profile") == sent.getString("profile") && string(o, "package") == sent.getString("package"))

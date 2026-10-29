@@ -195,7 +195,7 @@ func (s *Service) uploadLocked(op, sig string, raw []byte, device string) (int, 
 	if i >= 0 {
 		d = s.devices[i]
 	}
-	kind := map[string]string{"request": "request", "decision": "decision", "usage": "usage", "app": "app", "history": "history"}[op]
+	kind := map[string]string{"request": "request", "decision": "decision", "usage": "usage", "app": "app", "history": "history", "inventory": "inventory"}[op]
 	if i < 0 || kind == "" {
 		return StatusForbidden, nil, nil
 	}
@@ -218,6 +218,8 @@ func (s *Service) uploadLocked(op, sig string, raw []byte, device string) (int, 
 			reply = s.appDecision(d, raw, ctx)
 		case "history":
 			reply = s.history(d, raw, ctx)
+		case "inventory":
+			reply = s.inventory(d, raw, ctx)
 		default:
 			reply, ticket = s.decide(d, raw, ctx)
 		}
