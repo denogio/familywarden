@@ -10,16 +10,21 @@ set -e
 HOST="${1:-root@192.168.1.1}"
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 VIEWS="luci-app-familywarden/htdocs/luci-static/resources/view/familywarden"
+# Same per-release asset directory as luci-app-familywarden/Makefile (FW_ASSET)
+ASSET=$(node -p "require('./test/e2e/asset.js').ASSET")
 
 ssh_put() {
     ssh $SSH_OPTS "$HOST" "cat > '$2'" < "$1"
+}
+asset_put() {
+    sed "s/@FW_ASSET@/$ASSET/g" "$1" | ssh $SSH_OPTS "$HOST" "cat > '$2'"
 }
 
 echo "=== FamilyWarden deploy → $HOST ==="
 ssh $SSH_OPTS "$HOST" "uname -a" >/dev/null || { echo "❌ Cannot connect to $HOST"; exit 1; }
 
 ssh $SSH_OPTS "$HOST" "mkdir -p /etc/init.d /usr/libexec/rpcd /usr/share/rpcd/acl.d \
-    /www/luci-static/resources/view/familywarden /www/luci-static/resources/familywarden/shared \
+    /www/luci-static/resources/view/familywarden/$ASSET /www/luci-static/resources/familywarden/$ASSET/shared \
     /usr/share/luci/menu.d /usr/sbin"
 
 echo "Backend..."
@@ -31,14 +36,14 @@ ssh $SSH_OPTS "$HOST" "[ -f /etc/config/familywarden ] || cat > /etc/config/fami
 
 echo "LuCI..."
 for f in "$VIEWS"/*.js; do
-    ssh_put "$f" "/www/luci-static/resources/view/familywarden/$(basename "$f")"
+    asset_put "$f" "/www/luci-static/resources/view/familywarden/$ASSET/$(basename "$f")"
 done
 ssh_put luci-app-familywarden/htdocs/luci-static/resources/familywarden/control-host.js \
-    /www/luci-static/resources/familywarden/control-host.js
+    /www/luci-static/resources/familywarden/$ASSET/control-host.js
 for f in web/*.js web/*.css; do
-    ssh_put "$f" "/www/luci-static/resources/familywarden/shared/$(basename "$f")"
+    ssh_put "$f" "/www/luci-static/resources/familywarden/$ASSET/shared/$(basename "$f")"
 done
-ssh_put luci-app-familywarden/root/usr/share/luci/menu.d/luci-app-familywarden.json \
+asset_put luci-app-familywarden/root/usr/share/luci/menu.d/luci-app-familywarden.json \
     /usr/share/luci/menu.d/luci-app-familywarden.json
 ssh_put luci-app-familywarden/root/usr/share/rpcd/acl.d/luci-app-familywarden.json \
     /usr/share/rpcd/acl.d/luci-app-familywarden.json

@@ -4,7 +4,7 @@
 		"order": 60,
 		"action": {
 			"type": "view",
-			"path": "familywarden/control"
+			"path": "familywarden/@FW_ASSET@/control"
 		},
 		"depends": {
 			"acl": [

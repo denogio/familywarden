@@ -35,13 +35,18 @@ for f in /usr/libexec/rpcd/familywarden /etc/init.d/familywarden /usr/sbin/famil
          /www-familywarden/cgi-bin/sail /www-familywarden/cgi-bin/mast /www-familywarden/cgi-bin/app; do
     [ -x "$f" ] && pass "executable: $f" || fail "missing/not executable: $f"
 done
+# LuCI assets live in a per-release directory named by the menu entry
+ASSET=$(jsonfilter -i /usr/share/luci/menu.d/luci-app-familywarden.json -e '@["admin/services/familywarden"].action.path' | cut -d/ -f2)
+case "$ASSET" in v[0-9]*) pass "versioned LuCI assets: $ASSET" ;; *) fail "unversioned LuCI menu path: $ASSET" ;; esac
+! grep -rq '@FW_ASSET@' /www/luci-static/resources/view/familywarden /usr/share/luci/menu.d/luci-app-familywarden.json \
+    && pass "asset placeholders substituted" || fail "@FW_ASSET@ left in installed files"
 for f in /etc/config/familywarden /usr/share/rpcd/acl.d/familywarden.json \
          /usr/share/rpcd/acl.d/luci-app-familywarden.json \
          /usr/share/luci/menu.d/luci-app-familywarden.json \
-         /www/luci-static/resources/view/familywarden/control.js \
-         /www/luci-static/resources/familywarden/control-host.js \
-         /www/luci-static/resources/familywarden/shared/control.js \
-         /www/luci-static/resources/familywarden/shared/family.js \
+         /www/luci-static/resources/view/familywarden/$ASSET/control.js \
+         /www/luci-static/resources/familywarden/$ASSET/control-host.js \
+         /www/luci-static/resources/familywarden/$ASSET/shared/control.js \
+         /www/luci-static/resources/familywarden/$ASSET/shared/family.js \
          /www-familywarden/index.html; do
     [ -f "$f" ] && pass "installed: $f" || fail "missing: $f"
 done

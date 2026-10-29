@@ -1,5 +1,6 @@
 const { readFileSync } = require('node:fs');
 const { test, expect } = require('@playwright/test');
+const { SHARED } = require('./asset');
 const BASE = process.env.FW_BASE_URL || 'http://localhost:8080';
 const CONTROL = `${BASE}/cgi-bin/luci/admin/services/familywarden/control`;
 
@@ -22,9 +23,9 @@ function replies() {
 async function neutral(page, { lang = 'en', data = replies(), interval = 60000, theme = 'auto' } = {}) {
   await page.route(`${BASE}/neutral-control`, route => route.fulfill({contentType:'text/html',body:'<!doctype html><html><body><div id="control"></div></body></html>'}));
   await page.goto(`${BASE}/neutral-control`);
-  await page.evaluate(async ({data,lang,interval,theme}) => {
+  await page.evaluate(async ({data,lang,interval,theme,shared}) => {
     window.replies = data; window.calls = []; window.hold = ''; window.release = null;
-    const module = await import('/luci-static/resources/familywarden/shared/control.js');
+    const module = await import(`${shared}/control.js`);
     window.control = module.mount(document.getElementById('control'),{lang,interval,theme,call:async (method,params = {}) => {
       window.calls.push({method,params:JSON.parse(JSON.stringify(params))});
       if (method === window.hold) await new Promise(resolve => {window.release = resolve;});
@@ -38,7 +39,7 @@ async function neutral(page, { lang = 'en', data = replies(), interval = 60000, 
       if (Object.hasOwn(window.replies,method)) return window.replies[method];
       return {status:'ok'};
     }});
-  },{data,lang,interval,theme});
+  },{data,lang,interval,theme,shared:SHARED});
   await expect(page.locator('.fwa .fw-status')).toContainText(lang === 'da' ? 'Opdateret' : 'Updated');
   await page.waitForFunction(() => document.querySelector('#control > link[rel="stylesheet"]')?.sheet != null);
 }

@@ -1,10 +1,11 @@
 'use strict';
 'require view';
-'require familywarden.control-host as host';
+'require familywarden.@FW_ASSET@.control-host as host';
 
 // Native host only: the shared source and rendering live outside LuCI in web/.
+// @FW_ASSET@ is the per-release install directory, so upgrades never reuse cached assets.
 return view.extend({
- load:function() {return import(L.resource('familywarden/shared/control.js'));},
+ load:function() {return import(L.resource('familywarden/@FW_ASSET@/shared/control.js'));},
  render:function(module) {
   var root = E('div');
   var themeRoot = document.documentElement;

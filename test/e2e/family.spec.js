@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { SHARED } = require('./asset');
 
 // Requests: the shared administrator UI (A20) mounted in the single LuCI page.
 const BASE = process.env.FW_BASE_URL || 'http://localhost:8080';
@@ -34,8 +35,8 @@ test.afterEach(async ({ page }) => {
 // Same production module in a neutral host: no LuCI rendering/session helpers.
 async function neutral(page, options = {}) {
   await page.setContent('<main id="shared-fixture"></main>');
-  await page.evaluate(async ({ lang = 'en', interval = 100000, bad = false, defer = false }) => {
-    const module = await import('/luci-static/resources/familywarden/shared/family.js');
+  await page.evaluate(async ({ lang = 'en', interval = 100000, bad = false, defer = false, shared }) => {
+    const module = await import(`${shared}/family.js`);
     const pending = { request_id: 'request-neutral-001', profile: 'alex', profile_name: 'Alex',
       target: 'com.example.video', label: 'Video', minutes: 30,
       received: Math.floor(Date.now() / 1000), expires: Math.floor(Date.now() / 1000) + 3600, state: 'pending' };
@@ -54,7 +55,7 @@ async function neutral(page, options = {}) {
       }
     });
     fixture.pending = pending;
-  }, options);
+  }, { ...options, shared: SHARED });
   return page.locator('#shared-fixture');
 }
 

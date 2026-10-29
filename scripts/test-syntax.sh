@@ -142,7 +142,7 @@ done
 for f in "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/*.js \
          "${PROJECT_ROOT}"/luci-app-familywarden/htdocs/luci-static/resources/familywarden/*.js; do
     rel="${f#*/htdocs/luci-static/resources/}"
-    grep -q "resources/$rel " "${PROJECT_ROOT}/luci-app-familywarden/Makefile" \
+    grep -qF "resources/${rel%/*}/\$(FW_ASSET)/${rel##*/}" "${PROJECT_ROOT}/luci-app-familywarden/Makefile" \
         || fail "Not installed by luci Makefile: $rel"
 done
 
