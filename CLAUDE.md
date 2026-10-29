@@ -234,6 +234,13 @@ Deployment names (e.g. the real DoT domain) are settings, never project defaults
   (`openwrt/sdk:x86-64-25.12.4`) → package smoke tests → artifacts → Playwright
   against LuCI in a container using CI-built packages. Android tests/lint/builds
   run separately. Release requires successful build, e2e, and Android jobs.
+- Use CI as the primary consolidated test/build gate: run independent checks/builds in
+  parallel, build each target once, and retain validated deployment artifacts. Locally,
+  run focused development checks; do not duplicate unchanged CI validation or rebuild
+  artifacts already produced by the pipeline. Deploy only artifacts from the matching
+  source revision after the required pipeline gates are green. Never upload signing
+  keys or private household/router data outside the established secret-handling flow.
+  Migration of the pipeline and deploy flow is tracked as CI1 in `plans/app-control-todo.md`.
 - Bump `PKG_VERSION`, commit, merge, then `git tag vX.Y.Z && git push --tags`.
   The tag must match `familywarden/Makefile`, or release fails. LuCI is versioned separately.
 - `dist/` is git-ignored for local builds. Packages are published as GitHub releases
