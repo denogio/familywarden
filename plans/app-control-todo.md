@@ -656,8 +656,8 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       final independent review has no blockers. [Evidence](android-installed-apps.md).
       No push, release signing or physical deployment; allowed hours remain future work.
 - [ ] Parent Android: truthful per-device connection/applied-policy views and remaining
-      prototype work (#40). Live scope revocation while the installed-app screen is open
-      and app removal/source changes between reads still lack UI regression coverage.
+      prototype work (#40). Installed-app revocation/removal/concurrent-rule regressions
+      and fixes done (2026-10-29, [evidence](android-installed-apps.md)); per-device views remain.
 - [x] Child Android: remaining budgets, pause reasons, request status/remaining extra
       and local usage/history totals. Domain history remains P6 work.
 - [x] Existing LuCI: configure rules/roles, view usage/requests and inspect app revisions,

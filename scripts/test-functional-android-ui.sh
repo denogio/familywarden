@@ -206,6 +206,53 @@ tap apps-sam-controls 'Installed apps'
 capture apps-sam
 contains apps-sam 'No app list yet'
 absent apps-sam 'Minecraft'
+# Installed apps change between reads: an untouched draft follows a concurrent rule,
+# a removed app closes its editor visibly, and revocation never opens another child's editor.
+checked() {
+ python3 - "$OUT/$1.xml" "$2" <<'PY3'
+import sys,xml.etree.ElementTree as E
+for parent in E.parse(sys.argv[1]).iter('node'):
+ kids=list(parent)
+ for i,k in enumerate(kids):
+  if k.get('class')=='android.widget.RadioButton' and k.get('checked')=='true':
+   label=[n.get('text') for n in kids[i+1].iter('node') if n.get('text')]
+   assert label==[sys.argv[2]],(label,sys.argv[2]);sys.exit(0)
+sys.exit('no checked rule draft')
+PY3
+}
+render AppsChangePreview change-parent
+tap change-parent Controls
+capture change-controls
+tap change-controls 'Installed apps'
+capture change-list
+tap change-list Minecraft
+reveal change-detail 'Discard draft'
+checked change-detail 'Daily limit'
+tap change-detail 'Sync now'
+reveal change-synced 'Discard draft'
+checked change-synced Blocked
+"${ADB[@]}" shell input keyevent KEYCODE_BACK
+reveal change-list2 'com.example.video2'
+tap change-list2 'com.example.video2'
+capture change-video2
+contains change-video2 'RULE FOR ALEX'
+tap change-video2 'Sync now'
+capture change-gone
+contains change-gone 'com.example.video2 is no longer in the reported app list'
+absent change-gone 'RULE FOR ALEX'
+render AppsScopePreview revoke-parent
+tap revoke-parent Controls
+capture revoke-controls
+tap revoke-controls 'Installed apps'
+capture revoke-list
+tap revoke-list Minecraft
+capture revoke-detail
+contains revoke-detail 'RULE FOR ALEX'
+tap revoke-detail 'Sync now'
+capture revoked-apps
+contains revoked-apps 'Installed on Sam’s phones'
+absent revoked-apps 'RULE FOR SAM'
+absent revoked-apps 'RULE FOR ALEX'
 "${ADB[@]}" shell cmd uimode night yes >/dev/null
 for preview in VoyageBoundPreview VoyageCalmPreview VoyageReleasePreview VoyageUnknownPreview; do
  render "$preview" "dark-$preview-root"

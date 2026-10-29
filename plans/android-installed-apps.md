@@ -211,3 +211,22 @@ retain runtime presence/drift checks. A sparse-facts regression covers this boun
 and pact refusal. Final independent review found no blockers. An intermediate emulator
 ADB timeout was resolved by removing the retained diagnostic emulator and rerunning
 the full suite successfully.
+
+## Between-reads UI regressions (#40 slice, 2026-10-29)
+
+Three defects found and fixed while adding emulator coverage:
+
+- Scope revocation while an app editor was open fell back to the next approved child
+  and silently opened the same package's editor for that child. A child change now
+  closes the selection (also when no child remains).
+- A selected app removed between reads closed the editor without explanation, and a
+  later reappearance could reopen it. The selection is cleared with an EN/DA notice
+  naming the package.
+- An untouched draft kept the previously read rule after a concurrent rule change, so
+  Save could revert it. Untouched drafts now follow the latest read rule; edited drafts
+  remain persisted as before.
+
+Fictional `AppsChangePreview`/`AppsScopePreview` drive `test-functional-android-ui.sh`.
+Each new check failed against the previous source (stale "Daily limit" draft, missing
+removal notice, "RULE FOR SAM" after revocation) and passes with the fix; the full suite,
+228 JVM tests, lint and debug build pass. Per-device connection/applied-policy views remain.

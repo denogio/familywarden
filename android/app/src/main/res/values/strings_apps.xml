@@ -11,6 +11,7 @@
     <string name="fw_apps_none_title">No app list yet</string>
     <string name="fw_apps_none_body">%1$s’s phones haven’t sent their apps. Other rules still apply.</string>
     <string name="fw_apps_search">Search %1$s’s apps</string>
+    <string name="fw_apps_gone">%1$s is no longer in the reported app list, so its rule editor was closed.</string>
     <string name="fw_apps_no_match">No reported app matches. Apps that are not reported yet cannot appear here.</string>
     <string name="fw_apps_filter_all">All</string>
     <string name="fw_apps_filter_limited">Limited</string>

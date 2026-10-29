@@ -52,6 +52,7 @@ internal fun InstalledAppsContent(s: FamilyWardenState, actions: FamilyWardenAct
     if (profile == null) {
         TextButton(onClick = back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.fw_family_controls)) }
         Text(stringResource(if (s.binding == null) R.string.fw_request_waiting_approval else R.string.fw_request_no_scope))
+        LaunchedEffect(Unit) { if (selected != null) onSelect(null) }
         return
     }
     val key = listOf(profile.id, s.binding?.deviceId, s.fingerprint, s.phoneFingerprint, s.binding?.approves?.map { it.id }?.sorted().toString())
@@ -67,6 +68,13 @@ internal fun InstalledAppsContent(s: FamilyWardenState, actions: FamilyWardenAct
     }
     val current = view
     val app = (current as? AppsView.Loaded)?.apps?.apps?.firstOrNull { it.pkg == selected }
+    // A different child or a vanished app never keeps an open editor.
+    var opened by remember { mutableStateOf(profile.id) }
+    var gone by remember(key) { mutableStateOf<String?>(null) }
+    LaunchedEffect(profile.id, current, selected) {
+        if (opened != profile.id) { opened = profile.id; if (selected != null) onSelect(null) }
+        else if (selected != null && current is AppsView.Loaded && app == null) { gone = selected; onSelect(null) }
+    }
     if (selected != null && app != null) {
         AppDetail(s, actions, profile, current.apps, app, { retry++ }) { onSelect(null) }
         return
@@ -84,7 +92,10 @@ internal fun InstalledAppsContent(s: FamilyWardenState, actions: FamilyWardenAct
             }))
             TextButton(onClick = { retry++ }) { Text(stringResource(R.string.action_try_again)) }
         }
-        is AppsView.Loaded -> AppList(s, profile, current.apps, onSelect)
+        is AppsView.Loaded -> {
+            gone?.let { InfoNote(Icons.Outlined.Info, stringResource(R.string.fw_apps_gone, it)) }
+            AppList(s, profile, current.apps) { gone = null; onSelect(it) }
+        }
     }
     InfoNote(Icons.Outlined.Groups, stringResource(R.string.fw_apps_profile_wide, profile.name))
 }

@@ -11,6 +11,7 @@
     <string name="fw_apps_none_title">Ingen appliste endnu</string>
     <string name="fw_apps_none_body">Telefonerne hos %1$s har ikke sendt deres apps. Andre regler gælder stadig.</string>
     <string name="fw_apps_search">Søg i apps hos %1$s</string>
+    <string name="fw_apps_gone">%1$s er ikke længere på den rapporterede appliste, så regel-editoren blev lukket.</string>
     <string name="fw_apps_no_match">Ingen rapporteret app passer. Apps, der ikke er rapporteret endnu, kan ikke vises her.</string>
     <string name="fw_apps_filter_all">Alle</string>
     <string name="fw_apps_filter_limited">Begrænset</string>

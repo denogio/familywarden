@@ -30,7 +30,8 @@ private fun AppRule.draft() = when (this) {
 internal fun AppRuleEditor(s: FamilyWardenState, actions: FamilyWardenActions, data: InstalledApps,
     app: InstalledApp, refresh: () -> Unit) {
     val identity = listOf(s.fingerprint, s.phoneFingerprint, s.binding?.deviceId, data.profile.id, app.pkg)
-    var draft by remember(identity) { mutableStateOf(actions.ruleDraft(data.profile.id, app.pkg) ?: app.rule.draft()) }
+    // An untouched draft follows the latest read rule; edited drafts are stored and survive.
+    var draft by remember(identity, app.rule) { mutableStateOf(actions.ruleDraft(data.profile.id, app.pkg) ?: app.rule.draft()) }
     var operation by remember(identity) { mutableStateOf(actions.ruleOperation()) }
     var saving by remember(identity) { mutableStateOf(false) }
     var notSent by remember(identity) { mutableStateOf(false) }

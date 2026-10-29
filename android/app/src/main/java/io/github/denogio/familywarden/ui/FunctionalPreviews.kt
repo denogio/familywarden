@@ -49,6 +49,30 @@ private fun previewApps(profile: String): InstalledApps {
 private fun actions(sync: () -> Unit = {}) = FamilyWardenActions(sync, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
     loadHistory = ::previewHistory, loadApps = ::previewApps)
 
+@Preview(name = "Parent — installed apps change between reads", widthDp = 400, heightDp = 840)
+@Composable
+private fun AppsChangePreview() {
+    var state by remember { mutableStateOf(family) }
+    var reads by remember { mutableIntStateOf(0) }
+    val load = { profile: String -> previewApps(profile).let { data ->
+        // First sync: Minecraft is blocked elsewhere. Second sync: the second Video app is removed.
+        data.copy(apps = data.apps.filter { reads < 2 || it.pkg != "com.example.video2" }
+            .map { if (reads >= 1 && it.pkg == "com.example.minecraft") it.copy(rule = AppRule.Blocked) else it })
+    } }
+    MastTheme { FamilyWardenScreen(state, FamilyWardenActions({ reads++; state = state.copy(lastSync = state.lastSync!! + 1) },
+        {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, loadHistory = ::previewHistory, loadApps = load)) }
+}
+
+@Preview(name = "Parent — installed apps scope revoked", widthDp = 400, heightDp = 840)
+@Composable
+private fun AppsScopePreview() {
+    var state by remember { mutableStateOf(family) }
+    // Sam shares Alex's packages, so a stale selection would silently open Sam's editor.
+    val load = { profile: String -> previewApps("alex").let { if (profile == "sam") it.copy(profile = sam) else it } }
+    MastTheme { FamilyWardenScreen(state, FamilyWardenActions({ state = state.copy(binding = state.binding!!.copy(approves = listOf(sam))) },
+        {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, loadHistory = ::previewHistory, loadApps = load)) }
+}
+
 @Preview(name = "Parent — working recorded-day history", widthDp = 400, heightDp = 840)
 @Composable
 private fun ParentHistoryPreview() { MastTheme { FamilyWardenScreen(family, actions()) } }
