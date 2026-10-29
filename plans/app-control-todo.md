@@ -658,6 +658,9 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
 - [ ] Parent Android: truthful per-device connection/applied-policy views and remaining
       prototype work (#40). Installed-app revocation/removal/concurrent-rule regressions
       and fixes done (2026-10-29, [evidence](android-installed-apps.md)); per-device views remain.
+      Deferred 2026-10-29: no scoped read exposes per-phone `seen`, `apps_rev`, `apps_applied`
+      or `apps_error` (only admin `devices`, `core/internal/identity/admin.go`); needs an approved
+      scoped status-read contract first, no placeholder UI.
 - [x] Child Android: remaining budgets, pause reasons, request status/remaining extra
       and local usage/history totals. Domain history remains P6 work.
 - [x] Existing LuCI: configure rules/roles, view usage/requests and inspect app revisions,
@@ -680,6 +683,8 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       LuCI r11 (`32b2d9a`) pins element defaults that Proton2025 sets page-wide (centred rail,
       text sizes, checkboxes, select arrows); deployed the same day. Known remainder: Bootstrap
       forces 14px buttons below 854px (`!important`), and Proton's page-width setting narrows the frame.
+      LuCI r12 (prepared, not deployed): Requests ported to the prototype layout (Waiting list,
+      Recent decisions with chips); paragraphs inherit the workspace type size.
 - [ ] OPS1: fix management HTTPS hostname/certificate mismatch and disabled HTTP→HTTPS
       redirect found during the authorized read-only pilot audit. Preserve recovery
       access and validate certificate trust before changing redirect/listener settings;
