@@ -1,6 +1,6 @@
 # Native parent installed apps and rule editing
 
-Status: **I1 implemented locally (core r26); I2–I4 open**.
+Status: **I1–I2 implemented locally (core r26); I3–I4 open**.
 Authorized continuation: 2026-10-29, `feature/app-control`. Finish the existing
 Ulysses/history slice first (`fc3fa89`, core r25); then implement this flow in bounded
 slices. No push, release signing, production router/phone access or physical pilot.
@@ -61,17 +61,17 @@ usage counter, grant or generation change is caused by observational reporting.
 
 ### I2 — Bounded scoped parent reads
 
-- [ ] Expose current scoped phone roster and latest per-source snapshots through a
-      dedicated signed read. Recheck enrolled key and effective parent scope for every
-      request; remove re-keyed/reassigned/deleted sources and protect a bound captain.
-- [ ] Define bounded retrieval/pagination before claiming complete large inventories.
-      Aggregate by package, retaining each reporting source/receipt and conflicting
-      labels or essential observations. Do not invent completeness across missing phones.
-- [ ] Supply core-derived standing rule state separately from reported installation,
-      reusing the existing compiler and approval ledger; include an opaque revision.
-      Configured-but-unreported apps are not described as currently installed.
-- [ ] Add a typed off-main-thread Android client using existing exact signing/transport
-      and fresh scope/generation checks. Informational reads never replace trusted policy.
+- [x] Signed `installed` read (protocol §5e): current key + effective scope per request,
+      current registry phones only, pact-bound captain protected.
+- [x] Package-cursor paging (~48 KiB pages) with a snapshot id; per-source indices for
+      reported/system/essential; newest label wins. Missing phones stay `reported:false`.
+- [x] Rule per app from the same compiler plus core new-app approvals, with `apps_rev`;
+      configured-but-unreported apps carry an empty source list.
+- [x] `FamilyAppsClient.apps` (off main thread): fresh policy preview for scope/generation,
+      strict parsing, page joining, one restart on snapshot change, typed refusals.
+- Found while testing: the identity upload limit was 16 KiB for every operation, so a
+  real large inventory would have been refused. `inventory` now has its own 64 KiB limit
+  with a >16 KiB regression test.
 
 **Accept:** wrong key/profile, revoked parent, own-profile spoofing, protected captain,
 malformed/oversized/replayed replies and store failures fail closed. A missing source

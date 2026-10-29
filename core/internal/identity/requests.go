@@ -31,14 +31,15 @@ import (
 // prevents rollback from making a pruned signed upload fresh again.
 
 const (
-	requestsFile    = "requests.json"
-	requestsVersion = 1
-	maxLedger       = 256
-	maxDeviceGrants = 32
-	keepAnswered    = 24 * time.Hour
-	maxUpload       = 16 << 10
-	grantsFeature   = "grants-v1"
-	targetTotal     = "total"
+	requestsFile       = "requests.json"
+	requestsVersion    = 1
+	maxLedger          = 256
+	maxDeviceGrants    = 32
+	keepAnswered       = 24 * time.Hour
+	maxUpload          = 16 << 10
+	maxInventoryUpload = 64 << 10
+	grantsFeature      = "grants-v1"
+	targetTotal        = "total"
 )
 
 var (
@@ -99,9 +100,13 @@ func (e entry) end() int64 {
 // ---- signed uploads on the phone port ----
 
 // upload is "<usign signature>\n<exact JSON bytes>", the same shape as replies.
-func splitUpload(body []byte) (sig string, raw []byte, ok bool) {
+func splitUpload(op string, body []byte) (sig string, raw []byte, ok bool) {
+	limit := maxUpload
+	if op == "inventory" {
+		limit = maxInventoryUpload // a whole installed-app list; transport allows 64 KiB
+	}
 	i := bytes.IndexByte(body, '\n')
-	if i < 0 || len(body) > maxUpload {
+	if i < 0 || len(body) > limit {
 		return "", nil, false
 	}
 	return string(body[:i]), body[i+1:], true
@@ -161,7 +166,7 @@ func cleanText(s string, max int) (string, bool) {
 // App handles signed actions, usage uploads and bounded historical reads. Unauthenticated input
 // gets a bare status; everything after authentication gets a signed reply.
 func (s *Service) App(op string, body []byte) (int, []byte) {
-	sig, raw, ok := splitUpload(body)
+	sig, raw, ok := splitUpload(op, body)
 	if !ok || !validB64(sig, 100) {
 		return StatusMalformed, nil
 	}
@@ -195,7 +200,7 @@ func (s *Service) uploadLocked(op, sig string, raw []byte, device string) (int, 
 	if i >= 0 {
 		d = s.devices[i]
 	}
-	kind := map[string]string{"request": "request", "decision": "decision", "usage": "usage", "app": "app", "history": "history", "inventory": "inventory"}[op]
+	kind := map[string]string{"request": "request", "decision": "decision", "usage": "usage", "app": "app", "history": "history", "inventory": "inventory", "installed": "installed"}[op]
 	if i < 0 || kind == "" {
 		return StatusForbidden, nil, nil
 	}
@@ -220,6 +225,8 @@ func (s *Service) uploadLocked(op, sig string, raw []byte, device string) (int, 
 			reply = s.history(d, raw, ctx)
 		case "inventory":
 			reply = s.inventory(d, raw, ctx)
+		case "installed":
+			reply = s.installed(d, raw, ctx)
 		default:
 			reply, ticket = s.decide(d, raw, ctx)
 		}

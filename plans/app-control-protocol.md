@@ -544,7 +544,8 @@ Receipt of a usage upload is neither policy application nor a live online signal
 
 `POST /cgi-bin/app?op=inventory`, same signed transport as §3, signing domain
 `familywarden-inventory-v1\n` plus exact JSON. Body limit is the router's 64 KiB
-API limit (Android keeps the JSON at most 60 KiB); other operations keep 16 KiB.
+API limit and the core's inventory-specific upload limit (Android keeps the JSON at
+most 60 KiB); other signed operations keep 16 KiB.
 
 ```json
 {"type":"inventory","v":1,"device":"fw-alex","profile":"alex","seq":7,"installed":2,
@@ -567,6 +568,31 @@ API limit (Android keeps the JSON at most 60 KiB); other operations keep 16 KiB.
   Readers must filter by the current registry key and scope (I2, not yet implemented).
 - The phone sends after a successful sync when the snapshot changed, otherwise at most
   every six hours to refresh receipt time. No outbox: a lost reply is simply superseded.
+
+## 5e. Scoped installed-app reads — core 0.13.0-r26
+
+`POST /cgi-bin/app?op=installed`, signing domain `familywarden-installed-v1\n`:
+
+```json
+{"type":"installed","v":1,"device":"fw-parent","profile":"alex","after":"","created":1800000000,"nonce":"<64 hex>"}
+```
+
+- Same authority as §5c: current enrolled key, own profile or current effective
+  `approves` (pact-bound captain excluded), app control on, creation within five minutes.
+- Signed `installed_reply`: `profile_id, after, snapshot, apps_rev, suspend_new,
+  sources, apps, more`. `sources` lists every **current** registry phone of the profile
+  in device-id order: `{name, reported:false}` or `{name, reported:true, received,
+  installed, sent}`; `installed > sent` is a partial snapshot. Old keys and moved
+  phones are never sources.
+- `apps` are sorted by package after `after`, about 48 KiB per page; follow `more`.
+  Each app: `package, label` (newest report), `on/system/essential` source indices and
+  `rule`: `blocked`, `always`, `limit` + `minutes` (0..1440, zero is not a block),
+  `allowed` (approved) or `none`. Configured but unreported apps appear with empty `on`.
+  Precedence matches the phone: blocked, always allowed, own limit, approved.
+- `snapshot` changes when any current source reports or the rule revision changes;
+  Android restarts once on a change between pages, then fails instead of mixing lists.
+- Errors: `malformed`, `request_expired`, `not_parent`, `app_control_off`, `unavailable`.
+  Read-only: no ledger, ticket, acknowledgement, generation or policy change.
 
 ## 6. Storage and retention (D6)
 

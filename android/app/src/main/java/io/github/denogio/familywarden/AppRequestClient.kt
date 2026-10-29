@@ -86,7 +86,7 @@ object AppRequestClient {
 
     /** Shared bounded transport for signed actions and non-persistent informational reads. */
     internal fun exchange(host: String, op: String, body: ByteArray): ByteArray {
-        require(op in setOf("request", "decision", "usage", "app", "history", "inventory") &&
+        require(op in setOf("request", "decision", "usage", "app", "history", "inventory", "installed") &&
             body.size <= (if (op == "inventory") 64 * 1024 else 16 * 1024))
         val c = URL("${Sync.base(host)}/cgi-bin/app?op=$op").openConnection() as HttpURLConnection
         c.requestMethod = "POST"
