@@ -30,6 +30,21 @@ async function neutral(page, { lang = 'en', data = replies(), interval = 60000, 
     window.control = module.mount(document.getElementById('control'),{lang,interval,theme,call:async (method,params = {}) => {
       window.calls.push({method,params:JSON.parse(JSON.stringify(params))});
       if (method === window.hold) await new Promise(resolve => {window.release = resolve;});
+      if (method === 'admin_installed') {
+        if (window.inventoryHandler) return window.inventoryHandler(params);
+        if (window.replies.admin_installed) return window.replies.admin_installed;
+        const p = window.replies.configuration_export.configuration.current.profiles.find(p => p.id === params.profile);
+        const configured = window.replies.configuration_export.configuration.current.apps || [];
+        const observed = window.replies.usage.profiles.find(p => p.id === params.profile)?.apps || [];
+        const pending = window.replies.new_apps.profiles.find(p => p.id === params.profile)?.pending || [];
+        const packages = [...new Set([...configured.map(a => a.package), ...(p?.always_allowed || []), ...observed.map(a => a.package), ...pending.map(a => a.package)])].sort();
+        let apps = packages.map(pkg => { const a = configured.find(a => a.package === pkg), obs = observed.find(a => a.package === pkg), wait = pending.find(a => a.package === pkg);
+          return { package:pkg,label:obs?.label || wait?.label || pkg,on:obs ? [0] : [],seconds:obs?.seconds,minutes:a ? +a.minutes : undefined,
+            rule:a?.blocked === '1' ? 'blocked' : p?.always_allowed?.includes(pkg) ? 'unlimited' : a ? 'limit' : wait ? 'pending' : 'none' }; });
+        const counts = {all:apps.length,limit:0,unlimited:0,blocked:0,pending:0}; for (const a of apps) if (a.rule in counts) counts[a.rule]++;
+        apps = apps.filter(a => (!params.search || (a.label+' '+a.package).toLowerCase().includes(params.search.toLowerCase())) && (params.filter === 'all' || params.filter === a.rule));
+        return {profile_id:params.profile,snapshot:'fixture',apps:apps.slice(params.page*20,params.page*20+20),counts,sources:[],total:apps.length,pages:Math.max(1,Math.ceil(apps.length/20)),page:params.page,start:params.page*20};
+      }
       if (method === 'configuration_apply') {
         window.replies.configuration_export.configuration.current = params.current;
         window.replies.configuration_export.configuration.revision = 'r2';
@@ -44,6 +59,268 @@ async function neutral(page, { lang = 'en', data = replies(), interval = 60000, 
   await expect(page.locator('.fwa .fw-status')).toContainText(lang === 'da' ? 'Opdateret' : 'Updated');
   await page.waitForFunction(() => document.querySelector('#control > link[rel="stylesheet"]')?.sheet != null);
 }
+
+async function installedBrowser(page, lang = 'en') {
+  const data = replies();
+  data.configuration_export.configuration.current.apps = [{id:'a_video',profile:'alex',package:'com.example.app000',minutes:'37',blocked:'0'}];
+  await neutral(page,{data,lang});
+  await page.evaluate(() => {
+    window.inventoryRows = Array.from({length:43},(_,i) => ({package:'com.example.app'+String(i).padStart(3,'0'),label:'Alex app '+String(i).padStart(3,'0'),rule:i===0?'limit':i===1?'unlimited':i===2?'blocked':'none',minutes:i===0?37:undefined,on:[0]}));
+    window.inventoryDelayed = {};
+    window.inventoryHandler = async params => {
+      let apps = window.inventoryRows.filter(a => (!params.search || (a.label+' '+a.package).toLowerCase().includes(params.search.toLowerCase())) && (params.filter==='all' || a.rule===params.filter));
+      const reply={profile_id:params.profile,snapshot:'inventory-1',counts:{all:window.inventoryRows.length,limit:1,unlimited:1,blocked:1,pending:0},sources:[{reported:true,installed:45,sent:43}],total:apps.length,pages:Math.max(1,Math.ceil(apps.length/20)),page:params.page,start:params.page*20,apps:apps.slice(params.page*20,params.page*20+20)};
+      if (params.search==='old') await new Promise(resolve => window.inventoryDelayed.old=resolve);
+      return reply;
+    };
+  });
+  await page.getByRole('button',{name:lang==='da'?'Rediger regler':'Edit rules',exact:true}).click();
+  await expect(page.locator('.fw-rule-app')).toHaveCount(20);
+}
+
+for (const lang of ['en','da']) test(`UI4 full inventory live search, numbered pages, local modal and focus (${lang})`, async ({page}) => {
+  await installedBrowser(page,lang);
+  const search=page.getByRole('searchbox'), panel=page.locator('.fw-rule-apps');
+  const dirty=page.getByRole('region',{name:lang==='da'?'Ændringer er ikke gemt':'Unsaved changes',exact:true});
+  await expect(panel).toContainText(lang==='da'?'ufuldstændig':'partial');
+  await panel.getByRole('button',{name:'3',exact:true}).click();
+  await expect(page.locator('.fw-rule-app')).toHaveCount(3);
+  await expect(panel).toContainText('com.example.app042');
+  await search.pressSequentially('042');
+  await search.evaluate(input=>input.setSelectionRange(1,2));
+  await expect(page.locator('.fw-rule-app')).toHaveCount(1);
+  await expect(search).toBeFocused();
+  expect(await search.evaluate(input => [input.selectionStart,input.selectionEnd])).toEqual([1,2]);
+  expect(await page.evaluate(()=>window.calls.filter(c=>c.method==='admin_installed' && c.params.search).length)).toBe(1);
+  await expect(dirty).toHaveCount(0);
+  expect(await page.evaluate(() => window.calls.filter(c=>c.method==='admin_installed').at(-1).params)).toMatchObject({search:'042',page:0});
+  await search.fill('');
+  await expect(page.locator('.fw-rule-app')).toHaveCount(20);
+  const row=page.locator('.fw-rule-app').filter({has:page.getByText('Alex app 000',{exact:true})});
+  await expect(row).toContainText(lang==='da'?'Intet forbrug':'No usage');
+  await row.getByRole('button').click();
+  const dialog=page.getByRole('dialog');
+  await expect(dialog.getByRole('spinbutton')).toHaveValue('37');
+  await dialog.getByRole('radio',{name:/90/}).check();
+  await page.keyboard.press('Escape');
+  await expect(row.getByRole('button')).toBeFocused();
+  await expect(row).toContainText('37');
+  await expect(dirty).toHaveCount(0);
+  await row.getByRole('button').click();
+  await dialog.getByRole('radio',{name:/90/}).check();
+  await dialog.getByRole('button',{name:lang==='da'?'Annuller':'Cancel',exact:true}).click();
+  await expect(row).toContainText('37');
+  await expect(dirty).toHaveCount(0);
+  await row.getByRole('button').click();
+  await dialog.getByRole('radio',{name:/90/}).check();
+  await dialog.getByRole('button',{name:lang==='da'?'Færdig':'Done',exact:true}).click();
+  await expect(row.getByRole('button')).toBeFocused();
+  await expect(row).toContainText('90');
+  await expect(dirty).toBeVisible();
+  expect(await page.evaluate(()=>window.calls.some(c=>c.method==='configuration_apply'))).toBe(false);
+  await panel.getByRole('button',{name:'3',exact:true}).click();
+  await panel.getByRole('button',{name:'1',exact:true}).click();
+  await expect(row).toContainText('90');
+  await panel.locator('[data-key="inventory-tab-blocked"]').click();
+  await expect(page.locator('.fw-rule-app')).toHaveCount(1);
+  await expect(panel.locator('[data-key="inventory-tab-all"]')).toContainText('43');
+  await panel.locator('[data-key="inventory-tab-all"]').click();
+  await expect(row).toContainText('90');
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
+test('UI4 rejects out-of-order inventory replies, removals and unavailable reads preserve drafts', async ({page}) => {
+  await installedBrowser(page);
+  const search=page.getByRole('searchbox');
+  await search.fill('old');
+  await page.waitForFunction(()=>!!window.inventoryDelayed.old);
+  await search.fill('042');
+  await expect(page.locator('.fw-rule-app')).toHaveCount(1);
+  await page.evaluate(()=>window.inventoryDelayed.old());
+  await expect(page.locator('.fw-rule-app')).toContainText('com.example.app042');
+  await page.evaluate(()=>window.inventoryRows=window.inventoryRows.filter(a=>!a.package.endsWith('042')));
+  await search.fill('app042');
+  await expect(page.locator('.fw-rule-app')).toHaveCount(0);
+  await expect(page.locator('.fw-rule-apps')).toContainText('No matching');
+  await page.evaluate(()=>window.inventoryHandler=async()=>({error:'inventory unavailable'}));
+  await search.fill('anything');
+  await expect(page.locator('.fw-rule-apps')).toContainText('Configured rules only');
+  await expect(page.locator('.fw-rule-app')).toContainText('com.example.app000');
+});
+
+test('UI4 late inventory from another profile is discarded and frozen pills cannot edit', async ({page}) => {
+  const data=replies();
+  const alex=data.configuration_export.configuration.current.profiles[0];
+  data.configuration_export.configuration.current.profiles.push({...alex,id:'riley',name:'Riley'});
+  await neutral(page,{data});
+  await page.evaluate(()=> {
+    window.inventoryHandler=async params=> {
+      if(params.profile==='alex') await new Promise(resolve=>window.oldProfileRelease=resolve);
+      return {profile_id:params.profile,snapshot:params.profile,counts:{all:1,limit:0,unlimited:0,blocked:0,pending:0},sources:[],total:1,pages:1,page:0,start:0,
+        apps:[{package:'com.example.'+params.profile,label:params.profile,on:[],rule:'none'}]};
+    };
+  });
+  await page.locator('[data-profile="alex"]').getByRole('button',{name:'Edit rules',exact:true}).click();
+  await page.waitForFunction(()=>!!window.oldProfileRelease);
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('.fw-nav').getByRole('button',{name:'Riley',exact:true}).click();
+  await page.getByRole('tab',{name:'Rules',exact:true}).click();
+  await expect(page.locator('.fw-rule-app')).toContainText('com.example.riley');
+  await page.evaluate(()=>window.oldProfileRelease());
+  await expect(page.locator('.fw-rule-app')).not.toContainText('com.example.alex');
+  await page.evaluate(()=>window.replies.configuration_export.configuration.pact={captain:'riley'});
+  await page.evaluate(()=>window.control.refresh());
+  await expect(page.locator('.fw-rulebtn')).toBeDisabled();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('UI4 pending rows invoke real immediate approval methods without editing the rules draft', async ({page})=>{
+  const data=replies();
+  data.new_apps.profiles=[{id:'alex',pending:[{package:'com.example.pending',label:'Alex new app'}]}];
+  data.app_decision={status:'ok',state:'approved'};
+  await neutral(page,{data});
+  await page.getByRole('button',{name:'Edit rules',exact:true}).click();
+  await page.getByRole('button',{name:'Allow app now',exact:true}).click();
+  expect(await page.evaluate(()=>window.calls.find(c=>c.method==='app_decision').params)).toEqual({profile:'alex',package:'com.example.pending',action:'approve'});
+  expect(await page.evaluate(()=>window.calls.some(c=>c.method==='configuration_apply'))).toBe(false);
+  await expect(page.getByRole('region',{name:'Unsaved changes',exact:true})).toHaveCount(0);
+});
+
+for (const lang of ['en','da']) test(`UI4 untouched Rules navigation and polling are clean (${lang})`, async ({page})=>{
+  await neutral(page,{lang});
+  const dialogs=[];
+  page.on('dialog',dialog=>{dialogs.push(dialog.message());return dialog.dismiss();});
+  await page.getByRole('button',{name:lang==='da'?'Rediger regler':'Edit rules',exact:true}).click();
+  await page.evaluate(()=>window.control.refresh());
+  await page.getByRole('tab',{name:lang==='da'?'I dag':'Today',exact:true}).click();
+  await expect(page.locator('.fw-rules')).toHaveCount(0);
+  expect(dialogs).toEqual([]);
+});
+
+test('UI4 query/page/filter navigation and modal Cancel do not dirty Rules', async ({page})=>{
+  await installedBrowser(page);
+  const dialogs=[];
+  page.on('dialog',dialog=>{dialogs.push(dialog.message());return dialog.dismiss();});
+  const panel=page.locator('.fw-rule-apps');
+  await panel.getByRole('button',{name:'3',exact:true}).click();
+  await expect(page.locator('.fw-rule-app')).toHaveCount(3);
+  await page.getByRole('searchbox').fill('042');
+  await expect(page.locator('.fw-rule-app')).toHaveCount(1);
+  await page.getByRole('searchbox').fill('');
+  await expect(page.locator('.fw-rule-app')).toHaveCount(20);
+  await panel.locator('[data-key="inventory-tab-limit"]').click();
+  await expect(page.locator('.fw-rule-app')).toHaveCount(1);
+  await page.locator('.fw-rulebtn').click();
+  await page.getByRole('dialog').getByRole('radio',{name:/90/}).check();
+  await page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
+  await page.getByRole('tab',{name:'Today',exact:true}).click();
+  await expect(page.locator('.fw-rules')).toHaveCount(0);
+  expect(dialogs).toEqual([]);
+});
+
+test('UI4 edit then revert fields and app rules restores a clean semantic draft', async ({page})=>{
+  await installedBrowser(page);
+  const dialogs=[];
+  page.on('dialog',dialog=>{dialogs.push(dialog.message());return dialog.dismiss();});
+  await page.getByLabel('Name',{exact:true}).fill('Alex draft');
+  await page.getByLabel('Name',{exact:true}).fill('Alex');
+  await page.getByLabel('Daily screen time (minutes)',{exact:true}).fill('45');
+  await page.getByLabel('Daily screen time (minutes)',{exact:true}).fill('40');
+  const always=page.getByLabel('Always-allowed packages (one per line)',{exact:true});
+  await always.fill('com.example.reader');
+  await always.fill('');
+  const row=page.locator('.fw-rule-app').filter({has:page.getByText('Alex app 000',{exact:true})});
+  await row.getByRole('button').click();
+  await page.getByRole('dialog').getByRole('radio',{name:/^Allowed/}).check();
+  await page.getByRole('dialog').getByRole('button',{name:'Done',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Unsaved changes',exact:true})).toBeVisible();
+  await row.getByRole('button').click();
+  await page.getByRole('dialog').getByRole('radio',{name:/^Daily limit/}).check();
+  await page.getByRole('dialog').getByLabel('Custom minutes',{exact:true}).fill('37');
+  await page.getByRole('dialog').getByRole('button',{name:'Done',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Unsaved changes',exact:true})).toHaveCount(0);
+  await page.getByRole('tab',{name:'Today',exact:true}).click();
+  await expect(page.locator('.fw-rules')).toHaveCount(0);
+  expect(dialogs).toEqual([]);
+});
+
+for (const lang of ['en','da']) test(`UI4 real unsaved edits retain an explicit localized discard guard (${lang})`, async ({page})=>{
+  await neutral(page,{lang});
+  await page.getByRole('button',{name:lang==='da'?'Rediger regler':'Edit rules',exact:true}).click();
+  await page.getByLabel(lang==='da'?'Navn':'Name',{exact:true}).fill('Alex draft');
+  const expected=lang==='da'?'Kassér ændringer, der ikke er gemt, og forlad denne side?':'Discard unsaved changes and leave this page?';
+  const messages=[];
+  page.once('dialog',async dialog=>{messages.push(dialog.message());await dialog.dismiss();});
+  await page.getByRole('tab',{name:lang==='da'?'I dag':'Today',exact:true}).click();
+  await expect(page.locator('.fw-rules')).toBeVisible();
+  await expect(page.getByLabel(lang==='da'?'Navn':'Name',{exact:true})).toHaveValue('Alex draft');
+  page.once('dialog',async dialog=>{messages.push(dialog.message());await dialog.accept();});
+  await page.getByRole('tab',{name:lang==='da'?'I dag':'Today',exact:true}).click();
+  await expect(page.locator('.fw-rules')).toHaveCount(0);
+  expect(messages).toEqual([expected,expected]);
+});
+
+test('UI4 rule modal agrees with blocked precedence over always allowed', async ({page})=>{
+  const data=replies();
+  data.configuration_export.configuration.current.apps=[{id:'a_blocked',profile:'alex',package:'com.example.blocked',minutes:'0',blocked:'1'}];
+  data.configuration_export.configuration.current.profiles[0].always_allowed=['com.example.blocked'];
+  await neutral(page,{data});
+  await page.getByRole('button',{name:'Edit rules',exact:true}).click();
+  const rule=page.locator('.fw-rule-app').getByRole('button');
+  await expect(rule).toContainText('Blocked');
+  await rule.click();
+  await expect(page.getByRole('dialog').getByRole('radio',{name:/^Blocked/})).toBeChecked();
+  await page.getByRole('dialog').getByRole('button',{name:'Done',exact:true}).click();
+  await expect(rule).toContainText('Blocked');
+  await expect(page.getByRole('region',{name:'Unsaved changes',exact:true})).toHaveCount(0);
+  await rule.click();
+  await page.getByRole('dialog').getByRole('radio',{name:/^Always allowed/}).check();
+  await page.getByRole('dialog').getByRole('button',{name:'Done',exact:true}).click();
+  await expect(rule).toContainText('Always allowed');
+  await expect(page.getByRole('region',{name:'Unsaved changes',exact:true})).toBeVisible();
+});
+
+test('UI4 manual draft rules stay visible, editable and removable outside inventory results', async ({page})=>{
+  await installedBrowser(page);
+  const panel=page.locator('.fw-rule-apps');
+  await panel.getByRole('button',{name:'3',exact:true}).click();
+  await expect(page.locator('.fw-rule-app')).toHaveCount(3);
+  page.once('dialog',dialog=>dialog.accept('com.example.manual'));
+  await page.getByRole('button',{name:'+ Add app rule',exact:true}).click();
+  await page.getByRole('dialog').getByRole('radio',{name:/^Daily limit/}).check();
+  await page.getByRole('dialog').getByLabel('Custom minutes',{exact:true}).fill('25');
+  await page.getByRole('dialog').getByRole('button',{name:'Done',exact:true}).click();
+  const local=page.locator('.fw-draft-apps');
+  await expect(local).toContainText('com.example.manual');
+  await expect(local).toContainText('25');
+  await expect(panel).toContainText('Counts still use saved rules');
+  await expect(panel.locator('[data-key="inventory-tab-all"]')).toContainText('43');
+  await expect(panel).toContainText('41–43 of 43 apps');
+  await local.getByRole('button',{name:/Daily limit/}).click();
+  await page.getByRole('dialog').getByRole('radio',{name:/90/}).check();
+  await page.getByRole('dialog').getByRole('button',{name:'Done',exact:true}).click();
+  await expect(local).toContainText('90');
+  await page.getByRole('searchbox').fill('042');
+  await expect(page.locator('.fw-rule-app')).toHaveCount(1);
+  await expect(local).toContainText('com.example.manual');
+  await local.getByRole('button',{name:'Remove',exact:true}).click();
+  await expect(local).toHaveCount(0);
+  await expect(page.getByRole('region',{name:'Unsaved changes',exact:true})).toHaveCount(0);
+  expect(await page.evaluate(()=>window.calls.some(c=>c.method==='configuration_apply'))).toBe(false);
+});
+
+for (const lang of ['en','da']) for (const configured of [false,true]) test(`UI4 app-control-off read is explained (${lang}, configured=${configured})`, async ({page})=>{
+  const data=replies();
+  data.admin_installed={error:'app_control_off'};
+  data.configuration_export.configuration.current.profiles[0].apps='0';
+  if(configured) data.configuration_export.configuration.current.apps=[{id:'a_saved',profile:'alex',package:'com.example.saved',minutes:'15',blocked:'0'}];
+  await neutral(page,{data,lang});
+  await page.getByRole('button',{name:lang==='da'?'Rediger regler':'Edit rules',exact:true}).click();
+  await expect(page.locator('.fw-rule-apps')).toContainText(lang==='da'?'appstyring er aktiveret og gemt':'app control to be enabled and saved');
+  if(configured) await expect(page.locator('.fw-rule-app')).toContainText('com.example.saved');
+  await expect(page.getByRole('region',{name:lang==='da'?'Ændringer er ikke gemt':'Unsaved changes',exact:true})).toHaveCount(0);
+});
 
 test.describe('shared control without LuCI globals', () => {
   for (const lang of ['en','da']) test(`neutral profile labels, measured usage without budget and package identity (${lang})`, async ({ page }) => {
@@ -377,14 +654,16 @@ test.describe('shared control without LuCI globals', () => {
     ]);
     await expect(page.getByRole('region',{name:'Unsaved changes',exact:true})).toHaveCount(0);
     await expect(page.locator('.fw-rule-apps')).toContainText('Drawing');
-    await expect(page.locator('.fw-rule-apps')).toContainText('Waiting for a decision');
+    await expect(page.locator('.fw-rule-apps')).toContainText('Paused until decided');
     await expect(page.getByLabel('Rule for Drawing',{exact:true})).toHaveCount(0);
     await page.getByRole('button',{name:'Weekdays + weekend',exact:true}).click();
     await page.getByLabel('Weekday screen time (optional)',{exact:true}).fill('25');
     await page.getByLabel('Weekend screen time (optional)',{exact:true}).fill('60');
-    await page.getByLabel('Rule for Video',{exact:true}).selectOption('unlimited');
-    await expect(page.getByRole('switch',{name:'Pause newly installed apps',exact:true})).toHaveAttribute('aria-checked','true');
-    await page.getByRole('switch',{name:'Pause newly installed apps',exact:true}).click();
+    await page.locator('.fw-rule-app').filter({has:page.getByText('Video',{exact:true})}).getByRole('button').click();
+    await page.getByRole('dialog').getByRole('radio',{name:/Always allowed/}).check();
+    await page.getByRole('dialog').getByRole('button',{name:'Done',exact:true}).click();
+    await expect(page.getByRole('switch',{name:'Ask before new apps open',exact:true})).toHaveAttribute('aria-checked','true');
+    await page.getByRole('switch',{name:'Ask before new apps open',exact:true}).click();
     await expect(page.getByRole('region',{name:'Unsaved changes',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Save rules',exact:true}).click();
     const applied = await page.evaluate(() => window.calls.find(c => c.method === 'configuration_apply'));
@@ -472,17 +751,12 @@ test.describe('shared control without LuCI globals', () => {
     await neutral(page,{data});
     await page.locator('.fw-nav').getByRole('button',{name:'Alex',exact:true}).click();
     await page.getByRole('tab',{name:'Rules',exact:true}).click();
-    const rows = await page.locator('.fw-rule-app .fw-app-controls').evaluateAll(list => list.map(c => {
-      const box = sel => c.querySelector(sel)?.getBoundingClientRect();
-      return { select: box('select'), input: box('input'), remove: box('.fw-btn') };
-    }));
-    expect(rows.length).toBeGreaterThanOrEqual(2);
-    expect(rows[0].input.right).toBeLessThanOrEqual(rows[0].remove.left);
-    expect(rows[0].select.right).toBeLessThanOrEqual(rows[0].input.left);
-    for (const r of rows.slice(1)) {
-      expect(Math.round(r.select.left)).toBe(Math.round(rows[0].select.left));
-      expect(Math.round(r.select.width)).toBe(Math.round(rows[0].select.width));
-    }
+    await expect(page.locator('.fw-rulebtn')).toHaveCount(2);
+    const rows = await page.locator('.fw-rule-app').evaluateAll(list => list.map(row => ({
+      main:row.querySelector('.main').getBoundingClientRect(),pill:row.querySelector('.fw-rulebtn').getBoundingClientRect()
+    })));
+    for (const row of rows) expect(row.main.right).toBeLessThanOrEqual(row.pill.left);
+    expect(Math.round(rows[0].pill.right)).toBe(Math.round(rows[1].pill.right));
   });
 
   test('DNS failures keep acknowledged profiles visible instead of presenting an empty successful state', async ({ page }) => {
@@ -678,9 +952,11 @@ test.describe('shared control through the native LuCI bridge', () => {
     await windows.getByLabel('Start',{exact:true}).fill('22:00');
     await windows.getByLabel('Stop',{exact:true}).fill('06:00');
     const apps = page.getByRole('group',{name:'Per-app rules',exact:true});
+    page.once('dialog', dialog => dialog.accept('com.example.game'));
     await apps.getByRole('button',{name:'+ Add app rule',exact:true}).click();
-    await apps.getByLabel('Package name',{exact:true}).fill('com.example.game');
-    await apps.getByLabel('Minutes',{exact:true}).fill('10');
+    await page.getByRole('dialog').getByRole('radio',{name:/Daily limit/}).check();
+    await page.getByRole('dialog').getByLabel('Custom minutes',{exact:true}).fill('10');
+    await page.getByRole('dialog').getByRole('button',{name:'Done',exact:true}).click();
     await page.getByRole('button',{name:'Save rules',exact:true}).click();
     await page.getByRole('button',{name:'Confirm connection',exact:true}).click();
     await expect(page.getByRole('heading',{name:currentName,exact:true,level:1})).toBeVisible();

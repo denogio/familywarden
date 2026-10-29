@@ -729,16 +729,53 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       forces 14px buttons below 854px (`!important`), and Proton's page-width setting narrows the frame.
       LuCI r12 (`1bae6bd`, deployed 2026-10-29 with approval): Requests ported to the prototype layout (Waiting list,
       Recent decisions with chips); paragraphs inherit the workspace type size.
-- [ ] UI4 — NEXT AFTER ICON2 (user priority, 2026-10-29): Show the full installed-app
+- [x] UI4 (2026-10-29): Show the full installed-app
       inventory in router administration, not just today's top-20 usage/configured/pending
-      union. Add search and bounded server-side pagination (25 apps/page as the initial
-      presentation), with stable ordering and truthful empty/partial/unavailable states.
+      union. Add a search field directly at the top of the apps panel, filtering live as
+      the administrator types (no Search button or Enter requirement). The quickfilter
+      searches the full installed inventory by label/package, not just the current page;
+      reset pagination when the query changes and ignore stale/out-of-order responses.
+      Use bounded server-side pagination (20 apps/page, explicit user choice), with
+      stable ordering and truthful empty/partial/unavailable states.
       The rule editor must find every reported installed app, including apps with no usage;
-      keep top-used summaries separate from the full app browser. Reuse core inventory and
+      keep top-used summaries separate from the full app browser. Also remove the thin pale
+      rim visible around real icons (user screenshots, 2026-10-29): inspect rasterization,
+      host image defaults and tile clipping; artwork must fill the rounded square without
+      a light border, preserving shape, sharpness and neutral missing-icon fallbacks.
+      Add a close-up visual regression on dark backgrounds using fictional icon fixtures.
+      Match the user's supplied updated `familywarden-control-prototype (3).html` Apps
+      panel and rule dialog (2026-10-29; supplied via local file, not a project default):
+      header with profile/all-phones scope, All / Daily limit / Always allowed / Blocked
+      filter tabs with truthful full-inventory counts, compact separated rows with icon,
+      name, usage explanation and applicable progress meter; right-aligned rule pill opens
+      a modal with Allowed / Daily limit / Always allowed / Blocked radio cards, daily-limit
+      duration chips, Cancel and Done. Keep package identity available and preserve rule
+      drafts/CAS/pact guards; Done/Cancel must have explicit, truthful save semantics.
+      Match the latest supplied panel screenshot: Apps title left, search and filter tabs
+      in the top header row on desktop (responsive stacking on narrow screens); show
+      result range/count at bottom left, Previous / numbered pages / Next at bottom right,
+      with 20 apps per page, above the new-app approval switch. Filter immediately while
+      typing. Keep scope information accessible without disrupting this header layout.
+      New-app approval rows and the bottom approval switch must use real existing actions,
+      never simulated state. Follow the existing prototype HTML and supplied screenshots
+      for spacing, typography, colors and hierarchy; use real normalized icons instead of
+      the prototype initials. Validate modal, filter tabs/counts, keyboard/focus behavior,
+      mobile and EN/DA. No unsupported rule/enforcement promises.
+      Fix the reported false unsaved-changes prompt when leaving untouched Rules: opening,
+      rendering, polling, filtering, paging or cancelling an unchanged modal must not dirty
+      the draft. Compare actual semantic edits against the baseline, including edit/revert;
+      retain the warning for real unsaved changes. Replace ambiguous "Cancel?" with explicit
+      localized discard-changes wording. Test untouched navigation, query/page changes,
+      modal Cancel, edit/revert and genuine unsaved-edit protection.
+      Reuse core inventory and
       ICON2 icon reads; preserve current device/key/profile scope and existing administrator
       authorization. Cover later pages, search, missing usage, removals and scope changes,
       plus EN/DA and visual comparison against the control prototype. No live deployment
-      implied. This takes priority over UI2/UI3 after ICON2 is completed.
+      implied by implementation alone. Completed core administrator inventory read and
+      prototype-(3) browser/modal presentation; all three fresh-review findings fixed.
+      Main session inspected DPR2 panel/modal captures and ran affected Go race/vet;
+      reused passing 48 browser cases, syntax/resource/ACL and earlier unchanged Go checks.
+      [Contract and evidence](../docs/design/ui4-review.md). Pilot deployment tracked separately.
 - [ ] UI2: Bring the shared Devices page into visual agreement with the control prototype
       (user feedback 2026-10-29), not another independent redesign. Compare the actual page
       and prototype side by side: layout/edit flow, typography, surface/text contrast,

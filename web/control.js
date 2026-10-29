@@ -10,6 +10,9 @@ const array = value => Array.isArray(value) ? value : [];
 const clone = value => JSON.parse(JSON.stringify(value));
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const inventoryRuleKeys = { allowed: 'inventoryRule_allowed', limit: 'inventoryRule_limit', unlimited: 'inventoryRule_unlimited', blocked: 'inventoryRule_blocked' };
+const inventoryHelpKeys = { allowed: 'inventoryHelp_allowed', limit: 'inventoryHelp_limit', unlimited: 'inventoryHelp_unlimited', blocked: 'inventoryHelp_blocked' };
+const inventoryTabKeys = { all: 'inventoryTab_all', limit: 'inventoryTab_limit', unlimited: 'inventoryTab_unlimited', blocked: 'inventoryTab_blocked' };
 const protections = ['filter_lists', 'safe_browsing', 'parental', 'safe_search'];
 const lines = value => String(value).split(/\r?\n/).map(v => v.trim()).filter(Boolean);
 
@@ -63,6 +66,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
   <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.5"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/></symbol>
   <symbol id="i-sync" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.3L4 9M4 4v5h5M4 13a8 8 0 0 0 14.3 4.3L20 15M20 20v-5h-5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol></svg>`;
   // Hosts may select a theme explicitly; auto follows preference changes.
   const colorPreference = win.matchMedia?.('(prefers-color-scheme: dark)');
@@ -86,9 +90,26 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
   root.replaceChildren(css, spriteHost.firstChild, notice, toasts, el('div', { class: 'fw-shell' }, rail, main));
 
   let snapshot = null, fresh = false, busy = false, reading = false, stopped = false, timer = null;
+  let inventory = null, inventoryGeneration = 0, inventoryTimer = null;
   let view = 'family', selected = '', historyDay = '', draft = null, confirmation = null, requestsMount = null, viewEditing = false;
-  viewEl.addEventListener('input', () => { viewEditing = true; });
-  viewEl.addEventListener('change', () => { viewEditing = true; });
+  // Configuration drafts are dirty by value, never because an input event fired.
+  // Keep the existing guard for non-configuration forms managed by their own views.
+  const configurationDraftValue = current => {
+    const stable = value => Array.isArray(value) ? value.map(stable) : object(value)
+      ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
+    const value = stable(current);
+    const ordered = values => array(values).map(stable).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    for (const key of ['profiles', 'apps', 'schedules', 'downtime', 'legacy_phones']) value[key] = ordered(value[key]);
+    for (const profile of value.profiles)
+      for (const key of ['always_allowed', 'devices', 'protections', 'services']) profile[key] = ordered(profile[key]);
+    // Empty optional collections and collection order do not change configuration
+    // meaning. Normalize for comparison only; never rewrite the submitted draft.
+    return JSON.stringify(stable(value));
+  };
+  const draftChanged = () => !!draft && configurationDraftValue(draft.current) !== configurationDraftValue(JSON.parse(draft.base));
+  const hasUnsavedChanges = () => draft ? draftChanged() : viewEditing;
+  viewEl.addEventListener('input', () => { if (!draft) viewEditing = true; });
+  viewEl.addEventListener('change', () => { if (!draft) viewEditing = true; });
 
   const epoch = value => +value > 0 ? new Date(+value * 1000).toLocaleString(lang) : t('unavailable');
   const timeHm = value => +value > 0 ? new Date(+value * 1000).toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' }) : '';
@@ -176,9 +197,10 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
   }
 
   function open(next, id = '') {
-    if (busy || ((draft || viewEditing) && !win.confirm(t('cancel') + '?'))) return;
+    if (busy || (hasUnsavedChanges() && !win.confirm(t('discardUnsavedChanges')))) return;
     requestsMount?.stop(); requestsMount = null;
     if (next !== 'history' || id !== selected) historyDay = '';
+    resetInventory();
     draft = null; viewEditing = false; view = next; selected = id; message('');
     render();
   }
@@ -192,12 +214,14 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
     }
     viewEditing = false;
     draft = { kind: 'profile', id, current, base: JSON.stringify(current), revision: conf().revision };
+    resetInventory(id);
     selected = id; view = 'rules'; render();
+    loadInventory();
   }
 
   function editSettings() {
     viewEditing = false;
-    draft = { kind: 'settings', current: clone(conf().current), revision: conf().revision };
+    draft = { kind: 'settings', current: clone(conf().current), base: JSON.stringify(conf().current), revision: conf().revision };
     view = 'administration'; render();
   }
 
@@ -702,57 +726,186 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
     return fieldset;
   }
 
-  function appRulesEditor(current, profile, disabled) {
-    const id = profile.id;
-    const configured = array(current.apps).filter(a => a.profile === id);
-    const observed = array(usageOf(id)?.apps);
-    const pending = array(array(snapshot.new_apps?.profiles).find(p => p.id === id)?.pending);
-    const packages = [...new Set([...configured.map(a => a.package), ...array(profile.always_allowed), ...observed.map(a => a.package), ...pending.map(a => a.package)])];
-    const node = el('fieldset', { class: 'fw-rule-apps' }, el('legend', { class: 'sr' }, t('appRules')));
-    const list = el('ul', { class: 'fw-list' });
-    for (const pkg of packages) {
-      const entries = configured.filter(a => a.package === pkg), app = entries[0];
-      const awaiting = pending.find(a => a.package === pkg);
-      const label = observed.find(a => a.package === pkg)?.label || awaiting?.label || pkg;
-      if (awaiting) {
-        list.append(el('li', { class: 'fw-item' },
-          appIcon(awaiting.icon, label, pkg, id),
-          el('div', { class: 'main' }, el('p', { class: 't' }, label),
-            label !== pkg ? el('p', { class: 's mono' }, pkg) : null), chip(t('awaitingDecision'), 'attn')));
-        continue;
-      }
-      const mode = entries.some(a => a.blocked === '1') ? 'blocked' : array(profile.always_allowed).includes(pkg) ? 'unlimited'
-        : app && (app.minutes === '' || +app.minutes > 0) ? 'limit' : 'allowed';
-      const setRule = next => {
-        const name = app?.package || pkg;
-        current.apps = array(current.apps).filter(a => a.profile !== id || a.package !== name);
-        profile.always_allowed = array(profile.always_allowed).filter(a => a !== name);
-        if (next === 'unlimited') profile.always_allowed.push(name);
-        if (next === 'blocked' || next === 'limit') current.apps.push({ id: app?.id || newID('a_'), profile: id,
-          package: name, minutes: next === 'limit' ? (app && +app.minutes > 0 ? app.minutes : '') : '0', blocked: next === 'blocked' ? '1' : '0' });
+  function resetInventory(profile = '') {
+    clearTimeout(inventoryTimer); inventoryGeneration++;
+    inventory = profile ? { profile, search: '', filter: 'all', page: 0, reply: null, loading: false, error: '' } : null;
+  }
+
+  async function loadInventory() {
+    if (!inventory || stopped) return;
+    const state = inventory, generation = ++inventoryGeneration;
+    state.loading = true; state.error = ''; render();
+    try {
+      const reply = await request('admin_installed', { profile: state.profile, search: state.search, filter: state.filter, page: state.page });
+      if (generation !== inventoryGeneration || inventory !== state || stopped) return;
+      if (reply.profile_id !== state.profile || !Array.isArray(reply.apps) || !Array.isArray(reply.sources) ||
+          !object(reply.counts) || !['all','limit','unlimited','blocked','pending'].every(k => Number.isInteger(reply.counts[k]) && reply.counts[k] >= 0) ||
+          !Number.isInteger(reply.total) || reply.total < 0 || !Number.isInteger(reply.pages) || reply.pages < 1 ||
+          reply.page !== state.page || !Number.isInteger(reply.start) || typeof reply.snapshot !== 'string' ||
+          reply.apps.some(a => !object(a) || typeof a.package !== 'string' || !Array.isArray(a.on))) throw new Error(t('invalid'));
+      state.reply = reply;
+      if (state.page >= reply.pages) { state.page = reply.pages - 1; await loadInventory(); return; }
+    } catch (error) {
+      if (generation !== inventoryGeneration || inventory !== state || stopped) return;
+      state.error = error.message || String(error); state.reply = null;
+    }
+    if (generation === inventoryGeneration && inventory === state && !stopped) { state.loading = false; render(); }
+  }
+
+  function inventoryQuery(change, debounce = false) {
+    if (!inventory) return;
+    Object.assign(inventory, change); inventoryGeneration++; clearTimeout(inventoryTimer);
+    inventory.reply = null; inventory.error = ''; inventory.loading = true;
+    if (debounce) inventoryTimer = win.setTimeout(loadInventory, 160); else loadInventory();
+  }
+
+  function ruleDialog(current, profile, row, disabled, trigger) {
+    if (disabled || busy || !fresh || snapshot.export.pending) return;
+    const pkg = row.package;
+    const entries = array(current.apps).filter(a => a.profile === profile.id && a.package === pkg);
+    const original = entries.some(a => a.blocked === '1') ? 'blocked' : array(profile.always_allowed).includes(pkg) ? 'unlimited' : entries.length ? 'limit' : 'allowed';
+    const initialMinutes = row.minutes != null && entries.length > 1 ? String(row.minutes) : entries.length ? entries[0].minutes : '30';
+    let mode = original, minutes = initialMinutes;
+    const dialog = el('dialog', { class: 'fw-rule-dialog', 'aria-labelledby': 'fw-rule-title' });
+    const close = () => { dialog.close(); dialog.remove(); root.querySelector(`[data-key="${win.CSS.escape(trigger)}"]`)?.focus(); };
+    const form = el('form', { method: 'dialog', onsubmit: event => {
+      event.preventDefault();
+      if (!fresh || busy || reading || snapshot.export.pending || (bound(profile.id) && snapshot.report?.profiles?.[profile.id]?.pact_in_window !== true)) return;
+      if (mode === 'limit' && !form.reportValidity()) return;
+      if (mode !== original || (mode === 'limit' && String(minutes) !== String(initialMinutes))) {
+        current.apps = array(current.apps).filter(a => a.profile !== profile.id || a.package !== pkg);
+        profile.always_allowed = array(profile.always_allowed).filter(a => a !== pkg);
+        if (mode === 'unlimited') profile.always_allowed.push(pkg);
+        if (mode === 'blocked' || mode === 'limit') current.apps.push({ id: entries[0]?.id || array(JSON.parse(draft.base).apps).find(a => a.profile === profile.id && a.package === pkg)?.id || newID('a_'), profile: profile.id, package: pkg,
+          minutes: mode === 'limit' ? String(minutes) : '0', blocked: mode === 'blocked' ? '1' : '0' });
         render();
-      };
-      list.append(el('li', { class: 'fw-item fw-rule-app' },
-        pkg ? appIcon(observed.find(a => a.package === pkg)?.icon, label, pkg, id)
-          : el('span', { class: 'fw-app-icon', 'aria-hidden': 'true' }, '+'),
-        el('div', { class: 'main' }, pkg ? el('p', { class: 't' }, label)
-          : field(t('package'), app.package, v => app.package = v, { disabled, required: true, placeholder: 'com.example.app' }),
-          label !== pkg ? el('p', { class: 's mono', title: pkg }, pkg) : null),
-        el('div', { class: 'fw-app-controls' },
-          select(t('ruleFor', { name: label || t('package') }), mode,
-            [['allowed', t('appAllowed')], ['limit', t('appOwnLimit')], ['unlimited', t('appUnlimited')], ['blocked', t('appBlocked')]], setRule, disabled),
-          mode === 'limit' ? field(t('minutes'), app.minutes, v => app.minutes = v, { type: 'number', min: 1, max: 1440, required: true, disabled }) : null,
-          app || array(profile.always_allowed).includes(pkg) ? button(t('remove'), () => {
-            current.apps = array(current.apps).filter(a => a.profile !== id || a.package !== (app?.package || pkg));
+      }
+      close();
+    } });
+    const duration = el('div', { class: 'fw-rulemins' });
+    const custom = field(t('customMinutes'), minutes, value => { minutes = value; syncChips(); }, { type: 'number', min: original === 'limit' && String(initialMinutes) === '0' ? 0 : 1, max: 1440, required: true });
+    const syncChips = () => { for (const input of duration.querySelectorAll('input')) input.checked = +input.value === +minutes; };
+    duration.append(...[15,30,45,60,90].map(value => el('label', { class: 'fw-minchip' },
+      el('input', { type: 'radio', name: 'minutes', value, onchange: () => { minutes = String(value); custom.querySelector('input').value = minutes; } }),
+      el('span', {}, t('minUnit', { n: value })))));
+    syncChips();
+    const opts = el('fieldset', { class: 'fw-ruleopts' }, el('legend', { class: 'sr' }, t('appRules')));
+    const updateMinutes = () => {
+      duration.hidden = custom.hidden = mode !== 'limit';
+      const input = custom.querySelector('input');
+      locked(input, mode !== 'limit'); input.disabled = mode !== 'limit';
+    };
+    for (const key of ['allowed','limit','unlimited','blocked']) {
+      const radio = el('input', { type: 'radio', name: 'rule', value: key, onchange: () => { mode = key; updateMinutes(); } });
+      radio.checked = key === mode;
+      const card = el('div', { class: 'fw-ruleopt' }, el('label', { class: 'fw-ruleopt-l' }, radio,
+        el('span', {}, el('b', {}, t(inventoryRuleKeys[key])), el('span', { class: 'muted' }, t(inventoryHelpKeys[key])))));
+      if (key === 'limit') card.append(duration, custom);
+      opts.append(card);
+    }
+    updateMinutes();
+    form.append(el('div', { class: 'fw-dlg-head' }, el('p', { class: 'fw-eyebrow' }, t('appScopeShort', { name: profile.name })),
+      el('h2', { class: 'fw-h2', id: 'fw-rule-title' }, t('ruleFor', { name: row.label || pkg })), el('p', { class: 'mono' }, pkg)),
+      el('div', { class: 'fw-dlg-body' }, hint(t('dialogDraftHelp')), entries.length > 1 ? hint(t('multipleAppRules')) : null, opts),
+      el('div', { class: 'fw-dlg-foot' }, button(t('cancel'), close), el('button', { type: 'submit', class: 'fw-btn primary', 'data-control': '' }, t('done'))));
+    dialog.append(form); dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
+    root.append(dialog); controls(); dialog.showModal();
+  }
+
+  function appRulesEditor(current, profile, disabled) {
+    const id = profile.id, state = inventory?.profile === id ? inventory : null;
+    let reply = state?.reply;
+    const fallback = !reply && !state?.loading;
+    if (fallback) {
+      const packages = [...new Set([...array(current.apps).filter(a => a.profile === id).map(a => a.package), ...array(profile.always_allowed)])];
+      if (packages.length) reply = { apps: packages.sort().map(pkg => ({ package: pkg, label: pkg, on: [], rule: 'none' })), sources: [] };
+    }
+    const node = el('fieldset', { class: 'fw-rule-apps' }, el('legend', { class: 'sr' }, t('appRules')));
+    const search = field(t('searchApps'), state?.search || '', value => inventoryQuery({ search: value, page: 0 }, true),
+      { 'data-key': 'inventory-search', maxlength: 256, type: 'search', autocomplete: 'off', placeholder: t('searchProfileApps', { name: profile.name }) });
+    search.append(ic('i-search', 18));
+    // Searching is observation-only; it must never dirty the enclosing rules form.
+    search.addEventListener('input', event => event.stopPropagation());
+    search.addEventListener('change', event => event.stopPropagation());
+    search.addEventListener('keydown', event => { if (event.key === 'Enter') event.preventDefault(); });
+    const counts = reply?.counts;
+    const tabs = el('div', { class: 'fw-seg', role: 'group', 'aria-label': t('filterApps') },
+      ['all','limit','unlimited','blocked'].map(key => el('button', { type: 'button', 'aria-pressed': String(state?.filter === key),
+        'data-key': 'inventory-tab-' + key, onclick: () => inventoryQuery({ filter: key, page: 0 }) },
+      t(inventoryTabKeys[key]), ' ', el('span', { class: 'muted' }, counts ? counts[key] : '—'))));
+    node.append(el('div', { class: 'fw-app-tools' }, el('h2', { class: 'fw-h2' }, t('rulesApps')), search, tabs), hint(t('appScope', { name: profile.name })));
+    // Local-only additions are shown separately, never counted as installed apps
+    // or folded into the server's saved-rule counts and pagination.
+    const loaded = JSON.parse(draft.base);
+    const savedPackages = new Set([...array(loaded.apps).filter(a => a.profile === id).map(a => a.package),
+      ...array(array(loaded.profiles).find(p => p.id === id)?.always_allowed)]);
+    const outsideResults = [...new Set([...array(current.apps).filter(a => a.profile === id).map(a => a.package), ...array(profile.always_allowed)])]
+      .filter(pkg => !savedPackages.has(pkg) && !array(reply?.apps).some(a => a.package === pkg)).sort();
+    if (outsideResults.length) {
+      const list = el('ul', { class: 'fw-applines fw-draft-apps' });
+      for (const pkg of outsideResults) {
+        const entries = array(current.apps).filter(a => a.profile === id && a.package === pkg);
+        const mode = entries.some(a => a.blocked === '1') ? 'blocked' : array(profile.always_allowed).includes(pkg) ? 'unlimited' : 'limit';
+        const ruleText = mode === 'limit' ? t('inventoryLimitPill', { n: entries[0]?.minutes }) : t(inventoryRuleKeys[mode]);
+        list.append(el('li', { class: 'fw-appline' }, appIcon(null, pkg, pkg, id),
+          el('div', { class: 'main' }, el('p', { class: 't mono' }, pkg), el('p', { class: 's' }, t('draftRule'))),
+          locked(el('button', { type: 'button', class: 'fw-rulebtn r-' + mode, 'data-control': '', 'data-key': 'rule-' + pkg, 'aria-haspopup': 'dialog',
+            onclick: () => ruleDialog(current, profile, { package: pkg, label: pkg }, disabled, 'rule-' + pkg) }, ruleText, ' ▾'), disabled),
+          button(t('remove'), () => {
+            current.apps = array(current.apps).filter(a => a.profile !== id || a.package !== pkg);
             profile.always_allowed = array(profile.always_allowed).filter(a => a !== pkg);
             render();
-          }, { small: true, disabled }) : null)));
+          }, { small: true, disabled })));
+      }
+      node.append(hint(t('draftAppsOutsideResults')), list);
     }
-    node.append(packages.length ? list : hint(t('noRuleApps')),
-      button('+ ' + t('addAppRule'), () => {
-        current.apps = [...array(current.apps), { id: newID('a_'), profile: id, package: '', minutes: '', blocked: '0' }];
-        render();
-      }, { small: true, disabled }));
+    if (state?.error === 'app_control_off') node.append(hint(t('inventoryAppControlOff')));
+    if (state?.loading) node.append(hint(t('loading')));
+    else if (!reply) node.append(hint(t('inventoryUnavailable')), button(t('refresh'), loadInventory));
+    else {
+      if (fallback) node.append(hint(t('inventoryConfiguredOnly')), button(t('refresh'), loadInventory));
+      if (reply.sources.some(s => !s.reported || s.installed > s.sent)) node.append(hint(t('inventoryPartial')));
+      node.append(el('p', { class: 'sr', 'aria-live': 'polite' }, t('inventoryMatchCount', { n: reply.total ?? reply.apps.length })));
+      const list = el('ul', { class: 'fw-applines' });
+      for (const row of reply.apps) {
+        const pkg = row.package, label = row.label || pkg;
+        const entries = array(current.apps).filter(a => a.profile === id && a.package === pkg), app = entries[0];
+        const savedEntries = array(conf().current.apps).filter(a => a.profile === id && a.package === pkg);
+        const changed = JSON.stringify(entries) !== JSON.stringify(savedEntries) || array(profile.always_allowed).includes(pkg) !== array(profiles().find(p => p.id === id)?.always_allowed).includes(pkg);
+        const mode = changed || fallback
+          ? entries.some(a => a.blocked === '1') ? 'blocked' : array(profile.always_allowed).includes(pkg) ? 'unlimited' : entries.length ? 'limit' : 'allowed'
+          : row.rule === 'pending' ? 'pending' : row.rule === 'none' ? 'allowed' : row.rule;
+        const minutes = changed || fallback ? app?.minutes : row.minutes;
+        const ruleText = mode === 'limit' ? t('inventoryLimitPill', { n: minutes }) : mode === 'pending' ? t('awaitingDecision') : t(inventoryRuleKeys[mode]);
+        const usage = mode === 'pending' ? t('attnPaused') : mode === 'blocked' ? t('inventoryHelp_blocked')
+          : Number.isFinite(row.seconds) ? mode === 'limit' ? t('appUsageLimit', { used: Math.floor(row.seconds / 60), limit: minutes })
+            : t('appUsage', { n: Math.floor(row.seconds / 60) }) + ' · ' + t(mode === 'unlimited' ? 'appNotCounted' : 'appCountsBudget')
+            : t('appUsageMissing');
+        const rule = mode === 'pending' ? actions(
+          button(t('inventoryApprove'), () => mutate('app_decision', { profile: id, package: pkg, action: 'approve' }, { done: () => loadInventory() }), { small: true, disabled: disabled || bound(id) }),
+          button(t('inventoryDeny'), () => mutate('app_decision', { profile: id, package: pkg, action: 'deny' }, { done: () => loadInventory() }), { small: true, disabled }))
+          : locked(el('button', { type: 'button', class: 'fw-rulebtn r-' + mode, 'data-control': '', 'data-key': 'rule-' + pkg, 'aria-haspopup': 'dialog',
+            onclick: () => ruleDialog(current, profile, row, disabled, 'rule-' + pkg) }, ruleText, changed ? ' · ' + t('draftRule') : '', ' ▾'), disabled);
+        list.append(el('li', { class: 'fw-appline fw-rule-app' }, appIcon(null, label, pkg, id),
+          el('div', { class: 'main' }, el('p', { class: 't' }, label), el('p', { class: 's mono', title: pkg }, pkg),
+            el('p', { class: 's' }, usage, row.on.length ? '' : ' · ' + t('appNotReported')),
+            mode === 'limit' && Number.isFinite(row.seconds) && +minutes > 0 ? el('div', { class: 'fw-meter sm', 'aria-hidden': 'true' },
+              el('i', { style: `width:${Math.min(100, row.seconds / (+minutes * 60) * 100)}%` })) : null), rule));
+      }
+      node.append(reply.apps.length ? list : hint(t('inventoryEmpty')));
+      const pageButton = (label, page, off = false) => { const b = button(label, () => inventoryQuery({ page }), { small: true, disabled: off }); b.dataset.key = 'inventory-page-' + page; return b; };
+      // Keep the navigation bounded even when many phones report disjoint inventories.
+      const pages = [...new Set([0, ...Array.from({ length: 5 }, (_, i) => (state?.page || 0) - 2 + i), reply.pages - 1])].filter(p => p >= 0 && p < reply.pages).sort((a,b) => a-b);
+      if (!fallback) node.append(el('div', { class: 'fw-app-paging' }, el('span', { class: 'muted' }, t('inventoryRange', { start: reply.apps.length ? reply.start + 1 : 0, end: reply.start + reply.apps.length, total: reply.total })),
+        el('nav', { 'aria-label': t('appPages'), class: 'fw-btns' }, pageButton(t('previousPage'), state.page - 1, state.page === 0),
+          pages.map(page => { const b = pageButton(String(page + 1), page); if (page === state.page) b.setAttribute('aria-current', 'page'); return b; }),
+          pageButton(t('nextPage'), state.page + 1, state.page >= reply.pages - 1))));
+    }
+    node.append(button('+ ' + t('addAppRule'), () => {
+      const pkg = win.prompt(t('package'));
+      if (!pkg) return;
+      ruleDialog(current, profile, { package: pkg, label: pkg }, disabled, 'inventory-search');
+    }, { small: true, disabled }));
     return node;
   }
 
@@ -760,7 +913,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
     const current = draft.current, p = current.profiles.find(v => v.id === draft.id);
     const frozen = bound(p.id), windowOpen = row(p.id)?.pact_in_window === true, ruleLock = frozen && !windowOpen;
     const form = el('form', { class: 'fw-rules', onsubmit: event => { event.preventDefault(); if (form.reportValidity()) applyDraft(); } });
-    const changed = () => JSON.stringify(current) !== draft.base;
+    const changed = draftChanged;
     const saveBar = el('div', { class: 'fw-dirty', role: 'region', 'aria-label': t('unsavedChanges') },
       el('p', {}, el('strong', {}, t('unsavedChanges')), ' · ', t('unsavedHelp')),
       button(t('discard'), () => {
@@ -775,7 +928,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
     form.addEventListener('input', updateDirty);
     form.addEventListener('change', updateDirty);
     const rulesPanel = (title, badge, ...content) => el('section', { class: 'fw-panel fw-rule-panel' },
-      el('div', { class: 'fw-section-head' }, el('h2', { class: 'fw-h2' }, title), badge ? chip(badge, 'dim') : null), ...content);
+      title ? el('div', { class: 'fw-section-head' }, el('h2', { class: 'fw-h2' }, title), badge ? chip(badge, 'dim') : null) : null, ...content);
     const pattern = draft.budgetMode || (p.screen_weekday !== '' && p.screen_weekday != null || p.screen_weekend !== '' && p.screen_weekend != null ? 'split' : 'all');
     const budgetPattern = el('div', { class: 'fw-seg', role: 'group', 'aria-label': t('budgetPattern') },
       ['all', 'split'].map(mode => locked(el('button', { type: 'button', 'data-control': '', 'aria-pressed': String(pattern === mode), onclick: () => {
@@ -799,7 +952,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
           : [field(t('weekday'), p.screen_weekday, v => p.screen_weekday = v, { type: 'number', min: 0, max: 1440, disabled: ruleLock }),
              field(t('weekend'), p.screen_weekend, v => p.screen_weekend = v, { type: 'number', min: 0, max: 1440, disabled: ruleLock })]),
         hint(t('budgetSharingHelp'))),
-      rulesPanel(t('rulesApps'), '', appRulesEditor(current, p, ruleLock),
+      rulesPanel('', '', appRulesEditor(current, p, ruleLock),
         el('div', { class: 'fw-item' }, el('div', { class: 'main' }, el('p', { class: 't' }, t('suspendNew')),
           el('p', { class: 's' }, t('newAppsHelp'))), newAppsSwitch)),
       rulesPanel(t('rulesDowntime'), t('onDevices'), hint(t('downtimeHelp')), windowsEditor(current, 'downtime', p.id, ruleLock)),
@@ -1062,6 +1215,9 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
 
   function render() {
     if (!snapshot || stopped) return;
+    const active = doc.activeElement;
+    const focusKey = active?.dataset.key;
+    const caret = focusKey && typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
     renderRail();
     if (view === 'requests') {
       let panelNode = viewEl.querySelector('.fwx');
@@ -1085,6 +1241,11 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
     else content = administrationView();
     viewEl.replaceChildren(...[banner(), content].flat(Infinity).filter(child => child != null));
     controls();
+    if (focusKey) {
+      const next = viewEl.querySelector(`[data-key="${win.CSS.escape(focusKey)}"]`);
+      next?.focus();
+      if (caret && next?.setSelectionRange) next.setSelectionRange(...caret);
+    }
   }
 
   async function refresh(force = true) {
@@ -1119,6 +1280,9 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
       }
       if (stopped || !root.isConnected) return;
       snapshot = next; fresh = true;
+      if (inventory && !array(exported.configuration.current.profiles).some(p => p.id === inventory.profile)) {
+        resetInventory();
+      } else if (inventory) loadInventory();
       if (confirmation && !exported.pending && exported.configuration.revision !== confirmation.revision) {
         confirmation = null; message(t('rolledBack'));
       }
@@ -1139,5 +1303,5 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
   }
 
   refresh();
-  return { refresh, setTheme, stop: () => { stopped = true; fresh = false; colorPreference?.removeEventListener('change', updateTheme); clearTimeout(timer); requestsMount?.stop(); requestsMount = null; controls(); } };
+  return { refresh, setTheme, stop: () => { stopped = true; fresh = false; colorPreference?.removeEventListener('change', updateTheme); clearTimeout(timer); resetInventory(); root.querySelectorAll('.fw-rule-dialog').forEach(node => node.remove()); requestsMount?.stop(); requestsMount = null; controls(); } };
 }

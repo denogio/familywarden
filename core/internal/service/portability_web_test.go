@@ -19,6 +19,27 @@ import (
 	"time"
 )
 
+func TestAdminInstalledAPI(t *testing.T) {
+	f := newPortableFixture(t)
+	phone := f.phone("fw-alex", "alex")
+	r := f.upload(phone, "inventory", map[string]any{"type": "inventory", "v": 1, "device": phone.id, "profile": "alex", "seq": 1, "installed": 1,
+		"apps": []map[string]any{{"package": "com.example.unused", "label": "Alex unused app", "system": false, "essential": false}}})
+	if r["state"] != "stored" {
+		t.Fatal(r)
+	}
+	r = f.api("admin_installed", map[string]any{"profile": "alex", "search": "UNUSED", "filter": "all", "page": 0})
+	if r["total"] != float64(1) || r["page_size"] != float64(20) {
+		t.Fatal(r)
+	}
+	a := r["apps"].([]any)[0].(map[string]any)
+	if a["package"] != "com.example.unused" || a["seconds"] != nil {
+		t.Fatal(a)
+	}
+	if r := f.call("/api/admin_installed", map[string]any{"profile": "alex", "extra": true}); r["error"] != "malformed request" {
+		t.Fatal(r)
+	}
+}
+
 // Opt-in only because this requires the repository's existing Playwright install.
 // CI runs it explicitly. The helper process is the browser driver, never a native
 // adapter command; production services still run with an empty PATH.

@@ -42,7 +42,32 @@ func (s *Service) installed(d Device, raw []byte, ctx platform.Context) object {
 	if m.Profile != d.Profile && !slices.Contains(effectiveApproves(d, ctx), m.Profile) {
 		return refuse("not_parent")
 	}
-	prof, ok := ctx.Profiles[m.Profile]
+	out := s.installedInventory(m.Profile, ctx)
+	for i := range out {
+		if out[i].k == "apps" {
+			page, used, more := []Reply{}, 0, false
+			for _, r := range out[i].v.([]Reply) {
+				if r["package"].(string) <= m.After {
+					continue
+				}
+				b, _ := json.Marshal(r)
+				if used+len(b)+1 > installedPageBytes {
+					more = true
+					break
+				}
+				page, used = append(page, r), used+len(b)+1
+			}
+			out[i].v = page
+			return append(out, field{"after", m.After}, field{"more", more})
+		}
+	}
+	return out
+}
+
+// installedInventory aggregates observations and compiled rules under the identity lock.
+// Both phone and administrator readers apply their own authentication and paging.
+func (s *Service) installedInventory(profile string, ctx platform.Context) object {
+	prof, ok := ctx.Profiles[profile]
 	if !ok || prof.AppsRev == "" {
 		return refuse("app_control_off")
 	}
@@ -53,7 +78,7 @@ func (s *Service) installed(d Device, raw []byte, ctx platform.Context) object {
 	if err != nil || policy == nil {
 		return refuse("unavailable")
 	}
-	snapshots, err := s.Inventory.Inventories(m.Profile)
+	snapshots, err := s.Inventory.Inventories(profile)
 	if err != nil {
 		return refuse("unavailable")
 	}
@@ -73,7 +98,7 @@ func (s *Service) installed(d Device, raw []byte, ctx platform.Context) object {
 	digest := sha256.New()
 	var phones []Device
 	for _, p := range s.devices {
-		if p.Profile == m.Profile {
+		if p.Profile == profile {
 			phones = append(phones, p)
 		}
 	}
@@ -121,7 +146,7 @@ func (s *Service) installed(d Device, raw []byte, ctx platform.Context) object {
 	for _, l := range policy.Limits {
 		set(l.Package, Reply{"rule": "limit", "minutes": l.Minutes})
 	}
-	for _, pkg := range append(slices.Clone(policy.Approved), s.approvedFor(m.Profile)...) {
+	for _, pkg := range append(slices.Clone(policy.Approved), s.approvedFor(profile)...) {
 		set(pkg, Reply{"rule": "allowed"})
 	}
 	for pkg := range rule {
@@ -132,12 +157,10 @@ func (s *Service) installed(d Device, raw []byte, ctx platform.Context) object {
 	fmt.Fprintf(digest, "%s %t\n", prof.AppsRev, policy.SuspendNew)
 	names := make([]string, 0, len(apps))
 	for pkg := range apps {
-		if pkg > m.After {
-			names = append(names, pkg)
-		}
+		names = append(names, pkg)
 	}
 	sort.Strings(names)
-	page, used, more := []Reply{}, 0, false
+	page := []Reply{}
 	for _, pkg := range names {
 		e := apps[pkg]
 		r := Reply{"package": pkg, "label": e.label, "on": nonNilInts(e.on), "system": nonNilInts(e.system),
@@ -147,15 +170,10 @@ func (s *Service) installed(d Device, raw []byte, ctx platform.Context) object {
 				r[k] = v
 			}
 		}
-		b, _ := json.Marshal(r)
-		if used+len(b)+1 > installedPageBytes {
-			more = true
-			break
-		}
-		page, used = append(page, r), used+len(b)+1
+		page = append(page, r)
 	}
-	return object{{"profile_id", m.Profile}, {"after", m.After}, {"snapshot", hex.EncodeToString(digest.Sum(nil))[:32]},
-		{"apps_rev", prof.AppsRev}, {"suspend_new", policy.SuspendNew}, {"sources", sources}, {"apps", page}, {"more", more}}
+	return object{{"profile_id", profile}, {"snapshot", hex.EncodeToString(digest.Sum(nil))[:32]},
+		{"apps_rev", prof.AppsRev}, {"suspend_new", policy.SuspendNew}, {"sources", sources}, {"apps", page}}
 }
 
 func nonNilInts(v []int) []int {

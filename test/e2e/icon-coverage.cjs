@@ -101,13 +101,49 @@ const {chromium, expect} = require('@playwright/test');
     release(); responseGate=null;
     await expect.poll(() => requests).toBe(initialRequests*2);
     await page.screenshot({path:output+'/icon-grid-dpr2.png',fullPage:true});
+    // A deliberately hostile host image default must not introduce a pale rim.
+    await page.addStyleTag({content:'img{border:1px solid #f5f5f5;padding:2px;max-width:90%}'});
+    await page.locator('main').evaluate(node => node.classList.add('is-dark'));
+    const tile = page.locator('[data-pkg="com.example.app000"] .fw-app-icon');
+    await tile.screenshot({path:output+'/dark-icon-closeup-dpr2.png'});
+    const pixels = await page.evaluate(async png => {
+      const img = new Image(); img.src='data:image/png;base64,'+png; await img.decode();
+      const canvas=document.createElement('canvas');canvas.width=img.width;canvas.height=img.height;
+      const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0);
+      return [...ctx.getImageData(34,2,1,1).data];
+    }, (await tile.screenshot()).toString('base64'));
+    assert.deepEqual(pixels,[56,156,104,255],'opaque artwork must reach the top edge on dark backgrounds');
+    assert.equal(await tile.locator('img').evaluate(img => getComputedStyle(img).objectFit),'cover');
+    await page.evaluate(async () => {
+      const {mount}=await import('/web/control.js');
+      const profile={id:'alex',name:'Alex',enabled:'1',policy:'allow',apps:'1',suspend_new:'1',screen_minutes:'60',screen_weekday:'',screen_weekend:'',always_allowed:[]};
+      const data={configuration_export:{owner:'core',pending:false,configuration:{version:1,revision:'visual',pact:null,current:{settings:{},profiles:[profile],apps:[{id:'a_1',profile:'alex',package:'com.example.app000',minutes:'30',blocked:'0'}],schedules:[],downtime:[]}}},
+        configuration_report:{profiles:{alex:{name:'Alex',status:'allowed'}},configuration:{}},configuration_status:{owner:'core'},core_status:{running:true},version:{},devices:{devices:[],pending:[]},
+        configuration_dns_status:{format:'dns-state-v1',profiles:{},pending:false},usage:{profiles:[]},requests:{requests:[]},new_apps:{profiles:[]}};
+      const root=document.createElement('main');document.body.replaceChildren(root);
+      window.visualControl=mount(root,{theme:'dark',call:async(method,query)=> {
+        if(method==='inventory_icons') return (await fetch('/api/'+method,{method:'POST',body:JSON.stringify(query)})).json();
+        if(method==='admin_installed') return {profile_id:'alex',snapshot:'visual',apps:[0,1,2].map((i)=>({package:'com.example.app00'+i,label:['Video','Alex music','Alex drawing'][i],rule:i===0?'limit':'none',minutes:i===0?30:undefined,seconds:i===0?1320:undefined,on:[0]})),sources:[{reported:true,installed:3,sent:3}],counts:{all:3,limit:1,unlimited:0,blocked:0,pending:0},total:3,pages:1,page:0,start:0};
+        return data[method] || {status:'ok'};
+      }});
+    });
+    await page.getByRole('button',{name:'Edit rules',exact:true}).click();
+    await expect(page.locator('.fw-rule-apps img')).toHaveCount(3);
+    await page.locator('.fw-rule-apps').locator('..').screenshot({path:output+'/control-apps-dark-dpr2.png'});
+    await page.locator('.fw-rulebtn').first().click();
+    await page.getByRole('dialog').screenshot({path:output+'/control-rule-modal-dark-dpr2.png'});
+    await page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
     if (prototype) {
       await page.goto(base+'/prototype');
       await page.screenshot({path:output+'/prototype-family-dpr2.png',fullPage:true});
-      await page.getByRole('button',{name:'Open Alex',exact:true}).click();
+      await page.getByRole('button',{name:'View Alex’s details',exact:true}).click();
       await page.getByRole('tab',{name:'History',exact:true}).click();
       await page.evaluate(() => window.scrollTo(0,0));
       await page.screenshot({path:output+'/prototype-history-dpr2.png',fullPage:true});
+      await page.getByRole('tab',{name:'Rules',exact:true}).click();
+      await page.locator('section').filter({has:page.getByRole('heading',{name:'Apps',exact:true})}).screenshot({path:output+'/prototype-apps-dpr2.png'});
+      await page.locator('.fw-rulebtn').first().click();
+      await page.getByRole('dialog').screenshot({path:output+'/prototype-rule-modal-dpr2.png'});
     } else {
       console.log('Prototype captures skipped: set FW_CONTROL_PROTOTYPE for visual comparison.');
     }
