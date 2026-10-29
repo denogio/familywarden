@@ -13,6 +13,7 @@ function replies() {
       schedules:null,apps:null,downtime:null,legacy_phones:null}}},
     configuration_report:{profiles:{alex:{name:'Alex',status:'allowed',policy:'allow',override:'none',override_expires:0}},configuration:{enabled:true}},
     core_status:{running:true,core:'test-version'},
+    version:{backend:'familywarden-0.11.0_rc10-r18',frontend:'luci-app-familywarden-0.11.0-r13',configuration_owner:'core'},
     configuration_status:{owner:'core',network_application:{state:'acknowledged',intent_id:'fixture',revision:'r1',acknowledged_at:1800000000}},
     configuration_dns_status:{format:'dns-state-v1',credentials:false,time:0,error:'',pending:true,profiles:{}},
     devices:{devices:[],pending:[]},usage:{profiles:[],day:'2027-01-15'},requests:{requests:[]},new_apps:{profiles:[]},
@@ -452,6 +453,36 @@ test.describe('shared control without LuCI globals', () => {
     await page.evaluate(() => {window.replies.configuration_report = {profiles:{},configuration:{}};});
     await page.getByRole('button',{name:'Refresh',exact:true}).click();
     await expect(page.getByRole('button',{name:'Edit rules',exact:true})).toBeEnabled();
+  });
+
+  test('every component version is visible', async ({ page }) => {
+    await neutral(page);
+    await expect(page.locator('.fw-status')).toContainText('Web interface 0.11.0-r13');
+    await page.locator('.fw-nav').getByRole('button',{name:'Administration',exact:true}).click();
+    const health = page.locator('.fw-panel').first();
+    for (const v of ['test-version','0.11.0_rc10-r18','0.11.0-r13']) await expect(health.getByText(v,{exact:true})).toBeVisible();
+  });
+
+  test('app rule controls line up without overlapping', async ({ page }) => {
+    const data = replies();
+    data.configuration_export.configuration.current.apps = [
+      {id:'a_1',profile:'alex',package:'com.example.search',minutes:'15',blocked:'0'},
+      {id:'a_2',profile:'alex',package:'com.example.maps',minutes:'0',blocked:'1'}];
+    await page.setViewportSize({width:1100,height:900});
+    await neutral(page,{data});
+    await page.locator('.fw-nav').getByRole('button',{name:'Alex',exact:true}).click();
+    await page.getByRole('tab',{name:'Rules',exact:true}).click();
+    const rows = await page.locator('.fw-rule-app .fw-app-controls').evaluateAll(list => list.map(c => {
+      const box = sel => c.querySelector(sel)?.getBoundingClientRect();
+      return { select: box('select'), input: box('input'), remove: box('.fw-btn') };
+    }));
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    expect(rows[0].input.right).toBeLessThanOrEqual(rows[0].remove.left);
+    expect(rows[0].select.right).toBeLessThanOrEqual(rows[0].input.left);
+    for (const r of rows.slice(1)) {
+      expect(Math.round(r.select.left)).toBe(Math.round(rows[0].select.left));
+      expect(Math.round(r.select.width)).toBe(Math.round(rows[0].select.width));
+    }
   });
 
   test('DNS failures keep acknowledged profiles visible instead of presenting an empty successful state', async ({ page }) => {

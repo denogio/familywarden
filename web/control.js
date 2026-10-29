@@ -715,7 +715,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
       const label = observed.find(a => a.package === pkg)?.label || awaiting?.label || pkg;
       if (awaiting) {
         list.append(el('li', { class: 'fw-item' },
-          el('span', { class: 'fw-app-icon', 'aria-hidden': 'true' }, (label || '?')[0].toUpperCase()),
+          el('span', { class: 'fw-app-icon', 'aria-hidden': 'true' }, initial(label, pkg)),
           el('div', { class: 'main' }, el('p', { class: 't' }, label),
             label !== pkg ? el('p', { class: 's mono' }, pkg) : null), chip(t('awaitingDecision'), 'attn')));
         continue;
@@ -732,10 +732,10 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
         render();
       };
       list.append(el('li', { class: 'fw-item fw-rule-app' },
-        el('span', { class: 'fw-app-icon', 'aria-hidden': 'true' }, (label || '+')[0].toUpperCase()),
+        el('span', { class: 'fw-app-icon', 'aria-hidden': 'true' }, pkg ? initial(label, pkg) : '+'),
         el('div', { class: 'main' }, pkg ? el('p', { class: 't' }, label)
           : field(t('package'), app.package, v => app.package = v, { disabled, required: true, placeholder: 'com.example.app' }),
-          label !== pkg ? el('p', { class: 's mono' }, pkg) : null),
+          label !== pkg ? el('p', { class: 's mono', title: pkg }, pkg) : null),
         el('div', { class: 'fw-app-controls' },
           select(t('ruleFor', { name: label || t('package') }), mode,
             [['allowed', t('appAllowed')], ['limit', t('appOwnLimit')], ['unlimited', t('appUnlimited')], ['blocked', t('appBlocked')]], setRule, disabled),
@@ -953,6 +953,21 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
       glossary()];
   }
 
+  // Unlabelled packages use their last segment: com.example.games -> G.
+  const initial = (label, pkg) => ((label && label !== pkg ? label : String(pkg || '').split('.').pop()) || '?')[0].toUpperCase();
+
+  // Package names are stripped: "familywarden-0.11.0-r12" -> "0.11.0-r12".
+  function versions() {
+    const plain = v => typeof v === 'string' ? v.replace(/^[a-z-]+?-(?=\d)/, '') : null;
+    return { core: snapshot?.health?.core || null, backend: plain(snapshot?.version?.backend), ui: plain(snapshot?.version?.frontend) };
+  }
+
+  function versionFacts() {
+    const v = versions();
+    return [[ t('coreVersion'), v.core || t('unavailable') ], [ t('backendVersion'), v.backend || t('unavailable') ],
+      [ t('uiVersion'), v.ui || t('unavailable') ]];
+  }
+
   function administrationView() {
     if (draft?.kind === 'settings') return settingsEditor();
     const application = snapshot.status?.network_application;
@@ -995,7 +1010,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
         el('div', { class: 'fw-grid2' },
           panel(t('coreHealth'),
             chip(health?.running ? t('coreRunning') : t('coreStopped'), health?.running ? 'ok' : 'fault'),
-            facts([[ t('coreVersion'), health?.core || t('unavailable') ],
+            facts([...versionFacts(),
               [ t('configurationRevision'), el('code', {}, conf()?.revision || t('unavailable')) ]])),
           panel(t('application'),
             facts([[ t('application'), application?.state === 'acknowledged' ? t('acknowledged') : t('unavailable') ],
@@ -1027,7 +1042,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
         el('div', { class: 'fw-panel' }, button(t('edit'), editSettings))),
       el('div', { class: 'fw-grid2' },
         panel(t('diagnostics'),
-          facts([[ t('coreVersion'), health?.core || t('unavailable') ],
+          facts([...versionFacts(),
             [ t('configurationRevision'), el('code', {}, conf()?.revision || t('unavailable')) ],
             [ t('hostAdapter'), t('hostLuCI') ],
             [ t('day'), snapshot.report?.day || t('unavailable') ]])),
@@ -1085,7 +1100,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
     reading = true; controls();
     try {
       const exported = validateExport(await request('configuration_export'));
-      let next = { export: exported }, missing = [];
+      let next = { export: exported, version: await request('version').catch(() => null) }, missing = [];
       if (exported.owner === 'core') {
         const keys = ['report', 'devices', 'dns', 'usage', 'status', 'health', 'requests', 'new_apps'];
         const results = await Promise.allSettled(keys.map(key => request({
@@ -1109,6 +1124,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
         confirmation = null; message(t('rolledBack'));
       }
       status.textContent = t('updated', { time: new Date().toLocaleTimeString(lang) }) +
+        (versions().ui ? ' · ' + t('uiVersion') + ' ' + versions().ui : '') +
         (missing.length ? ' · ' + t('partial', { error: missing.join('; ') }) : '');
       render();
     } catch (error) {

@@ -5,7 +5,7 @@
 // Thin host contract only. All presentation lives in the repository's web/;
 // LuCI supplies its existing session/ACL RPC path and optional native facts.
 var definitions = {
- core_status: ['core_status'],
+ core_status: ['core_status'], version: ['version'],
  configuration_status: ['configuration_status'], configuration_export: ['configuration_export'],
  configuration_import: ['configuration_import','revision'], configuration_report: ['list'],
  configuration_apply: ['configuration_apply','revision','current'], configuration_confirm: ['configuration_confirm','revision','token'],

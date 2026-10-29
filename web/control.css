@@ -159,7 +159,7 @@
 .fwa .fw-item{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:12px 0;border-top:1px solid var(--line)}
 .fwa .fw-list>.fw-item:first-child{border-top:0;padding-top:4px}
 .fwa .fw-item .main{flex:1 1 240px;min-width:0}
-.fwa .fw-item .t{margin:0;font-weight:600}
+.fwa .fw-item .t{margin:0;font-weight:600;color:var(--ink)}
 .fwa .fw-item .s{margin:2px 0 0;color:var(--muted);font-size:.875rem}
 .fwa .fw-table{width:100%;border-collapse:collapse;font-size:.875rem}
 .fwa .fw-table th,.fwa .fw-table td{padding:.5rem .4rem;text-align:start;border-bottom:1px solid var(--line)}
@@ -193,9 +193,14 @@
 .fwa .fw-budget-fields>.fw-field{width:12rem;max-width:100%;margin:0}
 .fwa .fw-app-icon{width:34px;height:34px;flex:none;display:grid;place-items:center;border-radius:8px;background:#3D5A8A;color:#fff;font-weight:700}
 .fwa .fw-rule-app .main{flex:1 1 180px}
-.fwa .fw-app-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px;max-width:100%}
+.fwa .fw-rule-app .s.mono{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fwa .fw-app-controls{display:grid;grid-template-columns:minmax(0,17rem) 5.5rem 6.5rem;align-items:center;gap:8px;margin-left:auto;max-width:100%}
+.fwa .fw-app-controls>*{grid-column:1}
 .fwa .fw-app-controls .fw-field{margin:0;min-width:0}
-.fwa .fw-app-controls .fw-field:has(input[type=number]){width:6rem}
+.fwa .fw-app-controls .fw-field:has(input[type=number]){grid-column:2}
+.fwa .fw-app-controls .fw-input[type=number]{min-width:0;width:100%}
+.fwa .fw-app-controls>.fw-btn{grid-column:3;justify-self:end}
+@media (max-width:640px){.fwa .fw-app-controls{flex:1 1 100%;grid-template-columns:minmax(0,1fr) 5.5rem auto}}
 .fwa .fw-app-controls .fw-field>label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .fwa .fw-days button{padding:0 8px;min-height:36px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);color:var(--muted);font-size:.8125rem;font-weight:600;cursor:pointer}
 .fwa .fw-days button[aria-pressed=true]{background:var(--gold-soft);border-color:var(--gold-line);color:var(--gold)}
