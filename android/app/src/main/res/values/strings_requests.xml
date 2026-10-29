@@ -55,7 +55,7 @@
     <string name="fw_usage_none">No screen time reported today yet.</string>
     <string name="fw_usage_incomplete">Some time may be missing: a phone restarted or could not read usage for a while.</string>
     <string name="fw_app_new_title">New app</string>
-    <string name="fw_app_new_body">Installed and paused until you allow it. Allowing it lets it run under the usual screen-time rules.</string>
+    <string name="fw_app_new_body">New apps wait for approval and may open briefly before being paused. Allowing this app lets it run under the usual screen-time rules.</string>
     <string name="fw_app_allow">Allow</string>
     <string name="fw_app_deny">Keep paused</string>
     <string name="fw_app_allowed_sent">Allowed. The app works once the child phone applies the policy.</string>

@@ -124,6 +124,13 @@ object Sync {
         return if (uri.port == -1) "http://$host:$PORT" else "http://$host"
     }
 
+    /** Open the host's web root, not the separate sail server or a platform-specific UI path. */
+    internal fun routerAdminUrl(host: String): String {
+        val endpoint = java.net.URI(base(host))
+        return java.net.URI("http", null, endpoint.host, -1,
+            "/", null, null).toASCIIString()
+    }
+
     internal fun isNumericEndpoint(endpoint: String): Boolean {
         return runCatching {
             base(endpoint)

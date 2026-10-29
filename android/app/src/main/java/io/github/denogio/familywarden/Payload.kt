@@ -103,6 +103,7 @@ object Payload {
             familyUsage = if (version == 3 && o.has("usage"))
                 UsageUpload.parse(o.getJSONArray("usage"), binding?.approves ?: emptyList()) else emptyList(),
             generation = if (scoped && o.has("generation")) HouseholdGeneration.parse(o.getJSONObject("generation")) else null,
+            voyageDetails = if (scoped && pact.has("details")) voyageDetails(pact) else null,
         )
         // Bounded epoch seconds (through year 9999), not milliseconds/overflowing alarm times.
         require(listOf(state.serverTime, state.pactUntil, state.releaseAt).all {
@@ -129,7 +130,23 @@ object Payload {
 
     private val profileId = Regex("[A-Za-z0-9_-]{1,64}")
 
-    /** Optional; strict when present. Unique profiles, never the phone's own (checked by caller). */
+    /** Optional frozen display facts; never used by policy evaluators. */
+    private fun voyageDetails(pact: JSONObject): VoyageDetails {
+        require(pact.getBoolean("active")) { "metadata for inactive voyage" }
+        val details = pact.getJSONObject("details")
+        val waiting = if (details.has("waiting_seconds")) RequestProtocol.integer(details, "waiting_seconds")
+            .also { require(it in 0..MAX_EPOCH) } else null
+        val amendment = if (details.has("amendment")) {
+            val raw = details.getJSONObject("amendment")
+            val endOfDay = raw.getString("stop") == "24:00"
+            // LocalTime has no 24:00; only this display-only end can use midnight.
+            window(if (endOfDay) JSONObject(raw.toString()).put("stop", "00:00") else raw).also {
+                require(pact.getString("type") == "ongoing" && it.days.size == 1 && (endOfDay || it.start < it.stop))
+            }
+        } else null
+        return VoyageDetails(waiting, amendment)
+    }
+
     private fun approves(b: JSONObject): List<ProfileRef> {
         val arr = b.optJSONArray("approves") ?: return emptyList()
         require(arr.length() <= 16) { "too many approved profiles" }

@@ -67,7 +67,8 @@ EOF
     familywarden reload >/dev/null
     [ -x /usr/sbin/familywardend ] && { mkdir -p /var/run/familywarden-core; (familywardend >/tmp/core.log 2>&1 &); sleep 2; }
     (uhttpd -f -p 0.0.0.0:7700 -h /www-familywarden -x /cgi-bin >/dev/null 2>&1 &)
-    echo "{\"until\":0}" | /usr/libexec/rpcd/familywarden call pact >/dev/null
+    # Valid exclusive midnight end must not make optional voyage metadata reject policy.
+    echo "{\"until\":0,\"window_day\":\"sun\",\"window_start\":\"23:00\",\"window_stop\":\"24:00\"}" | /usr/libexec/rpcd/familywarden call pact >/dev/null
 '
 ROUTER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$ROUTER")
 KEY=$(docker exec "$ROUTER" familywarden mast-pubkey | head -1 | sed 's/+/%2B/g; s|/|%2F|g; s/=/%3D/g')

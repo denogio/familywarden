@@ -46,6 +46,16 @@ class SyncTransportTest {
         }
     }
 
+    @Test fun routerAdministrationUsesTheHostNotTheSailPortAndRejectsAddressInjection() {
+        val path = "/"
+        assertEquals("http://192.0.2.1$path", Sync.routerAdminUrl("192.0.2.1"))
+        assertEquals("http://router.test$path", Sync.routerAdminUrl("router.test:7700"))
+        assertEquals("http://[2001:db8::1]$path", Sync.routerAdminUrl("[2001:db8::1]:7701"))
+        for (bad in listOf("user@router.test", "router.test/admin", "router.test?next=evil", "router.test#fragment", "router.test:0")) {
+            assertTrue(bad, runCatching { Sync.routerAdminUrl(bad) }.isFailure)
+        }
+    }
+
     @Test fun numericControlPathStillVerifiesSignatureAndIncludesFreshNonce() {
         server({ uri, out ->
             assertEquals("/cgi-bin/mast", uri.path)

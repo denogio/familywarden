@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import io.github.denogio.familywarden.R
 import io.github.denogio.familywarden.ui.components.*
+import java.time.Instant
+import java.time.ZoneId
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,7 +50,7 @@ fun FamilyChildSelector(state: FamilyWardenState, preferred: String?, onSelect: 
 
 /** Signed summaries only: no inferred online, applied or enforcement state. */
 @Composable
-fun FamilyTimeContent(state: FamilyWardenState, selectedChild: String? = null) {
+fun FamilyTimeContent(state: FamilyWardenState, selectedChild: String? = null, onHistory: () -> Unit = {}) {
     if (state.binding == null) {
         HeroCard {
             HeroTitle(stringResource(R.string.fw_request_waiting_approval))
@@ -63,10 +65,13 @@ fun FamilyTimeContent(state: FamilyWardenState, selectedChild: String? = null) {
     }
     for (profile in profiles) {
         val usage = state.familyUsage.firstOrNull { it.profile.id == profile.id }
+        val today = Instant.ofEpochMilli(state.requestEpoch?.times(1000) ?: state.nowMillis)
+            .atZone(ZoneId.of(state.timeZone ?: ZoneId.systemDefault().id)).toLocalDate().toString()
         SectionCard {
-            Overline(stringResource(R.string.fw_usage_today_title))
-            if (usage == null || usage.devices.isEmpty()) {
-                Text(stringResource(R.string.fw_usage_none))
+            Overline(stringResource(if (usage == null || usage.day == today) R.string.fw_usage_today_title else R.string.fw_history_recorded))
+            if (usage == null) Text(stringResource(R.string.fw_usage_unavailable))
+            else if (usage.devices.isEmpty()) {
+                Text(stringResource(if (usage.day == today) R.string.fw_usage_none else R.string.fw_history_no_report_body))
             } else {
                 Text(durationText(usage.totalSeconds * 1000L), style = MaterialTheme.typography.headlineMedium)
                 Text(stringResource(R.string.fw_usage_reported_day, usage.day),
@@ -96,11 +101,16 @@ fun FamilyTimeContent(state: FamilyWardenState, selectedChild: String? = null) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(device.name, style = MaterialTheme.typography.titleMedium)
                     Text(durationText(device.totalSeconds * 1000L), style = MaterialTheme.typography.bodyMedium)
+                    Text(device.received?.let { stringResource(R.string.fw_history_receipt, formatWhen(it * 1000, state.nowMillis)) }
+                        ?: stringResource(R.string.fw_history_receipt_unknown), style = MaterialTheme.typography.bodySmall)
                     if (device.incomplete) Text(stringResource(R.string.fw_usage_device_incomplete),
                         style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
+    }
+    if (profiles.isNotEmpty()) TextButton(onClick = onHistory, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+        Text(stringResource(R.string.fw_history))
     }
     Text(stringResource(R.string.fw_family_reported), style = MaterialTheme.typography.bodySmall)
     state.syncError?.let { Text(stringResource(R.string.fw_family_refresh_failed)) }
@@ -114,6 +124,10 @@ fun FamilyControlsContent(state: FamilyWardenState, actions: FamilyWardenActions
         state.familyProfile(selectedChild)?.let { Text(it.name) }
         if (state.binding?.approves.isNullOrEmpty()) Text(stringResource(R.string.fw_request_no_scope))
     }
+    Button(onClick = actions.openRouter, enabled = state.host != null,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(stringResource(R.string.fw_voyage_open_router)) }
+    Text(stringResource(R.string.fw_capabilities_router_login), style = MaterialTheme.typography.bodySmall)
+    if (!state.parentMode) CapabilityEntry(state, actions)
     // Parent-only connection settings remain reachable without a fourth bottom tab.
     if (state.parentMode) ParentSettings(state, actions)
 }

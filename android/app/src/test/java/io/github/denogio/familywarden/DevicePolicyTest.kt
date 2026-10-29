@@ -17,6 +17,38 @@ class DevicePolicyTest {
     }""")
     private fun parsed(o: JSONObject = payload()) = Payload.parse(o.toString())
 
+    @Test fun voyageAmendmentDisplayAcceptsTheCoreExclusiveMidnightEnd() {
+        for (start in listOf("00:00", "23:00")) {
+            val state = parsed(payload().apply { getJSONObject("pact").put("active", true).put("type", "ongoing")
+                .put("details", JSONObject().put("waiting_seconds", 0).put("amendment",
+                    JSONObject().put("days", "sun").put("start", start).put("stop", "24:00"))) })
+            assertEquals(java.time.LocalTime.MIDNIGHT, state.voyageDetails!!.amendment!!.stop)
+            assertEquals(0L, state.voyageDetails.waitingSeconds)
+        }
+    }
+
+    @Test fun voyageDisplayMetadataIsOptionalAndDoesNotAuthorizeRelease() {
+        assertNull(parsed().voyageDetails)
+        val o = payload().apply { getJSONObject("pact").put("active", true).put("type", "ongoing")
+            .put("details", JSONObject().put("waiting_seconds", 3600).put("amendment",
+                JSONObject().put("days", "sun").put("start", "10:00").put("stop", "11:00"))) }
+        val state = parsed(o)
+        assertEquals(3600L, state.voyageDetails!!.waitingSeconds)
+        assertEquals(setOf(java.time.DayOfWeek.SUNDAY), state.voyageDetails.amendment!!.days)
+        val at = java.time.Instant.ofEpochSecond(state.serverTime).atZone(java.time.ZoneId.of(state.timeZone))
+        assertEquals(Policy.decide(state, at), Policy.decide(state.copy(voyageDetails = null), at))
+        assertTrue(Policy.pactActive(state, state.serverTime))
+    }
+
+    @Test fun malformedVoyageMetadataNeverCreatesAWeakerAcceptedPolicy() {
+        for (bad in listOf(JSONObject().put("waiting_seconds", -1), JSONObject().put("waiting_seconds", "3600"),
+            JSONObject().put("amendment", JSONObject().put("days", "sun mon").put("start", "10:00").put("stop", "11:00")),
+            JSONObject().put("amendment", JSONObject().put("days", "sun").put("start", "10:00").put("stop", "10:00")))) {
+            val o = payload().apply { getJSONObject("pact").put("active", true).put("type", "ongoing").put("details", bad) }
+            try { parsed(o); fail("bad voyage metadata accepted") } catch (_: Exception) { }
+        }
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun unknownRequiredFeatureCannotBeSilentlyIgnored() {
         parsed(payload().put("v", 3).put("requires", org.json.JSONArray().put("future-parent-approval")))

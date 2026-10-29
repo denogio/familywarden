@@ -126,6 +126,7 @@ fun RequestsContent(state: FamilyWardenState, actions: FamilyWardenActions, fami
 
 @Composable
 fun ParentSettings(state: FamilyWardenState, actions: FamilyWardenActions) {
+    CapabilityEntry(state, actions)
     var disconnect by rememberSaveable { mutableStateOf(false) }
     HeroCard {
         HeroTitle(stringResource(R.string.fw_parent_settings))

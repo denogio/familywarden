@@ -40,7 +40,11 @@ data class MastState(
     val shared: SharedUsage? = null,
     /** Signed household freshness; null from routers that do not vouch for it. */
     val generation: HouseholdGeneration? = null,
+    /** Optional signed display facts; never used to authorize a release or edit. */
+    val voyageDetails: VoyageDetails? = null,
 )
+
+data class VoyageDetails(val waitingSeconds: Long?, val amendment: Window?)
 
 data class Rules(
     val enabled: Boolean,

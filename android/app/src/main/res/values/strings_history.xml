@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_history_previous">Previous day</string>
+    <string name="fw_history_next">Next day</string>
+    <string name="fw_history_choose_day">Choose a day</string>
+    <string name="fw_history_loading">Loading recorded history…</string>
+    <string name="fw_history_scope_changed">Access to this profile has changed. Sync to update the child selection.</string>
+    <string name="fw_history_load_failed">History could not be loaded. This is not an empty report. Check the connection or try again.</string>
+    <string name="fw_history_recorded">Recorded screen time</string>
+    <string name="fw_history_no_report">No report</string>
+    <string name="fw_history_no_report_body">No source reported usage for this day. That does not mean there was no use.</string>
+    <string name="fw_history_measured_zero">Reported: no counted use. Other unreported use may still be missing.</string>
+    <string name="fw_history_sources">Where this comes from</string>
+    <string name="fw_history_receipt">Report received: %1$s</string>
+    <string name="fw_history_receipt_unknown">Report receipt time is unknown on this router.</string>
+    <string name="fw_history_read_at">Read from the router: %1$s</string>
+    <string name="fw_history_coverage">Up to 30 router-local days and the 20 busiest apps per day. Counts are reported observations, not complete coverage. Reports from re-enrolled phone keys can appear separately. Historical bonuses, rule classifications and website history are not provided.</string>
+    <string name="fw_usage_unavailable">No usage summary is available for this profile. App control may be off, or the report could not be read.</string>
+</resources>

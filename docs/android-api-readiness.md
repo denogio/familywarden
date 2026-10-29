@@ -1,6 +1,6 @@
 # Android API readiness
 
-Source-backed inventory, 2026-10-28. This is an integration map, not permission to
+Source-backed inventory, 2026-10-29. This is an integration map, not permission to
 extend a phone's role or expose the administrator socket on the LAN.
 
 ## Boundaries
@@ -21,12 +21,12 @@ extend a phone's role or expose the administrator socket on the LAN.
 |---|---|---|
 | Child app/total rules, downtime, bonus | Signed v3 `apps` | Parsed and enforced offline; do not create a second evaluator |
 | Parent today's usage | Signed v3 `usage[]`, current `approves` scope | Daily total, apps and device reports; report receipt is not live device status |
-| Retained app history | `UsageStore.UsageDay`, admin `usage` includes a week | Signed `history` read + `FamilyHistoryClient` prepared; one scoped day per read, no larger policy-sync payload |
+| Retained app history | `UsageStore.UsageDay`, admin `usage` includes a week | Signed `history` read + native child/day browser integrated; one scoped day per read, explicit missing/zero/error/provenance, no larger policy-sync payload |
 | Extra time | Signed `request` / `decision` | Existing outbox, first answer wins, <= requested minutes, two-hour window |
 | New-app decisions | Signed `app` | Existing scoped parent actions; installation can briefly precede suspension |
 | Parent rule/DNS/network editing | `configuration_apply`, `configuration_bonus_add`, `configuration_block/allow/reset/ticket`, CAS/confirm | Administrator authority only today; no signed parent-edit permission/operation yet |
 | Device applied state | Admin `devices`: expected revision vs acknowledgement | Not included in the parent's usage DTO; receipt/fetch cannot substitute |
-| Ulysses reads | Signed `captain`, `pact`, `rules` | Existing self status; no invented voyage start or amendment metadata |
+| Ulysses reads | Signed `captain`, `pact`, `rules` | Native voyage/Right now view; optional r25 frozen waiting/amendment display facts; no invented voyage age or complete frozen course |
 | Ulysses create/extend/amend | Admin `configuration_pact` / `configuration_amend`, core pact validation | No signed captain self-service mutation channel yet; do not forward root API |
 | Protected release | Dedicated `/release/*`, native authentication | Router sail page only; no instant release in Android |
 | Adult pool/categories | Planned product rules | No ledger/contract yet; not a frontend-only task |
@@ -47,7 +47,16 @@ The existing root API is reusable product implementation, not reusable phone
 permission. Do not implement those writes by passing a phone-supplied method name
 to `/api/*`. The same restriction applies to Ulysses self-service and release.
 
-## Prepared integration and verification
+## Integrated native presentation (2026-10-29)
+
+Ulysses and scoped retained-day history now have working native presentation. Parent
+Controls and Ulysses link to the existing administrator/sail web UI without forwarding
+phone credentials. The EN/DA availability sheet distinguishes native support,
+router-only actions and missing features. No new phone mutation privilege or P1/P2/P3
+semantics were enabled. Current evidence and remaining work:
+[functional checkpoint](android-functional-checkpoint.md).
+
+## Historical API-preparation verification (2026-10-28)
 
 Core `0.13.0-r24` adds only the bounded signed `history` read and usage-report
 receipt metadata. `FamilyHistoryClient.history(context, profileId, day)` must run

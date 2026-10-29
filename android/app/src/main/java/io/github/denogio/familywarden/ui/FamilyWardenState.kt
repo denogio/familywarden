@@ -49,6 +49,7 @@ data class FamilyWardenState(
     val uploadReply: UploadReply? = null,
     val requestEpoch: Long? = null,
     val canRequestTotal: Boolean = true,
+    val voyageDetails: VoyageDetails? = null,
 ) {
     /** Presentation only; the core still authorizes every family action. */
     val canManageFamily: Boolean get() = parentMode || binding?.approves?.isNotEmpty() == true
@@ -133,4 +134,7 @@ class FamilyWardenActions(
     val forgetUpload: () -> Unit = {},
     val chooseParentMode: () -> Unit = {},
     val parentSignOut: () -> Unit = {},
+    val openRouter: () -> Unit = {},
+    /** Blocking read; callers must use a worker thread, never the Compose main thread. */
+    val loadHistory: (String, java.time.LocalDate) -> FamilyHistoryDay = { _, _ -> throw HistoryRefused("unavailable") },
 )

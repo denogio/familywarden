@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_history_previous">Forrige dag</string>
+    <string name="fw_history_next">Næste dag</string>
+    <string name="fw_history_choose_day">Vælg en dag</string>
+    <string name="fw_history_loading">Henter registreret historik…</string>
+    <string name="fw_history_scope_changed">Adgangen til denne profil er ændret. Synkroniser for at opdatere valget af barn.</string>
+    <string name="fw_history_load_failed">Historikken kunne ikke hentes. Det er ikke en tom rapport. Tjek forbindelsen, eller prøv igen.</string>
+    <string name="fw_history_recorded">Registreret skærmtid</string>
+    <string name="fw_history_no_report">Ingen rapport</string>
+    <string name="fw_history_no_report_body">Ingen kilde rapporterede forbrug denne dag. Det betyder ikke, at der ikke var forbrug.</string>
+    <string name="fw_history_measured_zero">Rapporteret: intet talt forbrug. Andet ikke-rapporteret forbrug kan stadig mangle.</string>
+    <string name="fw_history_sources">Her kommer tallene fra</string>
+    <string name="fw_history_receipt">Rapport modtaget: %1$s</string>
+    <string name="fw_history_receipt_unknown">Tidspunktet for rapportens modtagelse er ukendt på denne router.</string>
+    <string name="fw_history_read_at">Læst fra routeren: %1$s</string>
+    <string name="fw_history_coverage">Op til 30 dage i routertid og de 20 mest brugte apps pr. dag. Tallene er rapporterede observationer, ikke fuld dækning. Genindmeldte telefonnøgler kan stå som særskilte kilder. Historiske bonusser, regelkategorier og webhistorik er ikke tilgængelige.</string>
+    <string name="fw_usage_unavailable">Der er ingen tilgængelig forbrugsoversigt for denne profil. Appkontrol kan være slået fra, eller rapporten kunne ikke læses.</string>
+</resources>

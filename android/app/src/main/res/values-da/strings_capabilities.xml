@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_capabilities_title">Appstatus og resterende arbejde</string>
+    <string name="fw_capabilities_scope">Dette er understøttede funktioner, ikke ekstra rettigheder. Handlingerne afhænger af de signerede roller, routerversionen og forbindelsen.</string>
+    <string name="fw_capabilities_native">Understøttet i appen</string>
+    <string name="fw_capabilities_native_body">Administrerede telefoner: signerede offlineregler, appgrænser, nedetid og DNS-status. Tilknyttede forældre: anmodninger, godkendelser, appbeslutninger og rapporteret forbrug på lokalnettet. Dagshistorik kræver core 0.13.0-r24 eller nyere. Ulysses viser verificerede regler. Frosne oplysninger om ventetid og ændringsvindue kræver core r25.</string>
+    <string name="fw_capabilities_router">Administreret på routeren</string>
+    <string name="fw_capabilities_router_body">Redigering af regler, tidsplaner, DNS, hjemmets internet og bonustid; tilmelding af telefoner; oprettelse, forlængelse og ændring af rejser. Manuelle internetblokeringer gælder, indtil de ændres eller nulstilles. Tidsbilletter vender tilbage til de normale regler, ikke nødvendigvis den tidligere manuelle blokering.</string>
+    <string name="fw_capabilities_router_login">Åbn routerens webgrænseflade, log ind som administrator, og vælg FamilyWarden. Netværksadgang er nødvendig. Retten til at godkende for børn giver ikke routeradministration.</string>
+    <string name="fw_capabilities_missing">Endnu ikke tilgængeligt i appen</string>
+    <string name="fw_capabilities_missing_body">Indbyggede forældreredigeringer og bonusknapper; selvbetjening for rejser; Lås nu; uafhængige voksenrejser; kategorier og voksenpuljen; webhistorik; pushbeskeder uden for hjemmet. Længere historikperioder og historiske regler og bonusser er ikke tilgængelige. Der er ingen fungerende knapper til disse fremtidige funktioner.</string>
+    <string name="fw_browser_unavailable">Ingen browser kunne åbne adressen. Åbn FamilyWarden i en browser på hjemmets netværk.</string>
+</resources>

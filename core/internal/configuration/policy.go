@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,10 +13,17 @@ import (
 )
 
 type phonePact struct {
-	Active    bool   `json:"active"`
-	Type      string `json:"type"`
-	Until     int64  `json:"until"`
-	ReleaseAt int64  `json:"release_at"`
+	Active    bool                `json:"active"`
+	Type      string              `json:"type"`
+	Until     int64               `json:"until"`
+	ReleaseAt int64               `json:"release_at"`
+	Details   *phoneVoyageDetails `json:"details,omitempty"`
+}
+
+// Optional display facts only; these never change policy evaluation or authority.
+type phoneVoyageDetails struct {
+	WaitingSeconds *int64       `json:"waiting_seconds,omitempty"`
+	Amendment      *phoneWindow `json:"amendment,omitempty"`
 }
 
 type phoneWindow struct {
@@ -162,7 +170,15 @@ func PhonePolicy(c rules.Configuration, platformPolicy platform.Policy, id strin
 	}
 	pact := phonePact{}
 	if captain != "" && Active(c.Pact, now) {
-		pact = phonePact{true, c.Pact.Type, integer(c.Pact.Until), integer(c.Pact.ReleaseAt)}
+		pact = phonePact{Active: true, Type: c.Pact.Type, Until: integer(c.Pact.Until), ReleaseAt: integer(c.Pact.ReleaseAt)}
+		details := &phoneVoyageDetails{}
+		if delay, err := strconv.ParseInt(c.Pact.DelaySeconds, 10, 64); err == nil && delay >= 0 && delay <= 253402300799 {
+			details.WaitingSeconds = &delay
+		}
+		if c.Pact.Type == "ongoing" {
+			details.Amendment = &phoneWindow{c.Pact.WindowDay, c.Pact.WindowStart, c.Pact.WindowStop}
+		}
+		pact.Details = details
 	}
 	r := phoneRules{Enabled: "0", Policy: "allow", Override: override, Windows: []phoneWindow{}}
 	if captain != "" {

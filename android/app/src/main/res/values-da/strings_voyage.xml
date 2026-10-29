@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_voyage_offline">Routeren kunne ikke nås. Den sidst verificerede rejse følger stadig de gemte regler og sluttidspunktet.</string>
+    <string name="fw_voyage_not_bound">Ikke bundet</string>
+    <string name="fw_voyage_calm">Havet er roligt</string>
+    <string name="fw_voyage_router_only">Opret, forlæng eller ændr din rejse i FamilyWarden på routeren. Dette åbner webgrænsefladen og kræver routerlogin. Selvbetjening fra telefonen er endnu ikke tilgængelig.</string>
+    <string name="fw_voyage_bound">Du er bundet til masten</string>
+    <string name="fw_voyage_release_expected">Forventet frigivelse: %1$s</string>
+    <string name="fw_voyage_holds">Indtil frigivelsen træder i kraft, fortsætter pagten med de gemte regler.</string>
+    <string name="fw_voyage_wait">Husstandens ventetid: %1$s</string>
+    <string name="fw_voyage_verified">Seneste regler modtaget: %1$s</string>
+    <string name="fw_voyage_now">Lige nu</string>
+    <string name="fw_voyage_next">Næste ændring for hotspot: %1$s</string>
+    <string name="fw_voyage_apps_downtime">Der er nedetid for almindelige apps.</string>
+    <string name="fw_voyage_apps_exhausted">Dagens grænse for skærmtid er brugt op.</string>
+    <string name="fw_voyage_apps_within">Det registrerede forbrug er inden for dagsgrænsen, hvis den er sat. Appgrænser gælder stadig.</string>
+    <string name="fw_voyage_remaining">Registreret tid tilbage i dag: %1$s</string>
+    <string name="fw_voyage_now_note">Rejsen er adskilt fra det, der er begrænset lige nu. Målingerne er observationer, ikke bevis på uafbrudt håndhævelse.</string>
+    <string name="fw_voyage_course">Den gemte kurs</string>
+    <string name="fw_voyage_frozen_note">Appgrænser og nedetid ændres kun i en løbende rejses ændringsvindue. En rejse med slutdato har intet vindue. DNS har særskilte regler for stramninger.</string>
+    <string name="fw_voyage_port">Havneanløb</string>
+    <string name="fw_voyage_port_note">Dette er det gemte ugentlige ændringsvindue i routertid. Ændringer laves på routeren. Fjernelse af appen er stadig beskyttet.</string>
+    <string name="fw_voyage_metadata_unknown">Routeren har ikke oplyst ventetiden eller ændringsvinduet. Der antages ingen værdi.</string>
+    <string name="fw_voyage_open_router">Åbn routeradministration</string>
+    <string name="fw_voyage_delivered">Dette er de appgrænser, der er leveret til telefonen lige nu, inklusive dagens bonusser. Hele den gemte kurs findes på routeren.</string>
+    <string name="fw_voyage_unknown_title">Rejsestatus er utilgængelig</string>
+    <string name="fw_voyage_unknown_body">Færdiggør godkendelsen af telefonen, og synkroniser, før du tjekker en rejse. Der antages hverken roligt hav eller en aktiv pagt.</string>
+    <string name="fw_voyage_not_captain">Ulysses gælder kun for husstandens kaptajnprofil. Denne telefon er ikke den kaptajn.</string>
+</resources>

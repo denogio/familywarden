@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_voyage_offline">The router could not be reached. The last verified voyage still follows its saved rules and end time.</string>
+    <string name="fw_voyage_not_bound">Not bound</string>
+    <string name="fw_voyage_calm">The sea is calm</string>
+    <string name="fw_voyage_router_only">Create, extend or amend your voyage in FamilyWarden on the router. This opens the web interface and requires router login; phone self-service is not available yet.</string>
+    <string name="fw_voyage_bound">You are bound to the mast</string>
+    <string name="fw_voyage_release_expected">Expected release: %1$s</string>
+    <string name="fw_voyage_holds">Until release takes effect, the pact continues under its saved rules.</string>
+    <string name="fw_voyage_wait">Household waiting period: %1$s</string>
+    <string name="fw_voyage_verified">Last policy received: %1$s</string>
+    <string name="fw_voyage_now">Right now</string>
+    <string name="fw_voyage_next">Next hotspot change: %1$s</string>
+    <string name="fw_voyage_apps_downtime">Downtime is active for ordinary apps.</string>
+    <string name="fw_voyage_apps_exhausted">The daily screen-time limit is used up.</string>
+    <string name="fw_voyage_apps_within">Recorded use is within the daily limit, if configured. Per-app limits still apply.</string>
+    <string name="fw_voyage_remaining">Recorded time left today: %1$s</string>
+    <string name="fw_voyage_now_note">Voyage status is separate from what is restricted right now. Counts are observations, not proof of continuous enforcement.</string>
+    <string name="fw_voyage_course">The saved course</string>
+    <string name="fw_voyage_frozen_note">App limits and Downtime change only in an ongoing voyage’s amendment window; a fixed-end voyage has none. DNS has separate tightening rules.</string>
+    <string name="fw_voyage_port">Port call</string>
+    <string name="fw_voyage_port_note">This is the saved weekly amendment window, in router time. Adjustments are made on the router; phone removal remains protected.</string>
+    <string name="fw_voyage_metadata_unknown">This router has not supplied the waiting period or amendment window. No value is assumed.</string>
+    <string name="fw_voyage_open_router">Open router administration</string>
+    <string name="fw_voyage_delivered">These are the app allowances currently delivered to this phone, including today’s bonuses. The full saved course is on the router.</string>
+    <string name="fw_voyage_unknown_title">Voyage status unavailable</string>
+    <string name="fw_voyage_unknown_body">Complete phone approval and sync before checking a voyage. No calm or bound status is assumed.</string>
+    <string name="fw_voyage_not_captain">Ulysses applies only to the household’s captain profile. This phone is not that captain.</string>
+</resources>

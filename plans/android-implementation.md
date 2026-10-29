@@ -5,22 +5,44 @@ original `feature/familywarden-android` checkpoints below. Local tests are **not
 production release or rollout authorization**. Historical explicitly authorized pilots
 are identified separately; current work does not change live routers, phones or pacts.
 
-## Current Android preparation (2026-10-28)
+## Current Android integration (2026-10-29)
 
-Child Today/Ask/local per-app history/Settings and scoped parent usage/approval cards
-are implemented and emulator-verified; remaining visuals await the design continuation.
-Core `0.13.0-r24` and `FamilyHistoryClient` prepare a signed read-only single-profile,
-single-day history API, preserving missing-vs-zero and report receipt metadata.
-Parent editors and Ulysses mutations must not reuse administrator credentials or expose
-the root API: their signed scoped contracts are still missing. See
-[Android API readiness](../docs/android-api-readiness.md) and
+Child Today/Ask/local app history/Settings, scoped parent usage/approval cards and
+native retained-day history are integrated. Family → Screen time → History uses
+the real r24 signed single-profile/day read, preserving missing/zero/error and report
+receipt metadata. Ulysses separates voyage status from current restrictions, displays
+optional r25 frozen waiting/ongoing-amendment facts, and opens real router/sail pages.
+EN/DA availability entries explicitly separate native, router-only and missing features.
+
+Parent editors and captain mutations remain router-only: their signed scoped phone
+contracts are missing. No root-API exposure, administrator credential reuse or P1/P2/P3
+change was introduced. Full inventory and current validation:
+[functional checkpoint](../docs/android-functional-checkpoint.md),
+[API readiness](../docs/android-api-readiness.md) and
 [family UI implementation](../docs/design/family-views/UI-SPEC.md).
+Release-signing/physical R7 cutover gates remain open; no production or physical device
+was accessed.
 
-Current evidence: 212 JVM tests, lint/debug build, Go race/vet and portable UI proof,
-APK smoke, both focused Android UI suites (EN/DA, 200% text), and 33 native P8 checks
-against local r24 packages. The earlier 98-check Mast milestone remains separately
-recorded; it was not repeated for this API-only extension. No production or physical
-device was accessed. Release-signing/physical R7 cutover gates remain open.
+## Next slice — installed-app browser (design received)
+
+The user supplied the local export **FamilyWarden Android · installed apps**:
+`FamilyWarden – Parent · Installed apps choose child, browse, search, set a rule, allowed hours (planned future).html`.
+Review it against the current contracts before implementation; receiving the design
+is not evidence that inventory or scoped parent writers already exist.
+
+- Select a child, browse/search reported installed apps using friendly names/icons;
+  no package-name entry. Identify the reporting phone and receipt time.
+- Show allowed, blocked, limited, always-allowed and essential/system states without
+  inventing inventory completeness or live enforcement. Protect essential apps.
+- Rules apply to the child's profile across assigned phones; make that explicit.
+- Verify current inventory data, then prepare bounded scoped reads and explicit
+  parent edit/CAS/confirmation/idempotency contracts before native writes.
+- Preserve stale/missing data, revoked scopes and unknown save outcomes.
+- **Allowed hours stays planned future work.** No P1/P2/P3, adult pool or website-history
+  semantics are activated by this design.
+
+Finish the verified Ulysses/history checkpoint first; then review and implement the
+new flow in tested slices. No push, release signing or production access is implied.
 
 ## Implemented locally
 
@@ -61,10 +83,10 @@ check. The numeric port-7700 endpoint was reachable. Therefore:
   and retains the last verified policy; no guessed gateway or unfiltered DNS fallback
   is introduced. LAN/VPN routing is still necessary; pinning an IP does not itself
   force Android to keep using home Wi-Fi if it prefers a different default network.
-- Before rollout, design/test same-key control-address repair for changed LAN IPs,
-  separately from re-pairing to another router. It must require a newly verified,
+- Same-key control-address repair for changed LAN IPs is now emulator-verified (see
+  the runtime follow-up below), separately from re-pairing to another router. It must require a newly verified,
   device-bound reply and cannot discard a cached applicable pact or change the trust
-  key merely because the old address is unreachable. This is not implemented here.
+  key merely because the old address is unreachable. Physical transitions remain a gate.
 - Optional AGH forwarding `[/lan/]10.77.0.1` is **not applied**. It changes shared AGH
   upstream behavior, beyond the approved FamilyWarden-owned client boundary, and needs
   separate explicit production approval.

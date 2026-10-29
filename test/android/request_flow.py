@@ -346,6 +346,14 @@ touch /tmp/drop-next-app-response
     wait('non-owner parent can decline without minting another grant', lambda: any(r['request_id'] == 'request-native-parent-002' and r['state'] == 'denied'
         for r in call('requests')['requests']))
     ui('native-parent-complete')
+    tap('Screen time')
+    tap('History', scroll=True)
+    wait('native parent history reads a real signed recorded day', lambda: bool(nodes('RECORDED SCREEN TIME')))
+    wait('native history shows router report receipt provenance', lambda: any(
+        n.get('text', '').startswith('Report received:') for n in ui().iter('node')))
+    ui('native-parent-history')
+    assert 'DeviceOwner' not in adb('shell', 'dpm', 'list-owners')
+    print('PASS recorded-day history does not need Device Owner', flush=True)
     # A read-only contract uses the current registry scope, not an old signed policy.
     assert call('device_update', {'device': 'fw-test-kid', 'profile': 'parent', 'name': 'Test reader',
                                  'approves': 'alex'})['status'] == 'ok'

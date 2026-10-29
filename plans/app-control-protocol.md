@@ -207,6 +207,24 @@ Once observed, it must not disappear or regress in later policy replies; see
 [migration-safety.md](migration-safety.md). Reads in §5c are information only and
 never replace the last accepted policy or advance its generation witness.
 
+### Optional voyage display facts — core 0.13.0-r25
+
+An active captain-scoped `pact` can include:
+
+```json
+{"details": {"waiting_seconds": 3600, "amendment": {"days": "sun", "start": "10:00", "stop": "11:00"}}}
+```
+
+`waiting_seconds` is the frozen pact delay, not current household defaults; missing
+or invalid source values are omitted, never assumed zero/24 hours. `amendment` is
+present only for ongoing pacts: one weekday, same-day increasing bounds, exclusive
+end can be `24:00`. Android normalizes only that display end to midnight and renders
+it as 24:00; this never enters the enforcement evaluator. Fixed-end voyages have no
+port call. Facts can be absent on older replies. They neither confer permission nor
+change `v`, capabilities, enforcement, generation or the active/until/release rules.
+No creation timestamp, requested-at timestamp, complete frozen course or new phone
+mutation operation is implied.
+
 ## 2. Future policy sketch — NOT the implemented v3 wire format
 
 This retained P1 proposal contains unimplemented fields such as numeric revisions,
@@ -515,8 +533,8 @@ acknowledge. Parent phones receive `new_apps[]` (scoped) in v3 sync.
   remain unavailable, never synthesized empty history.
 - Read-only: no request ledger/outbox, ticket, native apply, app revision,
   acknowledgement, generation advance or retained-policy replacement.
-- `FamilyHistoryClient.history` is ready for off-main-thread callers; the longer-range
-  native history screens remain separate design/integration work.
+- `FamilyHistoryClient.history` runs off the main thread in the native scoped day
+  browser. Longer ranges and richer historical metadata remain separate work.
 
 Today's scoped `usage[].devices[]` additionally includes the same optional `received`
 timestamp. Android accepts old replies without it as **unknown**, not current.

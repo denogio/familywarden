@@ -188,10 +188,36 @@ parent history UI. No parent editor, captain mutation or administrator privilege
 silently added. Inbox/badge scope and known-expiry filtering now share one pure
 state projection, with offline and revocation regression checks.
 
-Current API availability and evidence: [Android API readiness](../../android-api-readiness.md).
-The existing visual milestone counts above remain historical; current API tests
-are 212 JVM and 33 native P8 checkpoints, plus Go race/vet, package smoke and both
-focused UI scripts. No physical device or production router was used.
+Evidence at that API-preparation checkpoint: 212 JVM and 33 native P8 checks, plus
+Go race/vet, package smoke and both then-existing focused UI scripts. This remains
+historical; native integration follows below. No physical device or production router
+was used.
+
+### Export-six functional integration (2026-10-29)
+
+- Ulysses has separate voyage/Right now/course/ongoing-port-call sections, expected
+  release, frozen household waiting time, last policy receipt and explicit unknown
+  metadata. The r25 optional signed display facts do not alter enforcement/authority.
+  Fixed-end voyages have no amendment window. Delivered app allowances may include
+  today's bonus; the complete saved household course stays on the router.
+- Family → Screen time → History reads a selected assigned child/day through the
+  existing signed client, off the main thread. Calendar/previous/next/back and retry
+  are functional. Reported zero, absent day, incomplete sources and failures differ;
+  no historical expected-device roster, bonus attribution or Unlimited classification
+  is invented. State is discarded on identity/day/scope changes.
+- Controls and Ulysses have actual browser routes to the shared administrator UI or
+  sail page, explicitly requiring router authentication. No parent/captain mutation
+  contract or root privilege is silently introduced.
+- Settings/Controls expose an EN/DA availability sheet: supported native flows,
+  router-managed actions and remaining features. New-app copy acknowledges that an
+  app can open briefly before suspension. Absent usage summaries are not empty days;
+  old-day usage is not labeled Today. Existing icon-only navigation remains intact.
+- Requests stay 1–240 minutes, approval 1..requested, two hours after approval.
+  P1/P2 remain proposals, and P3 remains separate accounting work.
+
+Current evidence, bounded UI coverage and remaining work:
+[functional checkpoint](../../android-functional-checkpoint.md). Original design
+archives remain unchanged; hosted-canvas access is not claimed.
 
 ## Explicitly deferred
 

@@ -8,9 +8,10 @@ offline (embedded Noto fonts, OFL licence kept in the file).
 
 Implementation mapping and verification: [`UI-SPEC.md`](UI-SPEC.md). The first
 child/adult UI slice, role-separated family navigation, native requests/approvals,
-and signed usage summaries are implemented. The pool and complete prototype
-editing/history flows are not. The latest visual pass uses the separate
-2026-10-25 export `FamilyWarden (5).html` (ten boards, adding adult Ulysses);
+signed usage summaries, native scoped day history and Ulysses voyage presentation
+are implemented. The pool and native parent/captain writers are not. The current
+visual direction uses the separate `FamilyWarden (6).html` (18 frames), with the
+[source-backed corrections](../android-design6-review.md), not literal adoption;
 `design.html` above remains the original nine-board archive.
 
 ## Boards
@@ -45,9 +46,11 @@ warnings as later. These were built in P7b after the design round (router `3def6
 Android `6b99ca5`, LuCI `f4d231f`) and are being verified. Usage upload, requests/approvals, parent role and notifications, and shared-budget
 offset enforcement now exist; cached offsets do not bound offline overspend. See
 `UI-SPEC.md` for actual presentation and [API readiness](../../android-api-readiness.md)
-for native integration and permission boundaries. A signed retained-day history client
-is prepared, but the complete parent history screens are not implemented.
-Still later in the native Android presentation: the full parent editing/history
-flows and adult pool. School time and website history remain unavailable.
+for native integration and permission boundaries. Parent Screen time → History now
+uses that signed read for selected children/days, with no report/zero/error distinctions
+and receipt provenance. Ulysses shows verified facts and honest router hand-offs.
+Still later: native scoped editors, captain self-service, richer historical metadata
+and the adult pool. School time and website history remain unavailable. See the
+[functional checkpoint](../../android-functional-checkpoint.md) for the explicit gap list.
 
 All people, phones and apps on the boards are example data.

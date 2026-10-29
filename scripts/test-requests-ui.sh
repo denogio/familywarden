@@ -112,7 +112,7 @@ check_picker child-picker Alex
 tap child-picker Sam
 capture parent-sam
 contains parent-sam Sam
-contains parent-sam 'No screen time reported today yet.'
+contains parent-sam 'No usage summary is available'
 if grep -Fq '1 h 22 min' "$OUT/parent-sam.xml"; then echo 'Sibling usage leaked into selected child'; exit 1; fi
 tap parent-sam Controls
 capture parent-settings
@@ -124,7 +124,7 @@ capture parent-combined-inbox
 contains parent-combined-inbox 'Alex · Sam'
 tap parent-combined-inbox 'Screen time'
 capture parent-selection-retained
-contains parent-selection-retained 'No screen time reported today yet.'
+contains parent-selection-retained 'No usage summary is available'
 if grep -Fq '1 h 22 min' "$OUT/parent-selection-retained.xml"; then echo 'Child selection lost between pages'; exit 1; fi
 tap parent-selection-retained Requests
 reveal parent-time-request Approve
@@ -154,7 +154,7 @@ capture managed-own
 contains managed-own Overview
 tap managed-own Family
 capture managed-sam-restored
-contains managed-sam-restored 'No screen time reported today yet.'
+contains managed-sam-restored 'No usage summary is available'
 if grep -Fq '1 h 22 min' "$OUT/managed-sam-restored.xml"; then echo 'Child selection lost across modes'; exit 1; fi
 render ParentScopeChangePreview parent-scope
 tap parent-scope 'Choose a child'
@@ -225,5 +225,5 @@ capture danish-child-picker
 check_picker danish-child-picker Alex
 tap danish-child-picker Sam
 capture danish-sam
-contains danish-sam 'Ingen skærmtid rapporteret i dag endnu.'
+contains danish-sam 'Der er ingen tilgængelig forbrugsoversigt'
 printf 'P8 UI checks passed; fictional-fixture captures: %s\n' "$OUT"

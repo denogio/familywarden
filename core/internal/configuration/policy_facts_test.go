@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/denogio/familywarden/core/internal/platform"
+	"github.com/denogio/familywarden/core/internal/rules"
 )
 
 // policyFacts wires the owned-mode facts contract around a controlled document.
@@ -32,6 +33,27 @@ func policyFacts(t *testing.T, mastCaptain, alexOverride string, alexDNS json.Ra
 	a.Now = func() time.Time { return time.Unix(1800000000, 0).UTC() }
 	activate(t, a, b.fakeBackend)
 	return a, b
+}
+
+func TestVoyageDisplayNeverTurnsMissingOrInvalidWaitingTimeIntoZero(t *testing.T) {
+	for _, raw := range []string{"", "bad", "-1", "253402300800", "0", "5400"} {
+		t.Run(raw, func(t *testing.T) {
+			c := sample()
+			c.Pact = &rules.ConfigurationPact{Captain: "alex", Type: "until", Until: "1800007200", DelaySeconds: raw, Frozen: c.Current}
+			out, err := PhonePolicy(c, platform.Policy{Captain: "alex", Rules: json.RawMessage(`{"override":"none"}`)}, "alex", time.Unix(1800000000, 0))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var p phonePact
+			if err := json.Unmarshal(out.Pact, &p); err != nil {
+				t.Fatal(err)
+			}
+			known := raw == "0" || raw == "5400"
+			if p.Details == nil || (p.Details.WaitingSeconds != nil) != known {
+				t.Fatal("unknown waiting period became an assumed value", string(out.Pact))
+			}
+		})
+	}
 }
 
 func TestOwnedPhonePolicyUsesPlatformFacts(t *testing.T) {

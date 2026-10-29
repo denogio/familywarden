@@ -619,8 +619,10 @@ First child/adult UI slice (2026-10-24): Today, reliable local counts, daily/app
 bonus-aware remaining time, downtime, always-allowed apps, local history totals and
 captain pact status implemented. EN/DA, 139 JVM tests and focused light/dark/200%-text
 emulator render checks pass at that checkpoint. Parent roles, requests, new-app
-approval and uploaded usage views subsequently shipped. The parent navigation split
-is implemented and preview-tested; pools, full parent editors and extended history remain open.
+approval and uploaded usage views were subsequently implemented. The parent navigation
+split is implemented and preview-tested. Scoped 30-day parent day history and Ulysses
+voyage/Right now presentation are now integrated (2026-10-29); pools, scoped native
+writers, richer observations and longer history remain open.
 Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
 
 - [x] Parent Android: scoped time/new-app decisions and reported per-child usage summaries.
@@ -631,6 +633,12 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
 - [x] Parent Android: scoped child selection on Screen time/Controls, combined Requests
       inbox and selection across pages/modes (#97). 199 JVM tests, lint/builds and
       Android 15 EN/DA-200% interactions pass, including scope revocation.
+- [x] Parent Android: signed selected-child/day history with calendar, missing/zero/error
+      distinctions, source receipt provenance, retry and scope-change disposal (r24+).
+- [x] Ulysses Android: separate voyage/Right now, optional frozen wait/ongoing port-call
+      display metadata (r25), actual router/sail hand-offs and explicit native gaps.
+      [Functional checkpoint](../docs/android-functional-checkpoint.md); no new phone
+      mutation authority, P1/P2/P3 change, release or physical deployment.
 - [ ] Parent Android: full app inventory/rule editors and truthful per-device
       connection/applied-policy views.
 - [x] Child Android: remaining budgets, pause reasons, request status/remaining extra

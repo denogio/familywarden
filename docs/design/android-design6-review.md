@@ -8,7 +8,8 @@ Scope: rendered the local export's 18 frames offline, extracted their text, and
 visually reviewed the added/replaced specification, capability, Ulysses, adult pool
 and parent boards in their light/dark/large-text examples. This is **not** access to
 the original hosted design canvas or a native Android accessibility/runtime test.
-The source export, web prototype, contracts and application code were not changed.
+At this review-only checkpoint the source export, web prototype, contracts and
+application code were not changed.
 
 ## Assessment
 
@@ -36,7 +37,7 @@ review, show the new course rather than freezing unreviewed rules.
 The matrix inconsistently uses Available now for backend behavior, finished native
 screens, and data that is not exposed to parent phones. Correct at least these rows:
 
-| Export claim | Current fact |
+| Export claim | Fact at the review checkpoint |
 |---|---|
 | Requests inbox / approve less needs integration | Native LAN requests, approvals and denials already work |
 | Daily limits, Unlimited and Bonus need core/phone support | Those rules and bonus already work in core/phone; native parent writers need a scoped contract |
@@ -144,5 +145,16 @@ reconciliation. It is not evidence that those semantics shipped or were silently
 approved for activation. See `control-prototype-review.md`, current
 `plans/app-control-protocol.md` and `docs/android-api-readiness.md`.
 
-No runtime tests were needed for this review-only document. Rendering and DOM checks
+## Implementation follow-up (2026-10-29)
+
+The [functional Android checkpoint](../android-functional-checkpoint.md) implements
+Ulysses status/Right now, signed scoped day history, truthful source/unknown/error
+states, real router hand-offs and explicit capability disclosure. Optional core r25
+pact metadata supplies the frozen waiting period and ongoing amendment window.
+Native parent/captain writers, detailed delivery observations and full frozen-course
+metadata remain gaps, not working-looking buttons. P1/P2/P3 behavior is unchanged.
+This follow-up corrects the native implementation and its documentation; it does not
+claim edits to the unavailable hosted canvas or to the archived HTML export.
+
+No runtime tests were needed for the original review-only document. Rendering and DOM checks
 were local/offline; screenshot/text artifacts are in `/tmp/fw-android-design6/`.

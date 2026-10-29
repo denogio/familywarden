@@ -72,13 +72,20 @@ class MainActivity : ComponentActivity() {
         openSail = {
             Store(this).host?.let { host ->
                 runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("${Sync.base(host)}/"))) }
-                    .onFailure { message(R.string.fw_router_offline) }
+                    .onFailure { message(R.string.fw_browser_unavailable) }
+            }
+        },
+        openRouter = {
+            Store(this).host?.let { host ->
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Sync.routerAdminUrl(host)))) }
+                    .onFailure { message(R.string.fw_browser_unavailable) }
             }
         },
         copyDiagnostics = { copyDiagnostics() },
         openUsageAccess = {
             runCatching { startActivity(Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
         },
+        loadHistory = { profile, day -> FamilyHistoryClient.history(this, profile, day) },
         askTime = { target, minutes, note -> upload { AppRequestClient.request(this, target, minutes, note) } },
         answerTime = { request, approve, minutes -> upload { AppRequestClient.answer(this, request, approve, minutes) } },
         decideApp = { app, approve -> upload { AppRequestClient.decideApp(this, app, approve) } },
@@ -264,6 +271,7 @@ class MainActivity : ComponentActivity() {
             lastSync = store.lastSync, syncError = store.lastError, syncing = busy,
             ulyssesEnabled = store.ulyssesEnabled, pact = (mapped.setup as? SetupState.Paired)?.status,
             rules = state?.rules, timeZone = state?.timeZone, desiredDns = state?.dns,
+            voyageDetails = state?.voyageDetails,
             appliedDnsHost = applied.hostname, dnsLocked = applied.locked, dnsError = store.dnsError,
             networkId = getSystemService(ConnectivityManager::class.java).activeNetwork?.networkHandle,
             dialog = dialog,
