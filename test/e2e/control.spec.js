@@ -1,3 +1,4 @@
+const { readFileSync } = require('node:fs');
 const { test, expect } = require('@playwright/test');
 const BASE = process.env.FW_BASE_URL || 'http://localhost:8080';
 const CONTROL = `${BASE}/cgi-bin/luci/admin/services/familywarden/control`;
@@ -18,13 +19,13 @@ function replies() {
   };
 }
 
-async function neutral(page, { lang = 'en', data = replies(), interval = 60000 } = {}) {
+async function neutral(page, { lang = 'en', data = replies(), interval = 60000, theme = 'auto' } = {}) {
   await page.route(`${BASE}/neutral-control`, route => route.fulfill({contentType:'text/html',body:'<!doctype html><html><body><div id="control"></div></body></html>'}));
   await page.goto(`${BASE}/neutral-control`);
-  await page.evaluate(async ({data,lang,interval}) => {
+  await page.evaluate(async ({data,lang,interval,theme}) => {
     window.replies = data; window.calls = []; window.hold = ''; window.release = null;
     const module = await import('/luci-static/resources/familywarden/shared/control.js');
-    window.control = module.mount(document.getElementById('control'),{lang,interval,call:async (method,params = {}) => {
+    window.control = module.mount(document.getElementById('control'),{lang,interval,theme,call:async (method,params = {}) => {
       window.calls.push({method,params:JSON.parse(JSON.stringify(params))});
       if (method === window.hold) await new Promise(resolve => {window.release = resolve;});
       if (method === 'configuration_apply') {
@@ -37,12 +38,179 @@ async function neutral(page, { lang = 'en', data = replies(), interval = 60000 }
       if (Object.hasOwn(window.replies,method)) return window.replies[method];
       return {status:'ok'};
     }});
-  },{data,lang,interval});
+  },{data,lang,interval,theme});
   await expect(page.locator('.fwa .fw-status')).toContainText(lang === 'da' ? 'Opdateret' : 'Updated');
   await page.waitForFunction(() => document.querySelector('#control > link[rel="stylesheet"]')?.sheet != null);
 }
 
 test.describe('shared control without LuCI globals', () => {
+  for (const lang of ['en','da']) test(`neutral profile labels, measured usage without budget and package identity (${lang})`, async ({ page }) => {
+    const data = replies();
+    data.devices.devices = [{id:'alex-phone',name:'Alex phone',profile:'alex',administrator:'1'}];
+    data.configuration_report.app_profiles = {alex:{enabled:true}};
+    data.new_apps.profiles = [{id:'alex',pending:[{package:'com.example.pending',label:'Pending search'}]}];
+    data.usage.profiles = [{id:'alex',total:1200,devices:[],apps:[
+      {package:'com.example.search',label:'Search',seconds:600}
+    ]}];
+    await neutral(page,{data,lang});
+    await expect(page.getByRole('heading',{name:lang === 'da' ? 'Profiler' : 'Profiles',exact:true})).toBeVisible();
+    await expect(page.getByRole('heading',{name:lang === 'da' ? 'Administratortelefoner' : 'Administrator phones',exact:true})).toBeVisible();
+    await expect(page.locator('.fw-kid')).toHaveCount(1);
+    const card = page.locator('[data-profile="alex"]');
+    await expect(card.locator('.fw-big')).toHaveText('20 min');
+    await expect(card).toContainText(lang === 'da' ? 'intet samlet skærmtidsbudget' : 'No total screen-time budget');
+    await expect(card.getByText('Search',{exact:true})).toBeVisible();
+    await expect(card.getByText('com.example.search',{exact:true})).toBeVisible();
+    const appLayout = await card.locator('.fw-approw').first().evaluate(row => ({
+      identity: row.querySelector('.fw-app-identity').getBoundingClientRect().width,
+      badge: row.querySelector('.fw-chip').getBoundingClientRect().width
+    }));
+    expect(appLayout.identity).toBeGreaterThan(appLayout.badge);
+    expect(appLayout.badge).toBeLessThan(160);
+    await expect(card.locator('.fw-meter')).toHaveCount(0);
+    await card.getByRole('button',{name:lang === 'da' ? 'I dag' : 'Today',exact:true}).click();
+    const screen = page.locator('.fw-panel').filter({has:page.getByRole('heading',{name:lang === 'da' ? 'Skærmtid i dag' : 'Screen time today',exact:true})});
+    await expect(screen.locator('.fw-big')).toHaveText('20min');
+    await expect(screen).toContainText(lang === 'da' ? 'intet samlet skærmtidsbudget' : 'No total screen-time budget');
+    await expect(screen.locator('.fw-meter')).toHaveCount(0);
+    await page.getByRole('tab',{name:lang === 'da' ? 'Historik' : 'History',exact:true}).click();
+    await expect(page.locator('.fw-history-apps').getByText('com.example.search',{exact:true})).toBeVisible();
+    await page.getByRole('tab',{name:lang === 'da' ? 'Regler' : 'Rules',exact:true}).click();
+    await expect(page.locator('.fw-rule-app').getByText('com.example.search',{exact:true})).toBeVisible();
+    await expect(page.locator('.fw-rule-apps').getByText('com.example.pending',{exact:true})).toBeVisible();
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('.fw-nav').getByRole('button',{name:lang === 'da' ? 'Familie' : 'Family',exact:true}).click();
+    await page.evaluate(() => {
+      window.replies.usage.profiles[0].total = 0;
+      return window.control.refresh();
+    });
+    await expect(card.locator('.fw-big')).toHaveCount(0);
+    await expect(card).toContainText(lang === 'da' ? 'Utilgængelig' : 'Unavailable');
+    await page.evaluate(() => {
+      window.replies.usage.profiles[0].devices = [{name:'Alex phone',total:0}];
+      return window.control.refresh();
+    });
+    await expect(card.locator('.fw-big')).toHaveText('0 min');
+    await page.evaluate(() => {
+      window.replies.configuration_report.app_profiles.alex.enabled = false;
+      window.replies.usage.profiles[0].total = 600;
+      return window.control.refresh();
+    });
+    await expect(card.locator('.fw-big')).toHaveText('10 min');
+    for (const width of [1440,390,320]) {
+      await page.setViewportSize({width,height:900});
+      expect(await page.locator('.fwa').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+    }
+  });
+
+  test('explicit light/dark override OS; auto follows changes and stop removes its listener', async ({ page }) => {
+    await page.emulateMedia({colorScheme:'dark'});
+    await neutral(page,{theme:'light'});
+    await expect(page.locator('.fwa')).not.toHaveClass(/is-dark/);
+    await expect(page.locator('.fwa')).toHaveCSS('color-scheme','light');
+    await page.locator('.fw-kid').getByRole('button',{name:'Edit rules',exact:true}).click();
+    await page.getByLabel('Name',{exact:true}).fill('Alex draft');
+    await page.getByLabel('Name',{exact:true}).focus();
+    await page.evaluate(() => window.control.setTheme('dark'));
+    await page.emulateMedia({colorScheme:'light'});
+    await expect(page.locator('.fwa')).toHaveClass(/is-dark/);
+    await expect(page.locator('.fwa')).toHaveCSS('color-scheme','dark');
+    await expect(page.getByLabel('Name',{exact:true})).toHaveValue('Alex draft');
+    await expect(page.getByLabel('Name',{exact:true})).toBeFocused();
+    await page.evaluate(() => window.control.setTheme('auto'));
+    await expect(page.locator('.fwa')).not.toHaveClass(/is-dark/);
+    await page.emulateMedia({colorScheme:'dark'});
+    await expect(page.locator('.fwa')).toHaveClass(/is-dark/);
+    await page.evaluate(() => window.control.stop());
+    await page.emulateMedia({colorScheme:'light'});
+    await page.waitForTimeout(100);
+    await expect(page.locator('.fwa')).toHaveClass(/is-dark/);
+  });
+
+  for (const theme of ['light','dark']) test(`host element rules cannot restyle workspace controls (${theme})`, async ({ page }) => {
+    const data = replies();
+    data.usage.profiles = [{id:'alex',total:60,devices:[{name:'Alex phone',total:60}],apps:[]}];
+    await neutral(page,{theme,data});
+    // Minimal Proton 2025 global selectors, loaded AFTER the workspace stylesheet.
+    await page.addStyleTag({content:`
+      *{box-sizing:border-box;margin:0;padding:0}
+      p,ul,ol{margin:0 0 1rem}
+      h1,h2,h3,h4{color:rgb(255,0,255);font-weight:600;line-height:1.3;margin:0 0 1rem}
+      button{display:inline-flex;gap:8px;background:magenta;color:white;font-weight:500;font-size:.9rem;border:none;border-radius:20px;transition:all .2s;white-space:nowrap;padding:10px 20px}
+      button:hover{box-shadow:0 8px 20px magenta;transform:translateY(-1px)}
+      button:active{transform:translateY(0)}
+      input:not([type]),input[type=text],select{max-width:100%;width:100%;min-width:0!important;font-size:16px}
+      @media(max-width:600px){button{font-size:1rem;padding:12px 18px}th{display:none}}
+    `});
+    const today = page.locator('.fw-kid').getByRole('button',{name:'Today',exact:true});
+    await today.hover();
+    await expect(today).toHaveCSS('padding-left','16px');
+    await expect(today).toHaveCSS('padding-top','0px');
+    await expect(today).toHaveCSS('transform','none');
+    await expect(today).toHaveCSS('box-shadow','none');
+    await expect(page.locator('.fw-h1')).toHaveCSS('color',theme === 'dark' ? 'rgb(216, 225, 234)' : 'rgb(15, 27, 39)');
+    for (const width of [1440,390,320]) {
+      await page.setViewportSize({width,height:900});
+      expect(await page.locator('.fwa').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+      await expect(today).toHaveCSS('padding-top','0px');
+    }
+    await today.click();
+    await expect(page.locator('.fw-table th').first()).toBeVisible();
+    await page.getByRole('tab',{name:'Rules',exact:true}).click();
+    await expect(page.getByLabel('Name',{exact:true})).toHaveCSS('background-color',theme === 'dark' ? 'rgb(18, 28, 39)' : 'rgb(255, 255, 255)');
+  });
+
+  test('LuCI translates explicit host dark state and disposes its observers on navigation', async ({ page }) => {
+    const source = readFileSync(require('node:path').resolve(__dirname,
+      '../../luci-app-familywarden/htdocs/luci-static/resources/view/familywarden/control.js'),'utf8');
+    await neutral(page);
+    await page.evaluate(source => {
+      window.control.stop();
+      document.documentElement.setAttribute('data-darkmode','false');
+      window.hostThemes = []; window.hostStops = 0;
+      const view = new Function('view','host','E',source)(
+        {extend:value => value},{options:() => ({})},
+        (tag,attrs,child) => {const node = document.createElement(tag);if (child) node.textContent = child;return node;});
+      const root = view.render({mount:(node,options) => {
+        window.hostThemes.push(options.theme);
+        return {setTheme:value => window.hostThemes.push(value),stop:() => window.hostStops++};
+      }});
+      root.id = 'host-mount'; window.pendingHostRoot = root;
+      document.body.appendChild(document.createElement('div'));
+    },source);
+    // LuCI can attach a rendered view later; unrelated mutations must not stop it.
+    expect(await page.evaluate(() => window.hostStops)).toBe(0);
+    await page.evaluate(() => document.body.replaceChildren(window.pendingHostRoot));
+    expect(await page.evaluate(() => window.hostThemes)).toEqual(['light']);
+    await page.evaluate(() => document.documentElement.setAttribute('data-darkmode','true'));
+    await expect.poll(() => page.evaluate(() => window.hostThemes)).toEqual(['light','dark']);
+    await page.evaluate(() => document.documentElement.removeAttribute('data-darkmode'));
+    await expect.poll(() => page.evaluate(() => window.hostThemes)).toEqual(['light','dark','auto']);
+    await page.evaluate(() => document.getElementById('host-mount').remove());
+    await expect.poll(() => page.evaluate(() => window.hostStops)).toBe(1);
+    await page.evaluate(() => document.documentElement.setAttribute('data-darkmode','true'));
+    expect(await page.evaluate(() => window.hostThemes)).toEqual(['light','dark','auto']);
+  });
+
+  test('optional public Proton stylesheet on a disposable local host', async ({ page }) => {
+    test.skip(!process.env.FW_PROTON_CSS, 'Set FW_PROTON_CSS to a local public theme stylesheet');
+    await neutral(page,{theme:'dark'});
+    await page.evaluate(() => {
+      document.documentElement.setAttribute('data-theme','dark');
+      document.documentElement.setAttribute('data-darkmode','true');
+    });
+    await page.addStyleTag({content:readFileSync(process.env.FW_PROTON_CSS,'utf8')});
+    for (const width of [1440,390,320]) {
+      await page.setViewportSize({width,height:900});
+      await expect(page.locator('.fw-h1')).toHaveCSS('color','rgb(216, 225, 234)');
+      const today = page.locator('.fw-kid').getByRole('button',{name:'Today',exact:true});
+      await today.hover();
+      await expect(today).toHaveCSS('padding-top','0px');
+      await expect(today).toHaveCSS('transform','none');
+      expect(await page.locator('.fwa').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+    }
+  });
+
   test('complete EN/DA navigation and editors use the same production module', async ({ page }) => {
     for (const lang of ['en','da']) {
       await neutral(page,{lang});

@@ -666,6 +666,17 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       requests, see today per phone/app, 7-day totals, reported grant use. Parent Android
       shows reported usage per scoped child; #94 moves it from Requests to Screen time.)
 - [x] Include new-app approval (2026-10-25, protocol §5b; LuCI Requests page and parent phone).
+- [x] UI1 (2026-10-29): shared workspace follows the explicit native light/dark
+      theme, keeps profile/administrator-phone labels neutral, shows measured use
+      without a total budget, and exposes package identity in app/history/rule rows.
+      LuCI r9 prepared: 31 neutral/packaged-native browser cases (including optional
+      real public Proton CSS), 8 Node checks, syntax and package smoke pass; fresh
+      review clean. Browser-local light/dark previews against the real read-only
+      router data pass without modifying router assets or configuration. Not deployed.
+- [ ] OPS1: fix management HTTPS hostname/certificate mismatch and disabled HTTP→HTTPS
+      redirect found during the authorized read-only pilot audit. Preserve recovery
+      access and validate certificate trust before changing redirect/listener settings;
+      no TLS/router configuration was changed by that audit.
 - [ ] Essential-app warnings and removal/revocation workflows.
 - [x] Existing Android views: EN/DA strings/plurals, accessibility labels, large-text,
       dark/light themes and fictional previews/screenshots. New screens must preserve this.

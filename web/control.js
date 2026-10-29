@@ -38,7 +38,7 @@ export function historyModel(usage) {
     unknown: entries.filter(d => d.reported == null).length };
 }
 
-export function mount(root, { call, callHost, lang = 'en', recoveryURL, interval = 15000 }) {
+export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 'auto', interval = 15000 }) {
   const doc = root.ownerDocument, win = doc.defaultView, t = strings(lang);
   const el = (tag, attrs = {}, ...children) => {
     const node = doc.createElement(tag);
@@ -63,7 +63,17 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, interval
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/></symbol>
   <symbol id="i-sync" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.3L4 9M4 4v5h5M4 13a8 8 0 0 0 14.3 4.3L20 15M20 20v-5h-5"/></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol></svg>`;
-  if (win.matchMedia?.('(prefers-color-scheme: dark)').matches) root.classList.add('is-dark');
+  // Hosts may select a theme explicitly; auto follows preference changes.
+  const colorPreference = win.matchMedia?.('(prefers-color-scheme: dark)');
+  const updateTheme = () => root.classList.toggle('is-dark', theme === 'dark' || (theme !== 'light' && !!colorPreference?.matches));
+  updateTheme();
+  if (theme === 'auto') colorPreference?.addEventListener('change', updateTheme);
+  const setTheme = value => {
+    colorPreference?.removeEventListener('change', updateTheme);
+    theme = value;
+    updateTheme();
+    if (theme === 'auto') colorPreference?.addEventListener('change', updateTheme);
+  };
   const notice = el('p', { class: 'sr', role: 'alert' });
   const toasts = el('div', { class: 'fw-toasts' });
   const status = el('p', { class: 'fw-status', 'aria-live': 'polite' }, t('loading'));
@@ -221,7 +231,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, interval
   }
 
   function renderRail() {
-    const kids = profiles();
+    const allProfiles = profiles();
     const count = attention().length;
     const nav = key => view === key;
     rail.replaceChildren(
@@ -230,7 +240,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, interval
         el('ul', { class: 'fw-nav-group' },
         el('button', { type: 'button', 'aria-current': nav('family') ? 'page' : null, onclick: () => open('family') },
           ic('i-people', 18), t('family')),
-        ...kids.map((p, i) => el('button', { type: 'button',
+        ...allProfiles.map((p, i) => el('button', { type: 'button',
           'aria-current': ['detail', 'history', 'rules', 'devices'].includes(view) && selected === p.id ? 'page' : null,
           onclick: () => open('detail', p.id) },
           ic('i-phone', 18), el('span', {}, p.name || p.id),
@@ -297,10 +307,12 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, interval
     const state = appState(profile.id), usage = usageOf(profile.id);
     const bonus = +row(profile.id)?.bonus_today || 0;
     const budget = state?.screen_budget_minutes;
-    if (state?.enabled === false)
-      return el('div', {}, el('h4', {}, t('screenToday')), hint(t('noBudget')));
     const used = reportedMinutes(usage);
-    if (!Number.isFinite(budget) || used == null)
+    if (state?.enabled === false || !Number.isFinite(budget))
+      return el('div', {}, el('h4', {}, t('screenToday')),
+        used == null ? hint(t('unavailable')) : el('p', { class: 'fw-big' }, t('minUnit', { n: used })),
+        hint(t(state ? 'noScreenBudget' : 'screenBudgetUnavailable')));
+    if (used == null)
       return el('div', {}, el('h4', {}, t('screenToday')), hint(t('unavailable')));
     return el('div', {},
       el('div', { class: 'fw-budget-top' },
@@ -325,7 +337,9 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, interval
             el('i', { style: `width:${Math.min(100, used / limitMin * 100)}%` })),
           el('span', { class: 'muted', style: 'font-size:.8125rem' }, `${used} / ${limitMin}`))
         : chip(t('allowedApp'), 'ok');
-      return el('div', { class: 'fw-approw' }, el('span', {}, a.label || a.package), right);
+      return el('div', { class: 'fw-approw' }, el('span', { class: 'fw-app-identity' },
+        el('span', {}, a.label || a.package),
+        a.label && a.package ? el('span', { class: 'fw-package mono muted' }, a.package) : null), right);
     });
   }
 
@@ -351,7 +365,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, interval
 
 
   function familyView() {
-    const kids = profiles();
+    const allProfiles = profiles();
     const items = attention();
     const admins = phones().filter(d => d.administrator === '1');
     return [
@@ -366,13 +380,13 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, interval
           el('div', { class: 'who' }, el('div', { class: 'fw-av fw-av-0' }, ic('i-inbox', 18)),
             el('div', { style: 'min-width:0' }, el('p', { class: 'what' }, it.what), el('p', { class: 'why' }, it.why)))),
           button(t('show'), () => open(it.view), { small: true })))) : null,
-      kids.length ? el('section', { class: 'fw-section', 'aria-labelledby': 'kids-h' },
-        el('h2', { class: 'fw-h2', id: 'kids-h' }, t('children')),
-        el('div', { class: 'fw-kids' }, kids.map((p, i) => kidCard(p, i))))
+      allProfiles.length ? el('section', { class: 'fw-section', 'aria-labelledby': 'profiles-h' },
+        el('h2', { class: 'fw-h2', id: 'profiles-h' }, t('profilesHeading')),
+        el('div', { class: 'fw-kids' }, allProfiles.map((p, i) => kidCard(p, i))))
         : el('div', { class: 'fw-empty' }, el('h2', { class: 'fw-h2' }, t('empty')),
           button(t('add'), () => editProfile(''), { primary: true })),
-      admins.length ? el('section', { class: 'fw-section', 'aria-labelledby': 'adults-h' },
-        el('h2', { class: 'fw-h2', id: 'adults-h' }, t('adults')),
+      admins.length ? el('section', { class: 'fw-section', 'aria-labelledby': 'admin-phones-h' },
+        el('h2', { class: 'fw-h2', id: 'admin-phones-h' }, t('administratorPhones')),
         el('div', { class: 'fw-panel', style: 'padding:6px 20px' },
           el('ul', { class: 'fw-list' }, admins.map((d, i) => el('li', { class: 'fw-item' },
             el('div', { class: `fw-av fw-av-${(i + 1) % 5}` }, (d.name || '?')[0].toUpperCase()),
@@ -393,9 +407,9 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, interval
       el('div', { class: 'fw-grid2' },
         panel(t('screenToday'),
           el('p', { class: 'fw-big' }, used == null ? t('unavailable') : String(used), used == null ? null : el('small', {}, t('minShort'))),
-          meter,
+          Number.isFinite(budget) ? meter : null,
           Number.isFinite(budget) ? hint(t('budgetFor', { n: budget }) + (bonus ? ' · ' + t('bonusToday', { n: bonus }) : ''))
-            : hint(appState(profile.id)?.enabled === false ? t('noBudget') : t('unavailable')),
+            : hint(t(appState(profile.id) ? 'noScreenBudget' : 'screenBudgetUnavailable')),
           hint(t('usageHelp'))),
         panel(t('internet'),
           el('div', { class: 'fw-kid-net' }, statusChip(p)),
@@ -517,7 +531,9 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, interval
         : !usage ? hint(t('unavailable'))
         : appRows.length ? el('ul', { class: 'fw-list' }, appRows.map(a => el('li', { class: 'fw-item' },
           el('span', { class: 'fw-app-icon', 'aria-hidden': 'true' }, (a.label || a.package || '?')[0].toUpperCase()),
-          el('div', { class: 'main' }, el('p', { class: 't' }, a.label || a.package), el('p', { class: 's' }, duration(a.seconds))),
+          el('div', { class: 'main' }, el('p', { class: 't' }, a.label || a.package),
+            a.label && a.label !== a.package ? el('p', { class: 's mono' }, a.package) : null,
+            el('p', { class: 's' }, duration(a.seconds))),
           el('div', { class: 'fw-rowmeter' }, el('div', { class: 'fw-meter' }, el('i', { style: `width:${a.seconds / maxApp * 100}%` }))))))
         : hint(t('noAppsToday')),
       hint(t('historyAppScope')));
@@ -700,7 +716,8 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, interval
       if (awaiting) {
         list.append(el('li', { class: 'fw-item' },
           el('span', { class: 'fw-app-icon', 'aria-hidden': 'true' }, (label || '?')[0].toUpperCase()),
-          el('div', { class: 'main' }, el('p', { class: 't' }, label)), chip(t('awaitingDecision'), 'attn')));
+          el('div', { class: 'main' }, el('p', { class: 't' }, label),
+            label !== pkg ? el('p', { class: 's mono' }, pkg) : null), chip(t('awaitingDecision'), 'attn')));
         continue;
       }
       const mode = entries.some(a => a.blocked === '1') ? 'blocked' : array(profile.always_allowed).includes(pkg) ? 'unlimited'
@@ -717,7 +734,8 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, interval
       list.append(el('li', { class: 'fw-item fw-rule-app' },
         el('span', { class: 'fw-app-icon', 'aria-hidden': 'true' }, (label || '+')[0].toUpperCase()),
         el('div', { class: 'main' }, pkg ? el('p', { class: 't' }, label)
-          : field(t('package'), app.package, v => app.package = v, { disabled, required: true, placeholder: 'com.example.app' })),
+          : field(t('package'), app.package, v => app.package = v, { disabled, required: true, placeholder: 'com.example.app' }),
+          label !== pkg ? el('p', { class: 's mono' }, pkg) : null),
         el('div', { class: 'fw-app-controls' },
           select(t('ruleFor', { name: label || t('package') }), mode,
             [['allowed', t('appAllowed')], ['limit', t('appOwnLimit')], ['unlimited', t('appUnlimited')], ['blocked', t('appBlocked')]], setRule, disabled),
@@ -1105,5 +1123,5 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, interval
   }
 
   refresh();
-  return { refresh, stop: () => { stopped = true; fresh = false; clearTimeout(timer); requestsMount?.stop(); requestsMount = null; controls(); } };
+  return { refresh, setTheme, stop: () => { stopped = true; fresh = false; colorPreference?.removeEventListener('change', updateTheme); clearTimeout(timer); requestsMount?.stop(); requestsMount = null; controls(); } };
 }

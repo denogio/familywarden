@@ -29,6 +29,11 @@
   --meter:#E0BD4A;--meter-track:#22303F;--meter-extra:#7CC7BD;
   --focus:#E0BD4A;--scrim:rgba(0,0,0,.62);--rail:#070B10;color-scheme:dark}
 .fwa *,.fwa *::before,.fwa *::after{box-sizing:border-box}
+/* Keep generic host hover effects out of workspace controls. */
+.fwa button,.fwa button:hover,.fwa button:active{transform:none;box-shadow:none}
+.fwa .fw-approw{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;padding:6px 0}
+.fwa .fw-approw>.fw-app-identity{min-width:0;flex:1 1 160px}
+.fwa .fw-package{display:block}
 .fwa :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .fwa button,.fwa input,.fwa select,.fwa textarea{font:inherit;color:inherit}
 .fwa h1,.fwa h2,.fwa h3,.fwa h4{color:inherit;text-shadow:none}
@@ -111,7 +116,7 @@
 /* ---------- avatars ---------- */
 .fwa .fw-av{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:#FFFFFF;font-weight:700;font-size:.9375rem}
 .fwa .fw-av.lg{width:52px;height:52px;font-size:1.25rem}
-.fwa .fw-av-0{background:#3D5A8A}.fw-av-1{background:#2D6E5E}.fw-av-2{background:#7A4E8E}.fw-av-3{background:#8A6A2A}.fw-av-4{background:#55606E}
+.fwa .fw-av-0{background:#3D5A8A}.fwa .fw-av-1{background:#2D6E5E}.fwa .fw-av-2{background:#7A4E8E}.fwa .fw-av-3{background:#8A6A2A}.fwa .fw-av-4{background:#55606E}
 
 /* ---------- child cards ---------- */
 .fwa .fw-kids{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(440px,100%),1fr));gap:16px;align-items:start}
@@ -146,7 +151,7 @@
 .fwa .fw-item .s{margin:2px 0 0;color:var(--muted);font-size:.875rem}
 .fwa .fw-table{width:100%;border-collapse:collapse;font-size:.875rem}
 .fwa .fw-table th,.fwa .fw-table td{padding:.5rem .4rem;text-align:start;border-bottom:1px solid var(--line)}
-.fwa .fw-table th{color:var(--muted);font-weight:600}
+.fwa .fw-table th{display:table-cell;color:var(--muted);font-weight:600}
 .fwa .fw-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden}
 .fwa .fw-tabs button{border:0;background:transparent;padding:10px 14px;margin:0;border-bottom:2px solid transparent;color:var(--muted);font-weight:600;cursor:pointer;white-space:nowrap}
 .fwa .fw-tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--gold)}

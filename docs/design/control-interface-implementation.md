@@ -22,6 +22,38 @@ The prototype's mock API shapes are **not** frozen by this work. Existing grant
 limits, lifetime, requesting-device/key binding, parent scopes and pact exclusions
 remain core decisions. The browser does not grant authority or infer enforcement.
 
+## UI1 presentation corrections (2026-10-29)
+
+Family sections are **Profiles** and **Administrator phones**: the core supplies no
+age/kind classification. Reported screen use stays visible without a total budget;
+missing usage or budget facts remain unavailable. App rows show uploaded labels with
+the stable package ID as secondary text, without app-specific name mappings.
+
+`mount(root, options)` accepts `theme: 'light' | 'dark' | 'auto'` (default `auto`).
+The returned `setTheme(value)` changes only the root palette, preserving drafts and
+focus. Auto follows OS preference changes; `stop()` removes that listener. The thin
+LuCI host translates the explicit HTML `data-darkmode` marker, watches changes, and
+cleans up observers/polling when its mount is removed. Hosts without that marker
+use auto. Shared modules do not inspect LuCI/theme-specific document attributes.
+
+Deterministic Playwright checks cover EN/DA labels, measured/missing/zero usage,
+package identity, explicit/auto themes, host marker translation and cleanup,
+Proton-like global element/hover rules and 1440/390/320px layouts. An optional
+`FW_PROTON_CSS` local path exercises a public vendor stylesheet on the disposable
+neutral host; no vendor CSS, household data or production endpoints are fixtures.
+The targeted CSS corrections suppress generic host button shadows/movement, retain
+mobile table headers and keep avatar colors scoped. Delayed native attachment does
+not stop the workspace before it has been connected; removal then cleans up listeners.
+App-identity flex applies only to the label/package wrapper, not its status badge.
+
+Final evidence: 31 neutral/packaged-native browser cases with the public Proton CSS,
+8 Node checks, syntax and package smoke pass; fresh review is clean. LuCI r9 is
+prepared, not deployed. Read-only browser-local asset replacements against the real
+router were inspected in explicit light/dark mode on desktop/mobile; authoritative
+configuration is unchanged. Private household data/screenshots remain outside the
+repository. The production theme itself was not changed. The audit also found a
+management HTTPS hostname mismatch and disabled redirect, tracked separately as OPS1.
+
 ## R5 visual and runtime checkpoint (2026-10-28)
 
 The shared workspace uses the prototype's navy rail, light/dark surfaces, attention
