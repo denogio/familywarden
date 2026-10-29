@@ -10,7 +10,7 @@ LUCI_DEPENDS:=+familywarden +luci-base
 LUCI_PKGARCH:=all
 
 PKG_VERSION:=0.11.0
-PKG_RELEASE:=13
+PKG_RELEASE:=14
 
 PKG_MAINTAINER:=denogio <dennis@hojgaard.me>
 PKG_LICENSE:=Apache-2.0
