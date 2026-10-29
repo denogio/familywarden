@@ -675,6 +675,8 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       router data pass without modifying router assets or configuration. Deployed to
       the pilot router 2026-10-29 with maintainer approval (LuCI r8 → r9 only; ACL, core,
       backend and configuration unchanged; live read-only light/dark/Bootstrap checks: 0 errors).
+      Browsers kept the cached r8 view under Proton (pinned `?v=` key); LuCI r10 installs
+      assets under a per-release directory (`89c15a8`), deployed the same day.
 - [ ] OPS1: fix management HTTPS hostname/certificate mismatch and disabled HTTP→HTTPS
       redirect found during the authorized read-only pilot audit. Preserve recovery
       access and validate certificate trust before changing redirect/listener settings;
