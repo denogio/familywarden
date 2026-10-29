@@ -79,12 +79,12 @@ never becomes a fabricated zero-app report. No root API or credential forwarding
 
 ### I3 — Native browse/search/details
 
-- [ ] Wire the real signed data into existing Family child selection and Controls;
+- [x] Wire the real signed data into existing Family child selection and Controls;
       no redundant choose-child step and no extra bottom tab.
-- [ ] Implement names/tiles, search, available rule filters, sources, missing/stale/
+- [x] Implement names/tiles, search, available rule filters, sources, missing/stale/
       partial/error/retry states and protected-app details. Cancel/discard stale reads
       immediately on child, household identity or effective scope changes.
-- [ ] Keep standing-rule mutations explicitly unavailable until I4 is integrated;
+- [x] Keep standing-rule mutations explicitly unavailable until I4 is integrated;
       working native new-app approvals remain in Requests meanwhile.
 
 **Accept:** no package typing, fake inventory or working-looking unsupported Save.
@@ -129,6 +129,23 @@ advance, bounds/sorting), identity tests (own-profile only, foreign signature 40
 unchanged signed policy, label sanitizing), CGI forwarding; Android report contract
 and partial/size tests; 38/38 native P8 checks with r26 packages, including an
 emulator snapshot with unused apps and essential roles stored by the router.
+
+## I3 evidence (2026-10-29)
+
+Family › Controls › Installed apps reuses the child pill (no extra tab or picker) and reads
+via `FamilyAppsClient` off the main thread; state is keyed by child, household/phone
+identity and effective scope, so a change discards the old list. Fixed-height emulator
+checks (`scripts/test-functional-android-ui.sh`): EN light at 200%, DA dark at 200%,
+duplicate labels show the package, label-less apps show it once, stale and missing
+sources are said, Blocked/All filters, search, detail with the per-phone report time
+and essential marking, no Save, and a second child with no list (no Alex data leaks).
+Native (`scripts/test-requests-emulator.sh`, r26/r17, 42 PASS): a non-owner parent
+reads a real signed partial snapshot ("sent 2 of 3"), a rule for an unreported app
+shows "Not reported", and the detail opens without Device Owner.
+
+Not covered by a UI test yet: live revocation while the screen is open (the client maps
+`not_parent` to the scope-changed state; the core refusal is tested natively for history
+and in Go for `installed`), and app removal/source change between two reads.
 
 ## Earlier evidence
 

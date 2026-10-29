@@ -86,6 +86,7 @@ class MainActivity : ComponentActivity() {
             runCatching { startActivity(Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
         },
         loadHistory = { profile, day -> FamilyHistoryClient.history(this, profile, day) },
+        loadApps = { profile -> FamilyAppsClient.apps(this, profile) },
         askTime = { target, minutes, note -> upload { AppRequestClient.request(this, target, minutes, note) } },
         answerTime = { request, approve, minutes -> upload { AppRequestClient.answer(this, request, approve, minutes) } },
         decideApp = { app, approve -> upload { AppRequestClient.decideApp(this, app, approve) } },

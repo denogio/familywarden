@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_apps_title">Apps</string>
+    <string name="fw_apps_entry">Installerede apps</string>
+    <string name="fw_apps_entry_body">Se de apps, som telefonerne hos %1$s har rapporteret, og reglen for hver.</string>
+    <string name="fw_apps_installed_on">Installeret på telefonerne hos %1$s</string>
+    <string name="fw_apps_loading">Henter applisten…</string>
+    <string name="fw_apps_load_failed">Applisten kunne ikke hentes. Det er ikke en tom liste. Tjek forbindelsen, eller prøv igen.</string>
+    <string name="fw_apps_control_off">Appkontrol er slået fra for dette barn, så der er ingen appliste.</string>
+    <string name="fw_apps_profile_wide">Regler gælder for %1$s på alle telefonerne hos %1$s.</string>
+    <string name="fw_apps_none_title">Ingen appliste endnu</string>
+    <string name="fw_apps_none_body">Telefonerne hos %1$s har ikke sendt deres apps. Andre regler gælder stadig.</string>
+    <string name="fw_apps_search">Søg i apps hos %1$s</string>
+    <string name="fw_apps_no_match">Ingen rapporteret app passer. Apps, der ikke er rapporteret endnu, kan ikke vises her.</string>
+    <string name="fw_apps_filter_all">Alle</string>
+    <string name="fw_apps_filter_limited">Begrænset</string>
+    <string name="fw_apps_filter_blocked">Blokeret</string>
+    <string name="fw_apps_filter_always">Altid tilladt</string>
+    <string name="fw_apps_filter_new">Nye</string>
+    <string name="fw_apps_essential_group">Nødvendige systemapps</string>
+    <string name="fw_apps_essential_note">Hvilke apps der er nødvendige, afgøres på hver telefon, så listen kan variere mellem telefonerne hos %1$s. De kan ikke blokeres eller begrænses.</string>
+    <string name="fw_apps_no_phones">%1$s har ingen godkendte telefoner.</string>
+    <string name="fw_apps_source_missing">%1$s har ikke sendt sin appliste endnu. Telefonens apps kan mangle her.</string>
+    <string name="fw_apps_source_old">%1$s har ikke sendt sin appliste siden %2$s. Apps installeret siden da kan mangle her.</string>
+    <string name="fw_apps_source_partial">%1$s sendte %2$d af %3$d apps. Nogle apps kan mangle her.</string>
+    <string name="fw_apps_rule_for">Regel for %1$s</string>
+    <string name="fw_apps_rule_essential">Nødvendig for at telefonen virker, så den er altid tilladt for %1$s.</string>
+    <string name="fw_apps_rule_blocked_body">%1$s kan ikke åbne den. Ekstra tid kan ikke ophæve blokeringen.</string>
+    <string name="fw_apps_rule_always_body">Sættes aldrig på pause af grænser eller nedetid for %1$s og tælles ikke med.</string>
+    <string name="fw_apps_rule_limit_body">Sin egen grænse inden for den daglige grænse for %1$s. Nedetid gælder stadig.</string>
+    <string name="fw_apps_rule_waiting_body">Sat på pause, indtil en forælder tillader den. Godkend den under Godkendelser, når %1$s spørger.</string>
+    <string name="fw_apps_rule_allowed_body">Tæller med i den daglige grænse for %1$s og følger nedetid.</string>
+    <string name="fw_apps_installed_on_title">Installeret på</string>
+    <string name="fw_apps_not_reported">Ingen nuværende telefon har rapporteret denne app. Reglen er stadig gemt på routeren.</string>
+    <string name="fw_apps_not_reported_short">Ikke rapporteret</string>
+    <string name="fw_apps_reported_at">Rapporteret %1$s</string>
+    <string name="fw_apps_may_be_old">kan være forældet</string>
+    <string name="fw_apps_essential_here">nødvendig her</string>
+    <string name="fw_apps_edit_unavailable">Ændring af regler her er ikke tilgængelig endnu</string>
+    <string name="fw_apps_edit_unavailable_body">Ændr appregler i routeradministrationen indtil videre. Denne app sender ikke regelændringer.</string>
+    <string name="fw_apps_essential">Nødvendig · altid tilladt</string>
+    <string name="fw_apps_limit">Daglig grænse %1$s</string>
+    <string name="fw_apps_waiting">Venter på godkendelse</string>
+    <string name="fw_apps_allowed">Tilladt</string>
+    <plurals name="fw_apps_phones">
+        <item quantity="one">%d telefon</item>
+        <item quantity="other">%d telefoner</item>
+    </plurals>
+    <string name="fw_family_rules">Regler</string>
+</resources>

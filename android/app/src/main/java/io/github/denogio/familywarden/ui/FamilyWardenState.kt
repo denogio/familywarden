@@ -137,4 +137,6 @@ class FamilyWardenActions(
     val openRouter: () -> Unit = {},
     /** Blocking read; callers must use a worker thread, never the Compose main thread. */
     val loadHistory: (String, java.time.LocalDate) -> FamilyHistoryDay = { _, _ -> throw HistoryRefused("unavailable") },
+    /** Blocking read, like [loadHistory]. */
+    val loadApps: (String) -> InstalledApps = { throw InstalledRefused("unavailable") },
 )

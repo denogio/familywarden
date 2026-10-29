@@ -367,6 +367,24 @@ touch /tmp/drop-next-app-response
     ui('native-parent-history')
     assert 'DeviceOwner' not in adb('shell', 'dpm', 'list-owners')
     print('PASS recorded-day history does not need Device Owner', flush=True)
+    # The child's other phone reports its apps; the parent browses them read-only.
+    out = synthetic_upload('inventory', {'type': 'inventory', 'v': 1, 'device': 'fw-test-kid', 'profile': 'alex',
+        'seq': 1, 'installed': 3, 'apps': [
+            {'package': 'com.example.draw', 'label': 'Draw', 'system': False, 'essential': False},
+            {'package': 'com.example.puzzle', 'label': 'Puzzle Garden', 'system': False, 'essential': False}]})
+    assert '"stored"' in out, out
+    adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+    tap('Controls')
+    tap('Installed apps', scroll=True)
+    wait('native parent reads the real signed installed-app list', lambda: bool(nodes('Puzzle Garden')))
+    wait('a partial snapshot is said, not hidden', lambda: any(
+        'sent 2 of 3 apps' in n.get('text', '') for n in ui().iter('node')))
+    assert not nodes('Save'), 'read-only slice must not offer Save'
+    ui('native-parent-installed-apps')
+    tap('Puzzle Garden')
+    wait('installed-app detail names the profile rule', lambda: bool(nodes('RULE FOR ALEX')))
+    ui('native-parent-installed-app')
+    print('PASS parent browses reported apps without Device Owner or package typing', flush=True)
     # A read-only contract uses the current registry scope, not an old signed policy.
     assert call('device_update', {'device': 'fw-test-kid', 'profile': 'parent', 'name': 'Test reader',
                                  'approves': 'alex'})['status'] == 'ok'

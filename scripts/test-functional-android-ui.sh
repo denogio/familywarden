@@ -49,8 +49,19 @@ PY
  )
  "${ADB[@]}" shell input tap "$x" "$y"
 }
+type_text() {
+ read -r x y < <(python3 - "$OUT/$1.xml" <<'PY2'
+import re,sys,xml.etree.ElementTree as E
+n=[n for n in E.parse(sys.argv[1]).iter('node') if n.get('class')=='android.widget.EditText'][0]
+a,b,c,d=map(int,re.findall(r'\d+',n.get('bounds')));print((a+c)//2,(b+d)//2)
+PY2
+ )
+ "${ADB[@]}" shell input tap "$x" "$y"
+ "${ADB[@]}" shell input text "$2"
+ "${ADB[@]}" shell input keyevent KEYCODE_ESCAPE
+}
 reveal() {
- for _ in 1 2 3 4 5 6 7; do
+ for _ in 1 2 3 4 5 6 7 8 9 10; do
   capture "$1"
   grep -Fq "$2" "$OUT/$1.xml" && return
   "${ADB[@]}" shell input swipe 400 1500 400 650 350
@@ -143,6 +154,57 @@ capture offline
 contains offline 'last verified voyage'
 reveal unknown-details 'has not supplied the waiting period'
 absent unknown-details '24 hours'
+# Installed apps: browse, filter, search and read-only detail (no Save in this slice).
+render ParentHistoryPreview apps-parent
+tap apps-parent Controls
+capture apps-controls
+tap apps-controls 'Installed apps'
+capture apps-list
+contains apps-list 'Installed on Alex’s phones'
+contains apps-list 'Alex tablet hasn’t sent its app list since'
+absent apps-list 'text="Save"'
+python3 - "$OUT/apps-list.xml" <<'PY2'
+import sys,xml.etree.ElementTree as E
+texts=[n.get('text') for n in E.parse(sys.argv[1]).iter('node')]
+assert texts.count('com.example.old')==1, 'label-less app repeats its package'
+PY2
+reveal apps-video 'Daily limit 30 min'
+contains apps-video 'com.example.video2'
+reveal apps-essential 'ESSENTIAL SYSTEM APPS'
+reveal apps-unreported 'Not reported'
+"${ADB[@]}" shell input swipe 400 650 400 1700 300
+"${ADB[@]}" shell input swipe 400 650 400 1700 300
+capture apps-top
+tap apps-top Blocked
+capture apps-blocked
+contains apps-blocked 'Snapgram'
+absent apps-blocked 'Minecraft'
+tap apps-blocked All
+capture apps-all
+type_text apps-all mine
+capture apps-search
+contains apps-search 'Minecraft'
+absent apps-search 'Snapgram'
+tap apps-search Minecraft
+capture apps-detail
+contains apps-detail 'RULE FOR ALEX'
+contains apps-detail 'Daily limit 1 h'
+reveal apps-detail-edit 'Changing rules here isn’t available yet'
+absent apps-detail-edit 'text="Save"'
+"${ADB[@]}" shell input keyevent KEYCODE_BACK
+capture apps-back
+contains apps-back 'Installed on Alex’s phones'
+"${ADB[@]}" shell input keyevent KEYCODE_BACK
+capture apps-controls-again
+contains apps-controls-again 'Installed apps'
+tap apps-controls-again 'Choose a child'
+capture apps-picker
+tap apps-picker Sam
+capture apps-sam-controls
+tap apps-sam-controls 'Installed apps'
+capture apps-sam
+contains apps-sam 'No app list yet'
+absent apps-sam 'Minecraft'
 "${ADB[@]}" shell cmd uimode night yes >/dev/null
 for preview in VoyageBoundPreview VoyageCalmPreview VoyageReleasePreview VoyageUnknownPreview; do
  render "$preview" "dark-$preview-root"
@@ -156,7 +218,7 @@ tap controls 'App status and remaining work'
 capture capabilities
 contains capabilities 'SUPPORTED IN THIS APP'
 reveal capability-missing 'NOT YET AVAILABLE IN THIS APP'
-contains capability-missing 'Native parent editors'
+contains capability-missing 'Changing app rules'
 "${ADB[@]}" shell input keyevent KEYCODE_BACK
 "${ADB[@]}" shell cmd locale set-app-locales "$PKG" --locales da-DK >/dev/null
 "${ADB[@]}" shell settings put system font_scale 2.0
@@ -182,6 +244,13 @@ tap da-history 'Forrige dag'
 capture da-zero
 contains da-zero 'intet talt forbrug'
 tap da-zero Kontrol
+reveal da-apps-entry 'Installerede apps'
+tap da-apps-entry 'Installerede apps'
+capture da-apps
+contains da-apps 'Installeret på telefonerne hos Alex'
+python3 "$ROOT/test/android/check_navigation.py" "$OUT/da-apps.xml" --selected Kontrol --density "$DENSITY" --labels Skærmtid Kontrol Godkendelser
+"${ADB[@]}" shell input keyevent KEYCODE_BACK
+capture da-controls-back
 reveal da-controls 'Appstatus og resterende arbejde'
 tap da-controls 'Appstatus og resterende arbejde'
 capture da-capabilities

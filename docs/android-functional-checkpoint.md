@@ -43,8 +43,9 @@ is not shown as calm. My phone and Family remain separate.
    apps browser/editor design is received and reviewed
    ([review](design/android-installed-apps-review.md), [plan](../plans/android-installed-apps.md)): friendly
    names/icons/search, reported phone/time, essential-app protection and profile-wide
-   scope; never ask a parent to type package IDs. That new flow is not implemented in
-   this checkpoint; see the next slice in `plans/android-implementation.md`.
+   scope; never ask a parent to type package IDs. Read-only browsing (I1–I3: Family ›
+   Controls › Installed apps, needs core r26) works; **changing app rules from the
+   phone (I4) is still missing** and the detail view says so with the router hand-off.
 2. **Richer observations:** historical expected-device roster, contact events,
    historical bonus/Unlimited attribution, detailed parent delivery state, voyage
    creation time and complete frozen course. A receipt/ack cannot fill those gaps.

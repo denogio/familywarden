@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_apps_title">Apps</string>
+    <string name="fw_apps_entry">Installed apps</string>
+    <string name="fw_apps_entry_body">See the apps %1$s’s phones reported and the rule for each.</string>
+    <string name="fw_apps_installed_on">Installed on %1$s’s phones</string>
+    <string name="fw_apps_loading">Loading the app list…</string>
+    <string name="fw_apps_load_failed">The app list could not be loaded. This is not an empty list. Check the connection or try again.</string>
+    <string name="fw_apps_control_off">App control is off for this child, so there is no app list.</string>
+    <string name="fw_apps_profile_wide">Rules apply to %1$s on all of %1$s’s phones.</string>
+    <string name="fw_apps_none_title">No app list yet</string>
+    <string name="fw_apps_none_body">%1$s’s phones haven’t sent their apps. Other rules still apply.</string>
+    <string name="fw_apps_search">Search %1$s’s apps</string>
+    <string name="fw_apps_no_match">No reported app matches. Apps that are not reported yet cannot appear here.</string>
+    <string name="fw_apps_filter_all">All</string>
+    <string name="fw_apps_filter_limited">Limited</string>
+    <string name="fw_apps_filter_blocked">Blocked</string>
+    <string name="fw_apps_filter_always">Always allowed</string>
+    <string name="fw_apps_filter_new">New</string>
+    <string name="fw_apps_essential_group">Essential system apps</string>
+    <string name="fw_apps_essential_note">Which apps are essential is decided on each phone, so the list can differ between %1$s’s phones. They can’t be blocked or limited.</string>
+    <string name="fw_apps_no_phones">%1$s has no approved phones.</string>
+    <string name="fw_apps_source_missing">%1$s hasn’t sent its app list yet. Its apps may be missing here.</string>
+    <string name="fw_apps_source_old">%1$s hasn’t sent its app list since %2$s. Apps installed since then may be missing here.</string>
+    <string name="fw_apps_source_partial">%1$s sent %2$d of %3$d apps. Some apps may be missing here.</string>
+    <string name="fw_apps_rule_for">Rule for %1$s</string>
+    <string name="fw_apps_rule_essential">Needed for the phone to work, so it is always allowed for %1$s.</string>
+    <string name="fw_apps_rule_blocked_body">%1$s can’t open it. Extra time can’t unblock it.</string>
+    <string name="fw_apps_rule_always_body">Never paused by %1$s’s limits or Downtime and not counted.</string>
+    <string name="fw_apps_rule_limit_body">Its own limit inside %1$s’s daily limit. Downtime still applies.</string>
+    <string name="fw_apps_rule_waiting_body">Paused until a parent allows it. Approve it under Requests when %1$s asks.</string>
+    <string name="fw_apps_rule_allowed_body">Counts toward %1$s’s daily limit and follows Downtime.</string>
+    <string name="fw_apps_installed_on_title">Installed on</string>
+    <string name="fw_apps_not_reported">No current phone reported this app. The rule is still saved on the router.</string>
+    <string name="fw_apps_not_reported_short">Not reported</string>
+    <string name="fw_apps_reported_at">Reported %1$s</string>
+    <string name="fw_apps_may_be_old">may be out of date</string>
+    <string name="fw_apps_essential_here">essential here</string>
+    <string name="fw_apps_edit_unavailable">Changing rules here isn’t available yet</string>
+    <string name="fw_apps_edit_unavailable_body">Change app rules in router administration for now. This app will not send rule changes.</string>
+    <string name="fw_apps_essential">Essential · always allowed</string>
+    <string name="fw_apps_limit">Daily limit %1$s</string>
+    <string name="fw_apps_waiting">Waiting for approval</string>
+    <string name="fw_apps_allowed">Allowed</string>
+    <plurals name="fw_apps_phones">
+        <item quantity="one">%d phone</item>
+        <item quantity="other">%d phones</item>
+    </plurals>
+    <string name="fw_family_rules">Rules</string>
+</resources>

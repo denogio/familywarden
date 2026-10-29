@@ -7,6 +7,9 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material3.*
@@ -117,7 +120,22 @@ fun FamilyTimeContent(state: FamilyWardenState, selectedChild: String? = null, o
 }
 
 @Composable
-fun FamilyControlsContent(state: FamilyWardenState, actions: FamilyWardenActions, selectedChild: String? = null) {
+fun FamilyControlsContent(state: FamilyWardenState, actions: FamilyWardenActions, selectedChild: String? = null,
+    onApps: () -> Unit = {}) {
+    state.familyProfile(selectedChild)?.let { child ->
+        SectionCard {
+            Overline(stringResource(R.string.fw_family_rules))
+            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(role = Role.Button, onClick = onApps),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(Icons.Outlined.Apps, null)
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.fw_apps_entry), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.fw_apps_entry_body, child.name), style = MaterialTheme.typography.bodySmall)
+                }
+                Icon(Icons.Outlined.ChevronRight, null)
+            }
+        }
+    }
     SectionCard {
         Text(stringResource(R.string.fw_family_router_controls), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(R.string.fw_family_router_controls_body))

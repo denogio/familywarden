@@ -3,11 +3,11 @@
     <string name="fw_capabilities_title">App status and remaining work</string>
     <string name="fw_capabilities_scope">These are supported features, not extra permissions. Available actions depend on the signed roles, router version and connection.</string>
     <string name="fw_capabilities_native">Supported in this app</string>
-    <string name="fw_capabilities_native_body">Managed phones: signed offline policy, app limits, Downtime and DNS status. Assigned parents: LAN requests, approvals, new-app decisions and reported usage. Recorded-day history needs core 0.13.0-r24 or newer. Ulysses status uses verified policy; frozen waiting/window details need core r25.</string>
+    <string name="fw_capabilities_native_body">Managed phones: signed offline policy, app limits, Downtime and DNS status. Assigned parents: LAN requests, approvals, new-app decisions and reported usage. Recorded-day history needs core 0.13.0-r24 or newer; read-only installed-app lists need core r26. Ulysses status uses verified policy; frozen waiting/window details need core r25.</string>
     <string name="fw_capabilities_router">Managed on the router</string>
     <string name="fw_capabilities_router_body">Rule, schedule, DNS, home-internet and bonus editing; phone enrollment; voyage creation, extension and amendment. Manual internet blocks stay until changed/reset. Timed tickets return to the normal rules, not necessarily the previous manual block.</string>
     <string name="fw_capabilities_router_login">Open the router web interface, sign in as administrator and choose FamilyWarden. Network access is required. Parent approval scope does not grant router administration.</string>
     <string name="fw_capabilities_missing">Not yet available in this app</string>
-    <string name="fw_capabilities_missing_body">Native parent editors and bonus controls; native voyage self-service; Lock now; independent adult voyages; categories and the adult pool; website history; off-home push delivery. Longer history ranges and historical rule/bonus attribution are not provided. There are no working buttons for these future features.</string>
+    <string name="fw_capabilities_missing_body">Changing app rules and other native parent editors, and bonus controls; native voyage self-service; Lock now; independent adult voyages; categories and the adult pool; website history; off-home push delivery. Longer history ranges and historical rule/bonus attribution are not provided. There are no working buttons for these future features.</string>
     <string name="fw_browser_unavailable">No browser could open this address. Open FamilyWarden in a browser on the home network.</string>
 </resources>

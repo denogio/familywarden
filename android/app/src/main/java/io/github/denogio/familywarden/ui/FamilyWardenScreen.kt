@@ -45,6 +45,8 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
     var familySelected by rememberSaveable { mutableStateOf(if (initialRequests) Page.Requests.name else Page.FamilyTime.name) }
     var familyMode by rememberSaveable { mutableStateOf(initialRequests) }
     var familyHistory by rememberSaveable { mutableStateOf(false) }
+    var familyApps by rememberSaveable { mutableStateOf(false) }
+    var familyApp by rememberSaveable { mutableStateOf<String?>(null) }
     val showFamily = state.canManageFamily && (state.parentMode || familyMode)
     var selectedChild by rememberSaveable(state.binding?.deviceId) { mutableStateOf<String?>(null) }
     val familyProfile = state.familyProfile(selectedChild)
@@ -71,6 +73,8 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
     androidx.activity.compose.BackHandler(enabled = askFlow) { asking = false }
     val historyOpen = showFamily && page == Page.FamilyTime && familyHistory
     androidx.activity.compose.BackHandler(enabled = historyOpen) { familyHistory = false }
+    val appsOpen = showFamily && page == Page.Controls && familyApps
+    androidx.activity.compose.BackHandler(enabled = appsOpen) { familyApps = false; familyApp = null }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -85,6 +89,7 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
                         Column {
                             Text(stringResource(if (!readyForNavigation) R.string.fw_name
                                 else if (historyOpen) R.string.fw_history
+                                else if (appsOpen) R.string.fw_apps_title
                                 else if (showFamily && page == Page.Requests) R.string.fw_family_requests
                                 else if (page == Page.Overview && state.screenTime != null) R.string.fw_today else page.title),
                                 style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
@@ -118,7 +123,7 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
             if (readyForNavigation && !askFlow) NavigationBar {
                 pages.forEach { p -> NavigationBarItem(
                     selected = p == page,
-                    onClick = { if (showFamily) { familySelected = p.name; familyHistory = false } else selected = p.name },
+                    onClick = { if (showFamily) { familySelected = p.name; familyHistory = false; familyApps = false; familyApp = null } else selected = p.name },
                     // Keep localized screen-reader names without visible labels, at every font scale.
                     icon = {
                         BadgedBox(badge = { if (showFamily && p == Page.Requests && state.familyPendingCount > 0) Badge { Text(state.familyPendingCount.toString()) } }) {
@@ -131,7 +136,7 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
             }
         },
     ) { padding ->
-        val scroll = key(page, readyForNavigation, historyOpen,
+        val scroll = key(page, readyForNavigation, historyOpen, appsOpen, familyApp,
             if (showFamily && page != Page.Requests) familyProfile?.id else null) { rememberScrollState() }
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(scroll)
@@ -147,7 +152,10 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
                 !state.paired -> PairSetup(actions, state.parentMode)
                 historyOpen -> FamilyHistoryContent(state, actions, familyProfile?.id) { familyHistory = false }
                 page == Page.FamilyTime -> FamilyTimeContent(state, familyProfile?.id) { familyHistory = true }
-                page == Page.Controls -> FamilyControlsContent(state, actions, familyProfile?.id)
+                appsOpen -> InstalledAppsContent(state, actions, familyProfile?.id, familyApp, { familyApp = it }) {
+                    familyApps = false; familyApp = null
+                }
+                page == Page.Controls -> FamilyControlsContent(state, actions, familyProfile?.id) { familyApps = true }
                 page == Page.Requests -> RequestsContent(state, actions, family = showFamily)
                 page == Page.Settings && state.parentMode -> ParentSettings(state, actions)
                 page == Page.Overview && state.screenTime != null -> ScreenTimeContent(state, actions) { asking = true }

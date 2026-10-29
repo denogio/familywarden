@@ -27,7 +27,27 @@ private fun previewHistory(profile: String, day: LocalDate): FamilyHistoryDay {
     }
     return FamilyHistoryDay(ref, day.toString(), usage, epoch)
 }
-private fun actions(sync: () -> Unit = {}) = FamilyWardenActions(sync, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, loadHistory = ::previewHistory)
+private fun previewApps(profile: String): InstalledApps {
+    val ref = if (profile == "alex") alex else sam
+    if (profile == "sam") return InstalledApps(ref, listOf(AppSource("Sam phone", false, null, null, null)),
+        listOf(InstalledApp("com.example.chat", "", emptySet(), emptySet(), emptySet(), AppRule.Blocked)), "0123456789abcdef", true, epoch)
+    fun app(pkg: String, label: String, rule: AppRule, on: Set<Int> = setOf(0, 1), system: Set<Int> = emptySet(),
+        essential: Set<Int> = emptySet()) = InstalledApp(pkg, label, on, system, essential, rule)
+    return InstalledApps(ref, listOf(AppSource("Alex phone", true, epoch - 1200, 9, 9),
+        AppSource("Alex tablet", true, epoch - 3 * 86400, 7, 6)), listOf(
+        app("com.android.dialer", "Phone", AppRule.None, system = setOf(0, 1), essential = setOf(0, 1)),
+        app("com.example.chess", "Chess Club", AppRule.Allowed, setOf(0)),
+        app("com.example.minecraft", "Minecraft", AppRule.Limit(60)),
+        app("com.example.old", "", AppRule.Blocked, emptySet()),
+        app("com.example.sketch", "Sketch Party", AppRule.None, setOf(1)),
+        app("com.example.snapgram", "Snapgram", AppRule.Blocked, setOf(0)),
+        app("com.example.spotify", "Spotify", AppRule.Always),
+        app("com.example.video", "Video", AppRule.Limit(30)),
+        app("com.example.video2", "Video", AppRule.None, setOf(1)),
+    ), "0123456789abcdef", true, epoch)
+}
+private fun actions(sync: () -> Unit = {}) = FamilyWardenActions(sync, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
+    loadHistory = ::previewHistory, loadApps = ::previewApps)
 
 @Preview(name = "Parent — working recorded-day history", widthDp = 400, heightDp = 840)
 @Composable
