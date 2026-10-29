@@ -36,8 +36,6 @@
     <string name="fw_apps_reported_at">Rapporteret %1$s</string>
     <string name="fw_apps_may_be_old">kan være forældet</string>
     <string name="fw_apps_essential_here">nødvendig her</string>
-    <string name="fw_apps_edit_unavailable">Ændring af regler her er ikke tilgængelig endnu</string>
-    <string name="fw_apps_edit_unavailable_body">Ændr appregler i routeradministrationen indtil videre. Denne app sender ikke regelændringer.</string>
     <string name="fw_apps_essential">Nødvendig · altid tilladt</string>
     <string name="fw_apps_limit">Daglig grænse %1$s</string>
     <string name="fw_apps_waiting">Venter på godkendelse</string>
@@ -47,4 +45,25 @@
         <item quantity="other">%d telefoner</item>
     </plurals>
     <string name="fw_family_rules">Regler</string>
+    <string name="fw_apps_edit_rule">Fast regel</string>
+    <string name="fw_apps_daily_limit">Daglig grænse</string>
+    <string name="fw_apps_minutes">Minutter (0–1440)</string>
+    <string name="fw_apps_draft">Kladde — ikke gemt politik</string>
+    <string name="fw_apps_save">Gem</string>
+    <string name="fw_apps_saving">Gemmer…</string>
+    <string name="fw_apps_discard_draft">Kassér kladde</string>
+    <string name="fw_apps_draft_only">Kladdeændringer annullerer ikke en uafklaret gemning.</string>
+    <string name="fw_apps_saved">Gemt i routerens politik.</string>
+    <string name="fw_apps_matched">Routerens aktuelle politik stemmer. Det beviser ikke, hvem der gemte den.</string>
+    <string name="fw_apps_refused">Gemning afvist før lagring. Dette forsøg ændrede intet.</string>
+    <string name="fw_apps_conflict">Politikken er ændret. Gennemgå den aktuelle regel før en ny kladde gemmes. Dette er ikke en kvittering for det tidligere forsøg.</string>
+    <string name="fw_apps_expired">Den oprindelige handling er udløbet, og den aktuelle politik stemmer ikke. Gennemgå reglen før en ny gemning.</string>
+    <string name="fw_apps_unknown">Udfald ukendt. Kontrollér status før et nyt forsøg. Den oprindelige handling er bevaret.</string>
+    <string name="fw_apps_retryable">Basisrevisionen stemmer. Du kan gentage den oprindelige signerede handling.</string>
+    <string name="fw_apps_check_status">Kontrollér status</string>
+    <string name="fw_apps_retry_original">Gentag oprindelig gemning</string>
+    <string name="fw_apps_saved_not_applied">Gemt politik er ikke en kvittering fra telefonen. Offline telefoner modtager ændringer ved næste vellykkede synkronisering; modtagelses- og anvendelsestidspunkt kendes ikke her.</string>
+    <string name="fw_apps_configuration_required">Regelændring er utilgængelig, indtil en administrator udtrykkeligt aktiverer kernekonfiguration i routeradministrationen. Dette forsøg importerede intet.</string>
+    <string name="fw_apps_operation_target">Handlingens mål: %1$s · %2$s</string>
+    <string name="fw_apps_not_sent">Gemningen blev ikke sendt. Kontrollér forbindelsen og din aktuelle adgang til barnet, og prøv igen.</string>
 </resources>

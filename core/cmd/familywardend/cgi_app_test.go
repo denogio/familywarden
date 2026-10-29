@@ -21,7 +21,7 @@ func TestCGIAppIsAnExactBoundedPOSTForwarder(t *testing.T) {
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		body, err := io.ReadAll(r.Body)
-		if err != nil || (r.URL.Path != "/app/request" && r.URL.Path != "/app/history" && r.URL.Path != "/app/inventory" && r.URL.Path != "/app/installed") || r.Method != "POST" || string(body) != "signature\nexact JSON" {
+		if err != nil || (r.URL.Path != "/app/request" && r.URL.Path != "/app/history" && r.URL.Path != "/app/inventory" && r.URL.Path != "/app/installed" && r.URL.Path != "/app/rule" && r.URL.Path != "/app/rule_status") || r.Method != "POST" || string(body) != "signature\nexact JSON" {
 			t.Error("forwarding changed the request", r.URL.Path, string(body), err)
 		}
 		_, _ = w.Write([]byte("router signature\nexact reply"))
@@ -73,6 +73,14 @@ func TestCGIAppIsAnExactBoundedPOSTForwarder(t *testing.T) {
 	cgiApp(socket, strings.NewReader("signature\nexact JSON"), &out)
 	if calls.Load() != 4 || !strings.HasSuffix(out.String(), "\n\nrouter signature\nexact reply") {
 		t.Fatal("installed was not forwarded exactly", out.String())
+	}
+	for i, op := range []string{"rule", "rule_status"} {
+		t.Setenv("QUERY_STRING", "op="+op)
+		out.Reset()
+		cgiApp(socket, strings.NewReader("signature\nexact JSON"), &out)
+		if calls.Load() != int32(5+i) || !strings.HasSuffix(out.String(), "\n\nrouter signature\nexact reply") {
+			t.Fatal("standing-rule operation was not forwarded exactly", op, out.String())
+		}
 	}
 	srv.Close()
 	out.Reset()

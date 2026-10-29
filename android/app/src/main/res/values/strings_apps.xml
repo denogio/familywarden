@@ -36,8 +36,6 @@
     <string name="fw_apps_reported_at">Reported %1$s</string>
     <string name="fw_apps_may_be_old">may be out of date</string>
     <string name="fw_apps_essential_here">essential here</string>
-    <string name="fw_apps_edit_unavailable">Changing rules here isn’t available yet</string>
-    <string name="fw_apps_edit_unavailable_body">Change app rules in router administration for now. This app will not send rule changes.</string>
     <string name="fw_apps_essential">Essential · always allowed</string>
     <string name="fw_apps_limit">Daily limit %1$s</string>
     <string name="fw_apps_waiting">Waiting for approval</string>
@@ -47,4 +45,25 @@
         <item quantity="other">%d phones</item>
     </plurals>
     <string name="fw_family_rules">Rules</string>
+    <string name="fw_apps_edit_rule">Standing rule</string>
+    <string name="fw_apps_daily_limit">Daily limit</string>
+    <string name="fw_apps_minutes">Minutes (0–1440)</string>
+    <string name="fw_apps_draft">Draft — not saved policy</string>
+    <string name="fw_apps_save">Save</string>
+    <string name="fw_apps_saving">Saving…</string>
+    <string name="fw_apps_discard_draft">Discard draft</string>
+    <string name="fw_apps_draft_only">Draft changes do not cancel an unresolved save.</string>
+    <string name="fw_apps_saved">Saved in router policy.</string>
+    <string name="fw_apps_matched">Current router policy matches. This does not prove who saved it.</string>
+    <string name="fw_apps_refused">Save refused before commit. No change from this attempt.</string>
+    <string name="fw_apps_conflict">Policy changed. Review the current rule before saving a new draft. The earlier outcome is not a receipt.</string>
+    <string name="fw_apps_expired">The original operation expired and current policy does not match. Review before a new save.</string>
+    <string name="fw_apps_unknown">Outcome unknown. Check status before any retry. The original operation is retained.</string>
+    <string name="fw_apps_retryable">The base revision matches. You may retry the original signed operation.</string>
+    <string name="fw_apps_check_status">Check status</string>
+    <string name="fw_apps_retry_original">Retry original save</string>
+    <string name="fw_apps_saved_not_applied">Saved policy is not a phone acknowledgement. Offline phones receive changes at their next successful sync; no received or applied time is known here.</string>
+    <string name="fw_apps_configuration_required">Rule editing is unavailable until an administrator explicitly activates core configuration in router administration. Nothing was imported by this attempt.</string>
+    <string name="fw_apps_operation_target">Operation target: %1$s · %2$s</string>
+    <string name="fw_apps_not_sent">Save was not sent. Check the connection and current child scope, then try again.</string>
 </resources>

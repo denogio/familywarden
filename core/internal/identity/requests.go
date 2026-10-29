@@ -200,7 +200,7 @@ func (s *Service) uploadLocked(op, sig string, raw []byte, device string) (int, 
 	if i >= 0 {
 		d = s.devices[i]
 	}
-	kind := map[string]string{"request": "request", "decision": "decision", "usage": "usage", "app": "app", "history": "history", "inventory": "inventory", "installed": "installed"}[op]
+	kind := map[string]string{"request": "request", "decision": "decision", "usage": "usage", "app": "app", "history": "history", "inventory": "inventory", "installed": "installed", "rule": "rule", "rule_status": "rule"}[op]
 	if i < 0 || kind == "" {
 		return StatusForbidden, nil, nil
 	}
@@ -213,25 +213,29 @@ func (s *Service) uploadLocked(op, sig string, raw []byte, device string) (int, 
 	}
 	var reply object
 	var ticket *ticketJob
-	err = s.ad.WithContext(func(ctx platform.Context) error {
-		switch op {
-		case "request":
-			reply = s.submit(d, raw, ctx)
-		case "usage":
-			reply = s.usage(d, raw, ctx)
-		case "app":
-			reply = s.appDecision(d, raw, ctx)
-		case "history":
-			reply = s.history(d, raw, ctx)
-		case "inventory":
-			reply = s.inventory(d, raw, ctx)
-		case "installed":
-			reply = s.installed(d, raw, ctx)
-		default:
-			reply, ticket = s.decide(d, raw, ctx)
-		}
-		return nil
-	})
+	if op == "rule" || op == "rule_status" {
+		reply = s.appRule(d, raw, op == "rule_status")
+	} else {
+		err = s.ad.WithContext(func(ctx platform.Context) error {
+			switch op {
+			case "request":
+				reply = s.submit(d, raw, ctx)
+			case "usage":
+				reply = s.usage(d, raw, ctx)
+			case "app":
+				reply = s.appDecision(d, raw, ctx)
+			case "history":
+				reply = s.history(d, raw, ctx)
+			case "inventory":
+				reply = s.inventory(d, raw, ctx)
+			case "installed":
+				reply = s.installed(d, raw, ctx)
+			default:
+				reply, ticket = s.decide(d, raw, ctx)
+			}
+			return nil
+		})
+	}
 	if err != nil {
 		return StatusError, nil, nil
 	}

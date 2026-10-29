@@ -2,9 +2,9 @@
 # Signed uploads from FamilyWarden phones (port 7700): extra-time requests and usage
 # reports from a child's phone, decisions (time and new apps) from a parent's phone,
 # bounded read-only app history and installed-app lists for the phone's own or
-# assigned profiles, and a phone's own installed-app snapshot.
+# assigned profiles, a phone's own installed-app snapshot and scoped standing-rule CAS writes.
 #
-#   POST /cgi-bin/app?op=request|decision|usage|app|history|inventory|installed
+#   POST /cgi-bin/app?op=request|decision|usage|app|history|inventory|installed|rule|rule_status
 #   body: usign signature line + exact JSON
 #
 # Verification, the request ledger and grants live in the Go core

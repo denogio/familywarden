@@ -139,4 +139,9 @@ class FamilyWardenActions(
     val loadHistory: (String, java.time.LocalDate) -> FamilyHistoryDay = { _, _ -> throw HistoryRefused("unavailable") },
     /** Blocking read, like [loadHistory]. */
     val loadApps: (String) -> InstalledApps = { throw InstalledRefused("unavailable") },
+    val ruleOperation: () -> RuleOperation? = { null },
+    val ruleDraft: (String, String) -> RuleDraft? = { _, _ -> null },
+    val saveRuleDraft: (String, String, RuleDraft?) -> Unit = { _, _, _ -> },
+    val saveAppRule: (InstalledApps, InstalledApp, RuleDraft) -> RuleOperation = { _, _, _ -> error("unavailable") },
+    val checkAppRule: (Boolean) -> RuleOperation = { error("unavailable") },
 )

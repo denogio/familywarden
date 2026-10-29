@@ -41,6 +41,7 @@ type recordingHost struct {
 	legacyCalls                int
 	failConfiguration, failNet int
 	failFacts                  bool
+	sparseConfigurationFacts   bool
 	intents                    []platform.NetworkIntent
 	restored                   []platform.NetworkIntent
 }
@@ -153,7 +154,14 @@ func (h *recordingHost) ConfigurationTransaction(fn func(rules.Configuration, pl
 	if h.failFacts {
 		return errors.New("recording host facts unavailable")
 	}
-	return fn(copyJSON(h.current), h.facts(), copyJSON(h.network), func(c rules.Configuration, intent platform.NetworkIntent) error {
+	facts := h.facts()
+	if h.sparseConfigurationFacts {
+		// OpenWrt core-configuration-facts is not the per-profile runtime envelope.
+		facts = platform.Context{TimeZone: facts.TimeZone, BonusFormat: facts.BonusFormat,
+			AuthorityFormat: facts.AuthorityFormat, PactNetworkFormat: facts.PactNetworkFormat,
+			NetworkIntentFormat: facts.NetworkIntentFormat}
+	}
+	return fn(copyJSON(h.current), facts, copyJSON(h.network), func(c rules.Configuration, intent platform.NetworkIntent) error {
 		h.intents = append(h.intents, copyJSON(intent))
 		if h.failConfiguration > 0 {
 			h.failConfiguration--
@@ -371,7 +379,7 @@ func (f *portableFixture) sync(p portablePhone) map[string]any {
 func (f *portableFixture) upload(p portablePhone, kind string, value any) map[string]any {
 	f.t.Helper()
 	b, _ := json.Marshal(value)
-	body := []byte(p.key.Sign(protocol.Message(kind, b)) + "\n" + string(b))
+	body := []byte(p.key.Sign(protocol.Message(strings.TrimSuffix(kind, "_status"), b)) + "\n" + string(b))
 	r := f.signed(f.exchange("/app/"+kind, body))
 	hash := sha256.Sum256(b)
 	if r["message_sha256"] != hex.EncodeToString(hash[:]) {

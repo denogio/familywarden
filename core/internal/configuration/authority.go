@@ -52,6 +52,8 @@ type pendingChange struct {
 }
 
 type document struct {
+	RuleCommits   []ruleCommit        `json:"rule_commits,omitempty"`
+	RuleTime      int64               `json:"rule_time,omitempty"`
 	Version       int                 `json:"version"`
 	Configuration rules.Configuration `json:"configuration"`
 	Pending       *pendingChange      `json:"pending,omitempty"`
@@ -147,6 +149,9 @@ func (a *Authority) load() (document, bool, error) {
 		return d, true, errors.New("unsupported household document")
 	}
 	if err := validateSealed(d.Configuration); err != nil {
+		return d, true, err
+	}
+	if err := validateRuleCommits(d.RuleCommits, d.RuleTime); err != nil {
 		return d, true, err
 	}
 	if d.Bonus != nil {
@@ -675,7 +680,7 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 				return nil
 			}
 			pending = &pendingChange{Before: d.Configuration, Token: hex.EncodeToString(token[:]), Until: a.Now().Add(2 * time.Minute).Unix()}
-			candidate := document{Version: 1, Configuration: next, Pending: pending, NeedsApply: true, Bonus: d.Bonus}
+			candidate := document{Version: 1, Configuration: next, Pending: pending, NeedsApply: true, Bonus: d.Bonus, RuleCommits: d.RuleCommits, RuleTime: d.RuleTime}
 			attempted = true
 			if err := a.save(candidate); err != nil {
 				return err
@@ -776,7 +781,7 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 			attempted = true
 			// Core mutex plus platform transaction prevents any signed observer
 			// seeing a pact that later rolls back after a failed apply.
-			if err := a.save(document{Version: 1, Configuration: next, NeedsApply: true, Bonus: d.Bonus}); err != nil {
+			if err := a.save(document{Version: 1, Configuration: next, NeedsApply: true, Bonus: d.Bonus, RuleCommits: d.RuleCommits, RuleTime: d.RuleTime}); err != nil {
 				return err
 			}
 			intent, err := a.intentFor(next, facts, overrides)
@@ -796,7 +801,7 @@ func (a *Authority) API(method string, raw []byte) map[string]any {
 				}
 				return err
 			}
-			return a.save(document{Version: 1, Configuration: next, Bonus: d.Bonus})
+			return a.save(document{Version: 1, Configuration: next, Bonus: d.Bonus, RuleCommits: d.RuleCommits, RuleTime: d.RuleTime})
 		})
 		if err != nil {
 			if attempted {

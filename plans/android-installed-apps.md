@@ -1,6 +1,6 @@
 # Native parent installed apps and rule editing
 
-Status: **I1–I2 implemented locally (core r26); I3–I4 open**.
+Status: **I1–I4 implemented and emulator-verified locally (core r27/backend r18)**.
 Authorized continuation: 2026-10-29, `feature/app-control`. Finish the existing
 Ulysses/history slice first (`fc3fa89`, core r25); then implement this flow in bounded
 slices. No push, release signing, production router/phone access or physical pilot.
@@ -34,8 +34,8 @@ system components. `UsageUpload.kt` sends counters/labels for used apps and a bo
 waiting-for-approval list. `identity/usage.go` and `newapps.go` therefore cannot answer
 which apps are installed on every current phone. Do not reuse a usage list as inventory.
 
-No parent-signed standing-rule mutation exists. Root/admin configuration and native
-new-app decisions already work, but neither silently grants a generic phone editor.
+I4 adds an explicitly scoped standing-rule mutation. Root/admin configuration and native
+new-app decisions do not silently grant a generic phone editor.
 Detailed per-phone received/applied timestamps are also not available to this flow.
 
 ## Ordered implementation
@@ -93,20 +93,20 @@ mode switching, source changes and revocation in fixed-height native UI tests.
 
 ### I4 — Explicit scoped standing-rule writes
 
-- [ ] Specify the signed phone operation and current child-edit authority explicitly.
+- [x] Specify the signed phone operation and current child-edit authority explicitly.
       Whitelist one profile/package/mode/quota delta; never accept a generic administrator
       method, arbitrary configuration document or client-supplied privilege.
-- [ ] Recheck current key/scope and opaque CAS revision at the commit boundary, using
+- [x] Recheck current key/scope and opaque CAS revision at the commit boundary, using
       the existing Go configuration validator/compiler/pact checks and lock order.
       No self/adult/captain escalation via parent mode or administrator flags.
-- [ ] Define atomic transitions between blocked, limited, approved and always-allowed
+- [x] Define atomic transitions between blocked, limited, approved and always-allowed
       representations. Clear conflicting fields for this target only and preserve all
       unrelated rules. Local essential protections remain unconditional.
-- [ ] Define retained signed operation identity, expiry and lost-response reconciliation
+- [x] Define retained signed operation identity, expiry and lost-response reconciliation
       before UI Save. A desired-state setter with CAS may reconcile to matching current
       state without falsely attributing another parent's change to this operation; do not
       create an additive retry or invent a delivery receipt.
-- [ ] Integrate draft/save/refusal/conflict/outcome-unknown states. Keep pending operations
+- [x] Integrate draft/save/refusal/conflict/outcome-unknown states. Keep pending operations
       separate from editable drafts; leaving or changing child cannot silently discard an
       unresolved write. Show saved policy versus last acknowledgement honestly.
 
@@ -154,3 +154,60 @@ mockups offline; it did not change the export. The preceding Ulysses/history che
 passes 216 JVM checks, Go race/vet/portable UI, package smoke, three focused UI suites,
 36 native requests and 98 Mast checks. Those results do **not** validate I1–I4: each
 new slice must add its own runnable regression before its checkbox can be completed.
+
+## I4 implementation evidence (2026-10-29)
+
+Protocol §5f specifies bounded `rule`/read-only `rule_status`, a ten-minute retained
+signed intent and desired-state (not receipt) reconciliation. Writes are available
+only after an administrator explicitly activates core configuration; legacy refusal
+never imports or advances generation. Existing effective `approves`, compiler,
+`ValidateEdit`, pact and configuration transaction remain the authority. Package
+releases: core r27, backend r18. No LuCI rule editor or allowed-hours work is included.
+
+Android keeps drafts separately from a single durable exact signed operation, with
+Draft/Saving/Saved/Refused/Conflict/Outcome unknown and current-state match/expiry copy
+in EN/DA. It checks status before retry, preserves unresolved writes across app/child
+navigation and restart, and does not invent phone delivery/apply acknowledgements.
+
+Focused production-composition Go tests cover four modes (including zero quota),
+exact retries, restart/lost-response reconciliation, two simultaneous parents,
+read-only status/generation, scope revocation, self, old key, pact targets, malformed
+inputs, legacy refusal/ownership and post-persistence projection failure/recovery.
+JVM tests cover signed-byte retention, bounds, strict response binding, refusal vs
+unknown, and status-before-exact-retry. CGI forwarding and native test scripts include
+the new operations; the native fixture explicitly imports through the administrator
+path before the ordinary parent's real Save.
+
+Final validation: full Go race suite, vet/gofmt, syntax/integration and fresh-package
+smoke pass. Android: 228 JVM tests, lint and debug assembly pass. Fixed-height native
+UI checks pass in EN light and DA dark at 200% text. The full native requests suite
+passes 46 checks with rebuilt core r27/backend r18/LuCI r8 packages, including an
+ordinary non-Device-Owner parent's real signed Save, zero quota, CAS/status/exact retry
+and scope revocation. Saved policy is explicitly not a phone acknowledgement.
+Remaining UI gaps from I3 (live scope revocation while open, source changes/removal)
+are not claimed as covered. No release signing, push or physical deployment.
+
+### I4 review corrections
+
+All five verified findings addressed: explicit unpair/logout clears the old pairing's
+local standing-rule operation (not an already committed router change); preflight
+failures say Save was not sent rather than inventing a retained unknown operation;
+draft help follows its selected mode; obsolete read-only strings were removed in EN/DA.
+
+Content-hash CAS alone did not prevent ABA. §5f now specifies a restart-safe 64-entry
+committed-intent journal in the same atomic configuration document, bound to current
+key/device identity, nonce and all exact signed request bytes. A committed intent can
+never become retryable or commit again after another parent's revert. Different bytes
+with its nonce are refused; capacity fails closed. Root edits/recovery preserve the
+journal; expired entries are pruned only on writes, with a persisted time floor against
+clock rollback. Status performs no journal pruning or configuration refresh writes.
+Regression coverage includes ABA after root revert/restart, current scope on replay,
+nonce substitution, capacity/expiry and generation stability, real Store unpair/logout,
+preflight classification and per-mode draft help.
+
+The integrated native run exposed sparse OpenWrt configuration-transaction facts.
+Writes now compile scope/pact from the authoritative core document, while phone reads
+retain runtime presence/drift checks. A sparse-facts regression covers this boundary
+and pact refusal. Final independent review found no blockers. An intermediate emulator
+ADB timeout was resolved by removing the retained diagnostic emulator and rerunning
+the full suite successfully.

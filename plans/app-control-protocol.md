@@ -594,6 +594,107 @@ most 60 KiB); other signed operations keep 16 KiB.
 - Errors: `malformed`, `request_expired`, `not_parent`, `app_control_off`, `unavailable`.
   Read-only: no ledger, ticket, acknowledgement, generation or policy change.
 
+## 5f. Scoped standing-rule writes and reconciliation — core 0.13.0-r27
+
+Transport: `POST /cgi-bin/app?op=rule` or `op=rule_status`. Both carry the **same**
+retained signature line + exact JSON, signed over `familywarden-rule-v1\n` + JSON.
+`rule_status` is read-only and cannot commit. Neither endpoint forwards to the root API.
+
+```json
+{"type":"rule","v":1,"device":"fw-parent","profile":"alex",
+ "package":"com.example.video","mode":"limit","minutes":0,
+ "apps_rev":"<opaque revision from installed>","nonce":"<64 lowercase hex>",
+ "created":1800000000,"expires":1800000600}
+```
+
+- Exactly these fields; duplicates, nulls, unknown fields, invalid packages, types or
+  bounds fail closed. `mode` is `allowed|limit|always|blocked`. `minutes` is an integer
+  0..1440 for `limit`, exactly 0 otherwise. Zero limit is **not** Block. `expires` is
+  exactly `created+600`; creation may not be more than the existing clock skew ahead.
+  `apps_rev` is the nonempty opaque base revision from §5e (at most 128 characters),
+  not a device's grant/approval-bearing `apps.rev`. The nonce identifies the exact
+  intent; it does not allocate an additive grant or create a delivery receipt.
+- Writes require **already explicitly core-owned configuration**. Legacy mode returns
+  `configuration_required`, with no implicit import, ownership or generation change.
+  An administrator may opt in using the existing root configuration path, separately.
+- The current enrolled key is verified while holding the identity mutex. Commit takes
+  identity → configuration authority → backend configuration-transaction locks. Inside
+  that boundary it recompiles current effective context, checks current `approves`
+  (excluding self and the active pact captain), app-control enablement and CAS revision,
+  and uses the existing `ValidateEdit`/compiler/pact validation before persistence.
+  Administrator, captain and local parent-mode flags never widen child-edit scope.
+  Pending root confirmation prevents writes/reconciliation from claiming stable state.
+- One target only: remove that profile/package's configured app rows and its
+  `always_allowed` membership, then insert a canonical blocked row, limited row,
+  quota-free approved row, or always-allowed membership. Keep all unrelated rules,
+  total limits, Downtime, new-app approval records, grants and bonus unchanged. Runtime
+  new-app approvals cannot override a standing block or limit; local essential-app
+  protections remain unconditional. Allow is still subject to totals and Downtime.
+- Commit replay protection is an atomic part of `configuration.json`: at most 64
+  committed intents, each binding SHA-256(device id + newline + enrolled public key),
+  nonce, SHA-256(all exact signed request JSON bytes), and expiry. Current key and
+  effective scope are rechecked before any journal lookup. Reusing a committed nonce
+  with a different body returns `replay`. An exact committed operation can only report
+  `matched` or `conflict` against current policy, never commit again or return
+  `retryable`. Thus A commit → B restore original content hash → A retry is a conflict,
+  including after restart or intervening root configuration edits.
+- For an unrecorded operation, desired-state equality is tested against the compiled
+  standing rule before CAS: `matched` means current policy matches, **not** that this
+  operation saved it. Matching requests perform no normalization or write. Otherwise
+  a different `apps_rev` returns `conflict`; expiry returns `expired`; a valid status
+  check returns `retryable`. Only an unexpired `rule` with unchanged revision commits.
+  Unrelated profile-rule edits conflict conservatively because CAS covers the whole
+  profile's compiled base policy. A matching content hash is not a claim that no other
+  edits occurred; the committed-intent journal prevents ABA from reviving an old write.
+- Expired journal entries are pruned only when committing a new write, never by status.
+  If 64 entries remain active, a new commit is refused with `operation_capacity`,
+  without changing configuration or generation. The journal and a nondecreasing last
+  commit time are saved atomically with desired configuration, so clock rollback after
+  pruning cannot revive an expired request. Root edits/recovery preserve both fields.
+  Status does not refresh/rollback expired root confirmation or pact state; if stable
+  current authority is unavailable it fails closed without writing.
+- Committed desired configuration is durable before projection (`needs_apply` recovery
+  journal). A write/read-back/apply failure after persistence is attempted returns
+  `outcome_unknown`, blocks further authority until startup reconciliation and never
+  claims nothing changed. After restart, status can observe the recovered desired rule.
+
+Replies use the existing signed envelope: `v:1`, `type:rule_reply|rule_status_reply`,
+`device`, `server_time`, `message_sha256` of the exact original JSON. Successful reads
+and writes add `profile_id`, `package`, current base `apps_rev`, and `state`:
+
+| State | Meaning |
+|---|---|
+| `saved` | This write committed router policy; never emitted by status. |
+| `matched` | Current rule matches; no attribution or historical receipt. |
+| `retryable` | Status only: no commit recorded for this intent, base revision matches, and intent is unexpired. |
+| `conflict` | Current rule differs and CAS changed or this intent already committed; review before a new intent. |
+| `expired` | Rule differs, base revision is unchanged, but original write lifetime ended. |
+
+Authenticated errors: `malformed`, `not_parent`, `app_control_off`,
+`configuration_required`, `confirmation_pending`, `invalid_rule`, `replay`,
+`operation_capacity`, `unavailable`
+(pre-commit for this attempt), or `outcome_unknown` (never a refusal). Bare 400/403,
+500/503, lost transport or invalid/unverified replies never prove a refusal. Status
+still accepts expired original operations for current-state comparison, under current
+key and scope. The bounded short-lived replay journal is not a historical operation
+or phone delivery/apply receipt service.
+
+Android persists the original JSON **and signature**, pinned router/phone identities
+and result before first transport. Editable drafts are independently persisted per
+pairing/profile/package. There is one unresolved standing-rule operation across all
+children; navigation, process death, draft changes and scope loss do not erase it or
+permit another Save. Check status sends the original signed bytes; retry checks status
+first and resends those bytes only for verified `retryable`. A status refusal (including
+revocation) leaves the earlier outcome unknown. Conflict/expiry resolve comparison of
+current state, not historical attribution; refresh/review precedes a new user Save.
+Explicit unpair/logout durably removes the local operation together with identity;
+this does not cancel or reverse any router commit. Ordinary navigation/scope loss does
+not remove it. A preflight failure without a new persisted operation says Save was not
+sent, not that an unknown operation was retained. Identity mismatch cannot forward an
+old operation to a new pairing. Saved/matched copy
+explicitly distinguishes router policy from phone acknowledgement: offline phones
+receive it at a later successful sync; this API provides no received/applied timestamps.
+
 ## 6. Storage and retention (D6)
 
 - App activity: per profile, per day, per package seconds — **30 days**, then deleted.

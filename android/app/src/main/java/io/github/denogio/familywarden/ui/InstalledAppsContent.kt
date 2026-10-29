@@ -43,14 +43,11 @@ internal fun InstalledApp.essentialAnywhere() = essential.isNotEmpty()
 internal fun InstalledApp.waiting(suspendNew: Boolean) =
     suspendNew && rule == AppRule.None && on.isNotEmpty() && essential.isEmpty() && system.size < on.size
 
-/**
- * Read-only browse of what the selected child's phones reported, with today's rule
- * per app. Changing rules from the phone is not available yet (plan I4): it is said
- * plainly, with the router hand-off, never a working-looking Save.
- */
+/** Browse reported apps and edit profile-wide standing rules through signed CAS writes. */
 @Composable
 internal fun InstalledAppsContent(s: FamilyWardenState, actions: FamilyWardenActions, preferred: String?,
     selected: String?, onSelect: (String?) -> Unit, back: () -> Unit) {
+    if (selected == null) PendingRuleStatus(s, actions)
     val profile = s.familyProfile(preferred)
     if (profile == null) {
         TextButton(onClick = back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.fw_family_controls)) }
@@ -71,7 +68,7 @@ internal fun InstalledAppsContent(s: FamilyWardenState, actions: FamilyWardenAct
     val current = view
     val app = (current as? AppsView.Loaded)?.apps?.apps?.firstOrNull { it.pkg == selected }
     if (selected != null && app != null) {
-        AppDetail(s, actions, profile, current.apps, app) { onSelect(null) }
+        AppDetail(s, actions, profile, current.apps, app, { retry++ }) { onSelect(null) }
         return
     }
     TextButton(onClick = back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.fw_family_controls)) }
@@ -167,7 +164,7 @@ private fun AppRow(s: FamilyWardenState, data: InstalledApps, app: InstalledApp,
 
 @Composable
 private fun AppDetail(s: FamilyWardenState, actions: FamilyWardenActions, profile: ProfileRef, data: InstalledApps,
-    app: InstalledApp, back: () -> Unit) {
+    app: InstalledApp, refresh: () -> Unit, back: () -> Unit) {
     androidx.activity.compose.BackHandler(onBack = back)
     TextButton(onClick = back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.fw_apps_title)) }
     val name = app.label.ifEmpty { app.pkg }
@@ -205,14 +202,7 @@ private fun AppDetail(s: FamilyWardenState, actions: FamilyWardenActions, profil
         }
     }
     InfoNote(Icons.Outlined.Groups, stringResource(R.string.fw_apps_profile_wide, profile.name))
-    SectionCard {
-        Text(stringResource(R.string.fw_apps_edit_unavailable), style = MaterialTheme.typography.titleMedium)
-        Text(stringResource(R.string.fw_apps_edit_unavailable_body))
-        Button(onClick = actions.openRouter, enabled = s.host != null, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-            Text(stringResource(R.string.fw_voyage_open_router))
-        }
-        Text(stringResource(R.string.fw_capabilities_router_login), style = MaterialTheme.typography.bodySmall)
-    }
+    AppRuleEditor(s, actions, data, app, refresh)
 }
 
 @Composable

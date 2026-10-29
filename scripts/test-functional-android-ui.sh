@@ -154,7 +154,7 @@ capture offline
 contains offline 'last verified voyage'
 reveal unknown-details 'has not supplied the waiting period'
 absent unknown-details '24 hours'
-# Installed apps: browse, filter, search and read-only detail (no Save in this slice).
+# Installed apps: browse, filter, search and reachable draft controls.
 render ParentHistoryPreview apps-parent
 tap apps-parent Controls
 capture apps-controls
@@ -168,8 +168,8 @@ import sys,xml.etree.ElementTree as E
 texts=[n.get('text') for n in E.parse(sys.argv[1]).iter('node')]
 assert texts.count('com.example.old')==1, 'label-less app repeats its package'
 PY2
-reveal apps-video 'Daily limit 30 min'
-contains apps-video 'com.example.video2'
+reveal apps-video 'com.example.video2'
+contains apps-video 'Daily limit 30 min'
 reveal apps-essential 'ESSENTIAL SYSTEM APPS'
 reveal apps-unreported 'Not reported'
 "${ADB[@]}" shell input swipe 400 650 400 1700 300
@@ -189,8 +189,9 @@ tap apps-search Minecraft
 capture apps-detail
 contains apps-detail 'RULE FOR ALEX'
 contains apps-detail 'Daily limit 1 h'
-reveal apps-detail-edit 'Changing rules here isn’t available yet'
-absent apps-detail-edit 'text="Save"'
+reveal apps-detail-edit 'Draft — not saved policy'
+reveal apps-detail-save 'Save'
+reveal apps-detail-discard 'Discard draft'
 "${ADB[@]}" shell input keyevent KEYCODE_BACK
 capture apps-back
 contains apps-back 'Installed on Alex’s phones'
@@ -218,7 +219,7 @@ tap controls 'App status and remaining work'
 capture capabilities
 contains capabilities 'SUPPORTED IN THIS APP'
 reveal capability-missing 'NOT YET AVAILABLE IN THIS APP'
-contains capability-missing 'Changing app rules'
+contains capability-missing 'Other native parent editors'
 "${ADB[@]}" shell input keyevent KEYCODE_BACK
 "${ADB[@]}" shell cmd locale set-app-locales "$PKG" --locales da-DK >/dev/null
 "${ADB[@]}" shell settings put system font_scale 2.0

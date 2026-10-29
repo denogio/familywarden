@@ -107,6 +107,25 @@ class Store(private val context: Context) {
             check(prefs.edit().putString("pending_app_upload", v?.encode()).commit()) { "upload persistence failed" }
         }
 
+    var ruleOperation: RuleOperation?
+        get() = prefs.getString("standing_rule_operation", null)?.let(RuleOperation::decode)
+        set(v) {
+            check(prefs.edit().putString("standing_rule_operation", v?.encode()).commit()) { "rule operation persistence failed" }
+        }
+
+    private fun ruleDraftKey(profile: String, pkg: String) = "rule_draft_" + RequestProtocol.digest(
+        "$publicKey|$deviceId|${phoneKey.publicKey}|$profile|$pkg".toByteArray())
+
+    fun ruleDraft(profile: String, pkg: String): RuleDraft? = prefs.getString(ruleDraftKey(profile, pkg), null)?.let {
+        val o = org.json.JSONObject(it)
+        RuleDraft(o.getString("mode"), o.getString("minutes"))
+    }
+
+    fun saveRuleDraft(profile: String, pkg: String, draft: RuleDraft?) {
+        val raw = draft?.let { org.json.JSONObject().put("mode", it.mode).put("minutes", it.minutes).toString() }
+        check(prefs.edit().putString(ruleDraftKey(profile, pkg), raw).commit()) { "draft persistence failed" }
+    }
+
     /** Last app-control state for the UI: "ok", "usage_access_missing", "suspend_failed", ... */
     var appsStatus: String?
         get() = prefs.getString("apps_status", null)
@@ -163,13 +182,14 @@ class Store(private val context: Context) {
             .putLong("last_sync", System.currentTimeMillis() / 1000).remove("last_error").apply()
     }
 
+    /** Explicit identity removal forgets local retries, not any committed router change. */
     fun unpair(forgetSigningKey: Boolean = false) {
         val editor = prefs.edit().remove("host").remove("pubkey").remove("payload").remove("last_sync")
             .remove("last_error").remove("ulysses").remove("dns_error").remove("provisioned")
             .remove("wire_seen").remove("apps_applied").remove("apps_applied_caps")
             .remove("clock_nonce").remove("clock_server").remove("clock_elapsed").remove("clock_boot")
-            .remove("pending_app_upload").remove("parent_mode")
-        if (forgetSigningKey) check(editor.remove("phone_key").commit()) { "parent logout persistence failed" }
-        else editor.apply()
+            .remove("pending_app_upload").remove("standing_rule_operation").remove("parent_mode")
+        if (forgetSigningKey) editor.remove("phone_key")
+        check(editor.commit()) { "unpair persistence failed" }
     }
 }

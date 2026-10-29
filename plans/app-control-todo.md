@@ -21,7 +21,7 @@ Historical test counts are evidence at that checkpoint, not current suite totals
 | P7/P7b child enforcement | Signed app/total limits, bonus, downtime, warnings, safe exceptions and new-app approval | Remaining physical/lifecycle validation; full future policy editors are separate UI work |
 | P8 LAN requests | Child/parent/admin flow, device/key-bound grants, consumption, first-answer-wins and new-app decisions; deployed | Focused physical request/approval run and bounded multi-phone allocation |
 | P9 off-home | LAN notifications only | Transport decision, encryption/key distribution and off-home implementation/testing |
-| P10 Android | Child Today/Ask/local app history/Settings; scoped parent usage/inbox/approval sheets; signed single-day history client and report receipts prepared | Remaining prototype visuals and native history/editor integration; parent-edit and captain self-service mutation permissions need explicit scoped contracts ([API map](../docs/android-api-readiness.md)) |
+| P10 Android | Child Today/Ask/local app history/Settings; scoped parent usage/inbox/approval sheets; recorded-day history; installed-app inventory/browser and scoped standing-rule editor (I1–I4) | Remaining prototype visuals, other native editors and connection/applied-policy facts; captain self-service mutation permissions need explicit scoped contracts ([API map](../docs/android-api-readiness.md)) |
 | P10 shared web | Core-backed `web/` workspace, prototype-based presentation, EN/DA, one thin LuCI host bridge; neutral/native browser validation | Essential-app/removal UX gaps below; no second-router host or production deployment |
 | Core migration | R1–R6 owned product boundary and portable shared UI; automated R7 upgrade/interruption/backup/restore/generation matrix complete | Release-signed upgrade and physical-pilot authorization gates; native runtime remains OpenWrt-only; no production ownership cutover ([R0–R7](adapter-portability.md)) |
 | P11 adult pool | Existing pact enforcement, not the proposed pool | Final consumption/reset rules, ledger and pact-safe self-service |
@@ -639,8 +639,18 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       display metadata (r25), actual router/sail hand-offs and explicit native gaps.
       [Functional checkpoint](../docs/android-functional-checkpoint.md); no new phone
       mutation authority, P1/P2/P3 change, release or physical deployment.
-- [ ] Parent Android: full app inventory/rule editors and truthful per-device
-      connection/applied-policy views.
+- [x] Parent Android: installed-app inventory/browser and scoped standing-rule editor
+      (#53, I1–I4, 2026-10-29). Signed `rule`/read-only `rule_status` (§5f), effective
+      `approves` only, opaque CAS, atomic bounded replay journal and retained exact-byte
+      Android operations; EN/DA drafts/save/refusal/conflict/unknown states. Requires
+      explicitly activated core-owned configuration; never imports from a phone.
+      Core r27/backend r18: full Go race/vet/gofmt, syntax/integration, package smoke,
+      228 JVM tests/lint/debug build, EN/DA-200% functional UI and 46 native checks pass;
+      final independent review has no blockers. [Evidence](android-installed-apps.md).
+      No push, release signing or physical deployment; allowed hours remain future work.
+- [ ] Parent Android: truthful per-device connection/applied-policy views and remaining
+      prototype work (#40). Live scope revocation while the installed-app screen is open
+      and app removal/source changes between reads still lack UI regression coverage.
 - [x] Child Android: remaining budgets, pause reasons, request status/remaining extra
       and local usage/history totals. Domain history remains P6 work.
 - [x] Existing LuCI: configure rules/roles, view usage/requests and inspect app revisions,

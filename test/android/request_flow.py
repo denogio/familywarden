@@ -156,10 +156,11 @@ QUERY_STRING="device=fw-test-kid&nonce={'c'*64}&key=$key&sig=$sig" /usr/sbin/fam
 
 def synthetic_upload(op, value):
     raw = json.dumps(value, separators=(',', ':'))
+    domain = 'rule' if op == 'rule_status' else op
     # Exact UTF-8 bytes on stdin, not through shell interpolation.
     return run(['docker', 'exec', '-i', a.router, 'sh', '-ec', f'''
 cat >/tmp/kid-up.json
-{{ printf 'familywarden-{op}-v1\\n'; cat /tmp/kid-up.json; }} >/tmp/kid-up.msg
+{{ printf 'familywarden-{domain}-v1\\n'; cat /tmp/kid-up.json; }} >/tmp/kid-up.msg
 usign -S -s /tmp/requests-kid.key -m /tmp/kid-up.msg -x /tmp/kid-up.sig
 {{ sed -n 2p /tmp/kid-up.sig; cat /tmp/kid-up.json; }} | REQUEST_METHOD=POST QUERY_STRING=op={op} /usr/sbin/familywardend cgi-app
 '''], data=raw)
@@ -367,7 +368,11 @@ touch /tmp/drop-next-app-response
     ui('native-parent-history')
     assert 'DeviceOwner' not in adb('shell', 'dpm', 'list-owners')
     print('PASS recorded-day history does not need Device Owner', flush=True)
-    # The child's other phone reports its apps; the parent browses them read-only.
+    # Explicit administrator activation in this disposable fixture; never a phone-side import.
+    exported = call('configuration_export')
+    if exported['owner'] == 'legacy':
+        assert call('configuration_import', {'revision': exported['configuration']['revision']})['status'] == 'ok'
+    # The child's other phone reports its apps; the ordinary parent edits a standing rule.
     out = synthetic_upload('inventory', {'type': 'inventory', 'v': 1, 'device': 'fw-test-kid', 'profile': 'alex',
         'seq': 1, 'installed': 3, 'apps': [
             {'package': 'com.example.draw', 'label': 'Draw', 'system': False, 'essential': False},
@@ -379,12 +384,30 @@ touch /tmp/drop-next-app-response
     wait('native parent reads the real signed installed-app list', lambda: bool(nodes('Puzzle Garden')))
     wait('a partial snapshot is said, not hidden', lambda: any(
         'sent 2 of 3 apps' in n.get('text', '') for n in ui().iter('node')))
-    assert not nodes('Save'), 'read-only slice must not offer Save'
+    assert not nodes('Save'), 'Save belongs in the app detail, not the browser'
     ui('native-parent-installed-apps')
     tap('Puzzle Garden')
     wait('installed-app detail names the profile rule', lambda: bool(nodes('RULE FOR ALEX')))
     ui('native-parent-installed-app')
     print('PASS parent browses reported apps without Device Owner or package typing', flush=True)
+    tap('Blocked', scroll=True)
+    tap('Save', scroll=True)
+    tap('Saved in router policy.', scroll=True)
+    wait('ordinary parent saves a signed profile-wide standing block', lambda: bool(nodes('Saved in router policy.')))
+    saved = call('configuration_export')['configuration']
+    target = [x for x in saved['current']['apps'] if x['profile'] == 'alex' and x['package'] == 'com.example.puzzle']
+    assert len(target) == 1 and target[0]['blocked'] == '1' and target[0]['minutes'] == '', target
+    assert 'DeviceOwner' not in adb('shell', 'dpm', 'list-owners')
+    # The explanatory note may be below Save in a fixed-height viewport.
+    for _ in range(5):
+        if any('Saved policy is not a phone acknowledgement.' in n.get('text', '') for n in ui().iter('node')):
+            break
+        adb('shell', 'input', 'swipe', '500', '1800', '500', '650', '350')
+    wait('save does not invent a phone delivery acknowledgement', lambda: any(
+        'Saved policy is not a phone acknowledgement.' in n.get('text', '') for n in ui().iter('node')))
+    ui('native-parent-standing-rule-saved')
+    print('PASS scoped standing rule preserves non-Device-Owner parent access', flush=True)
+
     # A read-only contract uses the current registry scope, not an old signed policy.
     assert call('device_update', {'device': 'fw-test-kid', 'profile': 'parent', 'name': 'Test reader',
                                  'approves': 'alex'})['status'] == 'ok'
@@ -398,9 +421,29 @@ touch /tmp/drop-next-app-response
     assert history['type'] == 'history_reply' and history['reported'] and history['total'] >= 60, history
     assert all(d['received'] > 0 for d in history['devices']), history
     print('PASS scoped signed history returns recorded reports and receipt times', flush=True)
+    def signed_json(op, value):
+        response = synthetic_upload(op, value)
+        assert 'Status: 200 OK' in response, response
+        return json.loads(response.split('\n\n', 1)[1].split('\n', 1)[1])
+    rule_now = int(router('date +%s').strip())
+    installed = signed_json('installed', {'type': 'installed', 'v': 1, 'device': 'fw-test-kid',
+        'profile': 'alex', 'after': '', 'created': rule_now, 'nonce': 'e' * 64})
+    rule = {'type': 'rule', 'v': 1, 'device': 'fw-test-kid', 'profile': 'alex',
+        'package': 'com.example.draw', 'mode': 'limit', 'minutes': 0,
+        'apps_rev': installed['apps_rev'], 'created': rule_now, 'expires': rule_now + 600, 'nonce': 'f' * 64}
+    assert signed_json('rule_status', rule)['state'] == 'retryable'
+    assert signed_json('rule', rule)['state'] == 'saved'
+    assert signed_json('rule_status', rule)['state'] == 'matched'
+    assert signed_json('rule', rule)['state'] == 'matched'
+    stale = dict(rule, mode='blocked', nonce='a' * 64)
+    assert signed_json('rule', stale)['state'] == 'conflict'
+    print('PASS native rule CAS, zero quota, status and exact retry', flush=True)
+
     assert call('device_update', {'device': 'fw-test-kid', 'profile': 'parent', 'name': 'Test reader',
                                  'approves': ''})['status'] == 'ok'
     assert read_history()['error'] == 'not_parent'
+    assert signed_json('rule_status', rule)['error'] == 'not_parent'
+    assert signed_json('rule', stale)['error'] == 'not_parent'
     print('PASS revoked parent scope refuses the same historical read', flush=True)
     (a.out / 'result.json').write_text(json.dumps({'device': device_id, 'spent_millis': spent(grant_id),
         'parent_device_owner': False, 'child_grant_id': grant_id, 'checks': 'passed'}, indent=2))

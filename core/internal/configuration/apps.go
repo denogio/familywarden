@@ -12,6 +12,25 @@ import (
 // core-owned bonus and runtime timezone facts. Phone replies, request
 // authorization and administrator views must use this same compilation.
 func AppContext(c rules.Configuration, facts platform.Context, now time.Time, bonus map[string]string) (platform.Context, error) {
+	out, err := configuredAppContext(c, facts, now, bonus)
+	if err != nil {
+		return platform.Context{}, err
+	}
+	if out.PactCaptain != facts.PactCaptain {
+		return platform.Context{}, fmt.Errorf("platform pact state diverged from the configuration")
+	}
+	for id := range out.Profiles {
+		if _, ok := facts.Profiles[id]; !ok {
+			return platform.Context{}, fmt.Errorf("runtime app facts unavailable for %s", id)
+		}
+	}
+	return out, nil
+}
+
+// Configuration transactions supply timezone/handshakes, not observed profiles
+// or captains. Compile their authoritative effective scope without inventing runtime
+// observations. Phone reads above still require runtime presence and pact agreement.
+func configuredAppContext(c rules.Configuration, facts platform.Context, now time.Time, bonus map[string]string) (platform.Context, error) {
 	if facts.BonusFormat != bonusFormat {
 		return platform.Context{}, fmt.Errorf("incompatible bonus adapter")
 	}
@@ -20,16 +39,10 @@ func AppContext(c rules.Configuration, facts platform.Context, now time.Time, bo
 	if Active(c.Pact, now) {
 		captain = c.Pact.Captain
 	}
-	if captain != facts.PactCaptain {
-		return platform.Context{}, fmt.Errorf("platform pact state diverged from the configuration")
-	}
 	out := facts
 	out.PactCaptain = captain
 	out.Profiles = make(map[string]platform.Profile, len(effective.Profiles))
 	for _, p := range effective.Profiles {
-		if _, ok := facts.Profiles[p.ID]; !ok {
-			return platform.Context{}, fmt.Errorf("runtime app facts unavailable for %s", p.ID)
-		}
 		input := profileAppConfig(effective, p, bonus[p.ID])
 		apps, requires, err := input.Compile()
 		if err != nil {
