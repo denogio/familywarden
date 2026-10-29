@@ -672,7 +672,9 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       LuCI r9 prepared: 31 neutral/packaged-native browser cases (including optional
       real public Proton CSS), 8 Node checks, syntax and package smoke pass; fresh
       review clean. Browser-local light/dark previews against the real read-only
-      router data pass without modifying router assets or configuration. Not deployed.
+      router data pass without modifying router assets or configuration. Deployed to
+      the pilot router 2026-10-29 with maintainer approval (LuCI r8 → r9 only; ACL, core,
+      backend and configuration unchanged; live read-only light/dark/Bootstrap checks: 0 errors).
 - [ ] OPS1: fix management HTTPS hostname/certificate mismatch and disabled HTTP→HTTPS
       redirect found during the authorized read-only pilot audit. Preserve recovery
       access and validate certificate trust before changing redirect/listener settings;
