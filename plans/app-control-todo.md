@@ -689,6 +689,12 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       redirect found during the authorized read-only pilot audit. Preserve recovery
       access and validate certificate trust before changing redirect/listener settings;
       no TLS/router configuration was changed by that audit.
+- [ ] SAFE1 (incident 2026-10-29): setting "Unassigned network devices" to Blocked dropped
+      all LAN/wg0 traffic from devices outside a profile, including the DNS server host and a
+      mesh node; AdGuard Home lost its upstream and household DNS/Private DNS failed. Restored
+      `default_policy=allow` with approval (same revision as before). Needed: an infrastructure
+      allow list (core-owned, router-agnostic) and a warning before Blocked that lists the
+      active unassigned devices it would cut off.
 - [ ] Essential-app warnings and removal/revocation workflows.
 - [x] Existing Android views: EN/DA strings/plurals, accessibility labels, large-text,
       dark/light themes and fictional previews/screenshots. New screens must preserve this.
