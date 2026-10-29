@@ -230,10 +230,12 @@ Design/decisions: `plans/dns-filtering.md`; defaults per profile are still open 
 Deployment names (e.g. the real DoT domain) are settings, never project defaults.
 
 ### CI / release
-- `.github/workflows/ci.yml`: push/PR → syntax + integration tests → SDK build
-  (`openwrt/sdk:x86-64-25.12.4`) → package smoke tests → artifacts → Playwright
-  against LuCI in a container using CI-built packages. Android tests/lint/builds
-  run separately. Release requires successful build, e2e, and Android jobs.
+- `.github/workflows/ci.yml`: pushes to `master` and `feature/**`, PRs, tags and manual
+  dispatches run independent checks/builds in parallel. Each router target and Android
+  variant is built once. Releases require the consolidated **Validated artifacts gate**,
+  including emulator checks when requested. SHA-bound artifacts and version/hash
+  provenance are retained for 30 days. Fetch and verify matching green-run artifacts
+  instead of rebuilding for deployment; see [CI artifacts](docs/ci-artifacts.md).
 - Use CI as the primary consolidated test/build gate: run independent checks/builds in
   parallel, build each target once, and retain validated deployment artifacts. Locally,
   run focused development checks; do not duplicate unchanged CI validation or rebuild

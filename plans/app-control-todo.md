@@ -810,6 +810,24 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       suites and duplicate builds. Deploy only after required pipeline gates are green;
       preserve same-key Android signing and existing secrets/privacy boundaries. Audit
       current CI coverage and artifact provenance before changing deploy procedures.
+      Known state (2026-10-29): `.github/workflows/ci.yml` runs only on master pushes,
+      tags, PRs and manual dispatch, so `feature/app-control` pushes run nothing.
+      Existing x86 build/smoke/e2e, mediatek-filogic aarch64 build and Android jobs
+      already upload artifacts; emulator runs only on manual dispatch. The last branch run
+      (`41f309b`) failed only in the emulator job: "the approved minute is exhausted and
+      paused again" (timing assertion; diagnose flake vs bug, never weaken the guarantee).
+      Goal: feature-branch pushes run the gate; artifacts are named/recorded by commit SHA
+      and package versions so a pilot deploy can fetch and verify them instead of
+      rebuilding locally. Document the fetch-and-verify deploy flow in docs.
+      Implementation: feature/** pushes, parallel target builds, SHA-scoped 30-day
+      artifacts with version/hash provenance, consolidated gate and fail-closed fetch
+      helper; see [CI artifacts](../docs/ci-artifacts.md). Pending main-session green
+      pipeline evidence before closing CI1. Emulator diagnosis tracked separately in CI2.
+- [ ] CI2: Diagnose the approved-minute exhaustion emulator failure from `41f309b`
+      ("the approved minute is exhausted and paused again"). Run the manual KVM dispatch
+      after the CI1 push, inspect synthetic diagnostics and establish flake vs product bug.
+      Preserve the exact exhaustion/re-pause guarantee; do not widen timeouts or change
+      product behavior without evidence. No emulator or router run was performed for CI1.
 - [ ] OPS1: fix management HTTPS hostname/certificate mismatch and disabled HTTP→HTTPS
       redirect found during the authorized read-only pilot audit. Preserve recovery
       access and validate certificate trust before changing redirect/listener settings;

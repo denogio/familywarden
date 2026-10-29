@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, 'feature/**']
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -11,6 +11,10 @@ on:
         description: Run grouped lifecycle and signed child/parent emulator tests (KVM)
         type: boolean
         default: false
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
   contents: read
@@ -26,7 +30,10 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Syntax + structure
-        run: ./scripts/test-syntax.sh
+        run: |
+          ./scripts/test-syntax.sh
+          python3 -m unittest discover -s test/ci -p 'test_*.py'
+          shellcheck scripts/fetch-ci-artifacts.sh
 
       # The integration test runs the Go core (phone identity) next to the shell plugin.
       - uses: actions/setup-go@v7
@@ -84,14 +91,8 @@ jobs:
           FW_TEST_SHARED_UI: '1'
         run: go test -race ./internal/service -run '^TestPortableSharedUI$' -count=1
 
-      - name: Build for the router (linux/arm64, static)
-        run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags '-s -w' -o familywardend ./cmd/familywardend
-          ls -l familywardend
-
   build:
     name: Build apks
-    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -121,15 +122,18 @@ jobs:
             --pattern 'familywarden-0.9.2-r1.apk' --pattern 'luci-app-familywarden-0.7.0-r1.apk'
           LEGACY_RELEASE_DIR="$release" ./scripts/test-upgrade.sh "${{ runner.temp }}/apk"
 
+      - name: Record artifact provenance
+        run: python3 scripts/ci-artifacts.py create apks "${{ runner.temp }}/apk"
+
       - uses: actions/upload-artifact@v7
         with:
-          name: apks
-          path: ${{ runner.temp }}/apk/*.apk
+          name: apks-${{ github.sha }}
+          retention-days: 30
+          path: ${{ runner.temp }}/apk/
           if-no-files-found: error
 
   core-aarch64:
     name: Core apk (aarch64_cortex-a53)
-    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -142,10 +146,17 @@ jobs:
           OUT: ${{ runner.temp }}/apk
         run: ./scripts/build-apk-docker.sh
 
+      - name: Keep only the architecture-specific package
+        run: find "${{ runner.temp }}/apk" -name '*.apk' ! -name 'familywarden-core-*.apk' -delete
+
+      - name: Record artifact provenance
+        run: python3 scripts/ci-artifacts.py create core-aarch64 "${{ runner.temp }}/apk"
+
       - uses: actions/upload-artifact@v7
         with:
-          name: core-aarch64
-          path: ${{ runner.temp }}/apk/familywarden-core-*.apk
+          name: core-aarch64-${{ github.sha }}
+          retention-days: 30
+          path: ${{ runner.temp }}/apk/
           if-no-files-found: error
 
   e2e:
@@ -157,7 +168,7 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          name: apks
+          name: apks-${{ github.sha }}
           path: apk
 
       - uses: actions/setup-node@v7
@@ -182,7 +193,8 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: e2e-results
+          name: e2e-results-${{ github.sha }}
+          retention-days: 7
           path: test/e2e/test-results
 
   mast:
@@ -218,10 +230,16 @@ jobs:
           cp app/build/outputs/apk/release/app-release*.apk "$RUNNER_TEMP/mast/ulysses-mast-$MAST_VERSION_NAME.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/mast/ulysses-mast-debug.apk"
 
+      - name: Record artifact provenance
+        env:
+          MAST_RELEASE_SIGNED: ${{ secrets.MAST_KEYSTORE_B64 != '' }}
+        run: python3 scripts/ci-artifacts.py create mast "${{ runner.temp }}/mast"
+
       - uses: actions/upload-artifact@v7
         with:
-          name: mast
-          path: ${{ runner.temp }}/mast/*.apk
+          name: mast-${{ github.sha }}
+          retention-days: 30
+          path: ${{ runner.temp }}/mast/
           if-no-files-found: error
 
   mast-emulator:
@@ -234,12 +252,12 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          name: apks
+          name: apks-${{ github.sha }}
           path: apk
 
       - uses: actions/download-artifact@v8
         with:
-          name: mast
+          name: mast-${{ github.sha }}
           path: mast
 
       - name: Enable KVM
@@ -260,7 +278,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: mast-requests-diagnostics
+          name: mast-requests-diagnostics-${{ github.sha }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
@@ -269,10 +287,31 @@ jobs:
             ${{ runner.temp }}/familywarden-requests/*.xml
             ${{ runner.temp }}/familywarden-requests/*.png
 
+  gate:
+    name: Validated artifacts gate
+    if: always()
+    needs: [test, core, build, core-aarch64, e2e, mast, mast-emulator]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every mandatory check and any requested emulator checks
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          EMULATOR_REQUIRED: ${{ github.event_name == 'workflow_dispatch' && inputs.mast_emulator }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          results = json.loads(os.environ['RESULTS'])
+          for job, result in results.items():
+              if job == 'mast-emulator' and os.environ['EMULATOR_REQUIRED'] != 'true':
+                  assert result['result'] == 'skipped', result
+              else:
+                  assert result['result'] == 'success', (job, result)
+          PY
+
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, core-aarch64, e2e, mast]
+    needs: gate
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -293,17 +332,17 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          name: apks
+          name: apks-${{ github.sha }}
           path: apk
 
       - uses: actions/download-artifact@v8
         with:
-          name: mast
+          name: mast-${{ github.sha }}
           path: mast
 
       - uses: actions/download-artifact@v8
         with:
-          name: core-aarch64
+          name: core-aarch64-${{ github.sha }}
           path: core-aarch64
 
       # Same file name per arch: suffix it so both fit in one release.
