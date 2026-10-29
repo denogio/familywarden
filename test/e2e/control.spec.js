@@ -858,12 +858,24 @@ test.describe('shared control without LuCI globals', () => {
   test('shared layouts fit narrow and large-text hosts without changing host styles', async ({ page }) => {
     await neutral(page,{lang:'da'});
     const before = await page.locator('body').evaluate(node => getComputedStyle(node).color);
+    // Name the widest offenders so font-dependent CI failures are diagnosable.
+    const fits = async label => {
+      const result = await page.locator('.fwa').evaluate(root => {
+        const limit = root.getBoundingClientRect().right + 1, wide = [];
+        for (const node of root.querySelectorAll('*')) {
+          const box = node.getBoundingClientRect();
+          if (box.width && box.right > limit) wide.push(`${node.tagName.toLowerCase()}.${[...node.classList].join('.')} right=${Math.round(box.right)} "${(node.textContent || '').trim().slice(0, 40)}"`);
+        }
+        return { ok: root.scrollWidth <= root.clientWidth + 1, detail: `scroll=${root.scrollWidth} client=${root.clientWidth} font=${getComputedStyle(root).fontFamily}; ${wide.slice(-8).join(' | ')}` };
+      });
+      expect(result.ok, `${label}: ${result.detail}`).toBe(true);
+    };
     for (const width of [1100,720,390,320]) {
       await page.setViewportSize({width,height:1000});
-      expect(await page.locator('.fwa').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+      await fits(`${width}px`);
     }
     await page.evaluate(() => {document.documentElement.style.fontSize = '200%';});
-    expect(await page.locator('.fwa').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+    await fits('320px at 200%');
     expect(await page.locator('body').evaluate(node => getComputedStyle(node).color)).toBe(before);
   });
 
