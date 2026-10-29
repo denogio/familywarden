@@ -3,8 +3,8 @@
 Branch: `feature/app-control`, based on `v0.9.1` (`dce92f4`).
 Status (2026-10-29): LAN app control, requests/grants, usage and new-app approval are
 implemented and deployed. The explicitly authorized router/test-phone pilot now runs
-core-owned configuration, shared LuCI administration and AGH reconciliation (core r27,
-backend rc10-r18, LuCI r8; release-signed phone code 130). Narrow physical migration
+core-owned configuration, shared LuCI administration and AGH reconciliation (core r28,
+backend rc10-r18, LuCI r14; release-signed phone code 131, rc10-pilot2). Narrow physical migration
 checks pass; broader lifecycle/active-pact validation remains open. Off-home transport
 remains undecided. Phase evidence below includes historical checkpoints;
 see [core-migration.md](core-migration.md) for current ownership and deployment.
@@ -521,8 +521,14 @@ Depends on P2/P5/P6.
       neutral fallbacks and authenticated legacy-router retry preserve compatibility.
       Independent review's three findings fixed; final Go race/vet, syntax, 8 Node tests,
       portable service/browser rendering and 231 Android JVM tests plus lint pass.
-      No external assets, new authority or Android display change. PackageManager capture
-      still needs emulator/physical runtime validation; no release or deployment performed.
+      No external assets, new authority or Android display change.
+      Authorized pilot update from `08e0b40`: core r28/LuCI r14 and same-certificate
+      Android rc10-pilot2 (code 131) installed on router/maintainer Pixel 10. Physical
+      inventory upload succeeded and administrator usage returned two real PNG icons;
+      current policy acknowledgement, Device Owner, DNS setting, identity and configuration
+      preserved. Quiesced signed backup verified/downloaded; DNS has no pending/error.
+      Native package smoke and browser e2e pass using x86 builds of the same source;
+      target aarch64 packages built separately. No broad lifecycle/pact acceptance implied.
 - [x] Implement a pure evaluator for schedules, quotas and precedence from P1.
 - [x] Suspend/unsuspend only managed packages, record failures and reconcile at boot,
       package changes, policy updates and budget/schedule boundaries.

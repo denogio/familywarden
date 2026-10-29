@@ -108,6 +108,20 @@ Explicitly authorized router + maintainer test-phone pilot, built from `6e85835`
   were changed for testing, and no child's daily phone was accessed. Physical rule
   writes, active-pact migration, router reboot and broad rollout acceptance remain open.
 
+Authorized icon follow-up (2026-10-29, source `08e0b40`): core 0.13.0-r28 and
+LuCI 0.11.0-r14 replace r27/r12; backend rc10-r18 is unchanged. Maintainer Pixel 10
+upgraded in place from release-signed rc10-pilot1 (130) to rc10-pilot2 (131), with
+matching signing certificate. Package smoke and browser e2e passed on x86 builds of
+the same source; deployment packages were built for aarch64/mediatek-filogic. A
+quiesced, pinned signed backup was inspected and downloaded with matching checksum.
+Authoritative configuration, ownership, router key, phone identity/role/scope,
+Device Owner and Private DNS resolver setting remained unchanged. Fresh phone sync
+acknowledged the current policy without app errors; inventory upload succeeded and
+administrator usage returned two real app icons. Adapter `ubus dns_status` reports
+no error/pending work (it is not a core API method). Private APK copies, backups and
+deployment receipt remain outside the repository. This does not validate the broader
+physical lifecycle/active-pact matrix or implement the Devices prototype follow-up.
+
 Current follow-up: **pilot observation, remaining physical gates and Android regression/
 design continuation**, mapped in [Android API readiness](../docs/android-api-readiness.md).
 The historical R7 acceptance evidence and remaining rollout gates are recorded in
