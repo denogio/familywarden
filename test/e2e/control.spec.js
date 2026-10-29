@@ -193,6 +193,27 @@ test.describe('shared control without LuCI globals', () => {
     expect(await page.evaluate(() => window.hostThemes)).toEqual(['light','dark','auto']);
   });
 
+  test('global host element styles do not leak into the workspace', async ({ page }) => {
+    // The generic element rules a LuCI theme such as Proton2025 applies page-wide.
+    await neutral(page,{theme:'dark'});
+    await page.addStyleTag({content:'body{letter-spacing:.01em}button{display:inline-flex;align-items:center;justify-content:center;gap:8px;'+
+      'border-radius:12px;white-space:nowrap}button+button{margin-left:8px}p{font-size:20px;line-height:30px;margin:0 0 16px}'+
+      'h4{line-height:20px}strong,dt{font-weight:400}label{line-height:30px}input[type=checkbox]{appearance:none;accent-color:blue}'+
+      'select{appearance:none}'});
+    await expect(page.locator('.fwa')).toHaveCSS('letter-spacing','normal');
+    const nav = page.locator('.fw-nav button').nth(1);
+    await expect(nav).toHaveCSS('justify-content','normal');
+    await expect(nav).toHaveCSS('margin-left','0px');
+    await expect(page.locator('.fw-sub').first()).toHaveCSS('font-size','13px');
+    await expect(page.locator('.fw-kid h4').first()).toHaveCSS('line-height','36px');
+    await page.getByRole('button',{name:'Edit rules',exact:true}).click();
+    await expect(page.getByRole('tab',{name:'Rules',exact:true})).toHaveCSS('border-radius','0px');
+    const enabled = page.getByLabel('Enabled',{exact:true});
+    await expect(enabled).toHaveCSS('appearance','auto');
+    await expect(enabled).toHaveCSS('accent-color','rgb(224, 189, 74)');
+    await expect(page.locator('.fwa select').first()).toHaveCSS('appearance','auto');
+  });
+
   test('optional public Proton stylesheet on a disposable local host', async ({ page }) => {
     test.skip(!process.env.FW_PROTON_CSS, 'Set FW_PROTON_CSS to a local public theme stylesheet');
     await neutral(page,{theme:'dark'});

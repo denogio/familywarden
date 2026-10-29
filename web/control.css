@@ -31,13 +31,25 @@
 .fwa *,.fwa *::before,.fwa *::after{box-sizing:border-box}
 /* Keep generic host hover effects out of workspace controls. */
 .fwa button,.fwa button:hover,.fwa button:active{transform:none;box-shadow:none}
+/* Pin element defaults that LuCI themes set globally, so every theme renders
+   the workspace like the default Bootstrap host. */
+.fwa{letter-spacing:normal}
+.fwa button{display:inline-block;margin:0;border-radius:0;align-items:normal;justify-content:normal;gap:normal;white-space:normal}
+.fwa p{font-size:.8125rem;font-weight:400;line-height:1.125rem;margin:0 0 .5625rem}
+.fwa strong,.fwa dt{font-weight:700}
+.fwa dt,.fwa dd{line-height:1.125rem}
+.fwa label{font-family:inherit;line-height:normal;cursor:pointer}
+.fwa input[type=checkbox],.fwa input[type=radio]{appearance:auto;accent-color:var(--gold);background:none;border:0;box-shadow:none;padding:0;vertical-align:text-top}
+.fwa textarea{vertical-align:top}
+.fwa select{appearance:auto;background-image:none;line-height:normal;cursor:default}
+.fwa code{font-family:var(--mono);font-size:.75rem;line-height:1.125rem;padding:1px 3px;border:0;border-radius:3px;background:var(--surface-2);color:inherit}
 .fwa .fw-approw{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;padding:6px 0}
 .fwa .fw-approw>.fw-app-identity{min-width:0;flex:1 1 160px}
 .fwa .fw-package{display:block}
 .fwa :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .fwa button,.fwa input,.fwa select,.fwa textarea{font:inherit;color:inherit}
 .fwa h1,.fwa h2,.fwa h3,.fwa h4{color:inherit;text-shadow:none}
-.fwa h4{margin:0;font-size:1rem;font-weight:600}
+.fwa h4{margin:0;font-size:1rem;font-weight:600;line-height:2.25rem}
 .fwa a{color:inherit}
 .fwa .i{flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .fwa .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -153,7 +165,7 @@
 .fwa .fw-table th,.fwa .fw-table td{padding:.5rem .4rem;text-align:start;border-bottom:1px solid var(--line)}
 .fwa .fw-table th{display:table-cell;color:var(--muted);font-weight:600}
 .fwa .fw-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden}
-.fwa .fw-tabs button{border:0;background:transparent;padding:10px 14px;margin:0;border-bottom:2px solid transparent;color:var(--muted);font-weight:600;cursor:pointer;white-space:nowrap}
+.fwa .fw-tabs button{display:block;border-radius:0;border:0;background:transparent;padding:10px 14px;margin:0;border-bottom:2px solid transparent;color:var(--muted);font-weight:600;cursor:pointer;white-space:nowrap}
 .fwa .fw-tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--gold)}
 .fwa .fw-tabs button:focus-visible{outline-offset:-3px}
 

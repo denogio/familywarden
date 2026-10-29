@@ -74,7 +74,8 @@ export function viewModel(requests, usage, nowEpoch, newApps) {
 const CSS = `
 .fwx{--fwx-fg:var(--ink,#0F1B27);--fwx-muted:var(--muted,#4A5D70);--fwx-line:var(--line,#D5DDE5);
  --fwx-card:var(--surface,#FFFFFF);--fwx-accent:#1b2a3a;--fwx-bar:#c9a227;color:var(--fwx-fg)}
-.fwx h3{margin:1.2em 0 .5em}.fwx .fwx-intro{color:var(--fwx-muted);max-width:52em}
+.fwx h2,.fwx h3{font-weight:700;line-height:2.25rem}.fwx h2{margin-bottom:0}
+.fwx h3{margin:1.2em 0 .5em;font-size:1.125rem}.fwx .fwx-intro{color:var(--fwx-muted);max-width:52em}
 .fwx .fwx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:12px}
 .fwx .fwx-card{border:1px solid var(--fwx-line);border-radius:12px;padding:14px 16px;background:var(--fwx-card)}
 .fwx .fwx-big{font-size:1.6em;font-weight:600;margin:.1em 0}.fwx .fwx-muted{color:var(--fwx-muted);font-size:.92em}
