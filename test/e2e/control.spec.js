@@ -204,7 +204,7 @@ test.describe('shared control without LuCI globals', () => {
     const nav = page.locator('.fw-nav button').nth(1);
     await expect(nav).toHaveCSS('justify-content','normal');
     await expect(nav).toHaveCSS('margin-left','0px');
-    await expect(page.locator('.fw-sub').first()).toHaveCSS('font-size','13px');
+    await expect(page.locator('.fw-sub').first()).toHaveCSS('font-size','15px');
     await expect(page.locator('.fw-kid h4').first()).toHaveCSS('line-height','36px');
     await page.getByRole('button',{name:'Edit rules',exact:true}).click();
     await expect(page.getByRole('tab',{name:'Rules',exact:true})).toHaveCSS('border-radius','0px');

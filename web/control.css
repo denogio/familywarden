@@ -2,7 +2,7 @@
    Everything is scoped under .fwa (the app root). Hosts (LuCI page, standalone
    page) only provide a mount node; no host styles are required or modified.
    No webfonts, no CDN: system font stacks only. Sizes in rem so browser text
-   scaling works. The Requests panel (web/family.js) ships its own .fwx styles. */
+   scaling works. The Requests panel (web/family.js) reuses these components plus a few .fwx styles. */
 
 .fwa{
   --bg:#EEF2F6;--surface:#FFFFFF;--surface-2:#F5F7FA;--line:#D5DDE5;--line-strong:#8193A5;
@@ -35,7 +35,7 @@
    the workspace like the default Bootstrap host. */
 .fwa{letter-spacing:normal}
 .fwa button{display:inline-block;margin:0;border-radius:0;align-items:normal;justify-content:normal;gap:normal;white-space:normal}
-.fwa p{font-size:.8125rem;font-weight:400;line-height:1.125rem;margin:0 0 .5625rem}
+.fwa p{font-size:inherit;font-weight:inherit;line-height:inherit;margin:0 0 .5625rem}
 .fwa strong,.fwa dt{font-weight:700}
 .fwa dt,.fwa dd{line-height:1.125rem}
 .fwa label{font-family:inherit;line-height:normal;cursor:pointer}

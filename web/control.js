@@ -1054,7 +1054,8 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
       if (!panelNode || !requestsMount) {
         requestsMount?.stop();
         panelNode = el('div');
-        requestsMount = mountRequests(panelNode, { lang, call, interval });
+        requestsMount = mountRequests(panelNode, { lang, call, interval,
+          avatar: id => { const i = profiles().findIndex(p => p.id === id); return i < 0 ? null : i; } });
       }
       viewEl.replaceChildren(...[banner(), panelNode].filter(child => child != null));
       controls();

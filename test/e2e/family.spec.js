@@ -166,7 +166,7 @@ for (const [lang, labels] of [
 
 test('Requests tab talks to the real core through rpcd and LuCI ACLs', async ({ page }) => {
   await openRequests(page);
-  await expect(page.getByRole('heading', { name: 'Requests and screen time' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Requests', exact: true })).toBeVisible();
   await expect(page.getByText('No requests waiting.')).toBeVisible();
   await expect(page.locator('.fwx').getByText(/^Updated /)).toBeVisible();
   await expect(page.getByText(/Could not reach/)).toHaveCount(0);
