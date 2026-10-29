@@ -326,7 +326,7 @@
   .fwa .fw-h1{font-size:1.625rem}
   .fwa .fw-main{padding:16px 14px 96px;gap:18px}
   .fwa .fw-content{gap:18px}
-  .fwa .fw-btn{min-height:44px}
+  .fwa .fw-btn{min-height:44px;max-width:100%;white-space:normal;text-align:center}
   .fwa .fw-kid-foot .fw-btn{flex:1 1 100%}
   .fwa .fw-window{grid-template-columns:1fr 1fr}
   .fwa .fw-window .fw-days{grid-column:1/-1}
