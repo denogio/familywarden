@@ -185,7 +185,8 @@ class Store(private val context: Context) {
 
     private fun resetInventoryDisplay() {
         context.getSharedPreferences("inventory-upload", Context.MODE_PRIVATE).edit()
-            .remove("legacy_scope").remove("legacy_until").remove("sent").remove("sent_at").apply()
+            .remove("legacy_scope").remove("legacy_until").remove("sent").remove("sent_at")
+            .remove("inventory_seq").remove("icons_digest").remove("icons_next").remove("icons_retry_at").remove("icons_completed_at").apply()
     }
 
     /** Explicit identity removal forgets local retries, not any committed router change. */

@@ -224,15 +224,10 @@ func (s *Service) UsageReport() Reply {
 	}
 	sort.Strings(ids)
 	profiles := []Reply{}
-	budget := adminIconBudget
 	for _, id := range ids {
 		total, devices, apps, _, err := s.dayUsage(id, now.Format(time.DateOnly), 20)
 		if err != nil {
 			return fail("usage unavailable")
-		}
-		icons := s.inventoryIcons(id, ctx)
-		for i := range apps {
-			apps[i].Icon = budget.take(icons[apps[i].Package])
 		}
 		week := []Reply{}
 		for back := 6; back >= 0; back-- {

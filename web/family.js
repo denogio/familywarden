@@ -11,14 +11,67 @@ export function appIcon(icon, label, pkg) {
   tile.setAttribute('aria-hidden', 'true');
   const fallback = ((label && label !== pkg ? label : String(pkg || '').split('.').pop()) || '?')[0].toUpperCase();
   tile.textContent = fallback;
-  if (typeof icon === 'string' && icon.length <= 2732 && /^iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(icon)) {
+  if (typeof icon === 'string' && icon.length <= 54616 && /^iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(icon)) {
     const image = document.createElement('img');
     image.alt = '';
-    image.addEventListener('error', () => { tile.textContent = fallback; });
+    image.addEventListener('error', () => { tile.classList.remove('has-image'); tile.textContent = fallback; });
+    tile.classList.add('has-image');
     image.src = 'data:image/png;base64,' + icon;
     tile.replaceChildren(image);
   }
   return tile;
+}
+
+// One loader per workspace, also passed to Requests. Only rendered identities are
+// fetched. Every bounded page is drained, including pages containing missing icons.
+export function iconLoader(call) {
+  const cache = new Map(), pending = new Map();
+  let queued = false;
+  async function flush() {
+    queued = false;
+    const groups = [...pending.entries()]; pending.clear();
+    for (const [profile, packages] of groups) {
+      const names = [...packages.keys()];
+      for (let start = 0; start < names.length; start += 32) {
+        const requested = names.slice(start, start + 32);
+        let offset = 0;
+        try {
+          while (offset < requested.length) {
+            const reply = await call('inventory_icons', { profile, packages: requested, offset });
+            if (reply?.error || !Number.isInteger(reply?.next) || reply.next <= offset || reply.next > requested.length) break;
+            for (let i = offset; i < reply.next; i++) {
+              const pkg = requested[i], icon = reply.icons?.[pkg];
+              cache.set(profile + '|' + pkg, { icon, at: Date.now() });
+              for (const { tile, label } of packages.get(pkg)) {
+                const replacement = appIcon(icon, label, pkg);
+                tile.className = replacement.className;
+                tile.replaceChildren(...replacement.childNodes);
+                // The error handler belongs to replacement; restore this tile too.
+                tile.querySelector('img')?.addEventListener('error', () => {
+                  const fallback = appIcon(null, label, pkg);
+                  tile.className = fallback.className; tile.replaceChildren(...fallback.childNodes);
+                });
+              }
+            }
+            offset = reply.next;
+          }
+        } catch (_) { /* Optional assets never interrupt administration. */ }
+      }
+    }
+  }
+  return (icon, label, pkg, profile) => {
+    const key = profile + '|' + pkg, saved = cache.get(key);
+    if (saved && Date.now() - saved.at < 5 * 60 * 1000) return appIcon(saved.icon, label, pkg);
+    // Keep cached artwork visible while a stale observation is renewed.
+    const tile = appIcon(saved ? saved.icon : icon, label, pkg);
+    if (!profile || !pkg || pkg === 'total') return tile;
+    if (!pending.has(profile)) pending.set(profile, new Map());
+    const group = pending.get(profile);
+    if (!group.has(pkg)) group.set(pkg, []);
+    group.get(pkg).push({ tile, label });
+    if (!queued) { queued = true; queueMicrotask(flush); }
+    return tile;
+  };
 }
 
 const STRINGS = {
@@ -107,7 +160,8 @@ const CSS = `
 .fwx .fwx-week .fwx-gap{background:transparent;min-height:8px;border-bottom:1px dashed var(--muted)}
 .fwx .fwx-week .fwx-coverage-unknown{background:repeating-linear-gradient(135deg,var(--fwx-bar),var(--fwx-bar) 4px,transparent 4px,transparent 8px)}`;
 
-export function mount(root, { call, lang, now = () => Math.floor(Date.now() / 1000), interval = 15000, avatar }) {
+export function mount(root, { call, lang, now = () => Math.floor(Date.now() / 1000), interval = 15000, avatar, icons = iconLoader(call) }) {
+  const appIcon = icons;
   const t = strings(lang);
   const doc = root.ownerDocument;
   const el = (tag, attrs = {}, ...kids) => {
@@ -179,14 +233,14 @@ export function mount(root, { call, lang, now = () => Math.floor(Date.now() / 10
       value: amounts.get(r.id) ?? String(r.minutes), 'aria-label': t('minutes') });
     input.addEventListener('input', () => amounts.set(r.id, input.value));
     const ask = r.target === 'total' ? t('askTotal', { n: r.minutes }) : t('askApp', { n: r.minutes, app: label(r) });
-    return row(r.target === 'total' ? av(r.profileId, r.profile) : appIcon(r.icon, r.label, r.target), `${r.profile} · ${ask}`,
+    return row(r.target === 'total' ? av(r.profileId, r.profile) : appIcon(r.icon, r.label, r.target, r.profileId), `${r.profile} · ${ask}`,
       `${t('expires', { time: time(r.expires) })} · ${t('range', { max: r.minutes })}`, input,
       el('button', { class: 'fw-btn small primary', onclick: () => answer(r, true, input) }, t('approve')),
       el('button', { class: 'fw-btn small', onclick: () => answer(r, false, input) }, t('decline')));
   }
 
   function newAppRow(p, a) {
-    return row(appIcon(a.icon, a.label, a.pkg), `${p.name} · ${t('askNewApp', { app: a.label })}`, p.frozen ? t('frozen') : t('paused'),
+    return row(appIcon(a.icon, a.label, a.pkg, p.id), `${p.name} · ${t('askNewApp', { app: a.label })}`, p.frozen ? t('frozen') : t('paused'),
       p.frozen ? null : el('button', { class: 'fw-btn small primary', onclick: () => decideApp(p.id, a.pkg, 'approve') }, t('allow')),
       el('button', { class: 'fw-btn small', onclick: () => decideApp(p.id, a.pkg, 'deny') }, t('keepPaused')));
   }
@@ -202,7 +256,7 @@ export function mount(root, { call, lang, now = () => Math.floor(Date.now() / 10
       : t(r.delivered ? 'delivered' : 'notDelivered');
     const got = r.target === 'total' ? t('gotTotal', { n: r.minutes }) : t('gotApp', { n: r.minutes, app: label(r) });
     const chip = r.state === 'approved' ? ['ok', 'chipApproved'] : r.state === 'denied' ? ['', 'chipDenied'] : ['dim', 'chipExpired'];
-    return item(r.target === 'total' ? av(r.profileId, r.profile) : appIcon(r.icon, r.label, r.target), `${r.profile} · ${got}`, [what, extra].filter(Boolean).join(' · '),
+    return item(r.target === 'total' ? av(r.profileId, r.profile) : appIcon(r.icon, r.label, r.target, r.profileId), `${r.profile} · ${got}`, [what, extra].filter(Boolean).join(' · '),
       el('span', { class: `fw-chip ${chip[0]}`.trim() }, t(chip[1])));
   }
 
@@ -245,7 +299,7 @@ export function mount(root, { call, lang, now = () => Math.floor(Date.now() / 10
       const pendingIds = new Set(vm.pending.map((r) => r.id));
       for (const id of amounts.keys()) if (!pendingIds.has(id)) amounts.delete(id);
       const waiting = [...vm.pending.map(pendingRow), ...vm.apps.flatMap((p) => p.pending.map((a) => newAppRow(p, a)))];
-      const allowed = vm.apps.flatMap((p) => p.approved.map((a) => item(appIcon(a.icon, a.label, a.pkg), `${p.name} · ${a.label}`, t('allowedBy', { by: a.by }),
+      const allowed = vm.apps.flatMap((p) => p.approved.map((a) => item(appIcon(a.icon, a.label, a.pkg, p.id), `${p.name} · ${a.label}`, t('allowedBy', { by: a.by }),
         el('button', { class: 'fw-btn small', onclick: () => decideApp(p.id, a.pkg, 'revoke') }, t('remove')))));
       body.replaceChildren(...[
         section(t('pending'), waiting.length ? el('div', { class: 'fw-attn' }, waiting) : el('div', { class: 'fw-empty' }, el('p', { style: 'margin:0' }, t('none')))),

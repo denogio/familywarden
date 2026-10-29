@@ -59,13 +59,16 @@ func Handler(id *identity.Service, version string) http.Handler {
 		var c identity.Change
 		var a identity.Answer
 		var ad identity.AppDecisionInput
+		var icons identity.IconQuery
 		b, err := io.ReadAll(io.LimitReader(r.Body, MaxAPI+1))
 		if err == nil && len(b) > MaxAPI {
 			err = errors.New("too large")
 		}
 		method := r.PathValue("method")
 		if err == nil && len(bytes.TrimSpace(b)) > 0 {
-			if method == "request_answer" {
+			if method == "inventory_icons" {
+				icons, err = identity.DecodeIconQuery(b)
+			} else if method == "request_answer" {
 				a, err = identity.DecodeAnswer(b)
 			} else if method == "app_decision" {
 				ad, err = identity.DecodeAppDecision(b)
@@ -83,6 +86,8 @@ func Handler(id *identity.Service, version string) http.Handler {
 			reply = identity.Reply{"running": true, "core": version}
 		case "configuration_export":
 			reply = id.ConfigurationExport()
+		case "inventory_icons":
+			reply = id.InventoryIcons(icons)
 		case "requests":
 			reply = id.Requests()
 		case "usage":

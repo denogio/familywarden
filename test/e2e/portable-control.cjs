@@ -1,6 +1,7 @@
 // R6 browser driver: real service.New + recording/failing adapter, no mocked
 // RPC replies, LuCI globals, UCI forms, router processes or native product code.
 const assert = require('node:assert/strict');
+const {mkdirSync} = require('node:fs');
 const { chromium, expect } = require('@playwright/test');
 
 (async () => {
@@ -8,7 +9,7 @@ const { chromium, expect } = require('@playwright/test');
   assert.match(base, /^http:\/\/127\.0\.0\.1:\d+$/);
   const browser = await chromium.launch();
   try {
-    const page = await browser.newPage({ viewport:{width:1440,height:1000} });
+    const page = await browser.newPage({ viewport:{width:1440,height:1000},deviceScaleFactor:2 });
     const errors = [], calls = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => {
@@ -41,10 +42,16 @@ const { chromium, expect } = require('@playwright/test');
     await expect(page.locator('.fw-history-apps').getByText('Video',{exact:true})).toBeVisible();
     const image = page.locator('.fw-history-apps .fw-app-icon img');
     await expect(image).toHaveCount(1);
-    await expect.poll(() => image.evaluate(img => img.complete && img.naturalWidth === 48)).toBe(true);
+    await expect.poll(() => image.evaluate(img => img.complete && img.naturalWidth === 96)).toBe(true);
     await expect(image).toHaveAttribute('src', /^data:image\/png;base64,/);
     await expect(page.locator('.fw-history-apps .fw-app-icon').filter({hasText:'L'})).toHaveCount(1);
     await expect(page.locator('.fw-history-apps')).toContainText('com.example.video');
+    await expect(image.locator('..')).toHaveClass(/has-image/);
+    assert.equal(await image.evaluate(img => getComputedStyle(img).objectFit), 'contain');
+    assert.deepEqual(await image.evaluate(img => [img.clientWidth, img.clientHeight]), [34,34]);
+    const screenshots = process.env.FW_ICON_SCREENSHOTS;
+    if (screenshots) { mkdirSync(screenshots,{recursive:true}); await page.screenshot({path:screenshots + '/control-history-dpr2.png',fullPage:true}); }
+
     await page.evaluate(async () => {
       const {appIcon} = await import('/web/family.js');
       const tile = appIcon('iVBORw0KGgoAAAA', 'Broken', 'com.example.broken');

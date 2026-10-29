@@ -249,6 +249,11 @@ func (s *Service) write(id, profile, name, admin, key, fpr, approves string, kee
 		if msg != "" {
 			return fail(msg)
 		}
+		if i >= 0 && (s.devices[i].Profile != profile || s.devices[i].PubKey != key) {
+			if err := s.invalidateInventory(id); err != nil {
+				return fail("invalidating inventory failed")
+			}
+		}
 		d := Device{ID: id, Name: name, Profile: profile, PubKey: key, Administrator: admin == "1", Approves: scope}
 		prev := append([]Device(nil), s.devices...)
 		if i >= 0 {
@@ -316,6 +321,9 @@ func (s *Service) Delete(id string) Reply {
 			if frozen(s.devices[i], ctx) {
 				return fail("bound by Ulysses pact")
 			}
+			if err := s.invalidateInventory(id); err != nil {
+				return fail("invalidating inventory failed")
+			}
 			prev := append([]Device(nil), s.devices...)
 			s.devices = append(s.devices[:i:i], s.devices[i+1:]...)
 			if err := s.save(); err != nil {
@@ -347,4 +355,11 @@ func (s *Service) AllowRemoval(id string) Reply {
 		log.Printf("device %s may remove FamilyWarden until %d", id, until)
 		return Reply{"status": "ok", "remove_until": until}
 	})
+}
+
+func (s *Service) invalidateInventory(device string) error {
+	if cache, ok := s.Inventory.(interface{ InvalidateInventory(string) error }); ok {
+		return cache.InvalidateInventory(device)
+	}
+	return nil
 }

@@ -6,7 +6,10 @@ import (
 	"encoding/base64"
 	"fmt"
 	"image"
+	"image/color"
+	"image/draw"
 	"image/png"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -40,14 +43,26 @@ func TestPortableSharedUI(t *testing.T) {
 		t.Fatal(r)
 	}
 	var icon bytes.Buffer
-	if err := png.Encode(&icon, image.NewRGBA(image.Rect(0, 0, 48, 48))); err != nil {
+	normalized := image.NewRGBA(image.Rect(0, 0, 96, 96))
+	draw.Draw(normalized, normalized.Bounds(), &image.Uniform{color.RGBA{50, 160, 100, 255}}, image.Point{}, draw.Src)
+	for y := 24; y < 72; y++ {
+		for x := 36; x < 72-int(math.Abs(float64(y-48))*1.5); x++ {
+			normalized.Set(x, y, color.White)
+		}
+	}
+
+	if err := png.Encode(&icon, normalized); err != nil {
 		t.Fatal(err)
 	}
 	r = f.upload(phone, "inventory", map[string]any{"type": "inventory", "v": 1, "device": phone.id, "profile": "alex", "seq": 1, "installed": 2,
 		"apps": []map[string]any{
 			{"package": "com.example.legacy", "label": "Legacy", "system": false, "essential": false},
-			{"package": "com.example.video", "label": "Video", "system": false, "essential": false, "icon": base64.StdEncoding.EncodeToString(icon.Bytes())},
+			{"package": "com.example.video", "label": "Video", "system": false, "essential": false},
 		}})
+	if r["state"] != "stored" {
+		t.Fatal(r)
+	}
+	r = f.upload(phone, "inventory_icons", map[string]any{"type": "inventory_icons", "v": 1, "device": phone.id, "profile": "alex", "inventory_seq": 1, "seq": 1, "icons": []map[string]string{{"package": "com.example.video", "icon": base64.StdEncoding.EncodeToString(icon.Bytes())}}})
 	if r["state"] != "stored" {
 		t.Fatal(r)
 	}

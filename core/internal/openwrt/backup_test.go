@@ -6,8 +6,10 @@ import (
 	"crypto/sha512"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -40,6 +42,22 @@ func TestBackupSnapshotLocksAndKeyContinuity(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := Adapter{KeyFile: filepath.Join(dir, "mast.key"), Shell: shell, LockFile: filepath.Join(dir, "state.lock"), DNSLockFile: filepath.Join(dir, "dns.lock"), BackupConfigFile: filepath.Join(dir, "config")}
+	// Eight full phone inventories would exhaust the archive file budget if this
+	// regenerable cache were included. Authority metadata must still be archived.
+	icons := filepath.Join(dir, "core", "inventory-icons", "alex", "fw-alex@0123456789abcdef")
+	if err := os.MkdirAll(icons, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 4097; i++ {
+		if err := os.WriteFile(filepath.Join(icons, fmt.Sprintf("%04d.icon", i)), []byte("regenerable"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range []string{a.BackupConfigFile, filepath.Join(dir, "core", "configuration.json")} {
+		if err := os.WriteFile(path, []byte("fictional metadata"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	called := false
 	err = a.Backup(func(s backup.Source) error {
 		called = true
@@ -56,6 +74,22 @@ func TestBackupSnapshotLocksAndKeyContinuity(t *testing.T) {
 			if !errors.Is(err, syscall.EWOULDBLOCK) {
 				t.Fatal("snapshot did not hold native lock", path, err)
 			}
+		}
+		manifest, err := backup.Create(filepath.Join(t.TempDir(), "household.tar.gz"), s)
+		if err != nil {
+			t.Fatal("regenerable cache consumed backup limits", err)
+		}
+		metadata := false
+		for _, file := range manifest.Files {
+			if strings.HasPrefix(file.Name, "household/core/inventory-icons/") {
+				t.Fatal("cache entered backup", file.Name)
+			}
+			if file.Name == "household/core/configuration.json" {
+				metadata = true
+			}
+		}
+		if !metadata {
+			t.Fatal("authority metadata excluded with cache")
 		}
 		return nil
 	})

@@ -112,15 +112,15 @@ func TestInventoryOptionalIconsSanitizedAndShownOnlyFromCurrentBindings(t *testi
 	send(t, f.kid, f.s, "usage", usageWithNewApps(2, `{"com.example.game":"Game"}`))
 	for name, r := range map[string]Reply{"usage": f.s.UsageReport(), "requests": f.s.Requests(), "new_apps": f.s.NewApps()} {
 		b, _ := json.Marshal(r)
-		if !bytes.Contains(b, []byte(`"icon":"`+icon+`"`)) {
-			t.Fatal("missing admin icon", name, string(b))
+		if bytes.Contains(b, []byte(`"icon"`)) {
+			t.Fatal("polled reply repeats icons", name, string(b))
 		}
 	}
 	if m := send(t, f.parent, f.s, "app", appDecisionJSON("fw-parent", "kid", "com.example.game", "approve", t0)); m["state"] != "approved" {
 		t.Fatal(m)
 	}
-	approved, _ := json.Marshal(f.s.NewApps())
-	if !bytes.Contains(approved, []byte(`"icon":"`+icon+`"`)) {
+	approved, _ := json.Marshal(f.s.InventoryIcons(IconQuery{Profile: "kid", Packages: []string{"com.example.game"}}))
+	if !bytes.Contains(approved, []byte(icon)) {
 		t.Fatal("approved row lost its icon")
 	}
 	installed, _ := json.Marshal(send(t, f.parent, f.s, "installed", installedJSON("fw-parent", "kid", "", t0)))
@@ -153,19 +153,6 @@ func TestInventoryOptionalIconsSanitizedAndShownOnlyFromCurrentBindings(t *testi
 	}
 	if len(f.s.inventoryIcons("kid", ctx)) != 0 {
 		t.Fatal("old key still supplies icons")
-	}
-}
-
-func TestInventoryIconResponseBudget(t *testing.T) {
-	b := adminIconBudget
-	icon := strings.Repeat("a", 2732)
-	for i := 0; i < 5; i++ {
-		if b.take(icon) != icon {
-			t.Fatal("budget omitted fitting icon")
-		}
-	}
-	if b.take(icon) != "" {
-		t.Fatal("unbounded response icons")
 	}
 }
 
@@ -232,7 +219,7 @@ func TestInventoryIconsBoundRepeatedHistoricalRequestRows(t *testing.T) {
 			count++
 		}
 	}
-	if used > int(adminIconBudget) || count == 0 || count == len(rows) {
+	if used != 0 || count != 0 {
 		t.Fatal("repeated request icons unbounded", used, count)
 	}
 }

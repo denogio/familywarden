@@ -4,7 +4,7 @@
 // attention inbox, child cards with budgets, delivery pipeline and the Ulysses
 // voyage. Unsupported data shows as unavailable; nothing is simulated.
 import { strings } from './control-i18n.js';
-import { mount as mountRequests, appIcon } from './family.js';
+import { mount as mountRequests, iconLoader } from './family.js';
 
 const array = value => Array.isArray(value) ? value : [];
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -39,6 +39,7 @@ export function historyModel(usage) {
 }
 
 export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 'auto', interval = 15000 }) {
+  const appIcon = iconLoader(call);
   const doc = root.ownerDocument, win = doc.defaultView, t = strings(lang);
   const el = (tag, attrs = {}, ...children) => {
     const node = doc.createElement(tag);
@@ -337,7 +338,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
             el('i', { style: `width:${Math.min(100, used / limitMin * 100)}%` })),
           el('span', { class: 'muted', style: 'font-size:.8125rem' }, `${used} / ${limitMin}`))
         : chip(t('allowedApp'), 'ok');
-      return el('div', { class: 'fw-approw' }, appIcon(a.icon, a.label, a.package), el('span', { class: 'fw-app-identity' },
+      return el('div', { class: 'fw-approw' }, appIcon(a.icon, a.label, a.package, profile.id), el('span', { class: 'fw-app-identity' },
         el('span', {}, a.label || a.package),
         a.label && a.package ? el('span', { class: 'fw-package mono muted' }, a.package) : null), right);
     });
@@ -530,7 +531,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
       !showToday ? hint(t('historyPastAppsUnavailable'))
         : !usage ? hint(t('unavailable'))
         : appRows.length ? el('ul', { class: 'fw-list' }, appRows.map(a => el('li', { class: 'fw-item' },
-          appIcon(a.icon, a.label, a.package),
+          appIcon(a.icon, a.label, a.package, profile.id),
           el('div', { class: 'main' }, el('p', { class: 't' }, a.label || a.package),
             a.label && a.label !== a.package ? el('p', { class: 's mono' }, a.package) : null,
             el('p', { class: 's' }, duration(a.seconds))),
@@ -715,7 +716,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
       const label = observed.find(a => a.package === pkg)?.label || awaiting?.label || pkg;
       if (awaiting) {
         list.append(el('li', { class: 'fw-item' },
-          appIcon(awaiting.icon, label, pkg),
+          appIcon(awaiting.icon, label, pkg, id),
           el('div', { class: 'main' }, el('p', { class: 't' }, label),
             label !== pkg ? el('p', { class: 's mono' }, pkg) : null), chip(t('awaitingDecision'), 'attn')));
         continue;
@@ -732,7 +733,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
         render();
       };
       list.append(el('li', { class: 'fw-item fw-rule-app' },
-        pkg ? appIcon(observed.find(a => a.package === pkg)?.icon, label, pkg)
+        pkg ? appIcon(observed.find(a => a.package === pkg)?.icon, label, pkg, id)
           : el('span', { class: 'fw-app-icon', 'aria-hidden': 'true' }, '+'),
         el('div', { class: 'main' }, pkg ? el('p', { class: 't' }, label)
           : field(t('package'), app.package, v => app.package = v, { disabled, required: true, placeholder: 'com.example.app' }),
@@ -1067,7 +1068,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
       if (!panelNode || !requestsMount) {
         requestsMount?.stop();
         panelNode = el('div');
-        requestsMount = mountRequests(panelNode, { lang, call, interval,
+        requestsMount = mountRequests(panelNode, { lang, call, interval, icons: appIcon,
           avatar: id => { const i = profiles().findIndex(p => p.id === id); return i < 0 ? null : i; } });
       }
       viewEl.replaceChildren(...[banner(), panelNode].filter(child => child != null));

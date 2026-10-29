@@ -103,7 +103,7 @@ func (e entry) end() int64 {
 // upload is "<usign signature>\n<exact JSON bytes>", the same shape as replies.
 func splitUpload(op string, body []byte) (sig string, raw []byte, ok bool) {
 	limit := maxUpload
-	if op == "inventory" {
+	if op == "inventory" || op == "inventory_icons" {
 		limit = maxInventoryUpload // a whole installed-app list; transport allows 64 KiB
 	}
 	i := bytes.IndexByte(body, '\n')
@@ -206,7 +206,7 @@ func (s *Service) uploadLocked(op, sig string, raw []byte, device string) (int, 
 	if i >= 0 {
 		d = s.devices[i]
 	}
-	kind := map[string]string{"request": "request", "decision": "decision", "usage": "usage", "app": "app", "history": "history", "inventory": "inventory", "installed": "installed", "rule": "rule", "rule_status": "rule"}[op]
+	kind := map[string]string{"request": "request", "decision": "decision", "usage": "usage", "app": "app", "history": "history", "inventory": "inventory", "inventory_icons": "inventory_icons", "installed": "installed", "rule": "rule", "rule_status": "rule"}[op]
 	if i < 0 || kind == "" {
 		return StatusForbidden, nil, nil
 	}
@@ -232,6 +232,8 @@ func (s *Service) uploadLocked(op, sig string, raw []byte, device string) (int, 
 				reply = s.appDecision(d, raw, ctx)
 			case "history":
 				reply = s.history(d, raw, ctx)
+			case "inventory_icons":
+				reply = s.uploadInventoryIcons(d, raw, ctx)
 			case "inventory":
 				reply = s.inventory(d, raw, ctx)
 			case "installed":
@@ -601,19 +603,11 @@ func (s *Service) Requests() Reply {
 	}
 	now := s.Now().Unix()
 	list := []Reply{}
-	budget := adminIconBudget
-	icons := map[string]map[string]string{}
 	for i := len(ledger) - 1; i >= 0; i-- {
 		e := ledger[i]
 		r := Reply{"request_id": e.ID, "profile": e.Profile, "profile_name": ctx.Profiles[e.Profile].Name,
 			"device": e.Device, "target": e.Target, "label": e.Label, "note": e.Note, "minutes": e.Minutes,
 			"received": e.Received, "expires": e.Expires, "state": e.status(now)}
-		if icons[e.Profile] == nil {
-			icons[e.Profile] = s.inventoryIcons(e.Profile, ctx)
-		}
-		if icon := budget.take(icons[e.Profile][e.Target]); icon != "" {
-			r["icon"] = icon
-		}
 		if e.DecidedBy != "" {
 			r["answered_by"], r["answered_at"] = s.nameOf(e.DecidedBy), e.DecidedAt
 		}

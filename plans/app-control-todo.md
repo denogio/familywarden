@@ -529,6 +529,29 @@ Depends on P2/P5/P6.
       preserved. Quiesced signed backup verified/downloaded; DNS has no pending/error.
       Native package smoke and browser e2e pass using x86 builds of the same source;
       target aarch64 packages built separately. No broad lifecycle/pact acceptance implied.
+- [x] ICON2: Fix incomplete icon coverage and presentation (user feedback 2026-10-29).
+      Implemented signed bounded icon batches, durable regenerable per-device cache,
+      byte-paginated administrator reads and shared browser caching without polling flashes.
+      Normalized 96px opaque rounded-square artwork; adaptive layers retain Android scale.
+      Review's two P1 findings and backup/path findings fixed; durable replay watermark
+      retained intentionally instead of no-write optimization. Final affected Go race/vet
+      passes; reuse worker's integration/syntax, 237 JVM tests and focused post-fix Android/
+      browser results. DPR2 gallery and prototype comparison inspected; details in
+      [ICON2 review](../docs/design/icon2-review.md). Deployment authorized, tracked separately.
+      ICON1's 16-KiB first-packages budget uploaded only 11/189 observed apps; only
+      one current usage row had an icon. Transfer icons for all observed apps through
+      bounded messages/cache or pagination, without displacing inventory metadata,
+      weakening signature/scope checks or relying on an external asset service. Do not
+      merely increase one arbitrary aggregate budget. Preserve old-phone/router behavior.
+      Render sharp HiDPI images with consistent size/alignment, preserving artwork aspect
+      ratio. All icons must fill the same rounded-square tile edge to edge: no mixture of
+      round and square silhouettes or circular artwork merely contained inside a square.
+      Normalize adaptive backgrounds/foregrounds and handle legacy transparency consistently;
+      real icons must not inherit the generic blue initials-tile background. Keep neutral fallbacks
+      for genuinely unavailable icons and package identity. Validate actual browser
+      screenshots against the control prototype using fictional fixtures, plus functional
+      coverage for many apps, transport bounds, restart and missing/invalid images.
+      Supervisor handles final tests/commit and the separately authorized pilot deployment.
 - [x] Implement a pure evaluator for schedules, quotas and precedence from P1.
 - [x] Suspend/unsuspend only managed packages, record failures and reconcile at boot,
       package changes, policy updates and budget/schedule boundaries.
@@ -706,12 +729,31 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       forces 14px buttons below 854px (`!important`), and Proton's page-width setting narrows the frame.
       LuCI r12 (`1bae6bd`, deployed 2026-10-29 with approval): Requests ported to the prototype layout (Waiting list,
       Recent decisions with chips); paragraphs inherit the workspace type size.
+- [ ] UI4 — NEXT AFTER ICON2 (user priority, 2026-10-29): Show the full installed-app
+      inventory in router administration, not just today's top-20 usage/configured/pending
+      union. Add search and bounded server-side pagination (25 apps/page as the initial
+      presentation), with stable ordering and truthful empty/partial/unavailable states.
+      The rule editor must find every reported installed app, including apps with no usage;
+      keep top-used summaries separate from the full app browser. Reuse core inventory and
+      ICON2 icon reads; preserve current device/key/profile scope and existing administrator
+      authorization. Cover later pages, search, missing usage, removals and scope changes,
+      plus EN/DA and visual comparison against the control prototype. No live deployment
+      implied. This takes priority over UI2/UI3 after ICON2 is completed.
 - [ ] UI2: Bring the shared Devices page into visual agreement with the control prototype
       (user feedback 2026-10-29), not another independent redesign. Compare the actual page
       and prototype side by side: layout/edit flow, typography, surface/text contrast,
       checkboxes and action hierarchy; keep delivery status truthful. Validate screenshots
       in native LuCI light/dark, mobile and enlarged text using fictional fixtures only.
       Functional checks alone do not establish visual acceptance. Separate from ICON1.
+- [ ] UI3: Fix profile action presentation against the control prototype (user feedback
+      2026-10-29): avoid repeated long "until reset" button labels; show current override
+      separately and expose reset only when an override exists. Make allow/block actions
+      reflect actual override/effective state without changing core semantics, pact guards
+      or unknown-state safety. Separate internet tickets from phone screen-time bonuses;
+      keep measured screen time, applicable limit and missing/no-budget states clear.
+      Do not group screen-time bonus buttons under internet controls. Validate EN/DA,
+      mobile/enlarged text and state-dependent interactions plus visual screenshots.
+      Separate follow-up after ICON2; do not add concurrent edits in shared UI files.
 - [ ] OPS1: fix management HTTPS hostname/certificate mismatch and disabled HTTP→HTTPS
       redirect found during the authorized read-only pilot audit. Preserve recovery
       access and validate certificate trust before changing redirect/listener settings;

@@ -77,20 +77,32 @@ object InventoryUpload {
         }
     }
 
-    private fun icon(drawable: Drawable): String? {
+    internal fun icon(drawable: Drawable): String? {
         val oldBounds = android.graphics.Rect(drawable.bounds)
+        val bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888)
         try {
-            for (size in listOf(48, 32, 24, 16)) {
-                val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-                val bytes = try {
-                    drawable.setBounds(0, 0, size, size)
-                    drawable.draw(Canvas(bitmap))
-                    ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
-                } finally { bitmap.recycle() }
-                if (bytes.size <= MAX_ICON_BYTES) return Base64.getEncoder().encodeToString(bytes)
+            val canvas = Canvas(bitmap)
+            canvas.drawColor(android.graphics.Color.rgb(245, 245, 245))
+            if (drawable is android.graphics.drawable.AdaptiveIconDrawable) {
+                // Preserve Android's 108/72 layer scale without its launcher mask.
+                val inset = (96 * android.graphics.drawable.AdaptiveIconDrawable.getExtraInsetFraction()).toInt()
+                for (layer in listOfNotNull(drawable.background, drawable.foreground)) {
+                    val bounds = android.graphics.Rect(layer.bounds)
+                    try { layer.setBounds(-inset, -inset, 96 + inset, 96 + inset); layer.draw(canvas) }
+                    finally { layer.bounds = bounds }
+                }
+            } else {
+                val width = drawable.intrinsicWidth.coerceAtLeast(1)
+                val height = drawable.intrinsicHeight.coerceAtLeast(1)
+                val scale = 96f / maxOf(width, height)
+                val w = (width * scale).toInt().coerceAtLeast(1)
+                val h = (height * scale).toInt().coerceAtLeast(1)
+                drawable.setBounds((96-w)/2, (96-h)/2, (96+w)/2, (96+h)/2)
+                drawable.draw(canvas)
             }
-            return null
-        } finally { drawable.bounds = oldBounds }
+            val bytes = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+            return if (bytes.size <= InventoryIconUpload.MAX_ICON_BYTES) Base64.getEncoder().encodeToString(bytes) else null
+        } finally { bitmap.recycle(); drawable.bounds = oldBounds }
     }
 
     internal fun legacyActive(scope: String, savedScope: String?, until: Long, now: Long): Boolean =
@@ -123,11 +135,18 @@ object InventoryUpload {
         val icons = !legacyActive(scope, prefs.getString("legacy_scope", null), prefs.getLong("legacy_until", 0), now)
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(report(binding.deviceId, binding.profileId, 1, items, icons).toByteArray()).joinToString("") { "%02x".format(it) }
-        if (prefs.getString("sent", null) == "$scope|$digest" && now - prefs.getLong("sent_at", 0) in 0 until REFRESH_MS) return
+        if (prefs.getString("sent", null) == "$scope|$digest" && now - prefs.getLong("sent_at", 0) in 0 until REFRESH_MS) {
+            InventoryIconUpload.send(prefs, scope, now, items, binding.deviceId, binding.profileId) { raw ->
+                AppRequestClient.post(host, RequestUpload("inventory_icons", raw, routerKey, binding.deviceId), store.phoneKey, state.serverTime)
+            }
+            return
+        }
         // Durable before sending: a lost reply must never let an old seq be reused.
+        var inventorySeq = 0L
         val reply = deliver(binding.deviceId, binding.profileId, items, icons, nextSeq = {
             val seq = prefs.getLong("seq", 0) + 1
             check(prefs.edit().putLong("seq", seq).commit()) { "inventory sequence not saved" }
+            inventorySeq = seq
             seq
         }, post = { raw ->
             AppRequestClient.post(host, RequestUpload("inventory", raw, routerKey, binding.deviceId),
@@ -141,7 +160,11 @@ object InventoryUpload {
             val sentDigest = MessageDigest.getInstance("SHA-256")
                 .digest(report(binding.deviceId, binding.profileId, 1, items, currentIcons).toByteArray())
                 .joinToString("") { "%02x".format(it) }
-            prefs.edit().putString("sent", "$scope|$sentDigest").putLong("sent_at", now).apply()
+            check(prefs.edit().putString("sent", "$scope|$sentDigest").putLong("sent_at", now)
+                .putLong("inventory_seq", inventorySeq).commit())
+            InventoryIconUpload.send(prefs, scope, now, items, binding.deviceId, binding.profileId) { raw ->
+                AppRequestClient.post(host, RequestUpload("inventory_icons", raw, routerKey, binding.deviceId), store.phoneKey, state.serverTime)
+            }
         }
     }
 }

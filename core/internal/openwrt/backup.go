@@ -54,7 +54,7 @@ func (a Adapter) Backup(fn func(backup.Source) error) error {
 			}
 			return fn(backup.Source{Platform: "openwrt", Versions: versions, Roots: map[string]string{
 				"household": root, "platform-config": config,
-			}, Exclude: []string{"household/core/.writer.lock"}, Key: key})
+			}, Exclude: []string{"household/core/.writer.lock", "household/core/inventory-icons"}, Key: key})
 		})
 	})
 }

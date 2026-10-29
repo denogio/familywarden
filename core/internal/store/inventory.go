@@ -26,6 +26,7 @@ type Inventory struct {
 
 type InventoryApp struct {
 	Package   string `json:"package"`
+	IconSince int64  `json:"icon_since,omitempty"`
 	Label     string `json:"label,omitempty"`
 	Icon      string `json:"icon,omitempty"`
 	System    bool   `json:"system,omitempty"`
@@ -60,7 +61,7 @@ func (v Inventory) valid() bool {
 			iconBytes += len(b)
 		}
 		// Strictly sorted: unique packages, one canonical form per snapshot.
-		if !validPkg.MatchString(a.Package) || len(a.Package) > 255 || (i > 0 && v.Apps[i-1].Package >= a.Package) ||
+		if a.IconSince < 0 || a.IconSince > v.Seq || !validPkg.MatchString(a.Package) || len(a.Package) > 255 || (i > 0 && v.Apps[i-1].Package >= a.Package) ||
 			!utf8.ValidString(a.Label) || len([]rune(a.Label)) > 64 {
 			return false
 		}
@@ -96,6 +97,20 @@ func (s *Store) ApplyInventory(profile string, v Inventory) (changed bool, err e
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return false, err
 	}
+	// Preserve continuity only while a package stays installed in this scope.
+	previous := map[string]int64{}
+	for _, a := range prev.Apps {
+		previous[a.Package] = a.IconSince
+		if previous[a.Package] == 0 {
+			previous[a.Package] = prev.Seq
+		}
+	}
+	for i := range v.Apps {
+		v.Apps[i].IconSince = previous[v.Apps[i].Package]
+		if v.Apps[i].IconSince == 0 {
+			v.Apps[i].IconSince = v.Seq
+		}
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return false, err
 	}
@@ -110,6 +125,24 @@ func (s *Store) ApplyInventory(profile string, v Inventory) (changed bool, err e
 	for _, other := range others {
 		if other != path {
 			if err := s.removeRecordedLocked(other); err != nil {
+				return true, err
+			}
+		}
+	}
+	// Remove obsolete cache files only after metadata is durably committed.
+	// Continuity tokens also invalidate them if cleanup is interrupted.
+	icons, err := filepath.Glob(filepath.Join(s.dir, "inventory-icons", "*", id+"@*", "*.icon"))
+	if err != nil {
+		return true, err
+	}
+	keep := map[string]bool{}
+	for _, a := range v.Apps {
+		p, _ := s.iconPath(profile, v.Device, a.Package)
+		keep[p] = true
+	}
+	for _, p := range icons {
+		if !keep[p] {
+			if err := s.removeRecordedLocked(p); err != nil {
 				return true, err
 			}
 		}
@@ -166,15 +199,26 @@ func (s *Store) removeRecordedLocked(path string) error {
 // ValidInventoryIcon bounds decoding before inspecting untrusted PNG dimensions and pixels.
 // Only canonical base64 of a complete, small PNG is accepted, never URLs or SVG.
 func ValidInventoryIcon(icon string) bool {
-	if len(icon) > base64.StdEncoding.EncodedLen(MaxInventoryIconBytes) {
+	return validPNG(icon, MaxInventoryIconBytes, MaxInventoryIconPixels)
+}
+
+const (
+	MaxAppIconBytes  = 40 << 10
+	MaxAppIconPixels = 96
+)
+
+func ValidAppIcon(icon string) bool { return validPNG(icon, MaxAppIconBytes, MaxAppIconPixels) }
+
+func validPNG(icon string, maxBytes, maxPixels int) bool {
+	if len(icon) > base64.StdEncoding.EncodedLen(maxBytes) {
 		return false
 	}
 	b, err := base64.StdEncoding.Strict().DecodeString(icon)
-	if err != nil || len(b) == 0 || len(b) > MaxInventoryIconBytes || base64.StdEncoding.EncodeToString(b) != icon {
+	if err != nil || len(b) == 0 || len(b) > maxBytes || base64.StdEncoding.EncodeToString(b) != icon {
 		return false
 	}
 	cfg, err := png.DecodeConfig(bytes.NewReader(b))
-	if err != nil || cfg.Width < 1 || cfg.Height < 1 || cfg.Width > MaxInventoryIconPixels || cfg.Height > MaxInventoryIconPixels {
+	if err != nil || cfg.Width < 1 || cfg.Height < 1 || cfg.Width > maxPixels || cfg.Height > maxPixels {
 		return false
 	}
 	r := bytes.NewReader(b)

@@ -566,10 +566,10 @@ most 60 KiB); other signed operations keep 16 KiB.
   icons are discarded, not the app metadata/snapshot. At most 16 KiB decoded icon
   bytes survive per snapshot (package order). No URLs, SVG or remote asset service.
   Older v1 phones/files without icons remain valid; inventory stays observation-only.
-- Android draws PackageManager icons into at most 48×48 pixels (retrying 32/24/16
-  when necessary). Metadata fills the existing 512-app/60-KiB JSON budget **first**;
-  optional icons never displace apps. Spare bytes go deterministically to user apps
-  before system apps, package-sorted within each group, up to 16 KiB decoded total.
+- The legacy inventory envelope retains its 48×48 / 2048-byte / 16-KiB limits.
+  Metadata always fills the 512-app/60-KiB JSON budget first. ICON2 phones render
+  96×96 artwork and transfer it independently as described below; no metadata field
+  was added, so old strict routers still receive their existing v1 shape.
 - Older strict routers reject the optional field. Only an authenticated router-signed,
   exact-message-bound `malformed` refusal of an icon-bearing upload triggers a retry
   without icons, using a fresh durably allocated sequence. Network/signature failures
@@ -578,15 +578,10 @@ most 60 KiB); other signed operations keep 16 KiB.
   resetting the upload sequence. Expiry re-enables icon probes after router upgrades;
   the effective icon-bearing content participates in the sent digest, so unchanged
   metadata does not suppress that probe.
-- Existing administrator `usage`, `new_apps` (pending/approved) and `requests` reads
-  may include optional `icon` fields from the newest icon-bearing inventory for that
-  package in the same profile, restricted to **current enrolled keys and bindings**.
-  Ties use stable key order. Each response has a shared 16-KiB base64 icon budget;
-  later icons are omitted deterministically, including repeated historical rows.
-  Unavailable inventory degrades to neutral tiles, not unavailable administration.
-  Scoped signed `installed` and policy reads are unchanged: no new read or authority.
-  Shared web app rows render only bounded PNG data URLs; missing/invalid/failed images
-  use neutral initials and keep package identity. Android display is unchanged.
+- ICON2 administrator `usage`, `new_apps` and `requests` no longer repeat inline
+  images. The administrator-only paged `inventory_icons` read below supplies them.
+  Scoped signed `installed` and policy reads remain unchanged; images never grant
+  parent/child authority. Missing/invalid images retain package identity and initials.
 - `seq` is persisted on the phone before sending; the core keeps only a higher seq per
   enrolled key. One file per phone key under `inventory/<profile>/`; the same device id
   under another key or profile is removed. Reply `state`: `stored` / `unchanged`.
@@ -756,3 +751,80 @@ five minutes of future clock skew; grant deadlines have no extra grace period.
 - ~~Per-role visibility of history~~ decided A14: the child sees own app and domain history, read-only.
 - Off-home transport (A2): native notifications on the parent phone decided; FCM vs UnifiedPush open — needed for P9, not for the LAN slice.
 - ~~Category source and maximum grant size~~ decided A15/A16: 240 min; Android category + router override.
+
+
+### Independent inventory icon transfer (ICON2)
+
+`op=inventory_icons` uses the same enrolled-key signature verification and current
+profile/app-control checks as inventory. Signature domain:
+`familywarden-inventory_icons-v1\n<exact JSON>`. Body transport is at most 64 KiB
+including the signature; JSON is at most 60 KiB. Strict fields at both levels:
+
+```json
+{"type":"inventory_icons","v":1,"device":"fw-alex","profile":"alex",
+ "inventory_seq":7,"seq":12,
+ "icons":[{"package":"com.example.game","icon":"<canonical PNG base64>"}]}
+```
+
+- `inventory_seq` must equal the current own-key metadata snapshot sequence. Each
+  package must be present in that snapshot. 1–32 strictly sorted unique entries per
+  batch; positive sequences bounded by the existing protocol epoch ceiling.
+- Each PNG is at most 40 KiB decoded and at most 96×96 pixels. Canonical standard
+  base64, complete PNG, dimension-before-pixel validation; no URLs/SVG/services.
+  Invalid batches are refused, never substituted for inventory metadata. Reply is
+  the normal router-signed, exact-message-hash-bound `inventory_icons_reply`, with
+  `state: stored|unchanged` or an existing refusal (`malformed`, `wrong_profile`,
+  `app_control_off`, `replay`, `unavailable`). Writes within a batch are individually
+  atomic: a failure can retain an accepted prefix; retry safely finishes it.
+- Android draws adaptive background/foreground layers without the launcher mask.
+  Legacy artwork retains its intrinsic aspect ratio. Both are composited onto the
+  same opaque neutral square at 96px, then clipped once by the web rounded tile.
+  There is no downscale ladder for these HiDPI images.
+- Pack by actual UTF-8 bytes with maximum-width sequence placeholders, independently
+  of metadata, including every available image for every included inventory app.
+  At most 32 batches per sync; durable digest, next batch and preallocated monotonic
+  sequence resume after restart/lost replies. Completion suppresses unchanged uploads until the six-hour repair refresh.
+  A changed image/inventory resets progress. Failures (including unsigned unknown-op
+  responses from old routers) defer only icon attempts for six hours, never claim
+  unsupported, never change legacy inventory mode and never suppress metadata.
+  Router upgrades are retried; exact-message-bound legacy `malformed` inventory
+  retry remains unchanged. Unpair clears progress/digests, not monotonic sequences.
+- Durable per-package files live at
+  `inventory-icons/<profile>/<device@fingerprint>/<sha256(package)>.icon`, with atomic
+  fsync/rename writes. This regenerable cache has no global presence witnesses:
+  missing/corrupt images yield local fallback and never block core startup. A full
+  identical-image refresh starts every six hours (at most 32 batches per sync),
+  repairing loss without waiting for app/image changes. Disk failures are refused.
+  Identical images with a newer `seq` are also atomically written: skipping them
+  would lose the durable replay watermark and allow an intermediate-sequence image
+  to replace newer artwork after restart. A 189-icon repair therefore performs 189
+  file replacements, nominally about 756 per phone per day across four six-hour
+  cycles, plus initial transfers/changes. This flash cost preserves replay safety.
+  OpenWrt household backups exclude the regenerable `core/inventory-icons` subtree;
+  restored phones refill it during reconciliation. These files do not collide with
+  snapshot JSON discovery or exceed the store's per-document read limit. Snapshot `icon_since`
+  records uninterrupted installation continuity; later metadata without inline icons
+  preserves current cached artwork. Uninstall invalidates continuity and prunes files;
+  binding/key changes and revocation invalidate observations before registry changes.
+  Admin reads always filter current registry keys and profile; leftover interrupted
+  cleanup cannot revive an uninstalled app's artwork. No household generation change.
+
+### Administrator icon read (ICON2)
+
+The existing administrator API/session/ACL exposes `inventory_icons` (not a phone
+read). Request: `{"profile":"alex","packages":["com.example.game"],"offset":0}`.
+At most 32 requested package IDs; offset indexes that list. Reply:
+`{"icons":{"com.example.game":"<PNG base64>"},"next":1}`.
+The actual encoded JSON including its trailing newline is at most 60 KiB. `next`
+counts examined requested IDs including missing icons and always advances; the
+caller drains pages until `next == packages.length`. There is no implicit first-page
+cutoff. Newest current-key observations win, stable key order breaks ties; legacy
+inline inventory images remain eligible when no current sidecar image exists.
+
+The shared control/Requests loader fetches only rendered identities, groups at most
+32 IDs, follows every byte-limited page and shares a five-minute in-memory cache.
+Expired cached artwork stays visible while revalidated in the background, so normal
+15-second metadata polls do not repeatedly transfer images or flash fallback tiles.
+Asset failure never disables administration. Real artwork uses an opaque neutral
+background, `object-fit: contain` and a fixed 34px rounded tile; only unavailable
+images retain the initials fallback. No external asset fetches.
