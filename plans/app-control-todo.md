@@ -514,6 +514,15 @@ stay open. Shared offsets are reconciliation, not bounded offline allocation.
 Depends on P2/P5/P6.
 
 - [x] Add app inventory and stable package identity; treat labels/icons as untrusted UI data.
+- [x] ICON1 (2026-10-29): real PackageManager app icons uploaded in signed inventory,
+      validated/stored by core and included in existing administrator usage/new_apps/requests
+      reads. Optional PNGs are bounded to 48×48/2 KiB each, 16 KiB decoded per inventory;
+      metadata is never displaced. Response icon budgets, current-key/profile filtering,
+      neutral fallbacks and authenticated legacy-router retry preserve compatibility.
+      Independent review's three findings fixed; final Go race/vet, syntax, 8 Node tests,
+      portable service/browser rendering and 231 Android JVM tests plus lint pass.
+      No external assets, new authority or Android display change. PackageManager capture
+      still needs emulator/physical runtime validation; no release or deployment performed.
 - [x] Implement a pure evaluator for schedules, quotas and precedence from P1.
 - [x] Suspend/unsuspend only managed packages, record failures and reconcile at boot,
       package changes, policy updates and budget/schedule boundaries.
@@ -606,6 +615,12 @@ minutes become usable, and the standing rule remains unchanged.
 
 Depends on P1 transport decision and P8.
 
+- [ ] Evaluate WebSocket-assisted live updates (requested 2026-10-29): keep HTTP for
+      signed messages and synchronization; consider a WebSocket wake-up channel while
+      Android is active, background push to trigger sync, and periodic sync as fallback.
+      Cover Android background/Doze limits, reconnect/backoff, battery cost and LAN/off-home
+      reachability. WebSocket connectivity alone is not reliable background delivery;
+      this is future work, not a selected transport or permission to expose the core.
 - [ ] Implement the selected transport with bounded queues, reconnect/backoff and expiry.
 - [ ] Separate wake-up/delivery from authorization; relay possession never grants approval.
 - [ ] If relaying policy or usage, implement reviewed encryption/key distribution as well
@@ -685,6 +700,12 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       forces 14px buttons below 854px (`!important`), and Proton's page-width setting narrows the frame.
       LuCI r12 (`1bae6bd`, deployed 2026-10-29 with approval): Requests ported to the prototype layout (Waiting list,
       Recent decisions with chips); paragraphs inherit the workspace type size.
+- [ ] UI2: Bring the shared Devices page into visual agreement with the control prototype
+      (user feedback 2026-10-29), not another independent redesign. Compare the actual page
+      and prototype side by side: layout/edit flow, typography, surface/text contrast,
+      checkboxes and action hierarchy; keep delivery status truthful. Validate screenshots
+      in native LuCI light/dark, mobile and enlarged text using fictional fixtures only.
+      Functional checks alone do not establish visual acceptance. Separate from ICON1.
 - [ ] OPS1: fix management HTTPS hostname/certificate mismatch and disabled HTTP→HTTPS
       redirect found during the authorized read-only pilot audit. Preserve recovery
       access and validate certificate trust before changing redirect/listener settings;

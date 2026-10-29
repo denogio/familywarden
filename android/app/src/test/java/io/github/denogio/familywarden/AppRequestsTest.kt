@@ -136,4 +136,12 @@ class AppRequestsTest {
         rejected { RequestProtocol.verifyReply(signed(JSONObject(ok.toString()).put("package", "com.example.other")), u, now) }
         assertEquals("unknown_app", RequestProtocol.verifyReply(signed(JSONObject(ok.toString()).put("error", "unknown_app")), u, now).error)
     }
+
+    @Test fun inventoryMalformedRefusalMustBeSignedAndBoundBeforeLegacyRetry() {
+        val u = RequestUpload("inventory", InventoryUpload.report("fw-alex", "alex", 1, emptyList()), router.publicKey, "fw-alex")
+        val refusal = response(u).put("error", "malformed")
+        assertEquals("malformed", RequestProtocol.verifyReply(signed(refusal), u, now).error)
+        rejected { RequestProtocol.verifyReply(signed(refusal), u.copy(routerKey = phone.publicKey), now) }
+        rejected { RequestProtocol.verifyReply(signed(refusal.put("message_sha256", "a".repeat(64))), u, now) }
+    }
 }

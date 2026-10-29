@@ -1,6 +1,11 @@
 package store
 
 import (
+	"bytes"
+	"encoding/base64"
+	"fmt"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,5 +102,68 @@ func TestInventoryRejectsUnboundedUnsortedOrInconsistentSnapshots(t *testing.T) 
 	}
 	if _, err := s.ApplyInventory("../x", inv("fw-alex@0123456789abcdef", 6)); err == nil {
 		t.Fatal("profile path accepted")
+	}
+}
+
+func testIcon(t *testing.T, size int) string {
+	t.Helper()
+	var b bytes.Buffer
+	if err := png.Encode(&b, image.NewRGBA(image.Rect(0, 0, size, size))); err != nil {
+		t.Fatal(err)
+	}
+	return base64.StdEncoding.EncodeToString(b.Bytes())
+}
+
+func TestInventoryPNGValidationAndPersistence(t *testing.T) {
+	icon := testIcon(t, 48)
+	raw, _ := base64.StdEncoding.DecodeString(icon)
+	for name, value := range map[string]string{
+		"base64": "!!!", "svg": base64.StdEncoding.EncodeToString([]byte(`<svg/>`)),
+		"dimensions": testIcon(t, 49), "truncated": base64.StdEncoding.EncodeToString(raw[:len(raw)-1]),
+		"trailing":  base64.StdEncoding.EncodeToString(append(raw, 'x')),
+		"oversized": base64.StdEncoding.EncodeToString(make([]byte, MaxInventoryIconBytes+1)),
+	} {
+		if ValidInventoryIcon(value) {
+			t.Fatal("accepted", name)
+		}
+	}
+	if !ValidInventoryIcon(icon) {
+		t.Fatal("valid PNG rejected")
+	}
+	s, dir := open(t)
+	v := inv("fw-alex@0123456789abcdef", 1, "com.example.game")
+	v.Apps[0].Icon = icon
+	if _, err := s.ApplyInventory("alex", v); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := reopened.Inventories("alex")
+	if err != nil || got[v.Device].Apps[0].Icon != icon {
+		t.Fatal("icon lost on reopen", err)
+	}
+	v.Seq++
+	v.Apps[0].Icon = "invalid"
+	if _, err := s.ApplyInventory("alex", v); err == nil {
+		t.Fatal("invalid stored PNG accepted")
+	}
+	v.Apps[0].Icon = ""
+	if _, err := s.ApplyInventory("alex", v); err != nil {
+		t.Fatal("legacy snapshot rejected", err)
+	}
+}
+
+func TestInventoryStoreRejectsExcessTotalIconBytes(t *testing.T) {
+	s, _ := open(t)
+	v := inv("fw-alex@0123456789abcdef", 1)
+	icon := testIcon(t, 48)
+	for i := 0; i < MaxInventoryApps; i++ {
+		v.Apps = append(v.Apps, InventoryApp{Package: fmt.Sprintf("com.example.app%03d", i), Icon: icon})
+	}
+	v.Installed = len(v.Apps)
+	if _, err := s.ApplyInventory("alex", v); err == nil {
+		t.Fatal("accepted unbounded total icons")
 	}
 }

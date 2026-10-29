@@ -2,6 +2,7 @@ package identity
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log"
@@ -23,10 +24,11 @@ type InventoryStore interface {
 }
 
 type inventoryApp struct {
-	Package   string `json:"package"`
-	Label     string `json:"label"`
-	System    bool   `json:"system"`
-	Essential bool   `json:"essential"`
+	Package   string          `json:"package"`
+	Label     string          `json:"label"`
+	Icon      json.RawMessage `json:"icon,omitempty"`
+	System    bool            `json:"system"`
+	Essential bool            `json:"essential"`
 }
 
 // inventory handles op=inventory under s.mu (see uploadLocked).
@@ -56,13 +58,28 @@ func (s *Service) inventory(d Device, raw []byte, ctx platform.Context) object {
 	}
 	v := store.Inventory{Version: store.InventoryVersion, Device: usageKey(d), Name: nameOr(d.Name, d.ID),
 		Seq: m.Seq, Installed: m.Installed, Apps: make([]store.InventoryApp, 0, len(m.Apps)), Received: s.Now().Unix()}
+	iconBytes := 0
 	for _, item := range m.Apps {
 		var a inventoryApp
-		if !decodeStrict(item, &a, "package label system essential", "") || strictUnmarshal(item, &a) != nil ||
+		if !decodeStrictAllowNull(item, &a, "package label system essential", "icon", "icon") || strictUnmarshal(item, &a) != nil ||
 			!validTarget(a.Package) || a.Package == targetTotal {
 			return append(out, refuse("malformed")...)
 		}
-		v.Apps = append(v.Apps, store.InventoryApp{Package: a.Package, Label: displayLabel(a.Label),
+		var icon string
+		_ = json.Unmarshal(a.Icon, &icon)
+		if icon != "" {
+			if !store.ValidInventoryIcon(icon) {
+				icon = ""
+			} else {
+				b, _ := base64.StdEncoding.DecodeString(icon)
+				if iconBytes+len(b) > store.MaxInventoryIconsBytes {
+					icon = ""
+				} else {
+					iconBytes += len(b)
+				}
+			}
+		}
+		v.Apps = append(v.Apps, store.InventoryApp{Icon: icon, Package: a.Package, Label: displayLabel(a.Label),
 			System: a.System, Essential: a.Essential})
 	}
 	changed, err := s.Inventory.ApplyInventory(d.Profile, v)

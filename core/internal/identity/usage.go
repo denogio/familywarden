@@ -125,6 +125,7 @@ func (s *Service) grantByID(ledger []entry, id string) *entry {
 type appUse struct {
 	Package string `json:"package"`
 	Label   string `json:"label,omitempty"`
+	Icon    string `json:"icon,omitempty"`
 	Seconds int    `json:"seconds"`
 }
 
@@ -157,7 +158,7 @@ func (s *Service) dayUsage(profile, day string, topApps int) (total int, devices
 	}
 	for pkg, secs := range byApp {
 		if secs > 0 {
-			apps = append(apps, appUse{pkg, labels[pkg], secs})
+			apps = append(apps, appUse{Package: pkg, Label: labels[pkg], Seconds: secs})
 		}
 	}
 	sort.Slice(apps, func(i, j int) bool {
@@ -223,10 +224,15 @@ func (s *Service) UsageReport() Reply {
 	}
 	sort.Strings(ids)
 	profiles := []Reply{}
+	budget := adminIconBudget
 	for _, id := range ids {
 		total, devices, apps, _, err := s.dayUsage(id, now.Format(time.DateOnly), 20)
 		if err != nil {
 			return fail("usage unavailable")
+		}
+		icons := s.inventoryIcons(id, ctx)
+		for i := range apps {
+			apps[i].Icon = budget.take(icons[apps[i].Package])
 		}
 		week := []Reply{}
 		for back := 6; back >= 0; back-- {

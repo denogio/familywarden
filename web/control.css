@@ -335,3 +335,5 @@
   .fwa .fw-hist .val{grid-column:2;margin-top:-6px}
   .fwa .fw-dlg-foot .fw-btn{flex:1 1 100%}
 }
+
+.fwa .fw-app-icon img{width:100%;height:100%;object-fit:contain;border-radius:8px}

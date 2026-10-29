@@ -381,14 +381,31 @@ func (s *Service) NewApps() Reply {
 	}
 	sort.Strings(ids)
 	profiles := []Reply{}
+	budget := adminIconBudget
 	for _, id := range ids {
+		icons := s.inventoryIcons(id, ctx)
 		approved := []Reply{}
 		for _, pkg := range s.approvedFor(id) {
 			a := s.newApps[id].Approved[pkg]
-			approved = append(approved, Reply{"package": pkg, "label": a.Label, "by": s.nameOf(a.By), "at": a.At})
+			r := Reply{"package": pkg, "label": a.Label, "by": s.nameOf(a.By), "at": a.At}
+			if icon := budget.take(icons[pkg]); icon != "" {
+				r["icon"] = icon
+			}
+			approved = append(approved, r)
+		}
+		pending := s.visiblePending(id, now)
+		for i := range pending {
+			for _, f := range pending[i] {
+				if f.k == "package" {
+					if icon := budget.take(icons[f.v.(string)]); icon != "" {
+						pending[i] = append(pending[i], field{"icon", icon})
+					}
+					break
+				}
+			}
 		}
 		profiles = append(profiles, Reply{"id": id, "name": ctx.Profiles[id].Name,
-			"pending": s.visiblePending(id, now), "approved": approved, "frozen": id == ctx.PactCaptain})
+			"pending": pending, "approved": approved, "frozen": id == ctx.PactCaptain})
 	}
 	return Reply{"profiles": profiles}
 }

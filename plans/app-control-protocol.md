@@ -560,6 +560,33 @@ most 60 KiB); other signed operations keep 16 KiB.
 - Contents: user apps, launchable system apps and the phone's essential roles (the
   enforcer's own set). Hidden system components are omitted. Labels are untrusted
   PackageManager text; the core strips non-printables and bounds them to 64 runes.
+- Optional `icon` (ICON1) is canonical standard base64 of a complete PNG, at most
+  2048 decoded bytes and 48×48 pixels. The core checks dimensions before decoding
+  pixels; non-PNG, corrupt/truncated, non-string/null, oversized or excess-budget
+  icons are discarded, not the app metadata/snapshot. At most 16 KiB decoded icon
+  bytes survive per snapshot (package order). No URLs, SVG or remote asset service.
+  Older v1 phones/files without icons remain valid; inventory stays observation-only.
+- Android draws PackageManager icons into at most 48×48 pixels (retrying 32/24/16
+  when necessary). Metadata fills the existing 512-app/60-KiB JSON budget **first**;
+  optional icons never displace apps. Spare bytes go deterministically to user apps
+  before system apps, package-sorted within each group, up to 16 KiB decoded total.
+- Older strict routers reject the optional field. Only an authenticated router-signed,
+  exact-message-bound `malformed` refusal of an icon-bearing upload triggers a retry
+  without icons, using a fresh durably allocated sequence. Network/signature failures
+  and other refusals never downgrade. Legacy mode is cached for 24 hours, scoped to
+  pinned router key, host, device and profile; re-pairing/unpairing clears it without
+  resetting the upload sequence. Expiry re-enables icon probes after router upgrades;
+  the effective icon-bearing content participates in the sent digest, so unchanged
+  metadata does not suppress that probe.
+- Existing administrator `usage`, `new_apps` (pending/approved) and `requests` reads
+  may include optional `icon` fields from the newest icon-bearing inventory for that
+  package in the same profile, restricted to **current enrolled keys and bindings**.
+  Ties use stable key order. Each response has a shared 16-KiB base64 icon budget;
+  later icons are omitted deterministically, including repeated historical rows.
+  Unavailable inventory degrades to neutral tiles, not unavailable administration.
+  Scoped signed `installed` and policy reads are unchanged: no new read or authority.
+  Shared web app rows render only bounded PNG data URLs; missing/invalid/failed images
+  use neutral initials and keep package identity. Android display is unchanged.
 - `seq` is persisted on the phone before sending; the core keeps only a higher seq per
   enrolled key. One file per phone key under `inventory/<profile>/`; the same device id
   under another key or profile is removed. Reply `state`: `stored` / `unchanged`.

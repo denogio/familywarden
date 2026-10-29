@@ -1,7 +1,10 @@
 package store
 
 import (
+	"bytes"
+	"encoding/base64"
 	"errors"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,14 +27,18 @@ type Inventory struct {
 type InventoryApp struct {
 	Package   string `json:"package"`
 	Label     string `json:"label,omitempty"`
+	Icon      string `json:"icon,omitempty"`
 	System    bool   `json:"system,omitempty"`
 	Essential bool   `json:"essential,omitempty"`
 }
 
 const (
-	InventoryVersion  = 1
-	MaxInventoryApps  = 512
-	maxInventoryCount = 4096
+	MaxInventoryIconBytes  = 2048
+	MaxInventoryIconPixels = 48
+	MaxInventoryIconsBytes = 16 << 10
+	InventoryVersion       = 1
+	MaxInventoryApps       = 512
+	maxInventoryCount      = 4096
 )
 
 // Complete is false when the phone could not send every app it counted.
@@ -43,14 +50,22 @@ func (v Inventory) valid() bool {
 		!utf8.ValidString(v.Name) || len([]rune(v.Name)) > 64 {
 		return false
 	}
+	iconBytes := 0
 	for i, a := range v.Apps {
+		if a.Icon != "" {
+			if !ValidInventoryIcon(a.Icon) {
+				return false
+			}
+			b, _ := base64.StdEncoding.DecodeString(a.Icon)
+			iconBytes += len(b)
+		}
 		// Strictly sorted: unique packages, one canonical form per snapshot.
 		if !validPkg.MatchString(a.Package) || len(a.Package) > 255 || (i > 0 && v.Apps[i-1].Package >= a.Package) ||
 			!utf8.ValidString(a.Label) || len([]rune(a.Label)) > 64 {
 			return false
 		}
 	}
-	return true
+	return iconBytes <= MaxInventoryIconsBytes
 }
 
 func (s *Store) inventoryPath(profile, device string) (string, error) {
@@ -146,4 +161,23 @@ func (s *Store) removeRecordedLocked(path string) error {
 		}
 	}
 	return nil
+}
+
+// ValidInventoryIcon bounds decoding before inspecting untrusted PNG dimensions and pixels.
+// Only canonical base64 of a complete, small PNG is accepted, never URLs or SVG.
+func ValidInventoryIcon(icon string) bool {
+	if len(icon) > base64.StdEncoding.EncodedLen(MaxInventoryIconBytes) {
+		return false
+	}
+	b, err := base64.StdEncoding.Strict().DecodeString(icon)
+	if err != nil || len(b) == 0 || len(b) > MaxInventoryIconBytes || base64.StdEncoding.EncodeToString(b) != icon {
+		return false
+	}
+	cfg, err := png.DecodeConfig(bytes.NewReader(b))
+	if err != nil || cfg.Width < 1 || cfg.Height < 1 || cfg.Width > MaxInventoryIconPixels || cfg.Height > MaxInventoryIconPixels {
+		return false
+	}
+	r := bytes.NewReader(b)
+	_, err = png.Decode(r)
+	return err == nil && r.Len() == 0
 }

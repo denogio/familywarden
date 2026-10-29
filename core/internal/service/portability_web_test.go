@@ -1,8 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -31,7 +35,19 @@ func TestPortableSharedUI(t *testing.T) {
 	phone := f.phone("fw-alex", "alex")
 	r := f.upload(phone, "usage", map[string]any{"type": "usage", "v": 1, "device": phone.id, "profile": "alex",
 		"day": f.now().Format(time.DateOnly), "seq": 1, "total": 900,
-		"apps": map[string]int{"com.example.video": 600}, "labels": map[string]string{"com.example.video": "Video"}})
+		"apps": map[string]int{"com.example.video": 600, "com.example.legacy": 60}, "labels": map[string]string{"com.example.video": "Video"}})
+	if r["state"] != "stored" {
+		t.Fatal(r)
+	}
+	var icon bytes.Buffer
+	if err := png.Encode(&icon, image.NewRGBA(image.Rect(0, 0, 48, 48))); err != nil {
+		t.Fatal(err)
+	}
+	r = f.upload(phone, "inventory", map[string]any{"type": "inventory", "v": 1, "device": phone.id, "profile": "alex", "seq": 1, "installed": 2,
+		"apps": []map[string]any{
+			{"package": "com.example.legacy", "label": "Legacy", "system": false, "essential": false},
+			{"package": "com.example.video", "label": "Video", "system": false, "essential": false, "icon": base64.StdEncoding.EncodeToString(icon.Bytes())},
+		}})
 	if r["state"] != "stored" {
 		t.Fatal(r)
 	}

@@ -166,6 +166,7 @@ class Store(private val context: Context) {
     /** Pairing is a fresh trust decision, also about which wire version this router speaks. */
     internal fun pairVerified(address: String, key: String, reply: Sync.Result.Ok) {
         require(!parentMode || reply.state.parentOnlyCompatible()) { "managed policy requires device owner" }
+        resetInventoryDisplay()
         prefs.edit().clock(reply, preserve = false).putString("host", address).putString("pubkey", key)
             .putString("payload", reply.payload)
             .putBoolean("provisioned", reply.state.appliesTo(deviceId))
@@ -182,8 +183,14 @@ class Store(private val context: Context) {
             .putLong("last_sync", System.currentTimeMillis() / 1000).remove("last_error").apply()
     }
 
+    private fun resetInventoryDisplay() {
+        context.getSharedPreferences("inventory-upload", Context.MODE_PRIVATE).edit()
+            .remove("legacy_scope").remove("legacy_until").remove("sent").remove("sent_at").apply()
+    }
+
     /** Explicit identity removal forgets local retries, not any committed router change. */
     fun unpair(forgetSigningKey: Boolean = false) {
+        resetInventoryDisplay()
         val editor = prefs.edit().remove("host").remove("pubkey").remove("payload").remove("last_sync")
             .remove("last_error").remove("ulysses").remove("dns_error").remove("provisioned")
             .remove("wire_seen").remove("apps_applied").remove("apps_applied_caps")

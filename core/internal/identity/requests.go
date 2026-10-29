@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -115,6 +116,11 @@ func splitUpload(op string, body []byte) (sig string, raw []byte, ok bool) {
 // Strict object decode: exact names, no duplicates/nulls, required fields and
 // actual EOF (not a syntax error in trailing bytes).
 func decodeStrict(raw []byte, v any, required, optional string) bool {
+	return decodeStrictAllowNull(raw, v, required, optional, "")
+}
+
+// Nullable observations may be discarded by their caller; authority fields stay strict.
+func decodeStrictAllowNull(raw []byte, v any, required, optional, nullable string) bool {
 	if !utf8.Valid(raw) {
 		return false
 	}
@@ -134,7 +140,7 @@ func decodeStrict(raw []byte, v any, required, optional string) bool {
 			return false
 		}
 		var value json.RawMessage
-		if d.Decode(&value) != nil || bytes.Equal(value, []byte("null")) {
+		if d.Decode(&value) != nil || (bytes.Equal(value, []byte("null")) && !slices.Contains(strings.Fields(nullable), name)) {
 			return false
 		}
 		fields[name] = true
@@ -595,11 +601,19 @@ func (s *Service) Requests() Reply {
 	}
 	now := s.Now().Unix()
 	list := []Reply{}
+	budget := adminIconBudget
+	icons := map[string]map[string]string{}
 	for i := len(ledger) - 1; i >= 0; i-- {
 		e := ledger[i]
 		r := Reply{"request_id": e.ID, "profile": e.Profile, "profile_name": ctx.Profiles[e.Profile].Name,
 			"device": e.Device, "target": e.Target, "label": e.Label, "note": e.Note, "minutes": e.Minutes,
 			"received": e.Received, "expires": e.Expires, "state": e.status(now)}
+		if icons[e.Profile] == nil {
+			icons[e.Profile] = s.inventoryIcons(e.Profile, ctx)
+		}
+		if icon := budget.take(icons[e.Profile][e.Target]); icon != "" {
+			r["icon"] = icon
+		}
 		if e.DecidedBy != "" {
 			r["answered_by"], r["answered_at"] = s.nameOf(e.DecidedBy), e.DecidedAt
 		}

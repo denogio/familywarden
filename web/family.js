@@ -4,6 +4,23 @@
 // styles are scoped under .fwa and use the host theme's colors where available.
 // The legacy .fwx hook stays on the root for existing consumers and screenshots.
 
+// Only bounded PNG data is ever placed in an image URL; failed loads keep initials.
+export function appIcon(icon, label, pkg) {
+  const tile = document.createElement('span');
+  tile.className = 'fw-app-icon';
+  tile.setAttribute('aria-hidden', 'true');
+  const fallback = ((label && label !== pkg ? label : String(pkg || '').split('.').pop()) || '?')[0].toUpperCase();
+  tile.textContent = fallback;
+  if (typeof icon === 'string' && icon.length <= 2732 && /^iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(icon)) {
+    const image = document.createElement('img');
+    image.alt = '';
+    image.addEventListener('error', () => { tile.textContent = fallback; });
+    image.src = 'data:image/png;base64,' + icon;
+    tile.replaceChildren(image);
+  }
+  return tile;
+}
+
 const STRINGS = {
   en: {
     eyebrow: 'Approvals', title: 'Requests', intro: 'Extra time and new apps from the children. The first parent to answer decides; the others see who did. Phones report usage when they sync; it is information, not enforcement.',
@@ -53,11 +70,11 @@ const minutes = (seconds) => Math.floor((Number(seconds) || 0) / 60);
 export function viewModel(requests, usage, nowEpoch, newApps) {
   const list = Array.isArray(requests?.requests) ? requests.requests : [];
   const pending = list.filter((r) => r.state === 'pending' && r.expires > nowEpoch)
-    .map((r) => ({ id: r.request_id, profileId: r.profile, profile: r.profile_name || r.profile, target: r.target, label: r.label || '',
+    .map((r) => ({ id: r.request_id, profileId: r.profile, profile: r.profile_name || r.profile, target: r.target, label: r.label || '', icon: r.icon,
       minutes: r.minutes, expires: r.expires }))
     .sort((a, b) => a.expires - b.expires);
   const recent = list.filter((r) => r.state !== 'pending' && (r.answered_at || r.received) >= nowEpoch - 86400)
-    .map((r) => ({ id: r.request_id, profileId: r.profile, profile: r.profile_name || r.profile, target: r.target, label: r.label || '',
+    .map((r) => ({ id: r.request_id, profileId: r.profile, profile: r.profile_name || r.profile, target: r.target, label: r.label || '', icon: r.icon,
       state: r.state, minutes: r.minutes, granted: r.granted || 0, by: r.answered_by || '',
       used: r.used == null ? null : minutes(r.used), delivered: r.delivered === true }));
   const profiles = (Array.isArray(usage?.profiles) ? usage.profiles : []).map((p) => ({
@@ -69,8 +86,8 @@ export function viewModel(requests, usage, nowEpoch, newApps) {
   }));
   const apps = (Array.isArray(newApps?.profiles) ? newApps.profiles : []).map((p) => ({
     id: p.id, name: p.name || p.id, frozen: !!p.frozen,
-    pending: (p.pending || []).map((a) => ({ pkg: a.package, label: a.label || a.package })),
-    approved: (p.approved || []).map((a) => ({ pkg: a.package, label: a.label || a.package, by: a.by || '' }))
+    pending: (p.pending || []).map((a) => ({ pkg: a.package, label: a.label || a.package, icon: a.icon })),
+    approved: (p.approved || []).map((a) => ({ pkg: a.package, label: a.label || a.package, icon: a.icon, by: a.by || '' }))
   })).filter((p) => p.pending.length || p.approved.length);
   return { pending, recent, profiles, apps, day: usage?.day || '' };
 }
@@ -162,14 +179,14 @@ export function mount(root, { call, lang, now = () => Math.floor(Date.now() / 10
       value: amounts.get(r.id) ?? String(r.minutes), 'aria-label': t('minutes') });
     input.addEventListener('input', () => amounts.set(r.id, input.value));
     const ask = r.target === 'total' ? t('askTotal', { n: r.minutes }) : t('askApp', { n: r.minutes, app: label(r) });
-    return row(av(r.profileId, r.profile), `${r.profile} · ${ask}`,
+    return row(r.target === 'total' ? av(r.profileId, r.profile) : appIcon(r.icon, r.label, r.target), `${r.profile} · ${ask}`,
       `${t('expires', { time: time(r.expires) })} · ${t('range', { max: r.minutes })}`, input,
       el('button', { class: 'fw-btn small primary', onclick: () => answer(r, true, input) }, t('approve')),
       el('button', { class: 'fw-btn small', onclick: () => answer(r, false, input) }, t('decline')));
   }
 
   function newAppRow(p, a) {
-    return row(av(p.id, p.name), `${p.name} · ${t('askNewApp', { app: a.label })}`, p.frozen ? t('frozen') : t('paused'),
+    return row(appIcon(a.icon, a.label, a.pkg), `${p.name} · ${t('askNewApp', { app: a.label })}`, p.frozen ? t('frozen') : t('paused'),
       p.frozen ? null : el('button', { class: 'fw-btn small primary', onclick: () => decideApp(p.id, a.pkg, 'approve') }, t('allow')),
       el('button', { class: 'fw-btn small', onclick: () => decideApp(p.id, a.pkg, 'deny') }, t('keepPaused')));
   }
@@ -185,7 +202,7 @@ export function mount(root, { call, lang, now = () => Math.floor(Date.now() / 10
       : t(r.delivered ? 'delivered' : 'notDelivered');
     const got = r.target === 'total' ? t('gotTotal', { n: r.minutes }) : t('gotApp', { n: r.minutes, app: label(r) });
     const chip = r.state === 'approved' ? ['ok', 'chipApproved'] : r.state === 'denied' ? ['', 'chipDenied'] : ['dim', 'chipExpired'];
-    return item(av(r.profileId, r.profile), `${r.profile} · ${got}`, [what, extra].filter(Boolean).join(' · '),
+    return item(r.target === 'total' ? av(r.profileId, r.profile) : appIcon(r.icon, r.label, r.target), `${r.profile} · ${got}`, [what, extra].filter(Boolean).join(' · '),
       el('span', { class: `fw-chip ${chip[0]}`.trim() }, t(chip[1])));
   }
 
@@ -228,7 +245,7 @@ export function mount(root, { call, lang, now = () => Math.floor(Date.now() / 10
       const pendingIds = new Set(vm.pending.map((r) => r.id));
       for (const id of amounts.keys()) if (!pendingIds.has(id)) amounts.delete(id);
       const waiting = [...vm.pending.map(pendingRow), ...vm.apps.flatMap((p) => p.pending.map((a) => newAppRow(p, a)))];
-      const allowed = vm.apps.flatMap((p) => p.approved.map((a) => item(av(p.id, p.name), `${p.name} · ${a.label}`, t('allowedBy', { by: a.by }),
+      const allowed = vm.apps.flatMap((p) => p.approved.map((a) => item(appIcon(a.icon, a.label, a.pkg), `${p.name} · ${a.label}`, t('allowedBy', { by: a.by }),
         el('button', { class: 'fw-btn small', onclick: () => decideApp(p.id, a.pkg, 'revoke') }, t('remove')))));
       body.replaceChildren(...[
         section(t('pending'), waiting.length ? el('div', { class: 'fw-attn' }, waiting) : el('div', { class: 'fw-empty' }, el('p', { style: 'margin:0' }, t('none')))),
