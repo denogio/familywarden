@@ -867,10 +867,11 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       unclassified; CI2 stays open. The mast stage now captures device state at the
       first failure (`FW_MAST_DIAG_DIR`, uploaded on failure); repeat KVM dispatches
       until a failure is captured or several consecutive runs pass.
+      Dispatch 41010097715 (`7fc31e3`): emulator job passed (1 green run so far).
 - [ ] CI3: Flaky native LuCI bridge e2e: "shared app, schedule and settings editors commit
       through core CAS" once found no "Unsaved changes" region right after filling Daily
       screen time (`boundingBox()` returned null; run 41010598907 attempt 1). Passed on rerun
-      and in three local packaged runs. Make the assertion wait for the visible region
+      and in three local packaged runs. Recurred in dispatch 41010097715 (`7fc31e3`). Make the assertion wait for the visible region
       (`await expect(...).toBeVisible()` before measuring) without weakening the check.
 - [ ] OPS1: fix management HTTPS hostname/certificate mismatch and disabled HTTP→HTTPS
       redirect found during the authorized read-only pilot audit. Preserve recovery
