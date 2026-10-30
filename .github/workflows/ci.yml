@@ -206,11 +206,13 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-          # Dependency/wrapper cache only; build outputs and signing are never cached.
-          cache: gradle
-          cache-dependency-path: |
-            android/**/*.gradle*
-            android/gradle/wrapper/gradle-wrapper.properties
+
+      # Restores the closest earlier Gradle home (dependencies, wrapper, build cache)
+      # even after a build file changes. Feature branches write too (default: read-only).
+      # Cached task outputs are content-addressed; signing secrets are task inputs.
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: false
 
       - uses: android-actions/setup-android@v4
 
@@ -229,7 +231,7 @@ jobs:
             export MAST_KEYSTORE="$RUNNER_TEMP/mast.jks"
           fi
           python3 ../test/android/test_check_navigation.py
-          ./gradlew --no-daemon testDebugUnitTest lintDebug assembleRelease assembleDebug
+          ./gradlew --build-cache testDebugUnitTest lintDebug assembleRelease assembleDebug
           mkdir -p "$RUNNER_TEMP/mast"
           cp app/build/outputs/apk/release/app-release*.apk "$RUNNER_TEMP/mast/ulysses-mast-$MAST_VERSION_NAME.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/mast/ulysses-mast-debug.apk"
