@@ -137,16 +137,8 @@ class AppControlService : Service() {
     private val launchableCache = mutableMapOf<String, Boolean>()
     private val tick = Runnable { tick() }
     private var replacedReads = 0
-    private var shuttingDown = false
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == Intent.ACTION_SHUTDOWN) {
-                shuttingDown = true
-                handler.removeCallbacks(tick)
-                tick(shutdown = true) // Receiver already runs on the single writer worker.
-                return
-            }
-            if (shuttingDown) return
             intent.data?.schemeSpecificPart?.let { labelCache.remove(it); launchableCache.remove(it) }
             handler.post(tick)
         }
@@ -170,7 +162,6 @@ class AppControlService : Service() {
         register(IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT)
             addAction(Intent.ACTION_TIME_CHANGED); addAction(Intent.ACTION_DATE_CHANGED)
-            addAction(Intent.ACTION_SHUTDOWN)
         })
     }
 
@@ -184,8 +175,7 @@ class AppControlService : Service() {
         return START_STICKY
     }
 
-    internal fun tick(shutdown: Boolean = false) {
-        if (shuttingDown && !shutdown) return
+    internal fun tick() {
         handler.removeCallbacks(tick)
         try {
             val store = Store(this)
@@ -229,7 +219,7 @@ class AppControlService : Service() {
                 }
             } else replacedReads = 0
             val sample = monitor?.let { m ->
-                runCatching { m.sample(essential + basePolicy.alwaysAllowed, input, shutdown) }
+                runCatching { m.sample(essential + basePolicy.alwaysAllowed, input) }
                     .onFailure {
                         // Reload the last atomic checkpoint after a failed write, never
                         // continue with an advanced RAM cursor or unpersisted spending.
@@ -237,14 +227,13 @@ class AppControlService : Service() {
                         Log.w(TAG, "usage sample failed", it)
                     }.getOrNull()
             }
-            if (shutdown) return // Best-effort final accounting only; do not spend the broadcast window enforcing.
             val expiryReady = AppControl.scheduleGrantExpiry(this, state, input?.clock)
             val policy = basePolicy.copy(grantRemaining = sample?.grantRemaining.orEmpty(),
                 grantReliable = sample?.grantReliable == true && expiryReady)
             val reliable = sample?.reliable == true
             // Shared budget (D4): other phones' usage today only adds to local counters.
             val others = state.shared?.takeIf { sample != null && it.day == sample.day }?.millis.orEmpty()
-            val used = (sample?.millis ?: emptyMap()).let { local ->
+            val used = (sample?.budgetMillis ?: emptyMap()).let { local ->
                 local + others.mapValues { (k, v) -> (local[k] ?: 0) + v }
             }
             val result = synchronized(AppEnforcer::class.java) {
@@ -266,16 +255,18 @@ class AppControlService : Service() {
             val labels = (policy.limitsMillis.keys + policy.blocked + policy.alwaysAllowed + policy.approved +
                 historyApps.values.flatMap { it.keys }).associateWith(::label)
             AppControl.publish(AppUsageReport(apps.rev, zone.id, today, SystemClock.elapsedRealtime(),
-                reliable, used.toMap(), labels, monitor?.historyTotals() ?: emptyMap(), essential,
+                reliable, (sample?.millis.orEmpty()).let { local ->
+                    local + others.mapValues { (k, v) -> (local[k] ?: 0) + v }
+                }, labels, monitor?.historyTotals() ?: emptyMap(), essential,
                 sample?.grantRemaining.orEmpty(), policy.grantReliable && result.failures.isEmpty(), installed.map { it.packageName }.toSet(),
-                others[UsageCounter.TOTAL] ?: 0, historyApps))
+                others[UsageCounter.TOTAL] ?: 0, historyApps, sample?.budgetDebits.orEmpty()))
             if (store.appsStatus != status) store.appsStatus = status
             if (AppControl.acknowledges(result.failures, reliable && expiryReady) && store.appsApplied != apps.rev) store.appsApplied = apps.rev
         } catch (e: Exception) {
             AppControl.publish(null)
             Log.e(TAG, "app control tick failed", e)
         } finally {
-            if (!shuttingDown && getSystemService(PowerManager::class.java).isInteractive)
+            if (getSystemService(PowerManager::class.java).isInteractive)
                 handler.postDelayed(tick, AppControl.SCREEN_ON_INTERVAL_MS)
         }
     }

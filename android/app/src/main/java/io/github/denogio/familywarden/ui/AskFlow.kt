@@ -118,8 +118,7 @@ internal fun AskFlow(state: FamilyWardenState, actions: FamilyWardenActions, onC
                         val name = label(key) ?: allApps
                         val left = time?.let { t ->
                             if (key == TOTAL) t.remainingMillis
-                            else t.apps.firstOrNull { it.pkg == key && it.limitMillis != null && it.usedMillis != null }
-                                ?.let { (it.limitMillis!! - it.usedMillis!!).coerceAtLeast(0) }
+                            else t.apps.firstOrNull { it.pkg == key }?.remainingMillis
                         }
                         Row(Modifier.fillMaxWidth().heightIn(min = 56.dp)
                             .selectable(choice == key, role = Role.RadioButton) { choice = key }

@@ -22,6 +22,8 @@ data class AppUsageReport(
     val otherDevicesMillis: Long = 0,
     /** Local per-day app counters on this phone (bounded, busiest first). */
     val historyApps: Map<String, Map<String, Long>> = emptyMap(),
+    /** Local budget compensation, never measured foreground usage. */
+    val budgetDebits: Map<String, Long> = emptyMap(),
 )
 
 /** One app's recorded time on one day, on this phone. */
@@ -42,12 +44,18 @@ data class ScreenTimeState(
     val grantRemaining: Map<String, Long> = emptyMap(),
     val otherDevicesMillis: Long = 0,
     val historyApps: Map<String, List<DayApp>> = emptyMap(),
+    val budgetDebitMillis: Long = 0,
 ) {
-    val remainingMillis: Long? get() = usedMillis?.let { used -> limitMillis?.let { (it - used).coerceAtLeast(0) } }
+    val remainingMillis: Long? get() = usedMillis?.let { used -> limitMillis?.let { (it - used - budgetDebitMillis).coerceAtLeast(0) } }
 }
 
 data class AppTimeRow(val pkg: String, val label: String, val usedMillis: Long?,
-    val limitMillis: Long?, val blocked: Boolean, val unlimited: Boolean)
+    val limitMillis: Long?, val blocked: Boolean, val unlimited: Boolean,
+    val budgetDebitMillis: Long = 0) {
+    val remainingMillis: Long? get() = usedMillis?.let { used ->
+        limitMillis?.let { (it - used - budgetDebitMillis).coerceAtLeast(0) }
+    }
+}
 
 /** Display the signed rules and fresh, reliable observations; never extrapolate a countdown. */
 fun screenTimeState(apps: AppsPolicy, report: AppUsageReport?, now: ZonedDateTime,
@@ -58,19 +66,21 @@ fun screenTimeState(apps: AppsPolicy, report: AppUsageReport?, now: ZonedDateTim
     val current = matching?.takeIf { elapsedMillis - it.elapsedMillis in 0..2 * AppControl.SCREEN_ON_INTERVAL_MS }
     val reliable = current?.reliable == true && usageAccess
     val total = if (reliable) current!!.used[UsageCounter.TOTAL] ?: 0 else null
+    val budgetTotal = total?.let { it + (current!!.budgetDebits[UsageCounter.TOTAL] ?: 0) }
     val downtime = local.downtime.any { Policy.inWindow(it, now) }
     val kind = when {
         downtime -> TodayKind.Downtime
-        local.dailyLimitMillis != null && total != null && total >= local.dailyLimitMillis -> TodayKind.TimesUp
+        local.dailyLimitMillis != null && budgetTotal != null && budgetTotal >= local.dailyLimitMillis -> TodayKind.TimesUp
         !reliable -> TodayKind.Unknown
-        local.dailyLimitMillis != null && local.dailyLimitMillis - total!! <= AppControl.WARN_BEFORE_MS -> TodayKind.NearLimit
+        local.dailyLimitMillis != null && local.dailyLimitMillis - budgetTotal!! <= AppControl.WARN_BEFORE_MS -> TodayKind.NearLimit
         else -> TodayKind.Allowed
     }
     val rows = (local.limitsMillis.keys + local.blocked + local.alwaysAllowed)
         .filter { it !in matching?.essential.orEmpty() }.map { pkg ->
         AppTimeRow(pkg, matching?.labels?.get(pkg) ?: pkg,
             if (reliable) current!!.used[pkg] ?: 0 else null,
-            local.limitsMillis[pkg], pkg in local.blocked, pkg in local.alwaysAllowed && pkg !in local.blocked)
+            local.limitsMillis[pkg], pkg in local.blocked, pkg in local.alwaysAllowed && pkg !in local.blocked,
+            if (reliable) current!!.budgetDebits[pkg] ?: 0 else 0)
     }.sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
     fun recent(day: String) = runCatching { LocalDate.parse(day) }.getOrNull()
         ?.let { it <= now.toLocalDate() && it > now.toLocalDate().minusDays(30) } == true
@@ -82,7 +92,8 @@ fun screenTimeState(apps: AppsPolicy, report: AppUsageReport?, now: ZonedDateTim
         matching?.historyApps.orEmpty().filterKeys(::recent).mapValues { (_, apps) ->
             apps.filterKeys { it !in matching!!.essential }.map { (pkg, millis) -> DayApp(pkg, matching!!.labels[pkg] ?: pkg, millis) }
                 .sortedByDescending { it.millis }
-        }.filterValues { it.isNotEmpty() })
+        }.filterValues { it.isNotEmpty() },
+        if (reliable) current!!.budgetDebits[UsageCounter.TOTAL] ?: 0 else 0)
 }
 
 /** Skip overlapping window boundaries that do not actually change downtime. */

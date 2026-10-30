@@ -879,39 +879,45 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       (`router unreachable`); the rest cascaded. Harness now waits for reachability after
       unpause. SDK cache restore 31s vs ~45s download.
       Dispatch 41047234203 (`058d440`): both suites green (3rd green mast suite).
-- [ ] RB1: A proven clean reboot must not make the whole day "not counted" (user decision
-      2026-10-30). Evidence (Pixel 10, pilot3 code 132): one reboot at 09:28 made
-      `UsageMonitor.sample` return `reboot_gap`, so today and the previous counted day became
-      `uncertainThroughDay`. Effects for the rest of the day: "Not counted right now"
-      (`ScreenTimeState.kt:59`), no `appsApplied` acknowledgement (`AppControl.kt:262`;
-      explains the empty `apps_applied` vs `apps_rev` seen on the router), and every app
-      with a limit is paused (`GrantLedger.kt:140`, `!reliable`).
-      **Revised fix (approved during implementation):** Android synthesizes UsageStats
-      shutdown/startup events even after crashes; that pair alone is not proof. The running
-      foreground service must observe protected `ACTION_SHUTDOWN`, take a bounded final
-      usage sample and atomically persist a marker in the existing usage journal. Accept
-      the next boot only when that marker matches the final checkpoint and prior boot,
-      automatic time is enabled, wall time has not moved backwards, ordered startup history
-      is available and the gap is at most 24h. The off interval counts as zero daily usage.
-      Grants remain fail-closed until a fresh signed sync anchors the new boot; conservative
-      loss of extra time is accepted, never a refill or relaxation of the minute guarantee.
-      Missing markers (including old journals), crashes/power loss, missing access/history,
-      clock problems and invalid events keep the strict fallback.
-      **Verification:** all 257 Android JVM tests passed after the review fixes (including
-      the previous `GrantExhaustionTickTest` failure and the new unavailable-history and
-      shutdown-timeout cases); syntax checks passed. The emulator
-      assertion now requires an advanced checkpoint on the current boot, no usage gaps and
-      a reliable day, not only cached `apps_status`, and verifies foreground usage increases.
-      Final review fixes are verified; focused reboot/grant tests, Android lint, shell syntax
-      and five harness tests pass. The existing raw `adb reboot` offline-pact check is kept;
-      a separate `svc power reboot` exercises Android's normal shutdown broadcast path.
-      Full CI/emulator execution remains pending; this item is not closed.
-      **Accept:** Robolectric/JVM tests for the clean-reboot path (counting continues,
-      day reliable, zero daily usage during the off period, grants fail-closed until fresh
-      signed sync with conservative grant loss allowed but never refill, ack possible) and for each
-      strict fallback; existing guarantees (approved minute, fail-closed on gaps) unchanged;
-      emulator check "a clean reboot mid-day keeps counting" added to the full run; the
-      `adb reboot` with the router paused still keeps the cached pact.
+- [ ] RB1: Resume usage after reboot/crash with a fixed 15-second budget debit.
+      **Superseding user decision (2026-10-30, injected side conversation):** keep recorded
+      usage, read available persisted Android history, and resume counting after either an
+      ordinary reboot or a crash. Deduct 15 seconds from remaining time instead of making
+      the whole day unknown. Remove the orderly-shutdown proof/marker machinery introduced
+      by `767d110`; no special clean-shutdown path. User explicitly accepts possible
+      undercount beyond 15 seconds when Android delays checkpoints; this is not a hard
+      anti-reboot/no-free-time guarantee. The service interval is 15 seconds, not a maximum
+      persistence latency. Missing usage access, unavailable/malformed events and clock
+      problems still need their existing honest handling; offline router alone is not loss
+      of local usage access. Do not treat the powered-off interval as foreground use.
+      **Scope selected by supervisor (user delegated details):** debit the total budget
+      once per observed reboot, and the previously checkpointed visible ordinary app(s)
+      where applicable (PiP/split-screen total remains a single 15s union). Do not debit all
+      installed apps, essential/always-allowed apps, or claim this adjustment as measured
+      app usage in local history or signed uploads. Keep the smallest separate durable
+      adjustment supported by existing accounting; atomic/idempotent with the boot cursor,
+      bounded/pruned with the daily journal, legacy checkpoints supported. Normal process
+      restart is not a reboot and must not debit again. Use the router timezone; test
+      midnight/repeated sample/restart behavior and recovered history without double count.
+      Preserve existing grant fail-closed clock/re-anchor behavior and no-refill guarantee;
+      the 15s compromise does not authorize relaxing signed grants or enrollment/pact rules.
+      Reconcile any docs/tests claiming that every reboot makes the day unknown. Remove
+      obsolete clean-reboot tests/docs rather than layering a second design over them.
+      **Accept:** focused JVM/service tests prove resumed counting, exactly-once debit,
+      measured history distinct from budget adjustment, exclusions/union/midnight handling,
+      acknowledgement after signed sync, legacy journal compatibility, crash-style/raw
+      reboot and missing-access/clock fallbacks. Keep emulator offline-pact checks and prove
+      new-boot checkpoint plus increasing foreground usage, not cached status alone.
+      **Prior evidence (superseded design only):** 257 JVM tests, focused tests/lint/syntax
+      passed for `767d110`; CI dispatch `41079043382` ran that revision, not this new rule.
+      **Revised implementation evidence:** shutdown proof removed; measured counters and
+      history/uploads remain separate from durable budget debits. JVM suite and lint pass;
+      independent review found no blockers, and its dead-code finding is fixed. Supervisor
+      final validation: 33 focused reboot/grant/presentation tests, five harness tests and
+      shell/diff checks pass. Old dispatch failed because the fixture tried to enable apps
+      under a frozen pact; the revised reboot check runs after signed release and successful
+      app-policy acknowledgement, using an unsuspended foreground target. Full revised
+      CI/emulator gate is pending; RB1 stays open. No phone/router deployment is authorized.
 - [ ] CI4: Make CI and Android verification lighter without losing any guarantee (user
       decision 2026-10-30; Maestro rejected: same emulator cost). Plan and measured
       baseline: [ci4-optimization-plan.md](ci4-optimization-plan.md); per-check evidence:

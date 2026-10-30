@@ -1,40 +1,36 @@
 # Reboot usage continuity (RB1)
 
-Verified against AOSP Android 15 (`android-15.0.0_r1`):
+Usage accounting is phone-owned. After an ordinary reboot, crash or raw reboot,
+read the persisted Android UsageEvents history and resume from DEVICE_STARTUP.
+Android can synthesize DEVICE_SHUTDOWN from its last persistence; it is not proof
+of orderly shutdown. There is no ACTION_SHUTDOWN receiver or shutdown marker.
+The powered-off interval is never foreground usage.
 
-- [UsageEvents.Event](https://android.googlesource.com/platform/frameworks/base/+/android-15.0.0_r1/core/java/android/app/usage/UsageEvents.java):
-  `DEVICE_SHUTDOWN` timestamps the last database persistence, not actual shutdown.
-  `DEVICE_STARTUP` can also mean a runtime restart.
-- [UserUsageStatsService](https://android.googlesource.com/platform/frameworks/base/+/android-15.0.0_r1/services/usage/java/com/android/server/usage/UserUsageStatsService.java):
-  `init()` loads persisted stats and **synthesizes** shutdown/startup events from
-  `lastTimeSaved`/`endTime` and current time. `reportEvent()` excludes shutdown events;
-  `queryEvents()` reads the persisted/active event history. Events survive across boots,
-  but the pair alone cannot distinguish a clean reboot from a crash or power loss.
-- [Intent.ACTION_SHUTDOWN](https://android.googlesource.com/platform/frameworks/base/+/android-15.0.0_r1/core/java/android/content/Intent.java):
-  protected system broadcast, runtime-registered receivers only since Android P.
-  [ShutdownThread.run](https://android.googlesource.com/platform/frameworks/base/+/android-15.0.0_r1/services/core/java/com/android/server/power/ShutdownThread.java)
-  sends it with `FLAG_RECEIVER_FOREGROUND | FLAG_RECEIVER_REGISTERED_ONLY` before reboot
-  or shutdown, waiting at most `MAX_BROADCAST_TIME` (10 seconds).
-- [UserManager](https://android.googlesource.com/platform/frameworks/base/+/android-15.0.0_r1/core/java/android/os/UserManager.java):
-  `hasUserRestriction(DISALLOW_CONFIG_DATE_TIME)` checks the calling user's effective
-  `no_config_date_time` restriction; DevicePolicyManager can set it via `addUserRestriction`.
-  [DevicePolicyManagerService](https://android.googlesource.com/platform/frameworks/base/+/android-15.0.0_r1/services/devicepolicy/java/com/android/server/devicepolicy/DevicePolicyManagerService.java)
-  `setAutoTimeEnabled()` writes `Settings.Global.AUTO_TIME`.
+A successfully recovered boot deducts a fixed 15,000 ms from the current
+router-local day's remaining total budget, once. Each previously checkpointed
+visible ordinary app also receives a 15,000 ms budget debit. Essential and
+always-allowed apps are excluded; multiple visible apps still debit the total
+only once. An app need not currently have a limit to retain its debit.
 
-The app therefore uses its own atomic final checkpoint from the runtime shutdown
-receiver, not the synthetic pair as proof. The receiver runs on the collector's worker;
-queries remain capped at 50,000 events. Failure, missed broadcast, a stopped service,
-missing/invalid marker, skipped boots, missing startup, invalid event order, backward
-wall time or more than 24 hours of history all keep the strict gap path. Later samples
-invalidate the marker. Old checkpoints without the additive marker remain supported.
+The schema-1 journal stores `reboot_debits` separately from measured `days`, in
+one atomic checkpoint with the boot cursor. Repeated samples and process restarts
+on the same boot cannot debit again. Debit days share the journal's 30-day
+retention. Legacy journals without debits still decode; obsolete shutdown objects
+are ignored. Enforcement, remaining-time warnings and standing-limit grant
+selection include debits. History and signed usage uploads use measured counters
+only. Today's used labels also remain measured; remaining time includes the
+adjustment. The debit itself never spends a signed grant.
 
-`Mast.enforce` installs `no_config_date_time` only while paired as device owner;
-it is not always in force. Require `Settings.Global.AUTO_TIME == 1` for continuity,
-including when the restriction is present. This is a current clock-condition check,
-not a historical audit of the settings while the process was stopped.
+Successful recovery neither increments `gaps` nor makes the day unknown. Existing
+uncertainty from other problems is not cleared. Missing usage access, locked user,
+unavailable/malformed history, missing startup, backward clock or history beyond
+24 hours still fail closed. Same-boot elapsed regression is a gap, not a reboot
+debit. AUTO_TIME is not reboot proof and is not required to read valid history;
+same-boot wall/elapsed clock discontinuities remain gaps. Router unreachability
+alone does not revoke local usage access.
 
-The final sample charges through its cursor. The interval until startup is off;
-only events at/after startup can reopen visibility. The old elapsed-time anchor must
-not advance across a boot. Grant clocks remain fail-closed until a fresh signed sync:
-existing conservative missing-interval grant charging is unchanged, so grant spending
-may include uncertain reboot overlap after re-anchoring; daily usage does not.
+Signed grant clocks remain unavailable until a fresh signed synchronization
+anchors this boot. Existing conservative missing-interval grant accounting and
+no-refill protections remain unchanged. The fixed 15-second compensation is a
+product compromise, not a maximum persistence latency or a hard anti-reboot
+no-free-time guarantee: Android can delay persistence longer than 15 seconds.

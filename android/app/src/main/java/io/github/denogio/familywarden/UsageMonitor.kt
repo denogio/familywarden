@@ -23,22 +23,6 @@ fun usageDiscontinuity(wall: Long, elapsed: Long, boot: Int,
     else -> null
 }
 
-/** A UsageStats shutdown event alone is NOT evidence: Android synthesizes it after crashes too.
- * Only our atomic ACTION_SHUTDOWN checkpoint proves the prior process observed orderly shutdown.
- */
-internal fun cleanReboot(state: UsageCheckpoint, wall: Long, boot: Int, autoTime: Boolean,
-    events: List<UsageCounter.Event>): Boolean {
-    val marker = state.shutdown ?: return false
-    if (!autoTime || boot.toLong() != state.boot.toLong() + 1 || marker.boot != state.boot ||
-        marker.elapsed != state.elapsed || marker.wall != state.counter.cursor ||
-        wall < marker.wall || wall - marker.wall > 86_400_000) return false
-    if (events.any { it.at < marker.wall || it.at >= wall } ||
-        events.zipWithNext().any { (a, b) -> a.at > b.at }) return false
-    val startup = events.indexOfFirst { it.kind == UsageCounter.Kind.STARTUP }
-    return startup >= 0 && events.take(startup).all { it.kind == UsageCounter.Kind.SHUTDOWN } &&
-        events.drop(startup + 1).none { it.kind in setOf(UsageCounter.Kind.SHUTDOWN, UsageCounter.Kind.STARTUP) }
-}
-
 /** Inputs come only from the verified cache; not from UI commands or upload replies. */
 data class GrantInput(val scope: String, val device: String, val appsJson: String,
     val clock: PolicyClock?, val userApps: Set<String>,
@@ -50,7 +34,12 @@ data class GrantInput(val scope: String, val device: String, val appsJson: Strin
 class UsageMonitor(private val context: Context, private val zone: ZoneId) {
     data class Sample(val day: String, val millis: Map<String, Long>, val sequence: Long,
         val status: String, val reliable: Boolean, val gaps: Long,
-        val grantRemaining: Map<String, Long> = emptyMap(), val grantReliable: Boolean = false)
+        val grantRemaining: Map<String, Long> = emptyMap(), val grantReliable: Boolean = false,
+        val budgetDebits: Map<String, Long> = emptyMap()) {
+        val budgetMillis: Map<String, Long> get() = millis.toMutableMap().apply {
+            budgetDebits.forEach { (target, debit) -> this[target] = Math.addExact(this[target] ?: 0, debit) }
+        }
+    }
     private val journal = UsageJournal(context)
     private val state = journal.load() ?: UsageCheckpoint(
         UsageCounter(System.currentTimeMillis(), screenOn(), unlocked()), zone.id,
@@ -59,21 +48,25 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
     init { require(state.zone == zone.id) { "usage timezone change needs explicit migration" } }
 
     /** [excluded]: apps that do not count towards the daily total (see [UsageCounter.excluded]). */
-    fun sample(excluded: Set<String> = emptySet(), grants: GrantInput? = null, shutdown: Boolean = false): Sample {
+    fun sample(excluded: Set<String> = emptySet(), grants: GrantInput? = null): Sample {
         state.counter.excluded = state.grants.previousExclusions(excluded)
-        state.counter.onInterval = state.grants::charge
+        state.counter.onInterval = { start, stop, visible, measured ->
+            val day = Instant.ofEpochMilli(start).atZone(zone).toLocalDate().toString()
+            state.grants.charge(start, stop, visible, budgetUsage(day, measured))
+        }
         val wall = System.currentTimeMillis()
         val elapsed = SystemClock.elapsedRealtime()
         val boot = boot()
         val day = Instant.ofEpochMilli(wall).atZone(zone).toLocalDate().toString()
-        val shutdownDeadline = if (shutdown) elapsed + 5_000 else Long.MAX_VALUE
         val ops = context.getSystemService(AppOpsManager::class.java)
         var problem = when {
             ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName) != AppOpsManager.MODE_ALLOWED -> "usage_access_missing"
             !context.getSystemService(UserManager::class.java).isUserUnlocked -> "user_locked"
             else -> usageDiscontinuity(wall, elapsed, boot, state.counter.cursor, state.elapsed, state.boot)
         }
-        val reboot = boot != state.boot || elapsed < state.elapsed
+        val reboot = boot != state.boot
+        val previousVisible = state.counter.visible.keys.toSet() - (state.counter.excluded + excluded)
+        if (reboot && problem == "reboot_gap" && wall < state.counter.cursor) problem = "clock_changed"
         val events = mutableListOf<UsageCounter.Event>()
         if (problem == null || problem == "reboot_gap") {
             val raw = context.getSystemService(UsageStatsManager::class.java).queryEvents(state.counter.cursor, wall)
@@ -83,7 +76,6 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
                 var count = 0
                 while (raw.getNextEvent(e)) {
                     if (++count > 50_000) { problem = "event_overflow"; break }
-                    if (SystemClock.elapsedRealtime() > shutdownDeadline) { problem = "shutdown_timeout"; break }
                     val kind = when (e.eventType) {
                         UsageEvents.Event.ACTIVITY_RESUMED -> UsageCounter.Kind.RESUME
                         UsageEvents.Event.ACTIVITY_STOPPED -> UsageCounter.Kind.STOP
@@ -101,14 +93,13 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
                     events.any { it.at < state.counter.cursor || it.at >= wall }) problem = "event_order_invalid"
             }
         }
-        if (reboot) {
-            // no_config_date_time is only installed for paired device owners (Mast.enforce).
-            // Require AUTO_TIME even then: the restriction alone does not prove automatic time.
-            val autoTime = Settings.Global.getInt(context.contentResolver, Settings.Global.AUTO_TIME, 0) == 1
-            problem = if (problem == "reboot_gap" && cleanReboot(state, wall, boot, autoTime, events)) null
-                else problem ?: "reboot_gap"
+        if (reboot && problem == "reboot_gap") {
+            problem = when {
+                wall - state.counter.cursor > 86_400_000 -> "history_gap"
+                events.none { it.kind == UsageCounter.Kind.STARTUP } -> "reboot_gap"
+                else -> null
+            }
         }
-        state.shutdown = null // Any later sample invalidates the final-checkpoint evidence.
         if (problem != null) {
             state.grants.gap()
             val previousDay = Instant.ofEpochMilli(state.counter.cursor).atZone(zone).toLocalDate().toString()
@@ -116,10 +107,16 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
             state.gaps = Math.addExact(state.gaps, 1)
             state.counter.gap(wall, screenOn(), unlocked())
         } else {
-            // The synthetic shutdown may describe old persistence, not actual power-off.
-            // The final sample already charged through the marker; resume only at startup.
+            // Android may synthesize shutdown from its last persistence. Never charge
+            // the off interval; only startup and subsequent events reopen visibility.
             val continuous = if (reboot) events.dropWhile { it.kind != UsageCounter.Kind.STARTUP } else events
-            if (reboot) state.counter.gap(state.counter.cursor, false, false)
+            if (reboot) {
+                state.grants.gap() // Old signed clocks cannot authorize this boot.
+                val debits = state.rebootDebits.getOrPut(day) { mutableMapOf() }
+                for (target in previousVisible + UsageCounter.TOTAL)
+                    debits[target] = Math.addExact(debits[target] ?: 0, REBOOT_DEBIT_MS)
+                state.counter.gap(state.counter.cursor, false, false)
+            }
             state.counter.consume(continuous, wall, zone)
             if (!reboot) state.grants.finishInterval(elapsed - state.elapsed)
         }
@@ -127,7 +124,11 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
         state.boot = boot
         state.sequence = Math.addExact(state.sequence, 1)
         // Never delete old history immediately on an uncertain clock jump.
-        if (problem == null && day > state.uncertainThroughDay) state.counter.prune(wall, zone)
+        if (problem == null && day > state.uncertainThroughDay) {
+            state.counter.prune(wall, zone)
+            val oldest = Instant.ofEpochMilli(wall).atZone(zone).toLocalDate().minusDays(29).toString()
+            state.rebootDebits.keys.removeAll { it < oldest }
+        }
         val server = grants?.clock?.now(elapsed, boot)
         val grantReady = if (grants != null && server != null) state.grants.configure(GrantLedger.Context(
             grants.scope, grants.device, grants.appsJson, zone, wall, server, excluded, grants.userApps,
@@ -136,13 +137,23 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
             else { state.grants.gap(); false }
         val extra = if (problem == null && grantReady && grants != null)
             state.grants.available(grants.scope, server) else emptyMap()
-        // A shutdown sample and its evidence are committed together, never separate writes.
-        if (shutdown && problem == null && SystemClock.elapsedRealtime() <= shutdownDeadline) state.shutdown = ShutdownCheckpoint(boot, elapsed, wall)
         journal.save(state)
         return Sample(day, state.counter.days[day]?.toMap() ?: emptyMap(), state.sequence,
             problem ?: if (day <= state.uncertainThroughDay) "usage_gap" else "ok",
-            problem == null && day > state.uncertainThroughDay, state.gaps, extra, problem == null && grantReady)
+            problem == null && day > state.uncertainThroughDay, state.gaps, extra, problem == null && grantReady,
+            state.rebootDebits[day]?.toMap().orEmpty())
     }
+
+    companion object {
+        const val REBOOT_DEBIT_MS = 15_000L
+    }
+
+    private fun budgetUsage(day: String, measured: Map<String, Long>): Map<String, Long> =
+        measured.toMutableMap().apply {
+            state.rebootDebits[day]?.forEach { (target, debit) ->
+                this[target] = Math.addExact(this[target] ?: 0, debit)
+            }
+        }
 
     /** Recorded local totals only; gaps are not reconstructed or presented as complete history. */
     fun historyTotals(): Map<String, Long> = state.counter.days.mapNotNull { (day, apps) ->

@@ -193,22 +193,44 @@ class GrantExhaustionTickTest {
         assertTrue(suspended())
     }
 
-    @Test fun cleanShutdownKeepsCountingAndAllowsAckAfterSignedSync() {
+    @Test fun rebootDebitExhaustsStandingLimitAndSelectsGrantWithoutSpendingTheDebit() {
+        store.accept(reply(grant = false))
+        tick()
+        event(UsageEvents.Event.SCREEN_INTERACTIVE)
+        event(UsageEvents.Event.KEYGUARD_HIDDEN)
+        event(UsageEvents.Event.ACTIVITY_RESUMED)
+        advance(45_000)
+        tick()
+        assertFalse(suspended())
+        event(UsageEvents.Event.DEVICE_STARTUP)
+        Settings.Global.putInt(context.contentResolver, Settings.Global.BOOT_COUNT, 2)
+        advance(1)
+        service = newProcessService()
+        tick()
+        assertTrue("45s measured + 15s debit exhausts the standing minute", suspended())
+        assertEquals(45_000L, AppControl.usageReport!!.used[video])
+        store.accept(reply(grant = true, nonce = "e".repeat(64)))
+        tick()
+        assertFalse(suspended())
+        assertEquals(0L, spent()) // The adjustment is not grant spending.
+        event(UsageEvents.Event.SCREEN_INTERACTIVE)
+        event(UsageEvents.Event.KEYGUARD_HIDDEN)
+        event(UsageEvents.Event.ACTIVITY_RESUMED)
+        advance(5_000)
+        tick()
+        assertEquals(5_000L, spent()) // Standing-limit selection includes the debit.
+        assertEquals(50_000L, AppControl.usageReport!!.used[video])
+    }
+
+    @Test fun rebootDebitsBudgetAndAllowsAckOnlyAfterSignedSync() {
         Settings.Global.putInt(context.contentResolver, Settings.Global.AUTO_TIME, 1)
         exhaustStandingLimit()
         store.accept(reply(grant = true, nonce = "d".repeat(64)))
         tick()
         advance(10_000)
-        // Exercise the same runtime receiver callback as the protected shutdown broadcast.
-        val receiver = AppControlService::class.java.getDeclaredField("receiver").apply { isAccessible = true }
-            .get(service) as android.content.BroadcastReceiver
-        receiver.onReceive(context, android.content.Intent(android.content.Intent.ACTION_SHUTDOWN))
-        val final = checkpoint()
-        assertEquals(final.counter.cursor, final.shutdown!!.wall)
+        tick() // Ordinary checkpoint; no orderly-shutdown proof is needed.
         assertEquals(10_000L, spent())
         advance(30_000)
-        service.tick() // No queued/screen tick may invalidate the final checkpoint.
-        assertEquals(final.encode(), checkpoint().encode())
         event(UsageEvents.Event.DEVICE_STARTUP)
         Settings.Global.putInt(context.contentResolver, Settings.Global.BOOT_COUNT, 2)
         advance(1)
@@ -221,7 +243,9 @@ class GrantExhaustionTickTest {
         assertTrue("cached grants cannot unpause an unanchored boot", suspended())
         assertEquals(70_000L, AppControl.usageReport!!.used[video])
         assertEquals(10_000L, spent()) // Off interval was not foreground grant spending.
-        assertNull(checkpoint().shutdown)
+        assertEquals(70_000L, checkpoint().counter.days.values.single()[video])
+        assertEquals(15_000L, checkpoint().rebootDebits.values.single()[video])
+        assertEquals(15_000L, AppControl.usageReport!!.budgetDebits[video])
         advance(1)
         tick() // Another pre-sync sample must still fail closed for grants.
         assertFalse(AppControl.usageReport!!.grantReliable)

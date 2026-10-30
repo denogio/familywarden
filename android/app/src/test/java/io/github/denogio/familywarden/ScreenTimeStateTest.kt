@@ -15,6 +15,24 @@ class ScreenTimeStateTest {
     private fun map(p: AppsPolicy = policy, r: AppUsageReport? = report, at: ZonedDateTime = now,
         elapsed: Long = 1000, access: Boolean = true) = screenTimeState(p, r, at, elapsed, access)
 
+    @Test fun rebootDebitReducesRemainingButNeverMeasuredLabels() {
+        val unlimited = "com.example.allowed"
+        val p = policy.copy(alwaysAllowed = setOf(unlimited))
+        val measured = mapOf(UsageCounter.TOTAL to 60_000L, pkg to 60_000L, unlimited to 60_000L)
+        val s = map(p = p, r = report.copy(used = measured,
+            budgetDebits = mapOf(UsageCounter.TOTAL to 15_000L, pkg to 15_000L, unlimited to 15_000L)))
+        assertEquals(60_000L, s.usedMillis)
+        assertEquals(120 * 60_000L - 75_000L, s.remainingMillis)
+        val limited = s.apps.single { it.pkg == pkg }
+        assertEquals(60_000L, limited.usedMillis)
+        assertEquals(30 * 60_000L - 75_000L, limited.remainingMillis)
+        val allowed = s.apps.single { it.pkg == unlimited }
+        assertEquals(60_000L, allowed.usedMillis)
+        assertNull(allowed.remainingMillis)
+        assertEquals(TodayKind.TimesUp, map(r = report.copy(used = mapOf("total" to 120 * 60_000L - 15_000L),
+            budgetDebits = mapOf("total" to 15_000L))).kind)
+    }
+
     @Test fun allowedShowsTheUnionTotalNotTheSumOfAppRows() {
         val s = map()
         assertEquals(TodayKind.Allowed, s.kind)

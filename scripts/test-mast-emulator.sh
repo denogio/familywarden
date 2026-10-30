@@ -421,62 +421,6 @@ docker unpause "$ROUTER" >/dev/null
 # The freshly rebooted guest may not have its network back yet; one sync attempt
 # before that fails with "router unreachable" (dispatch 41044677202).
 bash "$REPO/scripts/wait-emulator-router.sh" "$EMU" "$ROUTER_IP" 7700 || fail "phone cannot reach the router after reboot"
-echo "=== A clean reboot mid-day keeps counting ==="
-# Keep the raw adb reboot pact test above. Normal shutdown must use PowerManager
-# (svc power), which sends ACTION_SHUTDOWN to runtime receivers before rebooting.
-$ADB shell appops set --uid io.github.denogio.familywarden GET_USAGE_STATS allow
-$ADB shell settings put global auto_time 1
-docker exec "$ROUTER" sh -c 'uci set familywarden.alex.apps=1; uci commit familywarden; familywarden reload >/dev/null'
-broadcast io.github.denogio.familywarden.DEBUG_SYNC
-sleep 6
-REBOOT_BASELINE=$($ADB exec-out run-as io.github.denogio.familywarden cat files/app-usage.json)
-$ADB shell svc power reboot || true # adbd may disconnect before the shell returns.
-sleep 10
-for _ in $(seq 1 120); do
-    [ "$($ADB shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] && break
-    sleep 3
-done
-sleep 15
-bash "$REPO/scripts/wait-emulator-router.sh" "$EMU" "$ROUTER_IP" 7700 || fail "phone cannot reach router after clean reboot"
-broadcast io.github.denogio.familywarden.DEBUG_SYNC
-sleep 6
-$ADB exec-out run-as io.github.denogio.familywarden cat shared_prefs/familywarden.xml | python3 -c '
-import sys,xml.etree.ElementTree as E
-values={n.get("name"):n.text or "" for n in E.parse(sys.stdin).getroot()}
-sys.exit(0 if values.get("apps_status") == "ok" else 1)' \
-    && pass "clean reboot status is ok after signed sync" || fail "clean reboot made the day uncounted"
-# A cached apps_status=ok is not proof that the collector sampled this boot.
-CURRENT_BOOT=$($ADB shell settings get global boot_count | tr -d '\r')
-$ADB exec-out run-as io.github.denogio.familywarden cat files/app-usage.json | python3 -c '
-import datetime,json,sys,zoneinfo
-before=json.loads(sys.argv[1])
-after=json.load(sys.stdin)
-today=datetime.datetime.now(zoneinfo.ZoneInfo(after["zone"])).date().isoformat()
-assert after["boot"] == int(sys.argv[2]) > before["boot"], "no sample on the new boot"
-assert after["seq"] > before["seq"], "checkpoint did not advance"
-assert after["cursor"] > before["cursor"], "usage cursor did not advance"
-assert after["gaps"] == before["gaps"] == 0, "reboot introduced a usage gap"
-assert after["uncertain_through_day"] < today, "today is not reliable"
-' "$REBOOT_BASELINE" "$CURRENT_BOOT" \
-    && pass "clean reboot checkpoint advanced without a gap" || fail "clean reboot checkpoint is stale or unreliable"
-COUNT_TARGET=""
-for p in com.android.camera2 com.android.contacts com.google.android.contacts; do
-    $ADB shell pm path "$p" 2>/dev/null | grep -q package: && { COUNT_TARGET=$p; break; }
-done
-POST_REBOOT=$($ADB exec-out run-as io.github.denogio.familywarden cat files/app-usage.json)
-[ -n "$COUNT_TARGET" ] || fail "no foreground app for clean reboot counting check"
-$ADB shell input keyevent KEYCODE_WAKEUP
-$ADB shell wm dismiss-keyguard
-$ADB shell monkey -p "$COUNT_TARGET" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
-sleep 10
-$ADB exec-out run-as io.github.denogio.familywarden cat files/app-usage.json | python3 -c '
-import json,sys
-before=json.loads(sys.argv[1]); after=json.load(sys.stdin); package=sys.argv[2]
-used=lambda checkpoint: sum(day.get(package,0) for day in checkpoint["days"].values())
-assert used(after) > used(before), "foreground usage did not increase after reboot"
-assert after["gaps"] == before["gaps"] == 0, "counting introduced a gap"
-' "$POST_REBOOT" "$COUNT_TARGET" \
-    && pass "foreground time keeps counting after clean reboot" || fail "foreground time stopped counting after clean reboot"
 docker exec "$ROUTER" sh -c 'echo $(( $(date +%s) - 1 )) > /etc/familywarden/release; familywarden tick'
 broadcast io.github.denogio.familywarden.DEBUG_SYNC
 ui removal-allowed
@@ -510,6 +454,69 @@ broadcast io.github.denogio.familywarden.DEBUG_SYNC
 rev=$(rdev apps_rev)
 [ -n "$rev" ] && [ "$(rdev apps_applied)" = "$rev" ] && pass "router got the signed acknowledgement ($rev)" \
     || fail "acknowledgement: applied='$(rdev apps_applied)' expected='$rev'"
+
+echo "=== A reboot mid-day debits 15 seconds and keeps counting ==="
+# Run after signed release and app-policy acknowledgement: a live pact freezes apps settings.
+# Keep the separate raw adb reboot offline-pact test above.
+$ADB shell appops set --uid io.github.denogio.familywarden GET_USAGE_STATS allow
+$ADB shell settings put global auto_time 1
+broadcast io.github.denogio.familywarden.DEBUG_SYNC
+sleep 6
+REBOOT_BASELINE=$($ADB exec-out run-as io.github.denogio.familywarden cat files/app-usage.json)
+[ -n "$REBOOT_BASELINE" ] || { fail "collector has no checkpoint before reboot"; exit 1; }
+$ADB reboot
+sleep 10
+for _ in $(seq 1 120); do
+    [ "$($ADB shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] && break
+    sleep 3
+done
+sleep 15
+bash "$REPO/scripts/wait-emulator-router.sh" "$EMU" "$ROUTER_IP" 7700 || fail "phone cannot reach router after reboot"
+broadcast io.github.denogio.familywarden.DEBUG_SYNC
+sleep 6
+$ADB exec-out run-as io.github.denogio.familywarden cat shared_prefs/familywarden.xml | python3 -c '
+import sys,xml.etree.ElementTree as E
+values={n.get("name"):n.text or "" for n in E.parse(sys.stdin).getroot()}
+sys.exit(0 if values.get("apps_status") == "ok" else 1)' \
+    && pass "reboot status is ok after signed sync" || fail "reboot made the day uncounted"
+# A cached apps_status=ok is not proof that the collector sampled this boot.
+CURRENT_BOOT=$($ADB shell settings get global boot_count | tr -d '\r')
+$ADB exec-out run-as io.github.denogio.familywarden cat files/app-usage.json | python3 -c '
+import datetime,json,sys,zoneinfo
+before=json.loads(sys.argv[1])
+after=json.load(sys.stdin)
+today=datetime.datetime.now(zoneinfo.ZoneInfo(after["zone"])).date().isoformat()
+assert after["boot"] == int(sys.argv[2]) > before["boot"], "no sample on the new boot"
+assert after["seq"] > before["seq"], "checkpoint did not advance"
+assert after["cursor"] > before["cursor"], "usage cursor did not advance"
+assert after["gaps"] == before["gaps"] == 0, "reboot introduced a usage gap"
+assert after["uncertain_through_day"] < today, "today is not reliable"
+debit=lambda checkpoint: checkpoint.get("reboot_debits",{}).get(today,{}).get("total",0)
+assert debit(after) - debit(before) == 15000, "reboot debit missing or duplicated"
+# Measured foreground growth is checked separately below, never inferred from debit.
+' "$REBOOT_BASELINE" "$CURRENT_BOOT" \
+    && pass "reboot checkpoint advanced without a gap" || fail "reboot checkpoint is stale or unreliable"
+COUNT_TARGET=""
+for p in com.android.camera2 com.android.contacts com.google.android.contacts; do
+    if $ADB shell pm path "$p" 2>/dev/null | grep -q package: && ! suspended "$p"; then
+        COUNT_TARGET=$p; break
+    fi
+done
+POST_REBOOT=$($ADB exec-out run-as io.github.denogio.familywarden cat files/app-usage.json)
+[ -n "$COUNT_TARGET" ] || fail "no foreground app for reboot counting check"
+$ADB shell input keyevent KEYCODE_WAKEUP
+$ADB shell wm dismiss-keyguard
+$ADB shell monkey -p "$COUNT_TARGET" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+sleep 10
+$ADB exec-out run-as io.github.denogio.familywarden cat files/app-usage.json | python3 -c '
+import json,sys
+before=json.loads(sys.argv[1]); after=json.load(sys.stdin); package=sys.argv[2]
+used=lambda checkpoint: sum(day.get(package,0) for day in checkpoint["days"].values())
+assert used(after) > used(before), "foreground usage did not increase after reboot"
+assert after["gaps"] == before["gaps"] == 0, "counting introduced a gap"
+assert after["reboot_debits"] == before["reboot_debits"], "same-boot sample debited again"
+' "$POST_REBOOT" "$COUNT_TARGET" \
+    && pass "foreground time keeps counting after reboot" || fail "foreground time stopped counting after reboot"
 
 # Daily total used up (0 minutes): every ordinary app pauses, calls and the alarm clock do not.
 OTHER=""

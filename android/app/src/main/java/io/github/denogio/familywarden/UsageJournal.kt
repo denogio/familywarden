@@ -12,8 +12,6 @@ import java.time.ZoneId
 /** One atomic checkpoint contains both cursor and cumulative totals: replay after a crash
  * starts at the last persisted cursor, never mixes new totals with an old cursor.
  */
-data class ShutdownCheckpoint(val boot: Int, val elapsed: Long, val wall: Long)
-
 data class UsageCheckpoint(
     val counter: UsageCounter,
     val zone: String,
@@ -23,12 +21,13 @@ data class UsageCheckpoint(
     var gaps: Long = 0,
     var uncertainThroughDay: String = "",
     val grants: GrantLedger = GrantLedger(),
-    var shutdown: ShutdownCheckpoint? = null,
+    /** Budget-only milliseconds; saved atomically with boot, never uploaded as usage. */
+    val rebootDebits: MutableMap<String, MutableMap<String, Long>> = mutableMapOf(),
 ) {
     fun encode(): String = JSONObject().apply {
         put("schema", 1); put("zone", zone); put("cursor", counter.cursor)
         put("grants", grants.encode())
-        shutdown?.let { put("shutdown", JSONObject().put("boot", it.boot).put("elapsed", it.elapsed).put("wall", it.wall)) }
+        put("reboot_debits", JSONObject().apply { rebootDebits.forEach { (day, apps) -> put(day, JSONObject(apps as Map<*, *>)) } })
         put("elapsed", elapsed); put("boot", boot); put("seq", sequence); put("gaps", gaps); put("uncertain_through_day", uncertainThroughDay)
         put("interactive", counter.interactive); put("unlocked", counter.unlocked)
         put("visible", JSONObject().apply { counter.visible.forEach { (pkg, ids) -> put(pkg, JSONArray(ids.toList())) } })
@@ -71,10 +70,20 @@ data class UsageCheckpoint(
                 o.getLong("seq").also { require(it >= 0) }, o.getLong("gaps").also { require(it >= 0) },
                 o.getString("uncertain_through_day").also { require(it.isEmpty() || LocalDate.parse(it).toString() == it) },
                 if (o.has("grants")) GrantLedger.decode(o.getJSONObject("grants")) else GrantLedger(),
-                o.optJSONObject("shutdown")?.let { marker ->
-                    ShutdownCheckpoint(marker.getInt("boot").also { require(it >= 0) },
-                        marker.getLong("elapsed").also { require(it >= 0) },
-                        marker.getLong("wall").also { require(it in 0..253402300799000L) })
+                mutableMapOf<String, MutableMap<String, Long>>().apply {
+                    val debits = if (o.has("reboot_debits")) o.getJSONObject("reboot_debits") else JSONObject()
+                    require(debits.length() <= 30)
+                    for (day in debits.keys()) {
+                        require(LocalDate.parse(day).toString() == day)
+                        val apps = debits.getJSONObject(day)
+                        require(apps.length() <= 512)
+                        put(day, mutableMapOf<String, Long>().apply {
+                            for (pkg in apps.keys()) {
+                                require(packageName(pkg))
+                                put(pkg, apps.getLong(pkg).also { require(it in 0..Long.MAX_VALUE) })
+                            }
+                        })
+                    }
                 })
         }
     }
