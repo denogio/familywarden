@@ -921,8 +921,19 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       status, but its foreground check read after 10s against a 15s sampling interval.
       The harness now waits boundedly for a fresh checkpoint with actual measured growth;
       eight fast harness tests preserve failure on no growth, gaps or duplicated debit.
-      Full revised CI/emulator gate is pending; RB1 stays open. User separately authorized
-      installation on the maintainer phone after green gates, not router deployment.
+      **Current blocker:** dispatch `41093015341` has green ordinary gates/LuCI, but
+      post-reboot foreground counting still fails after bounded waiting. Synthetic fixture
+      checkpoints advance seq7→11 with visible Contacts activity, gaps0 and exactly15s debit,
+      yet `interactive=false`, `unlocked=false`, days empty throughout. STARTUP resets those
+      flags and Android may not supply later screen/unlock events for an already awake boot.
+      **Blocker fix:** reconcile actual PowerManager/Keyguard state after reboot replay at
+      the sample boundary, preserving visibility and never charging backward/off time.
+      Production-path regressions cover missing screen/unlock events, stale replayed flags,
+      current locked/off negatives, process restart and unchanged exactly-once debit.
+      Workflow ran 51 focused JVM tests, eight harness tests and syntax checks; fresh review
+      is CLEAN and supervisor's focused reboot/grant rerun passes. Full revised CI/emulator
+      gate is pending; RB1 stays open. User separately authorized installation on maintainer
+      phone after green gates, not router deployment.
 - [ ] CI4: Make CI and Android verification lighter without losing any guarantee (user
       decision 2026-10-30; Maestro rejected: same emulator cost). Plan and measured
       baseline: [ci4-optimization-plan.md](ci4-optimization-plan.md); per-check evidence:

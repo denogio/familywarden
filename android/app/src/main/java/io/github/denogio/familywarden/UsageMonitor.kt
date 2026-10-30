@@ -109,6 +109,7 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
         } else {
             // Android may synthesize shutdown from its last persistence. Never charge
             // the off interval; only startup and subsequent events reopen visibility.
+            // Current screen/keyguard state is applied after replay, never retroactively.
             val continuous = if (reboot) events.dropWhile { it.kind != UsageCounter.Kind.STARTUP } else events
             if (reboot) {
                 state.grants.gap() // Old signed clocks cannot authorize this boot.
@@ -118,7 +119,12 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
                 state.counter.gap(state.counter.cursor, false, false)
             }
             state.counter.consume(continuous, wall, zone)
-            if (!reboot) state.grants.finishInterval(elapsed - state.elapsed)
+            if (reboot) {
+                // An already-awake boot may have no screen/unlock events after STARTUP.
+                // Preserve replayed visibility, but resume from actual state at this boundary.
+                state.counter.interactive = screenOn()
+                state.counter.unlocked = unlocked()
+            } else state.grants.finishInterval(elapsed - state.elapsed)
         }
         state.elapsed = elapsed
         state.boot = boot

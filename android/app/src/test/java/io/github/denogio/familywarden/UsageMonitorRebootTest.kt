@@ -1,9 +1,11 @@
 package io.github.denogio.familywarden
 
 import android.app.AppOpsManager
+import android.app.KeyguardManager
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
+import android.os.PowerManager
 import android.os.Process
 import android.os.SystemClock
 import android.os.UserManager
@@ -69,6 +71,77 @@ class UsageMonitorRebootTest {
         assertTrue(sample.millis.isEmpty())
         assertEquals(0L, sample.gaps)
     }
+    @Test fun startupWithoutScreenEventsResumesFromCurrentDeviceState() {
+        assertBoundaryResumesUsage(staleScreenEvents = false)
+    }
+
+    @Test fun currentDeviceStateOverridesReplayedScreenOffAndLockAtBootBoundary() {
+        assertBoundaryResumesUsage(staleScreenEvents = true)
+    }
+
+    private fun assertBoundaryResumesUsage(staleScreenEvents: Boolean) {
+        shadowOf(context.getSystemService(PowerManager::class.java)).setIsInteractive(true)
+        shadowOf(context.getSystemService(KeyguardManager::class.java)).setKeyguardLocked(false)
+        event(UsageEvents.Event.DEVICE_STARTUP)
+        event(UsageEvents.Event.ACTIVITY_RESUMED, wall - 8_000)
+        if (staleScreenEvents) {
+            event(UsageEvents.Event.SCREEN_NON_INTERACTIVE, wall - 7_000)
+            event(UsageEvents.Event.KEYGUARD_SHOWN, wall - 7_000)
+        }
+        val first = sample()
+        assertTrue(first.reliable)
+        assertEquals(0L, first.gaps)
+        assertTrue(first.millis.isEmpty()) // Current state cannot invent past measured use.
+        assertEquals(15_000L, first.budgetMillis[UsageCounter.TOTAL])
+        val saved = UsageJournal(context).load()!!
+        assertTrue(saved.counter.interactive)
+        assertTrue(saved.counter.unlocked)
+        assertEquals(setOf("com.example.game"), saved.counter.visible.keys)
+        assertEquals(2, saved.boot)
+        assertEquals(wall, saved.counter.cursor)
+
+        // A normal process restart must retain the boundary state and not debit again.
+        org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofSeconds(15))
+        val monitor = UsageMonitor(context, zone)
+        val next = monitor.sample()
+        assertTrue(next.reliable)
+        assertEquals(0L, next.gaps)
+        assertEquals(15_000L, next.millis["com.example.game"])
+        assertEquals(15_000L, next.millis[UsageCounter.TOTAL])
+        assertEquals(30_000L, next.budgetMillis[UsageCounter.TOTAL])
+        assertEquals(first.budgetDebits, next.budgetDebits)
+        assertEquals(15_000L, monitor.historyTotals()[next.day])
+        assertEquals(next.budgetMillis, monitor.sample().budgetMillis)
+
+        // Later events on the same boot still govern charging; no boundary override.
+        event(UsageEvents.Event.SCREEN_NON_INTERACTIVE, wall + 15_000)
+        event(UsageEvents.Event.KEYGUARD_SHOWN, wall + 15_000)
+        org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofSeconds(15))
+        assertEquals(next.millis, monitor.sample().millis)
+    }
+
+    @Test fun bootBoundaryDoesNotResumeWhileDeviceIsOff() {
+        assertBoundaryDoesNotResumeUsage(interactive = false, unlocked = true)
+    }
+
+    @Test fun bootBoundaryDoesNotResumeWhileDeviceIsLocked() {
+        assertBoundaryDoesNotResumeUsage(interactive = true, unlocked = false)
+    }
+
+    private fun assertBoundaryDoesNotResumeUsage(interactive: Boolean, unlocked: Boolean) {
+        shadowOf(context.getSystemService(PowerManager::class.java)).setIsInteractive(interactive)
+        shadowOf(context.getSystemService(KeyguardManager::class.java)).setKeyguardLocked(!unlocked)
+        event(UsageEvents.Event.DEVICE_STARTUP)
+        event(UsageEvents.Event.ACTIVITY_RESUMED, wall - 8_000)
+        val first = sample()
+        assertTrue(first.reliable)
+        org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofSeconds(15))
+        val next = UsageMonitor(context, zone).sample()
+        assertTrue(next.reliable)
+        assertTrue(next.millis.isEmpty())
+        assertEquals(first.budgetDebits, next.budgetDebits)
+    }
+
     @Test fun missingUsageAccessFailsClosedEvenWithEvidence() {
         event(UsageEvents.Event.DEVICE_STARTUP)
         access(AppOpsManager.MODE_IGNORED)
