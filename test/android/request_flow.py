@@ -230,6 +230,12 @@ familywarden reload >/dev/null""")
     wait('the standing app minute is exhausted and suspended', suspended, 115)
     home()
     tap('Ask for more time', scroll=True)
+    # Without this the next dump can still show the home screen, whose fixture row
+    # would be tapped instead of the ask flow's choice (dispatch 41040296201).
+    if not any(nodes('What do you need more time for?') for _ in range(2)):
+        print('RETRY ask flow did not open; tapping again', flush=True)
+        tap('Ask for more time', scroll=True)
+    wait('the ask flow opens', lambda: bool(nodes('What do you need more time for?')), 15)
     tap('FamilyWarden install fixture', scroll=True)
     tap('Next')
     tap('Other amount')

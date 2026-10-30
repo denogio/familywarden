@@ -871,6 +871,9 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       first failure (`FW_MAST_DIAG_DIR`, uploaded on failure); repeat KVM dispatches
       until a failure is captured or several consecutive runs pass.
       Dispatch 41010097715 (`7fc31e3`): emulator job passed (1 green run so far).
+      2026-10-30 dispatch 41040296201 (`5aaa264`): mast suite green (2nd green); requests
+      suite failed `missing UI control: Next` — the ask flow was not open (home screen in
+      failure.png). Harness now waits for the ask flow and logs a single re-tap as RETRY.
 - [ ] CI4: Make CI and Android verification lighter without losing any guarantee (user
       decision 2026-10-30; Maestro rejected: same emulator cost). Plan and measured
       baseline: [ci4-optimization-plan.md](ci4-optimization-plan.md); per-check evidence:
