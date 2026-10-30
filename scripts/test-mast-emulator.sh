@@ -10,7 +10,8 @@
 # (global v1 replies must not authorize the phone), then upgrade it in place.
 #
 # Needs docker and /dev/kvm. The Android SDK (emulator + system image) lives in
-# the docker volume "mast-sdk" (see the sdkmanager line below).
+# the docker volume "mast-sdk" (see the sdkmanager line below). MAST_SDK may name
+# another volume or an absolute host directory (CI restores one from its cache).
 
 set -e
 
@@ -19,6 +20,8 @@ APK_DIR="$(cd "${1:?router apk dir}" && pwd)"
 MAST_APK="$(realpath "${2:-$REPO/android/app/build/outputs/apk/debug/app-debug.apk}")"
 SDK_IMAGE="ghcr.io/cirruslabs/android-sdk:35"
 SYSIMG="system-images;android-35;google_apis;x86_64"
+MAST_SDK="${MAST_SDK:-mast-sdk}"
+export MAST_SDK
 ID=$$
 NET="mast-net-$ID"
 ROUTER="mast-router-$ID"
@@ -47,8 +50,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-docker volume inspect mast-sdk >/dev/null 2>&1 || docker volume create mast-sdk >/dev/null
-docker run --rm -v mast-sdk:/opt/extra "$SDK_IMAGE" sh -c \
+case "$MAST_SDK" in
+    /*) mkdir -p "$MAST_SDK" ;;
+    *) docker volume inspect "$MAST_SDK" >/dev/null 2>&1 || docker volume create "$MAST_SDK" >/dev/null ;;
+esac
+docker run --rm -v "$MAST_SDK:/opt/extra" "$SDK_IMAGE" sh -c \
     "test -d /opt/extra/system-images || { yes | sdkmanager --sdk_root=/opt/extra --licenses >/dev/null; sdkmanager --sdk_root=/opt/extra emulator platform-tools '$SYSIMG' >/dev/null; }"
 
 docker network create "$NET" >/dev/null
@@ -92,7 +98,7 @@ echo "router at $ROUTER_IP"
 echo "=== Emulator (Android 15) ==="
 docker run -d --name "$EMU" --network "$NET" --device /dev/kvm --sysctl net.ipv6.conf.lo.disable_ipv6=0 \
     --memory=4608m --memory-swap=4608m --cpus=2 \
-    -v mast-sdk:/opt/extra -v "$MAST_APK:/mast.apk:ro" "$SDK_IMAGE" sleep infinity >/dev/null
+    -v "$MAST_SDK:/opt/extra" -v "$MAST_APK:/mast.apk:ro" "$SDK_IMAGE" sleep infinity >/dev/null
 docker exec "$EMU" sh -c "
     export ANDROID_HOME=/opt/extra ANDROID_SDK_ROOT=/opt/extra
     # AVD by hand: avdmanager insists on its own SDK root

@@ -208,6 +208,11 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+          # Dependency/wrapper cache only; build outputs and signing are never cached.
+          cache: gradle
+          cache-dependency-path: |
+            android/**/*.gradle*
+            android/gradle/wrapper/gradle-wrapper.properties
 
       - uses: android-actions/setup-android@v4
 
@@ -267,14 +272,38 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # Emulator + system image (~1 GB). sdkmanager installs the latest emulator, so the
+      # key rotates monthly; a miss simply downloads again inside the test script.
+      - name: Month for the Android SDK cache key
+        id: month
+        run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Android SDK for the emulator
+        id: sdk
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/mast-sdk
+          key: mast-sdk-${{ hashFiles('scripts/test-mast-emulator.sh') }}-${{ steps.month.outputs.month }}
+
       - name: Device owner, pairing and the tethering restriction on Android 15
         env:
           FW_MAST_DIAG_DIR: ${{ runner.temp }}/familywarden-mast
+          MAST_SDK: ${{ runner.temp }}/mast-sdk
         run: ./scripts/test-mast-emulator.sh apk mast/ulysses-mast-debug.apk
+
+      # Saved even when a test fails: the SDK download itself succeeded.
+      - name: Save Android SDK for the emulator
+        if: always() && steps.sdk.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/mast-sdk
+          key: ${{ steps.sdk.outputs.cache-primary-key }}
 
       - name: Signed child requests and ordinary parent approvals on Android 15
         env:
           OUT: ${{ runner.temp }}/familywarden-requests
+          MAST_SDK: ${{ runner.temp }}/mast-sdk
         run: ./scripts/test-requests-emulator.sh apk mast/ulysses-mast-debug.apk
 
       - name: Preserve synthetic request diagnostics on failure

@@ -74,7 +74,7 @@ EOF
 IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$ROUTER")
 docker run -d --name "$EMU" --network "$NET" --device /dev/kvm --cpus=2 \
     --memory=4500m --memory-swap=4500m --sysctl net.ipv6.conf.lo.disable_ipv6=0 \
-    -v mast-sdk:/opt/extra -v "$ROOT:/src:ro" -v "$APP:/app.apk:ro" -v "$OUT/probe:/probe:ro" \
+    -v "${MAST_SDK:-mast-sdk}:/opt/extra" -v "$ROOT:/src:ro" -v "$APP:/app.apk:ro" -v "$OUT/probe:/probe:ro" \
     "$SDK_IMAGE" sleep infinity >/dev/null
 docker exec "$EMU" sh -c '
     test -f /opt/extra/system-images/android-35/google_apis/x86_64/system.img
