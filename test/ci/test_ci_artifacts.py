@@ -61,6 +61,13 @@ class ArtifactTests(unittest.TestCase):
                 self.modify("apks", key, {"sha": SHA, "repository": ENV["GITHUB_REPOSITORY"],
                                             "run_id": "42", "run_attempt": "2"}[key])
 
+    def test_accepts_earlier_attempt_of_same_run_but_not_later(self):
+        self.modify("apks", "run_attempt", "1")
+        self.verify()
+        self.modify("apks", "run_attempt", "3")
+        with self.assertRaisesRegex(ValueError, "mismatched run_attempt"):
+            self.verify()
+
     def test_rejects_extra_package(self):
         (self.directory / f"apks-{SHA}" / "unexpected.apk").touch()
         with self.assertRaisesRegex(ValueError, "unexpected or missing"):

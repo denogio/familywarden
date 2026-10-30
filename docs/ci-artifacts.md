@@ -52,12 +52,13 @@ The helper selects the latest non-PR CI run among the latest 100 runs for exactl
 that SHA. PR runs are excluded because their artifacts use a synthetic merge SHA.
 It refuses if no eligible run exists, or unless the selected run is complete and
 successful and its current-attempt **Validated artifacts gate** succeeded. It downloads
-all three artifacts, checks their SHA/repository/run/attempt, exact file sets, consistent
+all three artifacts, checks their SHA/repository/run, exact file sets, consistent
 package versions and SHA-256 hashes, and rejects unsigned Android release output.
-Expired artifacts, missing permissions or mismatched attempts fail closed: do not
+Expired artifacts, missing permissions or attempts newer than the run fail closed: do not
 replace them with unvalidated local builds. A failed fetch may leave a partial directory;
-remove it before retrying. A rerun that reuses artifacts from an older attempt is rejected;
-rerun all jobs to produce a consistent set. A rerun keeps its original Android versionCode,
+remove it before retrying. "Re-run failed jobs" keeps artifacts from jobs that already
+succeeded in an earlier attempt of the same run; those are accepted (attempt 1 through the
+current attempt) because the current attempt's gate still requires every job. A rerun keeps its original Android versionCode,
 so do not use it to supersede an already installed higher-code build. Before the first
 CI-based Android update, compare the recorded versionCode with the installed versionCode;
 a previous local build may have a higher code. Do not bypass downgrade protection.

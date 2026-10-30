@@ -65,10 +65,13 @@ def verify(directory, sha, repository, run_id, attempt):
         folder = directory / f"{group}-{sha}"
         manifest = json.loads((folder / "provenance.json").read_text())
         for key, value in {"schema": 1, "group": group, "sha": sha,
-                           "repository": repository, "run_id": run_id,
-                           "run_attempt": attempt}.items():
+                           "repository": repository, "run_id": run_id}.items():
             if manifest.get(key) != value:
                 raise ValueError(f"{group}: mismatched {key}")
+        # "Re-run failed jobs" keeps artifacts from earlier attempts of the same run.
+        produced = str(manifest.get("run_attempt", ""))
+        if not produced.isdigit() or not 1 <= int(produced) <= int(attempt):
+            raise ValueError(f"{group}: mismatched run_attempt")
         files = manifest["files"]
         expected = expected_files(group, manifest["package_versions"], manifest["android_version_name"])
         if set(files) != expected or {p.name for p in folder.iterdir()} != expected | {"provenance.json"}:
