@@ -788,6 +788,12 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       preserved, signed backup verified/downloaded, DNS has no pending/error. Android
       unchanged in UI4. Prior phone applied/current revision discrepancy remains open;
       it is not a UI4 validation success or a newly reported application error.
+      Follow-up `1968fd3` (LuCI r17): LuCI bootstrap's global `*{margin:0}` pinned the rule
+      modal to the top-left corner and `input[type=search]{box-sizing:content-box}` made
+      search overlap the filter tabs; both fixed with a hostile-theme regression test.
+      First pipeline-sourced pilot deploy: `scripts/fetch-ci-artifacts.sh` verified run
+      41010598907 attempt 2; only LuCI r17 installed (backend r20/core r30 unchanged).
+      Configuration, owner and phone bindings preserved; served assets match `1968fd3`.
 - [ ] UI2: Bring the shared Devices page into visual agreement with the control prototype
       (user feedback 2026-10-29), not another independent redesign. Compare the actual page
       and prototype side by side: layout/edit flow, typography, surface/text contrast,
@@ -851,6 +857,11 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       unclassified; CI2 stays open. The mast stage now captures device state at the
       first failure (`FW_MAST_DIAG_DIR`, uploaded on failure); repeat KVM dispatches
       until a failure is captured or several consecutive runs pass.
+- [ ] CI3: Flaky native LuCI bridge e2e: "shared app, schedule and settings editors commit
+      through core CAS" once found no "Unsaved changes" region right after filling Daily
+      screen time (`boundingBox()` returned null; run 41010598907 attempt 1). Passed on rerun
+      and in three local packaged runs. Make the assertion wait for the visible region
+      (`await expect(...).toBeVisible()` before measuring) without weakening the check.
 - [ ] OPS1: fix management HTTPS hostname/certificate mismatch and disabled HTTP→HTTPS
       redirect found during the authorized read-only pilot audit. Preserve recovery
       access and validate certificate trust before changing redirect/listener settings;
