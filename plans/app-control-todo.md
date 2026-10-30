@@ -874,6 +874,10 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       2026-10-30 dispatch 41040296201 (`5aaa264`): mast suite green (2nd green); requests
       suite failed `missing UI control: Next` — the ask flow was not open (home screen in
       failure.png). Harness now waits for the ask flow and logs a single re-tap as RETRY.
+      Dispatch 41044677202 (`1bf667e`): first failure `cannot scroll to Free sailing`: after
+      the reboot-without-router step one sync ran before the guest network was back
+      (`router unreachable`); the rest cascaded. Harness now waits for reachability after
+      unpause. SDK cache restore 31s vs ~45s download.
 - [ ] CI4: Make CI and Android verification lighter without losing any guarantee (user
       decision 2026-10-30; Maestro rejected: same emulator cost). Plan and measured
       baseline: [ci4-optimization-plan.md](ci4-optimization-plan.md); per-check evidence:

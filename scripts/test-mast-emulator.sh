@@ -418,6 +418,9 @@ ui_has 'Router out of reach; cached policy remains'
 echo ""
 echo "=== Removal after a fresh signed release ==="
 docker unpause "$ROUTER" >/dev/null
+# The freshly rebooted guest may not have its network back yet; one sync attempt
+# before that fails with "router unreachable" (dispatch 41044677202).
+bash "$REPO/scripts/wait-emulator-router.sh" "$EMU" "$ROUTER_IP" 7700 || fail "phone cannot reach the router after reboot"
 docker exec "$ROUTER" sh -c 'echo $(( $(date +%s) - 1 )) > /etc/familywarden/release; familywarden tick'
 broadcast io.github.denogio.familywarden.DEBUG_SYNC
 ui removal-allowed
