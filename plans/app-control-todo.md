@@ -871,24 +871,16 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       first failure (`FW_MAST_DIAG_DIR`, uploaded on failure); repeat KVM dispatches
       until a failure is captured or several consecutive runs pass.
       Dispatch 41010097715 (`7fc31e3`): emulator job passed (1 green run so far).
-- [ ] CI4: Make Android verification lighter without losing any guarantee (user decision
-      2026-10-30; Maestro rejected: it runs on the same emulator and cuts no cost).
-      Today both suites cold-boot a full `google_apis` x86_64 emulator (`-no-snapshot`)
-      each, start an OpenWrt router container, and drive ~90 checks via `uiautomator
-      dump`/tap even where the check is core or app logic.
-      1. Map every check in `scripts/test-mast-emulator.sh` and `test/android/request_flow.py`
-         to the lightest layer that can prove it: JVM (Robolectric, incl. shadow
-         `DevicePolicyManager`), Go core (portable service, no OpenWrt), or real
-         emulator (Device Owner enrollment, real package suspension, UsageStats, Private
-         DNS, tethering restriction). Record the map in `plans/ci4-android-test-map.md`.
-         Done 2026-10-30: map committed; ATD (`google_atd`, API 35) verified available.
-      2. Move the first checks down, starting with the approved-minute exhaustion/re-pause
-         guarantee (CI2 race) as a fake-clock Robolectric test.
-      3. Slim the remaining emulator smoke: ATD system image, boot snapshot instead of cold
-         boot, one shared emulator for both suites, router via native core where OpenWrt
-         specifics are not under test.
-      **Accept:** every current guarantee is either kept in the smoke or proven by a named
-      lighter test; emulator dispatch under 5 minutes; no assertion weakened.
+- [ ] CI4: Make CI and Android verification lighter without losing any guarantee (user
+      decision 2026-10-30; Maestro rejected: same emulator cost). Plan and measured
+      baseline: [ci4-optimization-plan.md](ci4-optimization-plan.md); per-check evidence:
+      [ci4-android-test-map.md](ci4-android-test-map.md) (done 2026-10-30, `google_atd`
+      API 35 verified). Steps: A1 Gradle cache, A2 emulator SDK cache, A3 OpenWrt
+      dependency reuse (content-identical apks), B1 fake-clock Robolectric test for the
+      approved-minute guarantee, B3 one shared ATD emulator with snapshot, B2 move UI/
+      state checks to Robolectric, B4 smoke/full emulator modes, A4 SDK image pull.
+      **Accept:** push gate ~5 min, emulator smoke < 5 min, full run ~10 min, every map
+      guarantee kept or proven by a named lighter test, no assertion weakened.
 - [ ] CI3: Flaky native LuCI bridge e2e: "shared app, schedule and settings editors commit
       through core CAS" once found no "Unsaved changes" region right after filling Daily
       screen time (`boundingBox()` returned null; run 41010598907 attempt 1). Passed on rerun

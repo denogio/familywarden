@@ -112,6 +112,11 @@ Moved out of every dispatch (kept in the grouped milestone run): dark/200% (×3)
 - Mid-read replacement (the CI2 race): start a tick's reads, then `Store.accept` a *different* signed payload (new nonce) before the monitor sample; `replacedDuringRead` true → tick must return without enforcing the mixed snapshot (assert: no DPM state mutation from the stale input, and the *next* tick enforces only the consistent new snapshot with its own nonce; grant either alive in the new policy or cleanly re-evaluated — never a half-policy). This is the `7e600bb` guarantee at the level that actually failed: the emulator run died because enforcement mixed a replaced snapshot, not because of slow KVM timing.
 - Negative controls: no grant → exhaustion at 60_000 of the standing limit; blocked app never unpauses even with a grant.
 
+> **Correction (measured 2026-10-30):** the OpenWrt router container takes ~7s in CI
+> including its image pull, not 1.5–2 min. That time was the Android SDK image pull
+> (~40s) and the `sdkmanager` download (~45s). The native test router is dropped; see
+> [ci4-optimization-plan.md](ci4-optimization-plan.md) for the corrected plan.
+
 ## (d) Estimated emulator runtime
 
 Today (timings from local `the dispatch 40490235715 log`, the failed KVM dispatch; CI2 doc calls the full run "~15 minutes"):
