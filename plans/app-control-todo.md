@@ -881,6 +881,7 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
          `DevicePolicyManager`), Go core (portable service, no OpenWrt), or real
          emulator (Device Owner enrollment, real package suspension, UsageStats, Private
          DNS, tethering restriction). Record the map in `plans/ci4-android-test-map.md`.
+         Done 2026-10-30: map committed; ATD (`google_atd`, API 35) verified available.
       2. Move the first checks down, starting with the approved-minute exhaustion/re-pause
          guarantee (CI2 race) as a fake-clock Robolectric test.
       3. Slim the remaining emulator smoke: ATD system image, boot snapshot instead of cold
