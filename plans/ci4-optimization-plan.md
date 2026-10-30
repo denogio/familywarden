@@ -40,6 +40,12 @@ A1. **Gradle** (Mast job): add Gradle caching (`setup-java` `cache: gradle` or
     `gradle/actions/setup-gradle`). Expect 323s → ~2–3m. Release signing and
     versionCode inputs are unaffected (they are not cached outputs).
 
+    Result: `setup-java` `cache: gradle` missed after any build-file change (B1 push:
+    Mast 7.6m). Replaced by `gradle/actions/setup-gradle` (closest-match restore, Gradle
+    build cache, writes on feature branches): warm push Mast 3.0m (`BUILD` 2m24s), push
+    wall 5.9m. Remaining: `versionCode = run_number` changes BuildConfig every run, so
+    compile tasks still rerun.
+
 A2. **Android SDK for the emulator**: replace the named `mast-sdk` volume in CI with a
     bind directory (`FW_MAST_SDK_DIR`, local default unchanged) restored by
     `actions/cache`, keyed on system image id + emulator package revision. Removes the
