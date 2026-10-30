@@ -794,6 +794,17 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       First pipeline-sourced pilot deploy: `scripts/fetch-ci-artifacts.sh` verified run
       41010598907 attempt 2; only LuCI r17 installed (backend r20/core r30 unchanged).
       Configuration, owner and phone bindings preserved; served assets match `1968fd3`.
+- [ ] UI5: Sort the Rules app inventory (user feedback 2026-10-30, design screenshot).
+      A sort menu button right of the filter tabs (`⇅ Most used ⌄`) opens a menu with
+      Most used (default), Name and Rule; the active option shows a check mark. Sorting
+      is server-side because pages are server-side: `admin_installed` gains a strict
+      `sort` field (`used`|`name`|`rule`, empty = `used`) in the Go core; ties break
+      deterministically by label then package; apps without usage sort after used ones.
+      Rule order: blocked, limit, unlimited, pending, none. Changing sort resets to page
+      0, keeps search/filter, is not a configuration draft change and must not mark the
+      page dirty. Menu is keyboard accessible (button + menu/menuitemradio, Escape
+      returns focus) and survives LuCI theme resets. Danish strings. Tests: Go unit
+      tests for decoding/order, browser tests for menu, paging reset and focus.
 - [ ] UI2: Bring the shared Devices page into visual agreement with the control prototype
       (user feedback 2026-10-29), not another independent redesign. Compare the actual page
       and prototype side by side: layout/edit flow, typography, surface/text contrast,
