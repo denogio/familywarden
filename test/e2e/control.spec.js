@@ -78,6 +78,24 @@ async function installedBrowser(page, lang = 'en') {
   await expect(page.locator('.fw-rule-app')).toHaveCount(20);
 }
 
+test('UI4 search and rule modal survive LuCI bootstrap resets', async ({page}) => {
+  await page.setViewportSize({width:1400,height:900});
+  await installedBrowser(page);
+  // Global rules from the LuCI bootstrap theme that previously misplaced both controls.
+  await page.addStyleTag({content:'*,::before,::after{border:0;box-sizing:border-box;margin:0;padding:0}input[type="search"]{-webkit-appearance:textfield;box-sizing:content-box}'});
+  for (const width of [1400,1100,900]) {
+    await page.setViewportSize({width,height:900});
+    const [field,input,tabs] = await Promise.all(['.fw-app-tools .fw-field','.fw-app-tools input[type=search]','.fw-app-tools .fw-seg'].map(s => page.locator(s).boundingBox()));
+    expect(input.x + input.width).toBeLessThanOrEqual(field.x + field.width + 1);
+    if (Math.abs(tabs.y - field.y) < field.height) expect(field.x + field.width).toBeLessThanOrEqual(tabs.x);
+  }
+  await page.setViewportSize({width:1400,height:900});
+  await page.locator('.fw-rule-app').first().getByRole('button').click();
+  const box = await page.getByRole('dialog').boundingBox();
+  expect(Math.abs(box.x + box.width / 2 - 700)).toBeLessThanOrEqual(2);
+  expect(box.y).toBeGreaterThan(0);
+});
+
 for (const lang of ['en','da']) test(`UI4 full inventory live search, numbered pages, local modal and focus (${lang})`, async ({page}) => {
   await installedBrowser(page,lang);
   const search=page.getByRole('searchbox'), panel=page.locator('.fw-rule-apps');

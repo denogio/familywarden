@@ -247,7 +247,7 @@
 .fwa .fw-dirty p{margin:0;flex:1 1 220px}
 
 /* ---------- dialog, toast ---------- */
-.fwa dialog.fw-dialog{width:min(600px,calc(100% - 24px));max-height:calc(100% - 48px);padding:0;border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--ink);box-shadow:0 24px 64px rgba(7,11,16,.4)}
+.fwa dialog.fw-dialog{margin:auto;width:min(600px,calc(100% - 24px));max-height:calc(100% - 48px);padding:0;border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--ink);box-shadow:0 24px 64px rgba(7,11,16,.4)}
 .fwa dialog.fw-dialog::backdrop{background:rgba(15,27,39,.5)}
 .fwa .fw-dlg-head{padding:22px 24px 4px}
 .fwa .fw-dlg-body{padding:10px 24px 18px;display:flex;flex-direction:column;gap:14px}
@@ -359,7 +359,7 @@
 .fwa .fw-rulebtn.r-blocked{background:var(--rest-soft);border-color:transparent;color:var(--rest)}
 .fwa .fw-app-paging{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:16px}
 .fwa .fw-app-paging [aria-current=page]{background:var(--gold-soft);border-color:var(--gold)}
-.fwa .fw-rule-dialog{padding:0;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink);width:600px;max-width:calc(100% - 24px);max-height:calc(100% - 24px);font:inherit}
+.fwa .fw-rule-dialog{margin:auto;padding:0;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink);width:600px;max-width:calc(100% - 24px);max-height:calc(100% - 24px);font:inherit}
 .fwa .fw-rule-dialog::backdrop{background:var(--scrim)}
 .fwa .fw-dlg-head,.fwa .fw-dlg-body,.fwa .fw-dlg-foot{padding:20px 24px}
 .fwa .fw-dlg-head{border-bottom:1px solid var(--line)}
@@ -387,6 +387,6 @@
 /* Updated prototype search and numbered-page treatment. */
 .fwa .fw-app-tools .fw-field{position:relative;flex:1 1 220px;max-width:340px}
 .fwa .fw-app-tools .fw-field>.i{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
-.fwa .fw-app-tools input[type=search]{padding-left:38px;width:100%}
+.fwa .fw-app-tools input[type=search]{box-sizing:border-box;padding-left:38px;width:100%}
 .fwa .fw-app-paging{padding-top:12px;border-top:1px solid var(--line)}
 .fwa .fw-app-paging [aria-current=page]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
