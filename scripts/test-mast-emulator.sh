@@ -26,7 +26,20 @@ EMU="mast-emu-$ID"
 FAILED=0
 
 pass() { echo "✓ $1"; }
-fail() { echo "❌ $1"; FAILED=1; }
+# CI2: capture device state at the first failure; later failures often only cascade.
+DIAG_DIR=${FW_MAST_DIAG_DIR:-}
+snapshot() {
+    [ -n "$DIAG_DIR" ] && [ -n "${ADB:-}" ] || return 0
+    mkdir -p "$DIAG_DIR" || return 0
+    printf '%s\n' "$1" > "$DIAG_DIR/first-failure.txt"
+    $ADB logcat -d -v threadtime > "$DIAG_DIR/logcat.log" 2>&1 || true
+    $ADB shell dumpsys activity services io.github.denogio.familywarden > "$DIAG_DIR/services.log" 2>&1 || true
+    $ADB shell dumpsys activity activities > "$DIAG_DIR/activities.log" 2>&1 || true
+    $ADB shell dumpsys window > "$DIAG_DIR/window.log" 2>&1 || true
+    $ADB shell 'uiautomator dump /sdcard/fw-diag.xml >/dev/null && cat /sdcard/fw-diag.xml' > "$DIAG_DIR/ui.xml" 2>&1 || true
+    $ADB exec-out screencap -p > "$DIAG_DIR/screen.png" 2>/dev/null || true
+}
+fail() { echo "❌ $1"; [ "$FAILED" = 1 ] || snapshot "$1"; FAILED=1; }
 
 cleanup() {
     docker rm -f "$ROUTER" "$EMU" >/dev/null 2>&1 || true
@@ -129,6 +142,8 @@ tap_text() {
 import sys, re, xml.etree.ElementTree as ET
 root = ET.fromstring(sys.stdin.read())
 nodes = [n for n in root.iter("node") if sys.argv[1] in (n.get("text"), n.get("content-desc"))]
+if not nodes:
+    sys.exit("no node for " + sys.argv[1])
 node = next((n for n in nodes if n.get("clickable") == "true"), nodes[0])
 x1,y1,x2,y2 = map(int, re.findall(r"\d+", node.get("bounds")))
 print((x1+x2)//2, (y1+y2)//2)
@@ -141,10 +156,12 @@ tap_switch() {
     local coords
     coords=$(printf '%s' "$UI" | python3 -c '
 import sys,re,xml.etree.ElementTree as ET
-node=next(n for n in ET.fromstring(sys.stdin.read()).iter("node") if n.get("checkable")=="true")
+node=next((n for n in ET.fromstring(sys.stdin.read()).iter("node") if n.get("checkable")=="true"), None)
+if node is None:
+    sys.exit("no checkable node for switch")
 x1,y1,x2,y2=map(int,re.findall(r"\d+",node.get("bounds")))
 print((x1+x2)//2,(y1+y2)//2)
-')
+') || { fail "cannot tap switch"; return 1; }
     $ADB shell input tap $coords
     sleep 3
 }

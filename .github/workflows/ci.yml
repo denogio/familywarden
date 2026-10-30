@@ -33,6 +33,7 @@ jobs:
         run: |
           ./scripts/test-syntax.sh
           python3 -m unittest discover -s test/ci -p 'test_*.py'
+          python3 -m unittest discover -s test/android -p 'test_mast_emulator.py'
           shellcheck scripts/fetch-ci-artifacts.sh
 
       # The integration test runs the Go core (phone identity) next to the shell plugin.
@@ -267,6 +268,8 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Device owner, pairing and the tethering restriction on Android 15
+        env:
+          FW_MAST_DIAG_DIR: ${{ runner.temp }}/familywarden-mast
         run: ./scripts/test-mast-emulator.sh apk mast/ulysses-mast-debug.apk
 
       - name: Signed child requests and ordinary parent approvals on Android 15
@@ -286,6 +289,7 @@ jobs:
             ${{ runner.temp }}/familywarden-requests/*.json
             ${{ runner.temp }}/familywarden-requests/*.xml
             ${{ runner.temp }}/familywarden-requests/*.png
+            ${{ runner.temp }}/familywarden-mast/
 
   gate:
     name: Validated artifacts gate

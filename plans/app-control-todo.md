@@ -839,6 +839,18 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       script ended in an IndexError. Determine whether the emulator/session degraded
       (harness) or app control genuinely stopped (product) before touching assertions;
       the script should fail with a clear message instead of an IndexError.
+      Evidence (local, uncommitted): `/tmp/ci2-evidence/<run>.log` failed-job logs for
+      both runs; synthetic diagnostics bundle only for 40490235715 under
+      `/tmp/ci2-evidence/40490235715/mast-requests-diagnostics/` (run 40964996537 failed
+      before the requests stage uploads diagnostics). Local `/dev/kvm` is available for
+      reproduction with `scripts/test-mast-emulator.sh`; prefer focused stages over
+      repeated full ~15-minute runs. Product fixes require evidence and keep guarantees.
+      Diagnosis: [CI2 emulator diagnosis](ci2-emulator-diagnosis.md) — approved-minute
+      failure was a product race fixed in `7e600bb`; both post-CI1 local emulator flows
+      passed unchanged assertions. The null-root/reboot failure on `036b960` remains
+      unclassified; CI2 stays open. The mast stage now captures device state at the
+      first failure (`FW_MAST_DIAG_DIR`, uploaded on failure); repeat KVM dispatches
+      until a failure is captured or several consecutive runs pass.
 - [ ] OPS1: fix management HTTPS hostname/certificate mismatch and disabled HTTP→HTTPS
       redirect found during the authorized read-only pilot audit. Preserve recovery
       access and validate certificate trust before changing redirect/listener settings;
