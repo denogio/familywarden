@@ -879,7 +879,7 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       (`router unreachable`); the rest cascaded. Harness now waits for reachability after
       unpause. SDK cache restore 31s vs ~45s download.
       Dispatch 41047234203 (`058d440`): both suites green (3rd green mast suite).
-- [ ] RB1: Resume usage after reboot/crash with a fixed 15-second budget debit.
+- [x] RB1: Resume usage after reboot/crash with a fixed 15-second budget debit.
       **Superseding user decision (2026-10-30, injected side conversation):** keep recorded
       usage, read available persisted Android history, and resume counting after either an
       ordinary reboot or a crash. Deduct 15 seconds from remaining time instead of making
@@ -921,7 +921,7 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       status, but its foreground check read after 10s against a 15s sampling interval.
       The harness now waits boundedly for a fresh checkpoint with actual measured growth;
       eight fast harness tests preserve failure on no growth, gaps or duplicated debit.
-      **Current blocker:** dispatch `41093015341` has green ordinary gates/LuCI, but
+      **Resolved blocker:** dispatch `41093015341` had green ordinary gates/LuCI, but
       post-reboot foreground counting still fails after bounded waiting. Synthetic fixture
       checkpoints advance seq7→11 with visible Contacts activity, gaps0 and exactly15s debit,
       yet `interactive=false`, `unlocked=false`, days empty throughout. STARTUP resets those
@@ -932,8 +932,13 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       current locked/off negatives, process restart and unchanged exactly-once debit.
       Workflow ran 51 focused JVM tests, eight harness tests and syntax checks; fresh review
       is CLEAN and supervisor's focused reboot/grant rerun passes. Full revised CI/emulator
-      gate is pending; RB1 stays open. User separately authorized installation on maintainer
-      phone after green gates, not router deployment.
+      gate `41097273092` attempt 2 is green for `7e203b0`, including both emulator suites.
+      The matching release APK was separately authorized and installed on the maintainer
+      phone: identical trusted signing certificate, code132→132 (no downgrade), byte-for-byte
+      installed APK matches the checksum-verified CI artifact. Device Owner and running
+      AppControlService retained; no data clearing, re-pairing or router change. This does
+      not retroactively erase old uncertain-day history or claim broader physical lifecycle
+      acceptance. The new overview design is a separate, not-yet-implemented item.
 - [x] CI4R: Add a focused emulator mode for the RB1 reboot/foreground-count regression
       (user request 2026-10-30). Run only necessary provisioning, signed pairing/approval,
       usage-access/app-policy setup and the actual reboot/debit/foreground-growth checks.
