@@ -60,6 +60,15 @@ A4. **SDK container image pull** (~40s in the emulator job): evaluate after A2. 
     KVM), keeping the container path for local runs; or accept the pull. Decide by
     measured gain versus local/CI parity.
 
+A5. **Content-keyed artifact reuse**: key the OpenWrt package build on a hash of its
+    inputs (`core/`, `familywarden/`, `luci-app-familywarden/`, `web/`, build script,
+    `OPENWRT_VERSION`, target) and the Mast build on `android/` plus version inputs. On a
+    hit, restore the packages instead of building; smoke, upgrade, e2e and gate still run
+    on every SHA and `apks-<sha>`/`mast-<sha>` are still uploaded, with the input hash and
+    source run recorded in provenance. A reused APK keeps its original versionCode
+    (same content); a release that must install as an update needs an `android/` change.
+    `paths` filters are rejected: they would leave SHAs without deployable artifacts.
+
 ## Phase B — slimmer emulator verification (CI4 steps 2–3)
 
 B1. **Fake-clock Robolectric test** for the approved-minute guarantee (design in the
@@ -97,6 +106,7 @@ B4. **Two emulator modes**:
 | B2 move UI/state checks | medium, incremental | −several minutes of UI dumps |
 | B4 smoke/full split | small | dispatch smoke < 5m; full ~10m |
 | A4 SDK image pull | measure first | up to −40s |
+| A5 content-keyed reuse | medium | docs/web-only commits skip ~5m Android and 2.5–5m OpenWrt builds |
 
 Targets: push gate ≈ 5 minutes; emulator smoke under 5 minutes; full emulator run
 about 10 minutes; zero guarantees lost (map fully accounted for).

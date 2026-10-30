@@ -878,7 +878,8 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       API 35 verified). Steps: A1 Gradle cache, A2 emulator SDK cache, A3 OpenWrt
       dependency reuse (content-identical apks), B1 fake-clock Robolectric test for the
       approved-minute guarantee, B3 one shared ATD emulator with snapshot, B2 move UI/
-      state checks to Robolectric, B4 smoke/full emulator modes, A4 SDK image pull.
+      state checks to Robolectric, B4 smoke/full emulator modes, A4 SDK image pull, A5 content-keyed artifact reuse.
+      A1+A2 committed `5aaa264` (first runs cold; gains measured on the next run).
       **Accept:** push gate ~5 min, emulator smoke < 5 min, full run ~10 min, every map
       guarantee kept or proven by a named lighter test, no assertion weakened.
 - [ ] CI3: Flaky native LuCI bridge e2e: "shared app, schedule and settings editors commit
@@ -886,6 +887,9 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       screen time (`boundingBox()` returned null; run 41010598907 attempt 1). Passed on rerun
       and in three local packaged runs. Recurred in dispatch 41010097715 (`7fc31e3`). Make the assertion wait for the visible region
       (`await expect(...).toBeVisible()` before measuring) without weakening the check.
+      Also flaky 2026-10-30 (run 41040296648 attempt 1, green on rerun): owned-core.spec.js
+      "captain DNS during a pact is a cumulative, explicit transaction" — fixture `restart`
+      command failed.
 - [ ] OPS1: fix management HTTPS hostname/certificate mismatch and disabled HTTP→HTTPS
       redirect found during the authorized read-only pilot audit. Preserve recovery
       access and validate certificate trust before changing redirect/listener settings;
