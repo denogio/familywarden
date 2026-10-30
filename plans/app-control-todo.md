@@ -804,6 +804,9 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       ties by case-insensitive display name (label, else package) then package. Sorting
       resets to page 0, keeps search/filter, is not a draft change and is hidden in the
       configured-rules fallback. Versions: backend r21, core r31, LuCI r18.
+      Deployed to the pilot router from CI run 41014185856 (core from `core-aarch64-<sha>`,
+      backend/LuCI from `apks-<sha>`); signed backup verified, configuration, owner, router
+      key and phone bindings preserved; live 189-app inventory sorts correctly in all modes.
 - [ ] UI2: Bring the shared Devices page into visual agreement with the control prototype
       (user feedback 2026-10-29), not another independent redesign. Compare the actual page
       and prototype side by side: layout/edit flow, typography, surface/text contrast,
