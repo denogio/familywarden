@@ -803,7 +803,7 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       Do not group screen-time bonus buttons under internet controls. Validate EN/DA,
       mobile/enlarged text and state-dependent interactions plus visual screenshots.
       Separate follow-up after ICON2; do not add concurrent edits in shared UI files.
-- [ ] CI1: Make the pipeline the primary consolidated test/build gate (approved
+- [x] CI1: Make the pipeline the primary consolidated test/build gate (approved
       2026-10-29). Run independent checks/builds in parallel, build each router target
       and Android variant once and reuse retained, revision-bound validated artifacts
       for deployment. Keep local development checks focused; avoid repeated local full
@@ -823,11 +823,22 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       artifacts with version/hash provenance, consolidated gate and fail-closed fetch
       helper; see [CI artifacts](../docs/ci-artifacts.md). Pending main-session green
       pipeline evidence before closing CI1. Emulator diagnosis tracked separately in CI2.
+      Closed 2026-10-30: push run 40966230574 for `4e2cf63` green (all mandatory jobs and
+      Validated artifacts gate); `scripts/fetch-ci-artifacts.sh` fetched and verified all
+      three SHA-bound groups and hashes from it. The first branch run exposed a real
+      narrow/200%-text overflow (unwrappable "Rediger regler" button on the CI font),
+      fixed in `4e2cf63`; the layout test now names overflowing elements.
 - [ ] CI2: Diagnose the approved-minute exhaustion emulator failure from `41f309b`
       ("the approved minute is exhausted and paused again"). Run the manual KVM dispatch
       after the CI1 push, inspect synthetic diagnostics and establish flake vs product bug.
       Preserve the exact exhaustion/re-pause guarantee; do not widen timeouts or change
       product behavior without evidence. No emulator or router run was performed for CI1.
+      First dispatch (run 40964996537 on `036b960`) failed differently: UiAutomator
+      "null root node" at removal UI, then the v3 app-limits section saw app-control
+      service not running, empty acknowledgement, no suspension/limit pause, and the
+      script ended in an IndexError. Determine whether the emulator/session degraded
+      (harness) or app control genuinely stopped (product) before touching assertions;
+      the script should fail with a clear message instead of an IndexError.
 - [ ] OPS1: fix management HTTPS hostname/certificate mismatch and disabled HTTP→HTTPS
       redirect found during the authorized read-only pilot audit. Preserve recovery
       access and validate certificate trust before changing redirect/listener settings;
