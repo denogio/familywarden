@@ -21,7 +21,6 @@ import android.os.Process
 import android.os.SystemClock
 import io.github.denogio.familywarden.ui.AppUsageReport
 import android.util.Log
-import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
@@ -31,6 +30,8 @@ import java.time.ZonedDateTime
  * the revision only once it is fully in force. Runs only while a trusted policy has `apps`.
  */
 object AppControl {
+    internal var nowProvider: (ZoneId) -> ZonedDateTime = { ZonedDateTime.now(it) }
+
     // ponytail: fixed poll while the screen is on; a limit can overshoot by up to this.
     // Nothing counts with the screen off, so nothing polls then. Measure battery on the Pixel.
     const val SCREEN_ON_INTERVAL_MS = 15_000L
@@ -174,7 +175,7 @@ class AppControlService : Service() {
         return START_STICKY
     }
 
-    private fun tick() {
+    internal fun tick() {
         handler.removeCallbacks(tick)
         try {
             val store = Store(this)
@@ -183,7 +184,7 @@ class AppControlService : Service() {
             if (state == null) return  // damaged/unverified cache: keep what is in force
             if (apps == null || !Mast.isDeviceOwner(this)) { AppControl.stop(this, AppControl.zone(state)); stopSelf(); return }
             val zone = AppControl.zone(state)
-            val today = LocalDate.now(zone)
+            val today = AppControl.nowProvider(zone).toLocalDate()
             val basePolicy = apps.toLocal(zone, today)
             val enforcer = AppEnforcer(this)
             // A changed router timezone needs a journal migration; until then limits hold.
@@ -237,7 +238,7 @@ class AppControlService : Service() {
             }
             val result = synchronized(AppEnforcer::class.java) {
                 if (AppControl.stopped) return
-                enforcer.reconcile(policy, used, used[UsageCounter.TOTAL] ?: 0, ZonedDateTime.now(zone), reliable)
+                enforcer.reconcile(policy, used, used[UsageCounter.TOTAL] ?: 0, AppControl.nowProvider(zone), reliable)
             }
             notify(today.toString(), AppControl.almostUsedUp(policy, used), result.newlyPaused)
             // For the next usage report: apps waiting for a parent's approval (bounded, labelled).

@@ -84,6 +84,10 @@ B1. **Fake-clock Robolectric test** for the approved-minute guarantee (design in
     the CI2 mid-read replacement race. The emulator keeps one real foreground-accrual
     check (~30s) instead of two 115s waits.
 
+    Done 2026-10-30: `GrantExhaustionTickTest` (3 Robolectric tests, `AppControl.nowProvider`
+    seam, `tick()` internal, test resources enabled). Fails when the `7e600bb`
+    `replacedDuringRead` guard is removed. Emulator checks unchanged until B4.
+
 B2. **Move pure state/UI checks to Robolectric** per the map: dark/200% text, Danish/
     English, navigation extras, address-repair rejection cases. Each moved check names
     its replacement test in the map.

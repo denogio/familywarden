@@ -878,6 +878,7 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       the reboot-without-router step one sync ran before the guest network was back
       (`router unreachable`); the rest cascaded. Harness now waits for reachability after
       unpause. SDK cache restore 31s vs ~45s download.
+      Dispatch 41047234203 (`058d440`): both suites green (3rd green mast suite).
 - [ ] CI4: Make CI and Android verification lighter without losing any guarantee (user
       decision 2026-10-30; Maestro rejected: same emulator cost). Plan and measured
       baseline: [ci4-optimization-plan.md](ci4-optimization-plan.md); per-check evidence:
@@ -886,7 +887,8 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       dependency reuse (content-identical apks), B1 fake-clock Robolectric test for the
       approved-minute guarantee, B3 one shared ATD emulator with snapshot, B2 move UI/
       state checks to Robolectric, B4 smoke/full emulator modes, A4 SDK image pull, A5 content-keyed artifact reuse.
-      A1+A2 committed `5aaa264` (first runs cold; gains measured on the next run).
+      Done: A1+A2 `5aaa264` (Mast job 5.7→~3m; SDK restore 31s vs ~45s), A3 `2daf1c4`
+      (byte-identical apks; Build apks 5.4→~3.5m, aarch64 5→1.4m), B1 fake-clock test.
       **Accept:** push gate ~5 min, emulator smoke < 5 min, full run ~10 min, every map
       guarantee kept or proven by a named lighter test, no assertion weakened.
 - [ ] CI3: Flaky native LuCI bridge e2e: "shared app, schedule and settings editors commit
