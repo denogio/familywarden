@@ -507,16 +507,29 @@ POST_REBOOT=$($ADB exec-out run-as io.github.denogio.familywarden cat files/app-
 $ADB shell input keyevent KEYCODE_WAKEUP
 $ADB shell wm dismiss-keyguard
 $ADB shell monkey -p "$COUNT_TARGET" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
-sleep 10
-$ADB exec-out run-as io.github.denogio.familywarden cat files/app-usage.json | python3 -c '
+# Sampling runs every 15s and may be delayed under CI load; wait for actual progress.
+COUNTING_RESUMED=0
+for _ in $(seq 1 20); do
+    sleep 2
+    AFTER_REBOOT=$($ADB exec-out run-as io.github.denogio.familywarden cat files/app-usage.json)
+    if printf '%s' "$AFTER_REBOOT" | python3 -c '
 import json,sys
 before=json.loads(sys.argv[1]); after=json.load(sys.stdin); package=sys.argv[2]
 used=lambda checkpoint: sum(day.get(package,0) for day in checkpoint["days"].values())
+assert after["seq"] > before["seq"], "no fresh sample after launch"
 assert used(after) > used(before), "foreground usage did not increase after reboot"
 assert after["gaps"] == before["gaps"] == 0, "counting introduced a gap"
 assert after["reboot_debits"] == before["reboot_debits"], "same-boot sample debited again"
-' "$POST_REBOOT" "$COUNT_TARGET" \
-    && pass "foreground time keeps counting after reboot" || fail "foreground time stopped counting after reboot"
+' "$POST_REBOOT" "$COUNT_TARGET" 2>/dev/null; then
+        COUNTING_RESUMED=1; break
+    fi
+done
+if [ "$COUNTING_RESUMED" = 1 ]; then
+    pass "foreground time keeps counting after reboot"
+else
+    printf 'Foreground target: %s\nBefore: %s\nAfter: %s\n' "$COUNT_TARGET" "$POST_REBOOT" "$AFTER_REBOOT"
+    fail "foreground time stopped counting after reboot"
+fi
 
 # Daily total used up (0 minutes): every ordinary app pauses, calls and the alarm clock do not.
 OTHER=""

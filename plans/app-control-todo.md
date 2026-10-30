@@ -916,8 +916,13 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       final validation: 33 focused reboot/grant/presentation tests, five harness tests and
       shell/diff checks pass. Old dispatch failed because the fixture tried to enable apps
       under a frozen pact; the revised reboot check runs after signed release and successful
-      app-policy acknowledgement, using an unsuspended foreground target. Full revised
-      CI/emulator gate is pending; RB1 stays open. No phone/router deployment is authorized.
+      app-policy acknowledgement, using an unsuspended foreground target. Dispatch
+      `41085554077` attempt 2 proves the new-boot checkpoint, exactly 15s debit and reliable
+      status, but its foreground check read after 10s against a 15s sampling interval.
+      The harness now waits boundedly for a fresh checkpoint with actual measured growth;
+      eight fast harness tests preserve failure on no growth, gaps or duplicated debit.
+      Full revised CI/emulator gate is pending; RB1 stays open. User separately authorized
+      installation on the maintainer phone after green gates, not router deployment.
 - [ ] CI4: Make CI and Android verification lighter without losing any guarantee (user
       decision 2026-10-30; Maestro rejected: same emulator cost). Plan and measured
       baseline: [ci4-optimization-plan.md](ci4-optimization-plan.md); per-check evidence:

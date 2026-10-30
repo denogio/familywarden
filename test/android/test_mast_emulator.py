@@ -1,7 +1,9 @@
 """Fast tests of the Mast shell UI selectors; no adb, SDK or emulator required."""
 from pathlib import Path
+import json
 import re
 import subprocess
+import tempfile
 import unittest
 
 SCRIPT = Path(__file__).resolve().parents[2] / 'scripts/test-mast-emulator.sh'
@@ -59,6 +61,49 @@ UI=$1
 </hierarchy>''')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('ADB: shell input tap 20 30', result.stdout)
+
+
+class MastRebootProgressTests(unittest.TestCase):
+    def check_progress(self, **changes):
+        before = dict(seq=1, days={'2026-10-30': {'com.example.game': 1000}},
+                      gaps=0, reboot_debits={'2026-10-30': {'total': 15000}})
+        after = dict(before, seq=2, days={'2026-10-30': {'com.example.game': 2000}})
+        after.update(changes)
+        source = SCRIPT.read_text()
+        block = source[source.index('# Sampling runs every 15s'):source.index('# Daily total used up')]
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / 'reads'
+            state.write_text('0\n')
+            return subprocess.run(['bash', '-ec', '''
+POST_REBOOT=$1; RESULT=$2; STATE=$3
+COUNT_TARGET=com.example.game
+ADB=fake_adb
+sleep() { :; }
+pass() { echo PASS; }
+fail() { echo FAIL; return 1; }
+fake_adb() {
+    read -r calls < "$STATE"
+    echo "$((calls + 1))" > "$STATE"
+    if [ "$calls" -lt 2 ]; then printf '%s' "$POST_REBOOT"; else printf '%s' "$RESULT"; fi
+}
+''' + block, 'test', json.dumps(before), json.dumps(after), str(state)],
+                capture_output=True, text=True)
+
+    def test_waits_past_stale_samples_for_measured_growth(self):
+        result = self.check_progress()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('PASS', result.stdout)
+
+    def test_advanced_sequence_without_growth_still_fails(self):
+        result = self.check_progress(days={'2026-10-30': {'com.example.game': 1000}})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Before:', result.stdout)
+        self.assertIn('After:', result.stdout)
+
+    def test_growth_with_gap_or_duplicate_debit_still_fails(self):
+        for change in [dict(gaps=1), dict(reboot_debits={'2026-10-30': {'total': 30000}})]:
+            with self.subTest(change=change):
+                self.assertNotEqual(self.check_progress(**change).returncode, 0)
 
 
 if __name__ == '__main__':
