@@ -6,6 +6,9 @@
 #
 #   ./scripts/test-mast-emulator.sh <router-apk-dir> [familywarden-debug.apk]
 #
+# MAST_MODE=focused runs only the RB1 reboot/counting regression (scoped evidence,
+# not the full installation/release gate). Default: full. See test/android/README.md.
+#
 # LEGACY_APK_DIR=<dir with an older familywarden .apk>: start with that router
 # (global v1 replies must not authorize the phone), then upgrade it in place.
 #
@@ -14,6 +17,13 @@
 # another volume or an absolute host directory (CI restores one from its cache).
 
 set -e
+
+MAST_MODE=${MAST_MODE:-full}
+case "$MAST_MODE" in
+    full) ;;
+    focused) echo "=== Focused RB1 only: scoped evidence, NOT the full installation/release gate ===" ;;
+    *) echo "Invalid MAST_MODE: $MAST_MODE (expected full or focused)" >&2; exit 1 ;;
+esac
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 APK_DIR="$(cd "${1:?router apk dir}" && pwd)"
@@ -253,6 +263,7 @@ printf '%s' "$out" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.st
     && pass "administrator approved the phone" || fail "approval: $out"
 broadcast io.github.denogio.familywarden.DEBUG_SYNC
 has no_config_tethering && pass "scoped pact restricts tethering" || fail "no_config_tethering missing"
+if [ "$MAST_MODE" = full ]; then
 ui blocked-light
 ui_has 'Hotspot is locked'
 echo "$UI" | grep -q 'text="Remove FamilyWarden"' && fail "removal offered on overview while bound" || pass "overview has no removal shortcut"
@@ -427,6 +438,14 @@ ui removal-allowed
 ui_has 'Free sailing'
 
 echo ""
+else
+# The active pact freezes app settings; release only this disposable test router.
+echo "=== Focused prerequisite: fresh signed release ==="
+docker exec "$ROUTER" sh -c 'echo $(( $(date +%s) - 1 )) > /etc/familywarden/release; familywarden tick'
+broadcast io.github.denogio.familywarden.DEBUG_SYNC
+has no_config_tethering && fail "tethering still restricted after release" || pass "tethering allowed again"
+fi
+
 echo "=== App limits from the signed v3 policy ==="
 # A launchable, non-essential app of the system image stands in for a child's game.
 TARGET=""
@@ -532,6 +551,7 @@ else
 fi
 
 # Daily total used up (0 minutes): every ordinary app pauses, calls and the alarm clock do not.
+if [ "$MAST_MODE" = full ]; then
 OTHER=""
 for p in com.android.chrome com.google.android.calendar com.android.calendar com.google.android.contacts com.android.contacts; do
     [ "$p" != "$TARGET" ] && $ADB shell pm path "$p" 2>/dev/null | grep -q package: && { OTHER=$p; break; }
@@ -572,6 +592,12 @@ mode=$($ADB shell settings get global private_dns_mode | tr -d '\r')
 $ADB shell dpm list-owners | grep -q 'DeviceOwner' && fail "still device owner" || pass "device-owner role released"
 suspended "$TARGET" && fail "app still suspended after removal" || pass "removal lifts FamilyWarden's app suspensions"
 
+fi
+
 echo ""
-[ "$FAILED" -eq 0 ] && echo "All emulator checks passed!" || echo "Some emulator checks FAILED"
+if [ "$MAST_MODE" = focused ]; then
+    [ "$FAILED" -eq 0 ] && echo "Focused RB1 checks passed (scoped evidence only; NOT the full installation/release gate)." || echo "Focused RB1 checks FAILED"
+else
+    [ "$FAILED" -eq 0 ] && echo "All emulator checks passed!" || echo "Some emulator checks FAILED"
+fi
 exit "$FAILED"

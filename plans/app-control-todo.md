@@ -934,6 +934,29 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       is CLEAN and supervisor's focused reboot/grant rerun passes. Full revised CI/emulator
       gate is pending; RB1 stays open. User separately authorized installation on maintainer
       phone after green gates, not router deployment.
+- [x] CI4R: Add a focused emulator mode for the RB1 reboot/foreground-count regression
+      (user request 2026-10-30). Run only necessary provisioning, signed pairing/approval,
+      usage-access/app-policy setup and the actual reboot/debit/foreground-growth checks.
+      Reuse the same assertion block in full and focused modes rather than duplicating it.
+      Default full run and its safety checks remain unchanged. Explicitly label focused
+      success as scoped evidence, never the full installation/release gate. Preserve first-
+      failure diagnostics, bounded fresh-checkpoint polling, current boot/seq/cursor checks,
+      exactly-once 15s debit, no gap/uncertain day and actual measured foreground growth.
+      Avoid unrelated cache, emulator image, snapshot, UI or product changes in this item.
+      Prefer a small local script mode first; no need to broaden CI workflow inputs.
+      Use cached matching validated CI artifacts for `7e203b0` (run `41097273092`) to run
+      the focused test locally on KVM without rebuilding APKs. Main session owns execution,
+      elapsed-time measurement and final acceptance. Current full run remains independent.
+      **Accept:** a documented focused command with clearly scoped output, shared assertions,
+      fast harness tests proving selection and failure propagation, unchanged default full
+      scope, and a real focused run demonstrating reboot/counting result. Preserve unrelated
+      local documentation/tooling changes. No phone/router deployment during implementation.
+      **Done:** `MAST_MODE=focused scripts/test-mast-emulator.sh <apks> <debug.apk>`
+      reuses the exact reboot assertion block and existing fixtures; default remains full.
+      Fresh review CLEAN; 12 fast harness tests and shell/diff checks pass. Real local KVM
+      run against unchanged CI artifacts from `7e203b0` passes in 199.74s (3m20s), including
+      boot/checkpoint advance, exactly15s debit, no gaps and growing measured foreground use.
+      No builds repeated. Focused success is explicitly not the full deployment gate.
 - [ ] CI4: Make CI and Android verification lighter without losing any guarantee (user
       decision 2026-10-30; Maestro rejected: same emulator cost). Plan and measured
       baseline: [ci4-optimization-plan.md](ci4-optimization-plan.md); per-check evidence:
