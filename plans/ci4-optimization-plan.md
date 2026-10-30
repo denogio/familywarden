@@ -69,6 +69,12 @@ A5. **Content-keyed artifact reuse**: key the OpenWrt package build on a hash of
     (same content); a release that must install as an update needs an `android/` change.
     `paths` filters are rejected: they would leave SHAs without deployable artifacts.
 
+A3 result (2026-10-30): packages are built with OpenWrt's `NO_DEPS=1` (our runtime
+dependencies come from the router's feeds), only the `base packages luci` feeds are
+fetched, and the aarch64 job builds the core alone (`CORE_ONLY=1`, no feeds). Output is
+byte-identical to a clean build (sha256 of all four `.apk` files). Local: x86 192s → 78s,
+aarch64 192s → 21s.
+
 ## Phase B — slimmer emulator verification (CI4 steps 2–3)
 
 B1. **Fake-clock Robolectric test** for the approved-minute guarantee (design in the

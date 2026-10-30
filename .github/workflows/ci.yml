@@ -145,10 +145,8 @@ jobs:
         env:
           SDK_IMAGE: openwrt/sdk:mediatek-filogic-${{ env.OPENWRT_VERSION }}
           OUT: ${{ runner.temp }}/apk
+          CORE_ONLY: 1
         run: ./scripts/build-apk-docker.sh
-
-      - name: Keep only the architecture-specific package
-        run: find "${{ runner.temp }}/apk" -name '*.apk' ! -name 'familywarden-core-*.apk' -delete
 
       - name: Record artifact provenance
         run: python3 scripts/ci-artifacts.py create core-aarch64 "${{ runner.temp }}/apk"

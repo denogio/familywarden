@@ -11,6 +11,11 @@
 # CORE_GO=cross (default) cross-compiles the core with plain Go (seconds) and lets the
 # SDK only package it; CORE_GO=sdk compiles it with the feeds' Go toolchain (~10 min).
 # CORE_GOARCH/CORE_GOARM select the target for cross builds (default from SDK_IMAGE).
+# CORE_ONLY=1 builds only familywarden-core (per-architecture CI jobs).
+#
+# Our packages are packaged with NO_DEPS=1: their runtime dependencies (rpcd, ucode,
+# luci-base, ...) are installed from the router's feeds, so compiling them here only
+# costs time. luci.mk does need luci-base's host tools (po2lmo, csstidy, jsmin).
 #
 #   SDK_IMAGE=openwrt/sdk:x86-64-main ./scripts/build-apk-docker.sh
 #
@@ -21,6 +26,7 @@ set -e
 SDK_IMAGE="${SDK_IMAGE:-openwrt/sdk:x86-64-25.12.4}"
 WITH_CORE="${WITH_CORE:-1}"
 CORE_GO="${CORE_GO:-cross}"
+CORE_ONLY="${CORE_ONLY:-0}"
 case "$SDK_IMAGE" in
 	*x86-64*) DEFAULT_GOARCH=amd64 ;;
 	*mediatek-filogic*|*mediatek-mt7622*|*rockchip-armv8*|*bcm27xx-bcm2710*|*armsr-armv8*) DEFAULT_GOARCH=arm64 ;;
@@ -65,16 +71,20 @@ docker run --rm \
 	-v "$OUT:/out" \
 	${PREBUILT:+-v "$PREBUILT:/prebuilt:ro"} \
 	$( [ "$CORE_GO" = sdk ] && echo "-v fw-go-bootstrap:/opt/go-bootstrap:ro" ) \
-	-e FW_SRC=/src -e WITH_CORE="$WITH_CORE" -e CORE_GO="$CORE_GO" \
+	-e FW_SRC=/src -e WITH_CORE="$WITH_CORE" -e CORE_GO="$CORE_GO" -e CORE_ONLY="$CORE_ONLY" \
 	"$SDK_IMAGE" sh -ce '
 		# cd to SDK root (may not be the default working directory)
 		SDK="/builder"
 		cd "$SDK"
 		echo "SDK root: $SDK"
 
-		# Feeds needed: luci provides luci.mk + luci-base for the app.
-		./scripts/feeds update -a >/dev/null 2>&1 || ./scripts/feeds update base packages luci
+		# Feeds needed: luci provides luci.mk + luci-base for the app, packages the
+		# golang toolchain for CORE_GO=sdk. A cross-compiled core alone needs none.
+		if [ "$CORE_ONLY" != 1 ] || [ "$CORE_GO" = sdk ]; then
+			./scripts/feeds update base packages luci
+		fi
 
+		if [ "$CORE_ONLY" != 1 ]; then
 		# Daemon package -> package/familywarden
 		rm -rf package/familywarden
 		cp -r "$FW_SRC/familywarden" package/familywarden
@@ -88,6 +98,7 @@ docker run --rm \
 		# Re-index feeds so the freshly-copied app is known, then install.
 		./scripts/feeds update -i
 		./scripts/feeds install luci-base luci-app-familywarden
+		fi
 
 		if [ "$WITH_CORE" = 1 ]; then
 			# -L: src is a symlink to the repository core/ module
@@ -115,10 +126,17 @@ docker run --rm \
 		if [ "$WITH_CORE" = 1 ]; then
 			rm -rf build_dir/target-*/familywarden-core-*
 			rm -f bin/packages/*/base/familywarden-core-*.apk
-			make package/familywarden-core/compile V=s
+			if [ "$CORE_GO" = cross ]; then
+				make package/familywarden-core/compile NO_DEPS=1 V=s
+			else
+				make package/familywarden-core/compile V=s
+			fi
 		fi
-		make package/familywarden/compile V=s
-		make package/luci-app-familywarden/compile V=s
+		if [ "$CORE_ONLY" != 1 ]; then
+			make package/familywarden/compile NO_DEPS=1 V=s
+			make package/feeds/luci/luci-base/host/compile V=s
+			make package/luci-app-familywarden/compile NO_DEPS=1 V=s
+		fi
 
 		find bin -name "*familywarden*.apk" -exec cp -v {} /out/ \;
 	'
