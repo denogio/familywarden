@@ -17,11 +17,12 @@ type AdminInstalledQuery struct {
 	Search  string `json:"search"`
 	Filter  string `json:"filter"`
 	Page    int    `json:"page"`
+	Sort    string `json:"sort"`
 }
 
 func DecodeAdminInstalledQuery(raw []byte) (AdminInstalledQuery, error) {
 	var q AdminInstalledQuery
-	if !decodeStrict(raw, &q, "profile", "search filter page") {
+	if !decodeStrict(raw, &q, "profile", "search filter page sort") {
 		return q, errors.New("malformed inventory query")
 	}
 	return q, nil
@@ -29,6 +30,7 @@ func DecodeAdminInstalledQuery(raw []byte) (AdminInstalledQuery, error) {
 
 func (s *Service) AdminInstalled(q AdminInstalledQuery) Reply {
 	if !validProfile.MatchString(q.Profile) || len(q.Search) > 256 || q.Page < 0 || q.Page > 100000 ||
+		(q.Sort != "" && q.Sort != "used" && q.Sort != "name" && q.Sort != "rule") ||
 		(q.Filter != "" && q.Filter != "all" && q.Filter != "limit" && q.Filter != "unlimited" && q.Filter != "blocked") {
 		return fail("malformed request")
 	}
@@ -74,7 +76,6 @@ func (s *Service) AdminInstalled(q AdminInstalledQuery) Reply {
 			apps = append(apps, r)
 		}
 	}
-	sort.Slice(apps, func(i, j int) bool { return apps[i]["package"].(string) < apps[j]["package"].(string) })
 	counts := Reply{"all": len(apps), "limit": 0, "unlimited": 0, "blocked": 0, "pending": 0}
 	usage := map[string]int{}
 	usageAvailable := false
@@ -118,6 +119,45 @@ func (s *Service) AdminInstalled(q AdminInstalledQuery) Reply {
 			matched = append(matched, a)
 		}
 	}
+	ruleOrder := map[string]int{"blocked": 0, "limit": 1, "unlimited": 2, "pending": 3, "allowed": 4, "none": 5}
+	ruleRank := func(rule string) int {
+		if rank, ok := ruleOrder[rule]; ok {
+			return rank
+		}
+		return len(ruleOrder)
+	}
+	sort.Slice(matched, func(i, j int) bool {
+		a, b := matched[i], matched[j]
+		switch q.Sort {
+		case "", "used":
+			x, xok := a["seconds"].(int)
+			y, yok := b["seconds"].(int)
+			if xok != yok {
+				return xok
+			}
+			if x != y {
+				return x > y
+			}
+		case "rule":
+			x, y := ruleRank(a["rule"].(string)), ruleRank(b["rule"].(string))
+			if x != y {
+				return x < y
+			}
+		}
+		x, _ := a["label"].(string)
+		y, _ := b["label"].(string)
+		if x == "" {
+			x = a["package"].(string)
+		}
+		if y == "" {
+			y = b["package"].(string)
+		}
+		x, y = strings.ToLower(x), strings.ToLower(y)
+		if x != y {
+			return x < y
+		}
+		return a["package"].(string) < b["package"].(string)
+	})
 	out["counts"], out["total"], out["page_size"], out["page"] = counts, len(matched), 20, q.Page
 	// Build deterministic numbered pages that also respect the wire byte ceiling.
 	pages := [][]Reply{{}}

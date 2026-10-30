@@ -2431,7 +2431,7 @@ case "$1" in
   "requests": {},
   "usage": {},
   "new_apps": {},
-  "admin_installed": { "profile": "string", "search": "string", "filter": "string", "page": 0 },
+  "admin_installed": { "profile": "string", "search": "string", "filter": "string", "page": 0, "sort": "string" },
   "inventory_icons": { "profile": "string", "packages": [], "offset": 0 },
   "app_decision": { "profile": "string", "package": "string", "action": "string" },
   "request_answer": { "request_id": "string", "approve": true, "minutes": 0 },

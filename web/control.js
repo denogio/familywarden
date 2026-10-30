@@ -12,6 +12,7 @@ const object = value => value && typeof value === 'object' && !Array.isArray(val
 const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const inventoryRuleKeys = { allowed: 'inventoryRule_allowed', limit: 'inventoryRule_limit', unlimited: 'inventoryRule_unlimited', blocked: 'inventoryRule_blocked' };
 const inventoryHelpKeys = { allowed: 'inventoryHelp_allowed', limit: 'inventoryHelp_limit', unlimited: 'inventoryHelp_unlimited', blocked: 'inventoryHelp_blocked' };
+const inventorySortKeys = { used: 'inventorySort_used', name: 'inventorySort_name', rule: 'inventorySort_rule' };
 const inventoryTabKeys = { all: 'inventoryTab_all', limit: 'inventoryTab_limit', unlimited: 'inventoryTab_unlimited', blocked: 'inventoryTab_blocked' };
 const protections = ['filter_lists', 'safe_browsing', 'parental', 'safe_search'];
 const lines = value => String(value).split(/\r?\n/).map(v => v.trim()).filter(Boolean);
@@ -728,7 +729,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
 
   function resetInventory(profile = '') {
     clearTimeout(inventoryTimer); inventoryGeneration++;
-    inventory = profile ? { profile, search: '', filter: 'all', page: 0, reply: null, loading: false, error: '' } : null;
+    inventory = profile ? { profile, search: '', filter: 'all', page: 0, sort: 'used', reply: null, loading: false, error: '' } : null;
   }
 
   async function loadInventory() {
@@ -736,7 +737,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
     const state = inventory, generation = ++inventoryGeneration;
     state.loading = true; state.error = ''; render();
     try {
-      const reply = await request('admin_installed', { profile: state.profile, search: state.search, filter: state.filter, page: state.page });
+      const reply = await request('admin_installed', { profile: state.profile, search: state.search, filter: state.filter, page: state.page, sort: state.sort });
       if (generation !== inventoryGeneration || inventory !== state || stopped) return;
       if (reply.profile_id !== state.profile || !Array.isArray(reply.apps) || !Array.isArray(reply.sources) ||
           !object(reply.counts) || !['all','limit','unlimited','blocked','pending'].every(k => Number.isInteger(reply.counts[k]) && reply.counts[k] >= 0) ||
@@ -812,6 +813,56 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
     root.append(dialog); controls(); dialog.showModal();
   }
 
+  function inventorySortMenu(state) {
+    const keys = ['used', 'name', 'rule'];
+    const toggle = el('button', { type: 'button', class: 'fw-btn', 'data-key': 'inventory-sort',
+      'aria-label': t('inventorySort') + ': ' + t(inventorySortKeys[state.sort]),
+      'aria-haspopup': 'menu', 'aria-expanded': 'false' }, '⇅ ' + t(inventorySortKeys[state.sort]) + ' ⌄');
+    const menu = el('div', { class: 'fw-sort-menu', role: 'menu', popover: 'auto', 'aria-label': t('inventorySort') });
+    const items = keys.map(key => el('button', { type: 'button', role: 'menuitemradio',
+      'aria-checked': String(state.sort === key), tabindex: '-1', onclick: () => {
+        menu.hidePopover(); toggle.focus(); inventoryQuery({ sort: key, page: 0 });
+      } }, el('span', { 'aria-hidden': 'true' }, state.sort === key ? '✓' : ''), t(inventorySortKeys[key])));
+    menu.append(...items);
+    const open = (last = false) => {
+      menu.showPopover();
+      const rect = toggle.getBoundingClientRect();
+      menu.style.left = Math.max(8, Math.min(rect.right - menu.offsetWidth, win.innerWidth - menu.offsetWidth - 8)) + 'px';
+      menu.style.top = Math.max(8, Math.min(rect.bottom + 4, win.innerHeight - menu.offsetHeight - 8)) + 'px';
+      items[last ? items.length - 1 : keys.indexOf(state.sort)].focus();
+    };
+    // Light dismiss runs before click; remember the state before pointerup closes it.
+    let pointerWasOpen = false;
+    toggle.addEventListener('pointerdown', () => { pointerWasOpen = menu.matches(':popover-open'); });
+    toggle.addEventListener('click', event => {
+      const wasOpen = event.detail ? pointerWasOpen : menu.matches(':popover-open');
+      pointerWasOpen = false;
+      if (wasOpen) menu.hidePopover(); else open();
+    });
+    toggle.addEventListener('keydown', event => {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); open(event.key === 'ArrowUp'); }
+    });
+    menu.addEventListener('toggle', () => {
+      const opened = menu.matches(':popover-open');
+      toggle.setAttribute('aria-expanded', String(opened));
+      if (!opened && toggle.isConnected) toggle.focus();
+    });
+    menu.addEventListener('keydown', event => {
+      const index = items.indexOf(doc.activeElement);
+      if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+        event.preventDefault();
+        items[event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 :
+          (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
+      } else if (event.key === 'Escape' || event.key === 'Tab') {
+        event.preventDefault(); menu.hidePopover(); toggle.focus();
+      }
+    });
+    const node = el('div', { class: 'fw-sort' }, toggle, menu);
+    // Observation controls must not trigger the enclosing draft's dirty handlers.
+    for (const type of ['input', 'change']) node.addEventListener(type, event => event.stopPropagation());
+    return node;
+  }
+
   function appRulesEditor(current, profile, disabled) {
     const id = profile.id, state = inventory?.profile === id ? inventory : null;
     let reply = state?.reply;
@@ -833,7 +884,7 @@ export function mount(root, { call, callHost, lang = 'en', recoveryURL, theme = 
       ['all','limit','unlimited','blocked'].map(key => el('button', { type: 'button', 'aria-pressed': String(state?.filter === key),
         'data-key': 'inventory-tab-' + key, onclick: () => inventoryQuery({ filter: key, page: 0 }) },
       t(inventoryTabKeys[key]), ' ', el('span', { class: 'muted' }, counts ? counts[key] : '—'))));
-    node.append(el('div', { class: 'fw-app-tools' }, el('h2', { class: 'fw-h2' }, t('rulesApps')), search, tabs), hint(t('appScope', { name: profile.name })));
+    node.append(el('div', { class: 'fw-app-tools' }, el('h2', { class: 'fw-h2' }, t('rulesApps')), search, tabs, !fallback && state ? inventorySortMenu(state) : null), hint(t('appScope', { name: profile.name })));
     // Local-only additions are shown separately, never counted as installed apps
     // or folded into the server's saved-rule counts and pagination.
     const loaded = JSON.parse(draft.base);

@@ -78,6 +78,77 @@ async function installedBrowser(page, lang = 'en') {
   await expect(page.locator('.fw-rule-app')).toHaveCount(20);
 }
 
+for (const lang of ['en','da']) test(`UI5 inventory sort menu, paging, observation-only and focus (${lang})`, async ({page}) => {
+  await installedBrowser(page,lang);
+  const panel = page.locator('.fw-rule-apps');
+  const sort = page.getByRole('button',{name:lang==='da'?'Sortér: Mest brugt':'Sort: Most used',exact:true});
+  const dirty = page.getByRole('region',{name:lang==='da'?'Ændringer er ikke gemt':'Unsaved changes',exact:true});
+  await expect(sort).toBeVisible();
+  expect(await page.evaluate(() => window.calls.filter(c=>c.method==='admin_installed').at(-1).params.sort)).toBe('used');
+  await page.getByRole('searchbox').fill('Alex');
+  await expect(page.locator('.fw-rule-app')).toHaveCount(20);
+  await panel.getByRole('button',{name:'3',exact:true}).click();
+  await expect(page.locator('.fw-rule-app')).toHaveCount(3);
+  await sort.focus(); await sort.press('ArrowDown');
+  const menu = page.getByRole('menu',{name:lang==='da'?'Sortér':'Sort',exact:true});
+  const used = menu.getByRole('menuitemradio',{name:lang==='da'?'Mest brugt':'Most used',exact:true});
+  await expect(used).toHaveAttribute('aria-checked','true');
+  await expect(used).toContainText('✓'); await expect(used).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(menu.getByRole('menuitemradio',{name:lang==='da'?'Navn':'Name',exact:true})).toBeFocused();
+  await page.keyboard.press('Enter');
+  const nameSort = page.getByRole('button',{name:lang==='da'?'Sortér: Navn':'Sort: Name',exact:true});
+  await expect(page.locator('.fw-rule-app')).toHaveCount(20);
+  await expect(nameSort).toBeFocused();
+  expect(await page.evaluate(() => window.calls.filter(c=>c.method==='admin_installed').at(-1).params)).toMatchObject({sort:'name',search:'Alex',filter:'all',page:0});
+  await nameSort.click();
+  await expect(menu).toBeVisible();
+  await nameSort.click();
+  await expect(menu).toHaveCount(0); await expect(nameSort).toBeFocused();
+  await nameSort.press('Enter');
+  await expect(menu).toBeVisible();
+  await nameSort.press('Enter');
+  await expect(menu).toHaveCount(0); await expect(nameSort).toBeFocused();
+  await nameSort.click(); await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0); await expect(nameSort).toBeFocused();
+  await nameSort.click(); await page.locator('.fw-app-tools .fw-h2').click();
+  await expect(menu).toHaveCount(0); await expect(nameSort).toBeFocused();
+  await panel.locator('[data-key="inventory-tab-blocked"]').click();
+  await expect(page.locator('.fw-rule-app')).toHaveCount(1);
+  await nameSort.click();
+  await menu.getByRole('menuitemradio',{name:lang==='da'?'Regel':'Rule',exact:true}).click();
+  await expect(page.getByRole('button',{name:lang==='da'?'Sortér: Regel':'Sort: Rule',exact:true})).toBeFocused();
+  expect(await page.evaluate(() => window.calls.filter(c=>c.method==='admin_installed').at(-1).params)).toMatchObject({sort:'rule',search:'Alex',filter:'blocked',page:0});
+  await expect(dirty).toHaveCount(0);
+  expect(await page.evaluate(() => window.calls.some(c=>c.method==='configuration_apply'))).toBe(false);
+});
+
+test('UI5 sort popup survives hostile theme resets and narrow enlarged text', async ({page}) => {
+  await installedBrowser(page);
+  await page.addStyleTag({content:'*,::before,::after{border:0;box-sizing:border-box;margin:0;padding:0}button{background:transparent;border-radius:0}html{font-size:200%}'});
+  await page.setViewportSize({width:320,height:900});
+  const sort = page.getByRole('button',{name:'Sort: Most used',exact:true});
+  await sort.click();
+  const menu = page.getByRole('menu',{name:'Sort',exact:true});
+  await expect(menu.getByRole('menuitemradio')).toHaveCount(3);
+  for (const element of [sort, menu]) {
+    const box = await element.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(320);
+  }
+  expect(await menu.evaluate(node=>getComputedStyle(node).borderTopWidth)).toBe('1px');
+  await page.keyboard.press('Escape'); await expect(sort).toBeFocused();
+});
+
+test('UI5 config-only fallback hides the unavailable server sort', async ({page}) => {
+  const data = replies();
+  data.configuration_export.configuration.current.apps = [{id:'a_video',profile:'alex',package:'com.example.video',minutes:'30',blocked:'0'}];
+  await neutral(page,{data});
+  await page.evaluate(() => { window.inventoryHandler = () => ({error:'inventory unavailable'}); });
+  await page.getByRole('button',{name:'Edit rules',exact:true}).click();
+  await expect(page.locator('.fw-rule-apps')).toContainText('Configured rules only');
+  await expect(page.getByRole('button',{name:/^Sort:/})).toHaveCount(0);
+});
+
 test('UI4 search and rule modal survive LuCI bootstrap resets', async ({page}) => {
   await page.setViewportSize({width:1400,height:900});
   await installedBrowser(page);

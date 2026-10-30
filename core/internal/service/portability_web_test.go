@@ -27,7 +27,7 @@ func TestAdminInstalledAPI(t *testing.T) {
 	if r["state"] != "stored" {
 		t.Fatal(r)
 	}
-	r = f.api("admin_installed", map[string]any{"profile": "alex", "search": "UNUSED", "filter": "all", "page": 0})
+	r = f.api("admin_installed", map[string]any{"profile": "alex", "search": "UNUSED", "filter": "all", "page": 0, "sort": "name"})
 	if r["total"] != float64(1) || r["page_size"] != float64(20) {
 		t.Fatal(r)
 	}
@@ -37,6 +37,11 @@ func TestAdminInstalledAPI(t *testing.T) {
 	}
 	if r := f.call("/api/admin_installed", map[string]any{"profile": "alex", "extra": true}); r["error"] != "malformed request" {
 		t.Fatal(r)
+	}
+	for _, value := range []any{"invalid", 42, nil} {
+		if r := f.call("/api/admin_installed", map[string]any{"profile": "alex", "sort": value}); r["error"] != "malformed request" {
+			t.Fatal(r)
+		}
 	}
 }
 

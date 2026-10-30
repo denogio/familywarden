@@ -15,7 +15,7 @@ var definitions = {
  configuration_pact: ['pact','until','window_day','window_start','window_stop'],
  configuration_dns_status: ['dns_status'], configuration_dns_sync: ['dns_sync'], configuration_dns_auth: ['dns_auth','username','password'],
  configuration_dns_services: ['dns_services'],
- devices: ['devices'], profiles: ['profiles'], requests: ['requests'], usage: ['usage'], new_apps: ['new_apps'], admin_installed: ['admin_installed','profile','search','filter','page'], inventory_icons: ['inventory_icons','profile','packages','offset'],
+ devices: ['devices'], profiles: ['profiles'], requests: ['requests'], usage: ['usage'], new_apps: ['new_apps'], admin_installed: ['admin_installed','profile','search','filter','page','sort'], inventory_icons: ['inventory_icons','profile','packages','offset'],
  device_approve: ['device_approve','device','profile','name','administrator','fingerprint','approves'],
  device_update: ['device_update','device','profile','name','administrator','approves'],
  device_reject: ['device_reject','device'], device_delete: ['device_delete','device'], device_allow_removal: ['device_allow_removal','device'],
