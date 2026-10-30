@@ -137,8 +137,16 @@ class AppControlService : Service() {
     private val launchableCache = mutableMapOf<String, Boolean>()
     private val tick = Runnable { tick() }
     private var replacedReads = 0
+    private var shuttingDown = false
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == Intent.ACTION_SHUTDOWN) {
+                shuttingDown = true
+                handler.removeCallbacks(tick)
+                tick(shutdown = true) // Receiver already runs on the single writer worker.
+                return
+            }
+            if (shuttingDown) return
             intent.data?.schemeSpecificPart?.let { labelCache.remove(it); launchableCache.remove(it) }
             handler.post(tick)
         }
@@ -162,6 +170,7 @@ class AppControlService : Service() {
         register(IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT)
             addAction(Intent.ACTION_TIME_CHANGED); addAction(Intent.ACTION_DATE_CHANGED)
+            addAction(Intent.ACTION_SHUTDOWN)
         })
     }
 
@@ -175,7 +184,8 @@ class AppControlService : Service() {
         return START_STICKY
     }
 
-    internal fun tick() {
+    internal fun tick(shutdown: Boolean = false) {
+        if (shuttingDown && !shutdown) return
         handler.removeCallbacks(tick)
         try {
             val store = Store(this)
@@ -219,7 +229,7 @@ class AppControlService : Service() {
                 }
             } else replacedReads = 0
             val sample = monitor?.let { m ->
-                runCatching { m.sample(essential + basePolicy.alwaysAllowed, input) }
+                runCatching { m.sample(essential + basePolicy.alwaysAllowed, input, shutdown) }
                     .onFailure {
                         // Reload the last atomic checkpoint after a failed write, never
                         // continue with an advanced RAM cursor or unpersisted spending.
@@ -227,6 +237,7 @@ class AppControlService : Service() {
                         Log.w(TAG, "usage sample failed", it)
                     }.getOrNull()
             }
+            if (shutdown) return // Best-effort final accounting only; do not spend the broadcast window enforcing.
             val expiryReady = AppControl.scheduleGrantExpiry(this, state, input?.clock)
             val policy = basePolicy.copy(grantRemaining = sample?.grantRemaining.orEmpty(),
                 grantReliable = sample?.grantReliable == true && expiryReady)
@@ -264,7 +275,7 @@ class AppControlService : Service() {
             AppControl.publish(null)
             Log.e(TAG, "app control tick failed", e)
         } finally {
-            if (getSystemService(PowerManager::class.java).isInteractive)
+            if (!shuttingDown && getSystemService(PowerManager::class.java).isInteractive)
                 handler.postDelayed(tick, AppControl.SCREEN_ON_INTERVAL_MS)
         }
     }

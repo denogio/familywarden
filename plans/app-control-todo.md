@@ -886,16 +886,29 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       (`ScreenTimeState.kt:59`), no `appsApplied` acknowledgement (`AppControl.kt:262`;
       explains the empty `apps_applied` vs `apps_rev` seen on the router), and every app
       with a limit is paused (`GrantLedger.kt:140`, `!reliable`).
-      **Fix:** treat a boot change as continuous only when continuity is proven: the
-      UsageStats events since the checkpoint cursor contain a `DEVICE_SHUTDOWN` followed by
-      a `DEVICE_STARTUP` of the new boot, in order, nothing after `wall`; time between them
-      counts as screen-off (zero usage, grants not charged); the Device Owner restriction
-      `no_config_date_time` (auto time) was in force; wall time of the startup event is not
-      before the shutdown event. Everything else keeps the current strict path
-      (`reboot_gap`): crash/power loss without a shutdown event, missing usage access,
-      clock change, event order problems, a missing startup event, history gap > 24h.
+      **Revised fix (approved during implementation):** Android synthesizes UsageStats
+      shutdown/startup events even after crashes; that pair alone is not proof. The running
+      foreground service must observe protected `ACTION_SHUTDOWN`, take a bounded final
+      usage sample and atomically persist a marker in the existing usage journal. Accept
+      the next boot only when that marker matches the final checkpoint and prior boot,
+      automatic time is enabled, wall time has not moved backwards, ordered startup history
+      is available and the gap is at most 24h. The off interval counts as zero daily usage.
+      Grants remain fail-closed until a fresh signed sync anchors the new boot; conservative
+      loss of extra time is accepted, never a refill or relaxation of the minute guarantee.
+      Missing markers (including old journals), crashes/power loss, missing access/history,
+      clock problems and invalid events keep the strict fallback.
+      **Verification:** all 257 Android JVM tests passed after the review fixes (including
+      the previous `GrantExhaustionTickTest` failure and the new unavailable-history and
+      shutdown-timeout cases); syntax checks passed. The emulator
+      assertion now requires an advanced checkpoint on the current boot, no usage gaps and
+      a reliable day, not only cached `apps_status`, and verifies foreground usage increases.
+      Final review fixes are verified; focused reboot/grant tests, Android lint, shell syntax
+      and five harness tests pass. The existing raw `adb reboot` offline-pact check is kept;
+      a separate `svc power reboot` exercises Android's normal shutdown broadcast path.
+      Full CI/emulator execution remains pending; this item is not closed.
       **Accept:** Robolectric/JVM tests for the clean-reboot path (counting continues,
-      day reliable, grant spend not charged for the off period, ack possible) and for each
+      day reliable, zero daily usage during the off period, grants fail-closed until fresh
+      signed sync with conservative grant loss allowed but never refill, ack possible) and for each
       strict fallback; existing guarantees (approved minute, fail-closed on gaps) unchanged;
       emulator check "a clean reboot mid-day keeps counting" added to the full run; the
       `adb reboot` with the router paused still keeps the cached pact.

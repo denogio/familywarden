@@ -23,6 +23,22 @@ fun usageDiscontinuity(wall: Long, elapsed: Long, boot: Int,
     else -> null
 }
 
+/** A UsageStats shutdown event alone is NOT evidence: Android synthesizes it after crashes too.
+ * Only our atomic ACTION_SHUTDOWN checkpoint proves the prior process observed orderly shutdown.
+ */
+internal fun cleanReboot(state: UsageCheckpoint, wall: Long, boot: Int, autoTime: Boolean,
+    events: List<UsageCounter.Event>): Boolean {
+    val marker = state.shutdown ?: return false
+    if (!autoTime || boot.toLong() != state.boot.toLong() + 1 || marker.boot != state.boot ||
+        marker.elapsed != state.elapsed || marker.wall != state.counter.cursor ||
+        wall < marker.wall || wall - marker.wall > 86_400_000) return false
+    if (events.any { it.at < marker.wall || it.at >= wall } ||
+        events.zipWithNext().any { (a, b) -> a.at > b.at }) return false
+    val startup = events.indexOfFirst { it.kind == UsageCounter.Kind.STARTUP }
+    return startup >= 0 && events.take(startup).all { it.kind == UsageCounter.Kind.SHUTDOWN } &&
+        events.drop(startup + 1).none { it.kind in setOf(UsageCounter.Kind.SHUTDOWN, UsageCounter.Kind.STARTUP) }
+}
+
 /** Inputs come only from the verified cache; not from UI commands or upload replies. */
 data class GrantInput(val scope: String, val device: String, val appsJson: String,
     val clock: PolicyClock?, val userApps: Set<String>,
@@ -43,21 +59,23 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
     init { require(state.zone == zone.id) { "usage timezone change needs explicit migration" } }
 
     /** [excluded]: apps that do not count towards the daily total (see [UsageCounter.excluded]). */
-    fun sample(excluded: Set<String> = emptySet(), grants: GrantInput? = null): Sample {
+    fun sample(excluded: Set<String> = emptySet(), grants: GrantInput? = null, shutdown: Boolean = false): Sample {
         state.counter.excluded = state.grants.previousExclusions(excluded)
         state.counter.onInterval = state.grants::charge
         val wall = System.currentTimeMillis()
         val elapsed = SystemClock.elapsedRealtime()
         val boot = boot()
         val day = Instant.ofEpochMilli(wall).atZone(zone).toLocalDate().toString()
+        val shutdownDeadline = if (shutdown) elapsed + 5_000 else Long.MAX_VALUE
         val ops = context.getSystemService(AppOpsManager::class.java)
         var problem = when {
             ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName) != AppOpsManager.MODE_ALLOWED -> "usage_access_missing"
             !context.getSystemService(UserManager::class.java).isUserUnlocked -> "user_locked"
             else -> usageDiscontinuity(wall, elapsed, boot, state.counter.cursor, state.elapsed, state.boot)
         }
+        val reboot = boot != state.boot || elapsed < state.elapsed
         val events = mutableListOf<UsageCounter.Event>()
-        if (problem == null) {
+        if (problem == null || problem == "reboot_gap") {
             val raw = context.getSystemService(UsageStatsManager::class.java).queryEvents(state.counter.cursor, wall)
             if (raw == null) problem = "usage_unavailable"
             else {
@@ -65,6 +83,7 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
                 var count = 0
                 while (raw.getNextEvent(e)) {
                     if (++count > 50_000) { problem = "event_overflow"; break }
+                    if (SystemClock.elapsedRealtime() > shutdownDeadline) { problem = "shutdown_timeout"; break }
                     val kind = when (e.eventType) {
                         UsageEvents.Event.ACTIVITY_RESUMED -> UsageCounter.Kind.RESUME
                         UsageEvents.Event.ACTIVITY_STOPPED -> UsageCounter.Kind.STOP
@@ -82,6 +101,14 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
                     events.any { it.at < state.counter.cursor || it.at >= wall }) problem = "event_order_invalid"
             }
         }
+        if (reboot) {
+            // no_config_date_time is only installed for paired device owners (Mast.enforce).
+            // Require AUTO_TIME even then: the restriction alone does not prove automatic time.
+            val autoTime = Settings.Global.getInt(context.contentResolver, Settings.Global.AUTO_TIME, 0) == 1
+            problem = if (problem == "reboot_gap" && cleanReboot(state, wall, boot, autoTime, events)) null
+                else problem ?: "reboot_gap"
+        }
+        state.shutdown = null // Any later sample invalidates the final-checkpoint evidence.
         if (problem != null) {
             state.grants.gap()
             val previousDay = Instant.ofEpochMilli(state.counter.cursor).atZone(zone).toLocalDate().toString()
@@ -89,8 +116,12 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
             state.gaps = Math.addExact(state.gaps, 1)
             state.counter.gap(wall, screenOn(), unlocked())
         } else {
-            state.counter.consume(events, wall, zone)
-            state.grants.finishInterval(elapsed - state.elapsed)
+            // The synthetic shutdown may describe old persistence, not actual power-off.
+            // The final sample already charged through the marker; resume only at startup.
+            val continuous = if (reboot) events.dropWhile { it.kind != UsageCounter.Kind.STARTUP } else events
+            if (reboot) state.counter.gap(state.counter.cursor, false, false)
+            state.counter.consume(continuous, wall, zone)
+            if (!reboot) state.grants.finishInterval(elapsed - state.elapsed)
         }
         state.elapsed = elapsed
         state.boot = boot
@@ -105,6 +136,8 @@ class UsageMonitor(private val context: Context, private val zone: ZoneId) {
             else { state.grants.gap(); false }
         val extra = if (problem == null && grantReady && grants != null)
             state.grants.available(grants.scope, server) else emptyMap()
+        // A shutdown sample and its evidence are committed together, never separate writes.
+        if (shutdown && problem == null && SystemClock.elapsedRealtime() <= shutdownDeadline) state.shutdown = ShutdownCheckpoint(boot, elapsed, wall)
         journal.save(state)
         return Sample(day, state.counter.days[day]?.toMap() ?: emptyMap(), state.sequence,
             problem ?: if (day <= state.uncertainThroughDay) "usage_gap" else "ok",
