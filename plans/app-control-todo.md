@@ -879,6 +879,26 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       (`router unreachable`); the rest cascaded. Harness now waits for reachability after
       unpause. SDK cache restore 31s vs ~45s download.
       Dispatch 41047234203 (`058d440`): both suites green (3rd green mast suite).
+- [ ] RB1: A proven clean reboot must not make the whole day "not counted" (user decision
+      2026-10-30). Evidence (Pixel 10, pilot3 code 132): one reboot at 09:28 made
+      `UsageMonitor.sample` return `reboot_gap`, so today and the previous counted day became
+      `uncertainThroughDay`. Effects for the rest of the day: "Not counted right now"
+      (`ScreenTimeState.kt:59`), no `appsApplied` acknowledgement (`AppControl.kt:262`;
+      explains the empty `apps_applied` vs `apps_rev` seen on the router), and every app
+      with a limit is paused (`GrantLedger.kt:140`, `!reliable`).
+      **Fix:** treat a boot change as continuous only when continuity is proven: the
+      UsageStats events since the checkpoint cursor contain a `DEVICE_SHUTDOWN` followed by
+      a `DEVICE_STARTUP` of the new boot, in order, nothing after `wall`; time between them
+      counts as screen-off (zero usage, grants not charged); the Device Owner restriction
+      `no_config_date_time` (auto time) was in force; wall time of the startup event is not
+      before the shutdown event. Everything else keeps the current strict path
+      (`reboot_gap`): crash/power loss without a shutdown event, missing usage access,
+      clock change, event order problems, a missing startup event, history gap > 24h.
+      **Accept:** Robolectric/JVM tests for the clean-reboot path (counting continues,
+      day reliable, grant spend not charged for the off period, ack possible) and for each
+      strict fallback; existing guarantees (approved minute, fail-closed on gaps) unchanged;
+      emulator check "a clean reboot mid-day keeps counting" added to the full run; the
+      `adb reboot` with the router paused still keeps the cached pact.
 - [ ] CI4: Make CI and Android verification lighter without losing any guarantee (user
       decision 2026-10-30; Maestro rejected: same emulator cost). Plan and measured
       baseline: [ci4-optimization-plan.md](ci4-optimization-plan.md); per-check evidence:
