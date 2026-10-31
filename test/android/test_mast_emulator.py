@@ -193,5 +193,151 @@ fake_adb() {
                 self.assertNotEqual(self.check_progress(**change).returncode, 0)
 
 
+class MastEmulatorUiTests(unittest.TestCase):
+    """Fast, fake-adb tests of ui() crash detection and the fresh-dump helpers."""
+
+    DUMP_UI = None
+    PREAMBLE = '''
+FAILED=0
+pass() { echo "PASSED: $*"; }
+fail() { echo "FAILED: $*"; FAILED=1; }
+sleep() { :; }
+ADB=fake_adb
+'''
+
+    @classmethod
+    def setUpClass(cls):
+        source = SCRIPT.read_text()
+        cls.DUMP_UI = next(l for l in source.splitlines() if l.startswith('dump_ui() {')) + '\n'
+        cls.UI = re.search(r'^ui\(\) \{\n.*?^\}', source, re.M | re.S).group()
+
+    def _offline_block(self):
+        source = SCRIPT.read_text()
+        start = source.index('for _ in $(seq 1 10); do')
+        end = source.index('fail "UI missing: offline status chip"') + len('fail "UI missing: offline status chip"')
+        return source[start:end]
+
+    def _run(self, script, *args):
+        return subprocess.run(['bash', '-ec', script, *args],
+                              capture_output=True, text=True)
+
+    def test_ui_fails_after_six_retries_when_package_never_appears(self):
+        script = self.PREAMBLE + self.DUMP_UI + self.UI + '''
+AM_STARTS=0
+fake_adb() {
+  case "$*" in
+    *"am start"*) AM_STARTS=$((AM_STARTS + 1));;
+    *"logcat -d -b crash") return 0;;
+    *"cat /sdcard/mast-ui.xml") printf '%s' '<hierarchy/>';;
+  esac
+  return 0
+}
+ui testlabel
+echo "AM_STARTS=$AM_STARTS"
+[ "$FAILED" = 0 ]
+'''
+        result = self._run(script)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('FAILED: activity failed (testlabel)', result.stdout)
+        self.assertIn('on top after 6 retries', result.stdout)
+        self.assertIn('AM_STARTS=7', result.stdout)
+        self.assertNotIn('app crashed', result.stdout)
+
+    def test_ui_reports_crash_even_when_second_launch_succeeds(self):
+        script = self.PREAMBLE + self.DUMP_UI + self.UI + '''
+fake_adb() {
+  case "$*" in
+    *"logcat -d -b crash") echo "F DEBUG: Process: io.github.denogio.familywarden:main";;
+    *"cat /sdcard/mast-ui.xml") printf '%s' '<hierarchy><node package="io.github.denogio.familywarden"/></hierarchy>';;
+  esac
+  return 0
+}
+ui testlabel
+[ "$FAILED" = 0 ]
+'''
+        result = self._run(script)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('FAILED: app crashed (testlabel)', result.stdout)
+        self.assertNotIn('activity failed', result.stdout)
+        self.assertNotIn('on top after', result.stdout)
+
+    def _offline(self, threshold):
+        script = self.PREAMBLE + self.DUMP_UI + '''
+THRESHOLD=$1; READS=$2
+echo 0 > "$READS"
+fake_adb() {
+  case "$*" in
+    *"cat /sdcard/mast-ui.xml")
+      read -r c < "$READS"; c=$((c + 1)); echo "$c" > "$READS"
+      if [ "$c" -le "$THRESHOLD" ]; then
+        printf '%s' '<hierarchy><node text="Syncing…"/></hierarchy>'
+      else
+        printf '%s' '<hierarchy><node text="Offline · updated 8:02 PM"/></hierarchy>'
+      fi;;
+  esac
+  return 0
+}
+UI='<hierarchy><node text="Syncing…"/></hierarchy>'
+''' + self._offline_block() + '''
+echo "READS=$(cat "$READS")"
+[ "$FAILED" = 0 ]
+'''
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            return self._run(script, 'test', str(threshold), str(Path(directory) / 'reads'))
+
+    def test_offline_chip_never_accepts_syncing_and_passes_on_offline(self):
+        result = self._offline(1)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('PASSED: UI: offline status chip', result.stdout)
+        self.assertNotIn('UI missing: offline status chip', result.stdout)
+        self.assertIn('READS=2', result.stdout)
+
+    def test_offline_chip_fails_when_only_syncing_is_ever_seen(self):
+        result = self._offline(99)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('FAILED: UI missing: offline status chip', result.stdout)
+        self.assertNotIn('PASSED: UI: offline status chip', result.stdout)
+
+    def _dump_ui(self, dump_succeeds):
+        script = self.PREAMBLE + self.DUMP_UI + '''
+DUMP_SUCCEEDS=$1; LOG=$2
+: > "$LOG"
+FILE_EXISTS=1
+FILE_CONTENT='<hierarchy><node text="STALE"/></hierarchy>'
+fake_adb() {
+  case "$*" in
+    *"rm -f /sdcard/mast-ui.xml") echo rm >> "$LOG"; FILE_EXISTS=0;;
+    *"uiautomator dump /sdcard/mast-ui.xml") echo dump >> "$LOG"
+      if [ "$DUMP_SUCCEEDS" = 1 ]; then FILE_EXISTS=1; FILE_CONTENT='<hierarchy><node text="FRESH"/></hierarchy>'; fi;;
+    *"cat /sdcard/mast-ui.xml") echo cat >> "$LOG"
+      if [ "$FILE_EXISTS" = 1 ]; then printf '%s' "$FILE_CONTENT"; fi;;
+  esac
+  return 0
+}
+dump_ui
+echo "UI=$UI"
+echo "ORDER=$(tr '\\n' ' ' < "$LOG")"
+exit 0
+'''
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            return self._run(script, 'test', str(dump_succeeds), str(Path(directory) / 'log'))
+
+    def test_failed_dump_does_not_reuse_stale_file(self):
+        result = self._dump_ui(0)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('STALE', result.stdout)
+        self.assertIn('UI=\n', result.stdout)
+        self.assertIn('ORDER=rm dump cat', result.stdout)
+
+    def test_successful_dump_is_removed_before_dumping(self):
+        result = self._dump_ui(1)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('FRESH', result.stdout)
+        self.assertNotIn('STALE', result.stdout)
+        self.assertIn('ORDER=rm dump cat', result.stdout)
+
+
 if __name__ == '__main__':
     unittest.main()

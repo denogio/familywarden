@@ -1,6 +1,5 @@
 package io.github.denogio.familywarden.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -15,7 +14,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -38,25 +36,28 @@ private val PRESETS = listOf(15, 30, 60, 120, 240)
 internal fun FamilyWardenState.askOpen(): Boolean =
     childRequest?.let { it.state == "pending" && (requestEpoch == null || requestEpoch < it.expires) } == true
 
-/** "YOUR REQUEST" on Today: status words only; decisions are never made here. */
+/** An expired request, or one past its window; the overview no longer shows it. */
+internal fun FamilyWardenState.childRequestClosed(): Boolean = childRequest?.let { r ->
+    requestEpoch?.let { now -> now >= (r.notAfter ?: r.expires) } == true || r.state == "expired"
+} == true
+
+/** "YOUR REQUEST" on Today while it is live: status words only; decisions are never made here. */
 @Composable
 internal fun ChildRequestCard(state: FamilyWardenState, zone: ZoneId) {
     val r = state.childRequest ?: return
-    val closed = state.requestEpoch?.let { now -> now >= (r.notAfter ?: r.expires) } == true || r.state == "expired"
+    if (state.childRequestClosed()) return
     val label = if (r.target == TOTAL) stringResource(R.string.fw_ask_all_apps_lower)
         else state.requestTargets.firstOrNull { it.pkg == r.target }?.label ?: r.target
     val colors = MaterialTheme.colorScheme
     val (chip, chipColor) = when {
-        r.state == "approved" && !closed -> R.string.fw_req_chip_approved to colors.tertiaryContainer
+        r.state == "approved" -> R.string.fw_req_chip_approved to colors.tertiaryContainer
         r.state == "denied" -> R.string.fw_req_chip_denied to colors.surfaceContainerHigh
-        closed -> R.string.fw_req_chip_closed to Color.Transparent
         else -> R.string.fw_req_chip_waiting to colors.secondaryContainer
     }
     SectionCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) { Overline(stringResource(R.string.fw_your_request)) }
-            Surface(shape = CircleShape, color = chipColor,
-                border = if (chipColor == Color.Transparent) BorderStroke(1.dp, colors.outline) else null) {
+            Surface(shape = CircleShape, color = chipColor) {
                 Text(stringResource(chip), style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
             }
@@ -65,15 +66,14 @@ internal fun ChildRequestCard(state: FamilyWardenState, zone: ZoneId) {
         Text(stringResource(R.string.fw_req_title, durationText(amount * 60_000L), label),
             style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 4.dp))
         val body = when {
-            r.state == "approved" && !closed -> stringResource(R.string.fw_req_approved_body,
+            r.state == "approved" -> stringResource(R.string.fw_req_approved_body,
                 durationText(r.minutes * 60_000L), durationText(amount * 60_000L), epochTime(r.notAfter ?: r.expires, zone))
             r.state == "denied" -> stringResource(R.string.fw_req_denied_body)
-            closed -> stringResource(R.string.fw_req_closed_body)
             else -> stringResource(R.string.fw_req_pending_body, epochTime(r.expires, zone))
         }
         Text(body, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant,
             modifier = Modifier.padding(top = 6.dp))
-        if (r.state == "approved" && !closed) {
+        if (r.state == "approved") {
             val remaining = state.screenTime?.grantRemaining?.get(r.target)
             Text(if (remaining != null) ((remaining + 59_999) / 60_000).toInt().let {
                 pluralStringResource(R.plurals.fw_request_remaining, it, it)

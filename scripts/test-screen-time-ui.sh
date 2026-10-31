@@ -49,7 +49,7 @@ contains() { grep -Fq "$2" "$OUT/$1.xml" || { echo "Missing '$2' in $1"; exit 1;
 tap() {
     read -r x y < <(python3 - "$OUT/$1.xml" "$2" <<'PY'
 import re, sys, xml.etree.ElementTree as ET
-nodes = [n for n in ET.parse(sys.argv[1]).iter('node') if sys.argv[2] in (n.get('text'), n.get('content-desc'))]
+nodes = [n for n in ET.parse(sys.argv[1]).iter('node') if sys.argv[2] in (n.get('text'), n.get('content-desc')) or sys.argv[2] in (n.get('text') or '').split(', ')]
 if not nodes:
     raise SystemExit('Label not found')
 node = next((n for n in nodes if n.get('clickable') == 'true'), nodes[0])
@@ -66,6 +66,10 @@ render ChildTodayPreview child-light
 check_nav child-light Today Today History Settings
 contains child-light '38 min'
 contains child-light 'School'
+contains child-light 'RUNNING LOW'
+contains child-light '4 min left'
+contains child-light 'Updated '
+if grep -Fq 'text="Game"' "$OUT/child-light.xml"; then echo 'Running low listed an app far from its limit'; exit 1; fi
 tap child-light History
 capture child-history
 check_nav child-history History Today History Settings
@@ -100,7 +104,8 @@ render DowntimePreview downtime
 contains downtime 'Downtime until'
 contains downtime 'Calls and the apps below still work.'
 render ChildUnknownPreview unknown
-contains unknown 'Not counted right now'
+contains unknown 'Screen time can’t be measured right now'
+contains unknown 'Usage access is off.'
 contains unknown 'Allow usage access'
 if grep -Fq '38 min' "$OUT/unknown.xml"; then echo 'Unknown usage invented remaining time'; exit 1; fi
 "${ADB[@]}" shell cmd uimode night yes >/dev/null
@@ -111,6 +116,10 @@ contains times-up-dark 'Phone, emergency calls and alarm clock'
 render AdultTodayPreview adult-dark
 check_nav adult-dark Today Today DNS Ulysses Settings
 contains adult-dark 'Ulysses'
+contains adult-dark 'OPEN UNTIL'
+contains adult-dark 'Then apps and hotspot rest until'
+contains adult-dark 'Lashed to the mast till'
+contains adult-dark 'Hotspot is allowed'
 "${ADB[@]}" shell cmd locale set-app-locales "$PKG" --locales da-DK >/dev/null
 "${ADB[@]}" shell settings put system font_scale 2.0
 sleep 3

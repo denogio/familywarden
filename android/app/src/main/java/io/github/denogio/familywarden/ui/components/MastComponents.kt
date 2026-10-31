@@ -2,7 +2,6 @@ package io.github.denogio.familywarden.ui.components
 
 import android.content.ClipData
 import android.content.ClipboardManager
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -120,31 +119,6 @@ private fun Stars(modifier: Modifier = Modifier) {
     }
 }
 
-/** A short calm wave for the free-sailing card. Decoration only. */
-@Composable
-fun Wave(color: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier.size(width = 80.dp, height = 20.dp).clearAndSetSemantics { }) {
-        val path = androidx.compose.ui.graphics.Path().apply {
-            val w = size.width
-            val h = size.height
-            moveTo(0f, h * 0.6f)
-            var x = 0f
-            val step = w / 4f
-            var up = true
-            while (x < w - 1f) {
-                quadraticTo(x + step / 2f, if (up) 0f else h, x + step, h * 0.6f)
-                x += step
-                up = !up
-            }
-        }
-        drawPath(
-            path,
-            color = color,
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.6.dp.toPx()),
-        )
-    }
-}
-
 @Composable
 fun HeroBadge(icon: ImageVector, container: Color, content: Color) {
     Box(
@@ -179,19 +153,6 @@ fun HeroTitle(text: String, color: Color = Color.Unspecified) {
 fun HeroBody(text: String, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
     Spacer(Modifier.height(MastSpacing.s))
     Text(text, style = MaterialTheme.typography.bodyMedium, color = color)
-}
-
-/** Divider plus an icon line at the bottom of a hero card ("Opens in 8 h 24 min"). */
-@Composable
-fun HeroFooter(icon: ImageVector, text: String, textColor: Color, iconColor: Color, dividerColor: Color) {
-    Spacer(Modifier.height(18.dp))
-    HorizontalDivider(color = dividerColor)
-    Spacer(Modifier.height(14.dp))
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(MastSpacing.s))
-        Text(text, style = MaterialTheme.typography.titleSmall.copy(fontSize = MaterialTheme.typography.bodyMedium.fontSize), color = textColor)
-    }
 }
 
 // ---------------------------------------------------------------- Cards and text
@@ -229,50 +190,6 @@ fun InfoNote(icon: ImageVector, text: String, modifier: Modifier = Modifier) {
         )
         Spacer(Modifier.width(10.dp))
         Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-/** Neutral or warning banner above the hero card. */
-@Composable
-fun Banner(
-    icon: ImageVector,
-    title: String,
-    body: String,
-    modifier: Modifier = Modifier,
-    warning: Boolean = false,
-    extra: String? = null,
-) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .semantics(mergeDescendants = true) {
-                liveRegion = if (warning) LiveRegionMode.Assertive else LiveRegionMode.Polite
-            },
-        shape = MaterialTheme.shapes.medium,
-        color = if (warning) colors.errorContainer else colors.surfaceContainerHigh,
-        border = if (warning) BorderStroke(1.dp, colors.error.copy(alpha = 0.35f)) else null,
-    ) {
-        Row(Modifier.padding(horizontal = MastSpacing.l, vertical = 14.dp)) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = if (warning) colors.error else colors.onSurfaceVariant,
-                modifier = Modifier.size(22.dp),
-            )
-            Spacer(Modifier.width(MastSpacing.m))
-            Column(verticalArrangement = Arrangement.spacedBy(MastSpacing.xs)) {
-                Text(
-                    title,
-                    style = if (warning) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelMedium,
-                    color = if (warning) colors.error else colors.onSurface,
-                )
-                Text(body, style = MaterialTheme.typography.bodySmall, color = if (warning) colors.onSurface else colors.onSurfaceVariant)
-                if (extra != null) {
-                    Text(extra, style = MaterialTheme.typography.bodySmall, color = colors.onSurface)
-                }
-            }
-        }
     }
 }
 

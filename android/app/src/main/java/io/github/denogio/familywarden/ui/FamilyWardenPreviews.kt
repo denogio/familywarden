@@ -22,7 +22,7 @@ private val screenApps = AppsPolicy("0123456789abcdef", false,
     mapOf("com.example.video" to 30, "com.example.game" to 60), emptySet(), emptySet(), emptyList(),
     mapOf(screenNow.dayOfWeek to 120), setOf("com.example.school"))
 private val screenReport = AppUsageReport(screenApps.rev, screenNow.zone.id, screenNow.toLocalDate(), 1000,
-    true, mapOf(UsageCounter.TOTAL to 82 * 60_000L, "com.example.video" to 12 * 60_000L,
+    true, mapOf(UsageCounter.TOTAL to 82 * 60_000L, "com.example.video" to 26 * 60_000L,
         "com.example.game" to 45 * 60_000L),
     mapOf("com.example.video" to "Video", "com.example.game" to "Game", "com.example.school" to "School"),
     mapOf(screenNow.toLocalDate().toString() to 82 * 60_000L,
@@ -66,11 +66,10 @@ private fun DowntimePreview() { MastTheme {
 @Composable
 private fun ChildLargePreview() { MastTheme { FamilyWardenScreen(screenState, previewActions) } }
 
-@Preview(name = "Adult — Today and pact", showBackground = true, widthDp = 400, heightDp = 840)
+@Preview(name = "Child — bound by a pact, no asking", showBackground = true, widthDp = 400, heightDp = 840)
 @Composable
-private fun AdultTodayPreview() { MastTheme {
-    FamilyWardenScreen(screenState.copy(binding = previewState.binding,
-        pact = PactStatus.Bound(true, null, Pact(null, null, null))), previewActions)
+private fun ChildPactPreview() { MastTheme {
+    FamilyWardenScreen(screenState.copy(pact = PactStatus.Bound(true, null, Pact(null, null, null))), previewActions)
 } }
 
 @Preview(name = "Child — usage unavailable", showBackground = true, widthDp = 400, heightDp = 840)
@@ -78,6 +77,59 @@ private fun AdultTodayPreview() { MastTheme {
 private fun ChildUnknownPreview() { MastTheme {
     FamilyWardenScreen(screenState.copy(appsStatus = "usage_access_missing",
         screenTime = screenTimeState(screenApps, screenReport, screenNow, 1000, false)), previewActions)
+} }
+
+// Adult (captain) fixtures: apps rest 21:30–06:30; the pact locks hotspot at the same instant.
+private val adultApps = screenApps.copy(downtime = listOf(Window(java.time.DayOfWeek.entries.toSet(),
+    java.time.LocalTime.of(21, 30), java.time.LocalTime.of(6, 30))))
+private val adultLock = screenNow.withHour(21).withMinute(30)
+private val adultPact = PactStatus.Bound(false, adultLock.toInstant().toEpochMilli(),
+    Pact(screenNow.plusDays(3).withHour(18).toInstant().toEpochMilli(), null, null),
+    adultLock.plusDays(1).withHour(6).withMinute(30).toInstant().toEpochMilli())
+private val adultState = screenState.copy(binding = previewState.binding, pact = adultPact, timeZone = screenNow.zone.id,
+    screenTime = screenTimeState(adultApps, screenReport, screenNow, 1000, true))
+private fun adultTime(used: Long) = screenTimeState(adultApps,
+    screenReport.copy(used = mapOf(UsageCounter.TOTAL to used, "com.example.video" to 26 * 60_000L)), screenNow, 1000, true)
+
+@Preview(name = "Adult — open until, pact", showBackground = true, widthDp = 400, heightDp = 840)
+@Composable
+private fun AdultTodayPreview() { MastTheme { FamilyWardenScreen(adultState, previewActions) } }
+
+@Preview(name = "Adult — five minutes left", showBackground = true, widthDp = 400, heightDp = 840)
+@Composable
+private fun AdultNearLimitPreview() { MastTheme {
+    FamilyWardenScreen(adultState.copy(screenTime = adultTime(115 * 60_000L)), previewActions)
+} }
+
+@Preview(name = "Adult — time is up, dark", uiMode = Configuration.UI_MODE_NIGHT_YES,
+    showBackground = true, widthDp = 400, heightDp = 840)
+@Composable
+private fun AdultTimesUpPreview() { MastTheme {
+    FamilyWardenScreen(adultState.copy(screenTime = adultTime(120 * 60_000L)), previewActions)
+} }
+
+@Preview(name = "Adult — resting, pact locked", showBackground = true, widthDp = 400, heightDp = 840)
+@Composable
+private fun AdultDowntimePreview() { MastTheme {
+    val night = screenNow.withHour(22)
+    val morning = night.plusDays(1).withHour(6).withMinute(30).toInstant().toEpochMilli()
+    FamilyWardenScreen(adultState.copy(nowMillis = night.toInstant().toEpochMilli(),
+        pact = adultPact.copy(blocked = true, nextChangeMillis = morning, followingChangeMillis = null),
+        screenTime = screenTimeState(adultApps, screenReport, night, 1000, true)), previewActions)
+} }
+
+@Preview(name = "Adult — usage unavailable", showBackground = true, widthDp = 400, heightDp = 840)
+@Composable
+private fun AdultUnknownPreview() { MastTheme {
+    FamilyWardenScreen(adultState.copy(appsStatus = "usage_gap", screenTime = screenTimeState(adultApps,
+        screenReport.copy(reliable = false), screenNow, 1000, true)), previewActions)
+} }
+
+@Preview(name = "Adult — pact only, Danish at 200 percent", locale = "da", fontScale = 2f,
+    showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun AdultPactLargePreview() { MastTheme {
+    FamilyWardenScreen(adultState.copy(screenTime = null, appsActive = false), previewActions)
 } }
 
 @Preview(name = "FamilyWarden — applied DNS", showBackground = true, widthDp = 400, heightDp = 840)

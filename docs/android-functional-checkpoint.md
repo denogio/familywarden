@@ -73,7 +73,7 @@ bind pact creation to the exact reviewed revision.
 - Fresh r25 package build, syntax checks and APK installation/removal smoke tests.
 - All three focused Android 15 UI scripts pass: voyage/history/capability states,
   requests and Screen time. EN light/dark and representative Danish dark 200% flows;
-  icon-only accessible selected navigation, scope revocation and back navigation.
+  icon-only accessible selected navigation (labelled since UI6), scope revocation and back navigation.
   These are fictional debug previews, not an exhaustive state/theme/device matrix.
 - 36 native request checks against fresh r25 packages, including the actual Android
   history client/UI reading the core's signed response and receipts without Device

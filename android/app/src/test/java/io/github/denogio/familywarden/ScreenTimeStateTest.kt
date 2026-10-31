@@ -125,4 +125,33 @@ class ScreenTimeStateTest {
         assertTrue(map(r = report.copy(historyTotals = history, revision = "old")).historyTotals.isEmpty())
         assertTrue(map(r = report.copy(historyTotals = history, zone = "UTC")).historyTotals.isEmpty())
     }
+
+    @Test fun runningLowIsOpenMeasuredLimitedAppsWithinTheExistingWarning() {
+        fun row(remaining: Long, blocked: Boolean = false, unlimited: Boolean = false, used: Long? = 30 * 60_000L - remaining) =
+            AppTimeRow(pkg, "Video", used, 30 * 60_000L, blocked, unlimited)
+        assertEquals(5 * 60_000L, AppControl.WARN_BEFORE_MS)
+        assertTrue(row(5 * 60_000L).runningLow)
+        assertFalse(row(5 * 60_000L + 1_000L).runningLow)
+        assertFalse(row(0).runningLow) // time is up: paused, not "running low"
+        assertTrue(row(1).runningLow)
+        assertFalse(row(60_000L, blocked = true).runningLow)
+        assertFalse(row(60_000L, used = null).runningLow) // never guessed without measurement
+        assertFalse(AppTimeRow(pkg, "Video", 29 * 60_000L, null, false, true).runningLow)
+        // The RB1 reboot debit counts towards the budget, not towards measured use.
+        val debited = AppTimeRow(pkg, "Video", 25 * 60_000L - 15_000L, 30 * 60_000L, false, false, 15_000L)
+        assertEquals(5 * 60_000L, debited.remainingMillis)
+        assertTrue(debited.runningLow)
+    }
+
+    @Test fun followingDowntimeChangeIsTheEndOfTheNextPause() {
+        val p = policy.copy(downtime = listOf(Window(DayOfWeek.entries.toSet(), LocalTime.of(21, 30), LocalTime.of(6, 30))))
+        val open = map(p = p)
+        assertEquals(now.withHour(21).withMinute(30), open.nextDowntimeChange)
+        assertEquals(now.plusDays(1).withHour(6).withMinute(30), open.followingDowntimeChange)
+        val resting = map(p = p, at = now.withHour(22), r = report)
+        assertEquals(TodayKind.Downtime, resting.kind)
+        assertEquals(now.plusDays(1).withHour(6).withMinute(30), resting.nextDowntimeChange)
+        assertEquals(now.plusDays(1).withHour(21).withMinute(30), resting.followingDowntimeChange)
+        assertNull(map().followingDowntimeChange)
+    }
 }

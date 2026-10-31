@@ -137,13 +137,35 @@ broadcast() { $ADB shell am broadcast -n io.github.denogio.familywarden/.DebugRe
 
 # Smoke-test the actual Compose activity too, not just the background restriction.
 # Optional screenshots: MAST_SCREENSHOT_DIR=/tmp/mast-ui ./scripts/test-mast-emulator.sh ...
+# A fresh dump each time: removing the target first keeps a failed uiautomator dump
+# (e.g. "null root node" right after a reboot) from re-reading a file that survives.
+dump_ui() { $ADB shell rm -f /sdcard/mast-ui.xml; $ADB shell uiautomator dump /sdcard/mast-ui.xml >/dev/null; UI=$($ADB shell cat /sdcard/mast-ui.xml 2>/dev/null | tr -d '\r'); }
 ui() {
+    $ADB logcat -b crash -c
     $ADB shell input keyevent KEYCODE_WAKEUP
     $ADB shell wm dismiss-keyguard
     $ADB shell am start -n io.github.denogio.familywarden/.MainActivity >/dev/null
     sleep 8
-    $ADB shell uiautomator dump /sdcard/mast-ui.xml >/dev/null
-    UI=$($ADB shell cat /sdcard/mast-ui.xml | tr -d '\r')
+    dump_ui
+    # A cold start right after a reboot can take longer than 8 s to bring the Compose
+    # activity to the top. Wait a bounded amount longer for it; the assertion still
+    # requires the activity to actually be on top (never accept another window).
+    n=0
+    for _ in $(seq 1 6); do
+        echo "$UI" | grep -q 'package="io.github.denogio.familywarden"' && break
+        n=$((n + 1))
+        sleep 3
+        $ADB shell input keyevent KEYCODE_WAKEUP
+        $ADB shell wm dismiss-keyguard
+        $ADB shell am start -n io.github.denogio.familywarden/.MainActivity >/dev/null 2>&1 || true
+        dump_ui
+    done
+    if [ "$n" -gt 0 ]; then
+        echo "  ui $1: on top after $n retries"
+    fi
+    # The retry loop re-launches the app, so a crash on the first start could pass
+    # after a second launch; a crash in the (cleared) buffer must still fail.
+    $ADB logcat -d -b crash | grep -q 'Process: io.github.denogio.familywarden' && fail "app crashed ($1)"
     echo "$UI" | grep -q 'package="io.github.denogio.familywarden"' && pass "Compose activity renders ($1)" || fail "activity failed ($1)"
     if [ -n "${MAST_SCREENSHOT_DIR:-}" ]; then
         mkdir -p "$MAST_SCREENSHOT_DIR"
@@ -186,14 +208,12 @@ scroll_to_text() {
     echo "$UI" | grep -q "text=\"$text\"" && return 0
     # Begin at the top even if a previous check scrolled the same destination.
     for _ in $(seq 1 3); do $ADB shell input swipe 540 700 540 1900 200; done
-    $ADB shell uiautomator dump /sdcard/mast-ui.xml >/dev/null
-    UI=$($ADB shell cat /sdcard/mast-ui.xml | tr -d '\r')
+    dump_ui
     for _ in $(seq 1 6); do
         echo "$UI" | grep -q "text=\"$text\"" && return 0
         $ADB shell input swipe 540 1800 540 700 500
         sleep 1
-        $ADB shell uiautomator dump /sdcard/mast-ui.xml >/dev/null
-        UI=$($ADB shell cat /sdcard/mast-ui.xml | tr -d '\r')
+        dump_ui
     done
     fail "cannot scroll to $text"
     return 1
@@ -373,7 +393,9 @@ broadcast io.github.denogio.familywarden.DEBUG_SYNC
 has no_config_tethering && fail "tethering still restricted after release" || pass "tethering allowed again"
 ui released
 # Ulysses was never opted into: it disappears when the forced active pact ends.
-echo "$UI" | grep -q 'text="Free sailing"' && fail "inactive opt-out Ulysses still visible" || pass "opt-out Ulysses hides after pact ends"
+# Navigation labels are visible text: an opted-out Ulysses tab must be gone.
+echo "$UI" | grep -q 'text="Ulysses"' && fail "inactive opt-out Ulysses still visible" || pass "opt-out Ulysses hides after pact ends"
+echo "$UI" | grep -q 'text="Lashed to the mast' && fail "pact card shown after release" || pass "no pact card after release"
 tap_text 'Settings'
 ui features-settings
 tap_text 'Ulysses'
@@ -386,7 +408,9 @@ $ADB shell input keyevent KEYCODE_BACK
 ui features-enabled
 tap_text 'Overview'
 ui released-opted-in
-ui_has 'Free sailing'
+tap_text 'Ulysses'
+ui released-opted-in-ulysses
+ui_has 'The sea is calm'
 open_removal
 ui removal-confirmation
 ui_has 'Remove FamilyWarden?'
@@ -423,8 +447,14 @@ sleep 15
 has no_config_tethering && pass "still restricted after reboot without the router" || fail "restriction lost after reboot"
 ui offline
 ui_has 'Hotspot is locked'
-scroll_to_text 'Router out of reach; cached policy remains'
-ui_has 'Router out of reach; cached policy remains'
+# The overview's single status chip reports the outage; the cached pact still binds above.
+# The chip reads "Syncing…" until the startup sync gives up, so wait for its verdict.
+for _ in $(seq 1 10); do
+    echo "$UI" | grep -q 'text="Offline · updated ' && break
+    sleep 3
+    dump_ui
+done
+echo "$UI" | grep -q 'text="Offline · updated ' && pass "UI: offline status chip" || fail "UI missing: offline status chip"
 
 echo ""
 echo "=== Removal after a fresh signed release ==="
@@ -435,7 +465,10 @@ bash "$REPO/scripts/wait-emulator-router.sh" "$EMU" "$ROUTER_IP" 7700 || fail "p
 docker exec "$ROUTER" sh -c 'echo $(( $(date +%s) - 1 )) > /etc/familywarden/release; familywarden tick'
 broadcast io.github.denogio.familywarden.DEBUG_SYNC
 ui removal-allowed
-ui_has 'Free sailing'
+echo "$UI" | grep -q 'text="Hotspot is locked"' && fail "hotspot still shown locked after release" || pass "released: hotspot no longer locked"
+tap_text 'Ulysses'
+ui removal-allowed-ulysses
+ui_has 'The sea is calm'
 
 echo ""
 else

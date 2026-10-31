@@ -26,6 +26,8 @@ fun mapMastUiState(
     rulesSummary: String? = null,
     isSyncing: Boolean = false,
     dialog: MastDialog? = null,
+    /** Display only: the hotspot flip after [nextChangeEpoch]. */
+    followingChangeEpoch: Long? = null,
 ): MastUiState {
     val details = Details(
         captain = mastState?.captain?.takeIf { it.isNotBlank() },
@@ -38,7 +40,7 @@ fun mapMastUiState(
     val setup = when {
         !isDeviceOwner -> SetupState.NotDeviceOwner
         routerHost == null || decision.reason == Reason.NOT_PAIRED -> SetupState.NotPaired
-        else -> SetupState.Paired(pactStatus(mastState, decision, nextChangeEpoch, rulesSummary, nowMillis / 1000))
+        else -> SetupState.Paired(pactStatus(mastState, decision, nextChangeEpoch, followingChangeEpoch, rulesSummary, nowMillis / 1000))
     }
 
     val sync = when (lastError?.trim()?.lowercase()) {
@@ -62,6 +64,7 @@ private fun pactStatus(
     s: MastState?,
     decision: Decision,
     nextChangeEpoch: Long?,
+    followingChangeEpoch: Long?,
     rulesSummary: String?,
     nowEpoch: Long,
 ): PactStatus = when {
@@ -76,6 +79,7 @@ private fun pactStatus(
             },
             rulesSummary = rulesSummary,
         ),
+        followingChangeMillis = followingChangeEpoch.toMillisOrNull()?.takeIf { nextChangeEpoch != null },
     )
     decision.reason == Reason.NO_CAPTAIN -> PactStatus.NoCaptain
     else -> PactStatus.FreeSailing

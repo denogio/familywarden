@@ -255,12 +255,14 @@ class MainActivity : ComponentActivity() {
         val state = raw?.takeIf { it.appliesTo(store.deviceId) }
         val now = Mast.now(state)
         val applied = readAppliedDns(this)
+        val nextChange = Policy.nextBlockChange(state, now)
         val mapped = mapMastUiState(
             nowMillis = now.toInstant().toEpochMilli(), isDeviceOwner = Mast.isDeviceOwner(this),
             routerHost = store.host,
             fingerprint = store.publicKey?.let { runCatching { Usign.parsePublicKey(it).fingerprint }.getOrNull() },
             mastState = state, decision = Policy.decide(state, now),
-            nextChangeEpoch = Policy.nextBlockChange(state, now)?.toEpochSecond(),
+            nextChangeEpoch = nextChange?.toEpochSecond(),
+            followingChangeEpoch = nextChange?.let { Policy.nextBlockChange(state, it) }?.toEpochSecond(),
             lastSyncEpoch = store.lastSync, lastError = store.lastError,
         )
         ui = FamilyWardenState(

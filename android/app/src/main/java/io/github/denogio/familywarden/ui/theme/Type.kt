@@ -98,12 +98,3 @@ val MonoLarge = TextStyle(
     lineHeight = 32.sp,
     letterSpacing = 0.5.sp,
 )
-
-/** Sailing-home countdown. Tabular figures so the digits do not jitter. */
-val CountdownStyle = TextStyle(
-    fontFamily = FontFamily.Monospace,
-    fontWeight = FontWeight.Medium,
-    fontSize = 36.sp,
-    lineHeight = 44.sp,
-    fontFeatureSettings = "tnum",
-)

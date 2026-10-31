@@ -45,6 +45,8 @@ data class ScreenTimeState(
     val otherDevicesMillis: Long = 0,
     val historyApps: Map<String, List<DayApp>> = emptyMap(),
     val budgetDebitMillis: Long = 0,
+    /** Display only: the downtime flip after [nextDowntimeChange] (the end of the next pause). */
+    val followingDowntimeChange: ZonedDateTime? = null,
 ) {
     val remainingMillis: Long? get() = usedMillis?.let { used -> limitMillis?.let { (it - used - budgetDebitMillis).coerceAtLeast(0) } }
 }
@@ -55,6 +57,9 @@ data class AppTimeRow(val pkg: String, val label: String, val usedMillis: Long?,
     val remainingMillis: Long? get() = usedMillis?.let { used ->
         limitMillis?.let { (it - used - budgetDebitMillis).coerceAtLeast(0) }
     }
+    /** Overview "Running low": a measured, limited, open app within the existing warning time. */
+    val runningLow: Boolean get() = !blocked && !unlimited &&
+        remainingMillis?.let { it > 0 && it <= AppControl.WARN_BEFORE_MS } == true
 }
 
 /** Display the signed rules and fresh, reliable observations; never extrapolate a countdown. */
@@ -84,7 +89,8 @@ fun screenTimeState(apps: AppsPolicy, report: AppUsageReport?, now: ZonedDateTim
     }.sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
     fun recent(day: String) = runCatching { LocalDate.parse(day) }.getOrNull()
         ?.let { it <= now.toLocalDate() && it > now.toLocalDate().minusDays(30) } == true
-    return ScreenTimeState(kind, total, local.dailyLimitMillis, nextDowntimeChange(local.downtime, now),
+    val nextDowntime = nextDowntimeChange(local.downtime, now)
+    return ScreenTimeState(kind, total, local.dailyLimitMillis, nextDowntime,
         now.toLocalDate().plusDays(1).atStartOfDay(now.zone), rows,
         rows.filter { it.unlimited }.map { it.label }, matching?.historyTotals.orEmpty().filterKeys(::recent),
         !usageAccess, if (current?.grantReliable == true && usageAccess) current.grantRemaining else emptyMap(),
@@ -93,7 +99,8 @@ fun screenTimeState(apps: AppsPolicy, report: AppUsageReport?, now: ZonedDateTim
             apps.filterKeys { it !in matching!!.essential }.map { (pkg, millis) -> DayApp(pkg, matching!!.labels[pkg] ?: pkg, millis) }
                 .sortedByDescending { it.millis }
         }.filterValues { it.isNotEmpty() },
-        if (reliable) current!!.budgetDebits[UsageCounter.TOTAL] ?: 0 else 0)
+        if (reliable) current!!.budgetDebits[UsageCounter.TOTAL] ?: 0 else 0,
+        nextDowntime?.let { nextDowntimeChange(local.downtime, it) })
 }
 
 /** Skip overlapping window boundaries that do not actually change downtime. */

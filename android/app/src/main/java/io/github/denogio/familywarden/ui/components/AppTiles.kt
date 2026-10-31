@@ -5,16 +5,27 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.Image
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.core.graphics.drawable.toBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -48,22 +59,37 @@ fun AppTile(key: String, initials: String, size: Dp = 36.dp, shape: Shape = Roun
     }
 }
 
-/** A tile grid with captions ("Always OK"); [description] is read instead of each caption. */
-@Composable
-@OptIn(ExperimentalLayoutApi::class)
-fun AppTileGrid(items: List<Pair<String, String>>, descriptions: Map<String, String> = emptyMap()) {
-    val initials = tileInitials(items.map { it.second })
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        items.forEach { (key, label) ->
-            Column(
-                // Labels wrap rather than truncate at 200 % font.
-                Modifier.widthIn(min = 64.dp, max = 112.dp).semantics(mergeDescendants = true) { contentDescription = descriptions[key] ?: label },
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                AppTile(key, initials.getValue(label), 40.dp)
-                Text(label, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
-            }
-        }
+/** Locally installed app icons for display only; package labels and icons stay untrusted UI data. */
+internal object AppIcons {
+    private const val SIZE_PX = 96
+    private val icons = android.util.LruCache<String, ImageBitmap>(64)
+    private val missing = android.util.LruCache<String, Boolean>(128)
+
+    fun cached(pkg: String): ImageBitmap? = icons.get(pkg)
+
+    /** Blocking PackageManager read; call off the main thread. Null when no icon is available. */
+    fun load(context: android.content.Context, pkg: String): ImageBitmap? {
+        icons.get(pkg)?.let { return it }
+        if (missing.get(pkg) != null) return null
+        val icon = runCatching {
+            context.packageManager.getApplicationIcon(pkg).toBitmap(SIZE_PX, SIZE_PX).asImageBitmap()
+        }.getOrNull()
+        if (icon != null) icons.put(pkg, icon) else missing.put(pkg, true)
+        return icon
     }
+}
+
+/** The app's real icon when this phone has one, otherwise the letter [AppTile]; decorative. */
+@Composable
+fun AppIconTile(pkg: String, initials: String, size: Dp = 36.dp, shape: Shape = RoundedCornerShape(10.dp)) {
+    val inspection = LocalInspectionMode.current
+    val context = LocalContext.current
+    var icon by remember(pkg) { mutableStateOf(AppIcons.cached(pkg)) }
+    LaunchedEffect(pkg, inspection) {
+        // Previews never read PackageManager; they show the letter fallback.
+        if (!inspection && icon == null) icon = withContext(Dispatchers.IO) { AppIcons.load(context, pkg) }
+    }
+    val loaded = icon
+    if (loaded != null) Image(loaded, null, Modifier.size(size).clip(shape).clearAndSetSemantics { })
+    else AppTile(pkg, initials, size, shape)
 }

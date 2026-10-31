@@ -51,52 +51,22 @@
     <string name="pair_confirm_hint">Check that it matches the fingerprint in LuCI under FamilyWarden › Settings › Ulysses. If it differs, do not pair.</string>
 
     <!-- 4-7. Status -->
-    <string name="status_free_title">Free sailing</string>
-    <string name="status_free_body">No pact is active. Hotspot and tethering are allowed.</string>
     <string name="status_no_captain_title">No captain aboard</string>
-    <string name="status_no_captain_body">The router has no captain set for Ulysses, so nothing is enforced. Hotspot and tethering are allowed.</string>
     <string name="status_allowed_title">Hotspot is allowed</string>
-    <string name="status_allowed_body">Your pact currently allows hotspot and tethering.</string>
     <!-- %1$s = "today at 21:30", %2$s = "3 h 12 min" -->
-    <string name="status_locks_at">Locks %1$s, in %2$s</string>
     <string name="status_locked_title">Hotspot is locked</string>
     <!-- %1$s = "tomorrow at 06:00" -->
-    <string name="status_locked_until">Hotspot and tethering stay off until %1$s.</string>
-    <string name="status_locked_no_end">Hotspot and tethering stay off for now.</string>
     <!-- %1$s = "8 h 24 min" -->
-    <string name="status_opens_in">Opens in %1$s</string>
     <string name="status_sailing_home_overline">Sailing home</string>
     <!-- %1$s = "today at 22:15" -->
-    <string name="status_sailing_home_title">Free %1$s</string>
-    <string name="status_sailing_home_locked">You asked the router to release you. Until then the pact follows its schedule. Hotspot and tethering are locked right now.</string>
-    <string name="status_sailing_home_allowed">You asked the router to release you. Until then the pact holds as usual. Hotspot is allowed right now.</string>
-    <string name="status_countdown_left">left</string>
-    <string name="status_countdown_description">%1$s left</string>
 
     <!-- Pact card -->
-    <string name="pact_overline">The pact</string>
     <string name="pact_ongoing">Bound by an ongoing pact</string>
     <!-- %1$s = "Tue 3 Nov" -->
     <string name="pact_until">Bound until %1$s</string>
-    <string name="pact_chosen_by">Chosen by %1$s.</string>
     <!-- %2$s = "06:00–21:30, every day" -->
-    <string name="pact_chosen_by_with_rules">Chosen by %1$s. Hotspot is allowed %2$s.</string>
-    <string name="pact_rules">Hotspot is allowed %1$s.</string>
     <string name="pact_release_requested">Release requested.</string>
     <string name="pact_locked_note">While this pact is active, Ulysses cannot be disabled, re-paired, or removed.</string>
-
-    <!-- 8. Sync problems -->
-    <string name="sync_unreachable_title">Router out of reach</string>
-    <!-- %1$s = "today at 05:36" -->
-    <string name="sync_unreachable_body">Normal when you are away from home. The pact from the last sync, %1$s, still applies.</string>
-    <string name="sync_unreachable_body_never">Normal when you are away from home. Sync again once you are on the home network.</string>
-    <string name="sync_bad_signature_title">Reply could not be verified</string>
-    <!-- %1$s = grouped fingerprint -->
-    <string name="sync_bad_signature_body">The router\'s answer was not signed with the paired key %1$s. FamilyWarden ignored it and keeps the last trusted state.</string>
-    <string name="sync_bad_signature_advice">This is not normal. If the router was reset or reinstalled, check its key in LuCI.</string>
-    <string name="sync_failed_title">Sync did not complete</string>
-    <!-- %1$s = raw lastError, e.g. "stale reply" -->
-    <string name="sync_failed_body">Sync reported: %1$s. The last known state still applies.</string>
 
     <!-- 9. Remove -->
     <string name="remove_refused_title">The pact still holds</string>

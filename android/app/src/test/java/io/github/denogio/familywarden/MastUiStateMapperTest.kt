@@ -55,4 +55,21 @@ class MastUiStateMapperTest {
             releaseAt = now.toEpochSecond() + 3600)).setup as SetupState.Paired).status as PactStatus.Bound
         assertNull(bound.pact.releaseAtMillis)
     }
+
+    @Test fun followingChangeIsDisplayOnlyAndNeedsANextChange() {
+        val s = state.copy(rules = Rules(true, "scheduled", "none",
+            listOf(Window(java.time.DayOfWeek.entries.toSet(), java.time.LocalTime.of(6, 30), java.time.LocalTime.of(21, 30)))))
+        val at = now.withHour(20)
+        val next = Policy.nextBlockChange(s, at)!!
+        val following = Policy.nextBlockChange(s, next)!!
+        val ui = mapMastUiState(at.toInstant().toEpochMilli(), true, "router.lan", null, s, Policy.decide(s, at),
+            next.toEpochSecond(), 123, null, followingChangeEpoch = following.toEpochSecond())
+        val bound = (ui.setup as SetupState.Paired).status as PactStatus.Bound
+        assertFalse(bound.blocked)
+        assertEquals(at.withHour(21).withMinute(30).toInstant().toEpochMilli(), bound.nextChangeMillis)
+        assertEquals(at.plusDays(1).withHour(6).withMinute(30).toInstant().toEpochMilli(), bound.followingChangeMillis)
+        val none = mapMastUiState(at.toInstant().toEpochMilli(), true, "router.lan", null, s, Policy.decide(s, at),
+            null, 123, null, followingChangeEpoch = following.toEpochSecond())
+        assertNull(((none.setup as SetupState.Paired).status as PactStatus.Bound).followingChangeMillis)
+    }
 }

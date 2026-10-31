@@ -48,7 +48,7 @@ contains() { grep -Fq "$2" "$OUT/$1.xml" || { echo "Missing '$2' in $1"; exit 1;
 tap() {
     read -r x y < <(python3 - "$OUT/$1.xml" "$2" <<'PY'
 import re,sys,xml.etree.ElementTree as E
-nodes=[n for n in E.parse(sys.argv[1]).iter('node') if sys.argv[2] in (n.get('text'), n.get('content-desc'))]
+nodes=[n for n in E.parse(sys.argv[1]).iter('node') if sys.argv[2] in (n.get('text'), n.get('content-desc')) or sys.argv[2] in (n.get('text') or '').split(', ')]
 assert nodes,sys.argv[2]
 node=next((n for n in nodes if n.get('clickable')=='true'), nodes[0])
 x1,y1,x2,y2=map(int,re.findall(r'\d+',node.get('bounds')))

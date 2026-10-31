@@ -4,6 +4,12 @@ The unmodified `design.html` remains the visual reference. This document maps th
 2026-10-24 child/adult implementation to actual available data. It is **not** a
 claim that the complete role design or P10 has shipped.
 
+> **Superseded by UI6 (2026-10-30):** the icon-only navigation decision below no longer
+> applies. Bottom navigation now shows a visible label on every item (the label is the
+> accessible name; icons are decorative), overview apps use real icons with a letter
+> fallback, and the overview follows [role overviews](../role-overviews/README.md).
+> Mentions of icon-only navigation and letter tiles below are historical.
+
 ## Implemented
 
 - App-controlled phones open **Today**: night-sea hero in both themes, daily
@@ -62,7 +68,7 @@ Local mode never grants authority: the router rechecks scope.
 ### Parent presentation split (2026-10-25)
 
 The updated Android board `FamilyWarden (5).html` is the presentation reference;
-its labeled tabs remain superseded by the user's icon-only navigation decision.
+its labeled tabs were superseded by the user's icon-only navigation decision (itself superseded by UI6).
 
 - Parent-only phones open **Screen time**, with **Controls / Requests** alongside it.
   Requests notifications open the Requests page instead.
@@ -104,7 +110,7 @@ Visual port of the child boards; no policy, authorization or enforcement change.
 - Time's up and Downtime keep what still works inside the night card; Time's up uses
   the gold primary Ask button and "A parent can say yes from their phone."
 - Missing usage access is a warning card with the existing "Allow usage access" action.
-- Navigation icons: sun (Today), bars (History), sliders (Settings), still icon-only.
+- Navigation icons: sun (Today), bars (History), sliders (Settings); icon-only at the time, labelled since UI6.
 - The child's own Requests tab is gone (child tabs Today · History · Settings; adult
   Today · DNS · Ulysses · Settings). Today shows **Your request** with a status chip
   (Waiting / Approved / Not this time / Closed), the retry card for an uncertain
@@ -116,7 +122,7 @@ Visual port of the child boards; no policy, authorization or enforcement change.
 
 Deliberate deviations from the board, with reasons:
 
-- Icon-only navigation and the **Today** heading (user decision of 2026-10-25) stay.
+- Icon-only navigation (user decision of 2026-10-25, superseded by UI6) and the **Today** heading.
 - Downtime keeps **Ask for more time**: an approved grant does work during downtime in
   the enforcement model, so hiding the button would remove a working path.
 - **Other amount** (1–240 min) is offered next to the presets so short asks remain
@@ -211,7 +217,7 @@ was used.
 - Settings/Controls expose an EN/DA availability sheet: supported native flows,
   router-managed actions and remaining features. New-app copy acknowledges that an
   app can open briefly before suspension. Absent usage summaries are not empty days;
-  old-day usage is not labeled Today. Existing icon-only navigation remains intact.
+  old-day usage is not labeled Today. Navigation was icon-only at the time (labelled since UI6).
 - Requests stay 1–240 minutes, approval 1..requested, two hours after approval.
   P1/P2 remain proposals, and P3 remains separate accounting work.
 
@@ -266,8 +272,9 @@ Earlier checkpoints:
   **debug-only PreviewActivity** and fictional fixtures on Android 15. Covers light,
   dark, near limit, time's-up, downtime, unavailable usage, adult pact, History/Settings
   navigation and Danish at 200% text with vertical scrolling.
-- Icon-only navigation checks use UIAutomator on the debug previews: no visible
-  navigation text, localized accessible names, selected state, touch targets of at
+- Navigation checks use UIAutomator on the debug previews. Since UI6 they require a
+  visible label per item that is not also an icon description (originally: no visible
+  navigation text), localized accessible names, selected state, touch targets of at
   least 48 dp and a visible page heading. Child, adult and parent navigation are
   covered in EN and Danish at 200% text, with light/dark fixtures.
 - The focused render check is not a new end-to-end enforcement test. The previous

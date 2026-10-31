@@ -79,7 +79,9 @@ def ui(name=None):
 
 
 def nodes(text):
-    return [n for n in ui().iter('node') if text in (n.get('text'), n.get('content-desc'))]
+    # Compose can join a merged item's texts with ', ' (e.g. a navigation badge and its label).
+    return [n for n in ui().iter('node') if text in (n.get('text'), n.get('content-desc'))
+            or text in (n.get('text') or '').split(', ')]
 
 
 def tap(text, scroll=False, last=False):

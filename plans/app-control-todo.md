@@ -807,6 +807,45 @@ Details and deliberate design deviations: `docs/design/family-views/UI-SPEC.md`.
       Deployed to the pilot router from CI run 41014185856 (core from `core-aarch64-<sha>`,
       backend/LuCI from `apks-<sha>`); signed backup verified, configuration, owner, router
       key and phone bindings preserved; live 189-app inventory sorts correctly in all modes.
+- [x] UI6: Android role overviews, part 1 — shared shell plus child and adult overview
+      (user-approved design 2026-10-30, reference `docs/design/role-overviews/`).
+      Shared: status chip in the top bar instead of repeated status cards; visible labels
+      on every bottom-navigation item; real app icons with a letter fallback only when no
+      icon is available; one honest unknown state that says measurement is unavailable,
+      what still applies and the reason when known (replace the ambiguous "Time is not
+      counted right now" wording, EN and DA). Child: one hero with time left today, a
+      progress bar and the next pause; "Ask for more time" as the primary action;
+      "Running low" lists only limited apps near their limit. Adult: hero "Open until",
+      then what rests until when; compact pact card; "Running low". Remove from the
+      overview: expired request cards, the oversized hotspot card and duplicate status
+      text; give "Always OK" a readable layout. Truthfulness: claim "apps and hotspot"
+      together only when the rules restrict both; no countdown without reliable data.
+      Budget remaining keeps using the RB1 debit; "used" stays measured-only.
+      UI only: no change to enforcement, policy, sync or Go core semantics.
+      **Accept:** EN/DA strings for all new text; previews and Robolectric/Compose tests
+      for child/adult normal, near-limit, times-up, downtime, unknown and pact states;
+      TalkBack labels, 200% font and dark mode checked in screenshots with fictional
+      fixtures; existing emulator UI assertions updated without weakening them; unit
+      tests, lint and release build green in Docker.
+      **Done (2026-10-31):** user decisions: "Running low" = limited, not blocked,
+      measured, 0 < remaining ≤ `AppControl.WARN_BEFORE_MS` (5 min; apps at 0 are not
+      listed); unknown state names one literal reason (usage access off, measurement
+      interrupted today per `usage_gap`, or no fresh data). Deviations from the images are
+      recorded in `docs/design/role-overviews/README.md`. Reviews: Claude (fixed),
+      independent Amber (dead sync banner removed, wording documented), Claude harness
+      review (crash detection, fresh dumps, fake-adb tests added). Docker: 298 unit tests,
+      lint, release build green; 27 harness tests green; screen-time, request and
+      functional preview scripts green on a disposable emulator. Full
+      `test-mast-emulator.sh` with the UI6 debug APK and validated `7e203b0` router
+      packages: 105 passed, 0 failed (776 s). Offline-stage root cause was harness timing
+      after reboot (startup sync waits on 5 s timeouts behind `@Synchronized` refresh;
+      cold start can exceed 8 s); bounded waits added, "Syncing…" never accepted as
+      offline. Not installed on the phone.
+- [ ] UI7: Android role overviews, part 2 — parent overview (design as UI6). "Needs you"
+      with per-request Approve and "Review all"; expired requests never shown; "Right
+      now" per child with time left, next downtime and report age; device problems such
+      as rules not applied appear as their own row. Child switcher pill in the top bar.
+      Same truthfulness, EN/DA, accessibility and test gates as UI6. Blocked by UI6.
 - [ ] UI2: Bring the shared Devices page into visual agreement with the control prototype
       (user feedback 2026-10-29), not another independent redesign. Compare the actual page
       and prototype side by side: layout/edit flow, typography, surface/text contrast,

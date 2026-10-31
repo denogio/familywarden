@@ -38,6 +38,8 @@ sealed interface PactStatus {
         /** Policy.nextChange: when blocked/allowed next flips. Null when unknown. */
         val nextChangeMillis: Long?,
         val pact: Pact,
+        /** Display only: the flip after [nextChangeMillis], e.g. when a coming lock ends. */
+        val followingChangeMillis: Long? = null,
     ) : PactStatus
 }
 

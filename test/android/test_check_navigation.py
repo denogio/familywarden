@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small offline checks for the icon-only UIAutomator navigation validator."""
+"""Small offline checks for the labelled UIAutomator navigation validator."""
 import unittest
 import xml.etree.ElementTree as ET
 
@@ -13,7 +13,7 @@ class NavigationCheckTest(unittest.TestCase):
         ET.SubElement(self.root, 'node', text='Screen time', bounds='[0,0][360,50]')
         for i, label in enumerate(self.labels):
             item = ET.SubElement(self.root, 'node', **{
-                'content-desc': label, 'clickable': 'true',
+                'text': label, 'clickable': 'true',
                 'selected': str(i == 0).lower(),
                 'bounds': f'[{i * 120},720][{(i + 1) * 120},800]',
             })
@@ -23,17 +23,32 @@ class NavigationCheckTest(unittest.TestCase):
     def validate(self):
         check(self.root, self.labels, 'Screen time', 160)
 
-    def test_numeric_badge_does_not_become_a_visible_destination_label(self):
+    def test_labelled_items_with_numeric_badge_pass(self):
         self.validate()
 
-    def test_visible_label_is_rejected(self):
-        self.root[2].set('text', 'Controls')
-        with self.assertRaisesRegex(AssertionError, 'Visible navigation label'):
+    def test_merged_badge_and_label_pass(self):
+        self.root[3].set('text', '3, Requests')
+        self.validate()
+
+    def test_icon_only_item_is_rejected(self):
+        self.root[2].set('text', '')
+        self.root[2].set('content-desc', 'Controls')
+        with self.assertRaisesRegex(AssertionError, 'Missing visible navigation label'):
+            self.validate()
+
+    def test_label_read_twice_is_rejected(self):
+        self.root[2].set('content-desc', 'Controls')
+        with self.assertRaisesRegex(AssertionError, 'read twice'):
             self.validate()
 
     def test_missing_accessible_name_is_rejected(self):
-        self.root[2].set('content-desc', '')
+        self.root[2].set('text', '')
         with self.assertRaisesRegex(AssertionError, 'accessible navigation name'):
+            self.validate()
+
+    def test_unexpected_navigation_text_is_rejected(self):
+        ET.SubElement(self.root[2], 'node', text='Beta', bounds='[130,720][150,740]')
+        with self.assertRaisesRegex(AssertionError, 'Unexpected navigation text'):
             self.validate()
 
     def test_wrong_selection_is_rejected(self):

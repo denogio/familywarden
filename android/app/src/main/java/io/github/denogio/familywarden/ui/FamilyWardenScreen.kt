@@ -16,6 +16,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.denogio.familywarden.*
 import io.github.denogio.familywarden.R
 import io.github.denogio.familywarden.BuildConfig
@@ -96,12 +97,19 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
                             // Today names the router-local weekday and time, as on the design boards.
                             if (readyForNavigation && (page == Page.History || historyOpen)) Text(stringResource(R.string.fw_history_last_30),
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            state.screenTime?.takeIf { readyForNavigation && page == Page.Overview }?.let { time ->
+                            if (readyForNavigation && page == Page.Overview && state.binding != null) {
+                                val zone = state.screenTime?.resetsAt?.zone ?: routerZone(state)
                                 val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
-                                val at = Instant.ofEpochMilli(state.nowMillis).atZone(time.resetsAt.zone)
-                                Text(at.format(java.time.format.DateTimeFormatter.ofPattern("EEEE", locale)) + " · " +
-                                    at.format(java.time.format.DateTimeFormatter.ofLocalizedTime(java.time.format.FormatStyle.SHORT).withLocale(locale)),
-                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                val at = Instant.ofEpochMilli(state.nowMillis).atZone(zone)
+                                // The status lives here once, instead of in repeated cards below.
+                                @OptIn(ExperimentalLayoutApi::class)
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp),
+                                    itemVerticalAlignment = Alignment.CenterVertically) {
+                                    Text(at.format(java.time.format.DateTimeFormatter.ofPattern("EEEE", locale)) + " · " +
+                                        at.format(java.time.format.DateTimeFormatter.ofLocalizedTime(java.time.format.FormatStyle.SHORT).withLocale(locale)),
+                                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    SyncStatusChip(state, zone)
+                                }
                             }
                         }
                     }
@@ -124,14 +132,21 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
                 pages.forEach { p -> NavigationBarItem(
                     selected = p == page,
                     onClick = { if (showFamily) { familySelected = p.name; familyHistory = false; familyApps = false; familyApp = null } else selected = p.name },
-                    // Keep localized screen-reader names without visible labels, at every font scale.
+                    // The visible label is the item's name for TalkBack too; the icon stays decorative.
                     icon = {
                         BadgedBox(badge = { if (showFamily && p == Page.Requests && state.familyPendingCount > 0) Badge { Text(state.familyPendingCount.toString()) } }) {
-                            Icon(if (p == Page.Overview && state.screenTime != null) Icons.Outlined.WbSunny else p.icon,
-                                stringResource(if (showFamily && p == Page.Requests) R.string.fw_family_requests
-                                else if (p == Page.Overview && state.screenTime != null) R.string.fw_today else p.title))
+                            Icon(if (p == Page.Overview && state.screenTime != null) Icons.Outlined.WbSunny else p.icon, null)
                         }
                     },
+                    label = {
+                        // Whole words at every font scale: shrink only as far as needed instead of truncating.
+                        val style = LocalTextStyle.current
+                        androidx.compose.foundation.text.BasicText(stringResource(if (showFamily && p == Page.Requests) R.string.fw_family_requests
+                            else if (p == Page.Overview && state.screenTime != null) R.string.fw_today else p.title),
+                            style = style.copy(color = LocalContentColor.current), maxLines = 1,
+                            autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 6.sp, maxFontSize = style.fontSize))
+                    },
+                    alwaysShowLabel = true,
                 ) }
             }
         },
@@ -158,20 +173,11 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
                 page == Page.Controls -> FamilyControlsContent(state, actions, familyProfile?.id) { familyApps = true }
                 page == Page.Requests -> RequestsContent(state, actions, family = showFamily)
                 page == Page.Settings && state.parentMode -> ParentSettings(state, actions)
-                page == Page.Overview && state.screenTime != null -> ScreenTimeContent(state, actions) { asking = true }
+                page == Page.Overview && state.screenTime != null && state.binding?.captain == false ->
+                    ScreenTimeContent(state, actions) { asking = true }
                 page == Page.History -> ScreenTimeHistory(state.screenTime)
-                page == Page.Overview -> {
-                    DnsHero(state)
-                    if (state.showUlysses) {
-                        StatusHero(state.pact ?: PactStatus.FreeSailing, state.nowMillis)
-                        TextButton(onClick = { selected = Page.Ulysses.name }, modifier = Modifier.fillMaxWidth()) {
-                            Text(stringResource(R.string.fw_open_ulysses))
-                        }
-                    }
-                    Facts(state)
-                    AppLimitsNote(state, actions)
-                    WideAction(R.string.action_sync, Icons.Outlined.Sync, actions.sync, !state.syncing)
-                }
+                page == Page.Overview -> AdultOverview(state, actions, onAsk = { asking = true },
+                    onOpenPact = if (Page.Ulysses in pages) ({ selected = Page.Ulysses.name }) else null)
                 page == Page.Dns -> DnsContent(state, actions)
                 page == Page.Ulysses -> VoyageContent(state, actions)
                 page == Page.Settings -> {
@@ -217,7 +223,7 @@ fun FamilyWardenScreen(state: FamilyWardenState, actions: FamilyWardenActions, i
 }
 
 @Composable
-private fun DnsHero(s: FamilyWardenState) {
+internal fun DnsHero(s: FamilyWardenState) {
     if (s.headline == DnsHeadline.AwaitingApproval) {
         HeroCard {
             HeroBadge(Icons.Outlined.HourglassEmpty, MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface)
@@ -296,23 +302,6 @@ private fun Facts(s: FamilyWardenState) {
         DetailItem(stringResource(R.string.fw_resolver_reachable), health),
         DetailItem(stringResource(R.string.fw_router_reachable), sync),
     ))
-}
-
-/** App limits are enforced locally; only problems need the user's attention. */
-@Composable
-private fun AppLimitsNote(s: FamilyWardenState, actions: FamilyWardenActions) {
-    if (!s.appsActive) return
-    when (s.appsStatus) {
-        "usage_access_missing" -> {
-            InfoNote(Icons.Outlined.Info, stringResource(R.string.fw_apps_usage_missing))
-            TextButton(onClick = actions.openUsageAccess, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.fw_apps_open_usage))
-            }
-        }
-        "suspend_failed" -> InfoNote(Icons.Outlined.Info, stringResource(R.string.fw_apps_suspend_failed))
-        "ok" -> InfoNote(Icons.Outlined.Lock, stringResource(R.string.fw_apps_active))
-        else -> InfoNote(Icons.Outlined.Info, stringResource(R.string.fw_time_unavailable))
-    }
 }
 
 @Composable

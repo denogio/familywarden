@@ -139,7 +139,7 @@ render VoyagePendingPreview voyage-pending
 contains voyage-pending 'No usable device policy'
 absent voyage-pending 'The sea is calm'
 absent voyage-pending 'Hotspot is allowed'
-absent voyage-pending 'content-desc="Ulysses"'
+absent voyage-pending 'text="Ulysses"'
 render VoyageNoCaptainPreview no-captain-start
 tap no-captain-start Ulysses
 capture no-captain
